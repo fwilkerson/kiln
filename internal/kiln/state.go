@@ -31,6 +31,8 @@ type record struct {
 	State state  `json:"state"`
 	// Approved is main's tip when the developer approved the spec.
 	Approved string `json:"approved"`
+	// Build is the ID of this approval's build, which names it in the ledger.
+	Build string `json:"build,omitempty"`
 	// Session is the build's Claude Code session, once it has one.
 	Session string `json:"session,omitempty"`
 	// Rounds counts the failed gates sent back to the session.
@@ -70,20 +72,26 @@ func (b *book) find(name string) *record {
 }
 
 // approve queues a new build of name from the spec at main's tip, approved. It answers whether a build of an earlier
-// approval left a branch to drop. A spec that is building refuses: approve it again once its build ends.
-func (b *book) approve(name, approved string) (drop bool, err error) {
+// approval left a branch to drop. It also answers the ID of an earlier build this approval drops before it ended. A
+// spec that is building refuses: approve it again once its build ends.
+func (b *book) approve(name, approved string) (drop bool, dropped string, err error) {
 	r := b.find(name)
 	switch {
 	case r == nil:
-		b.Specs = append(b.Specs, &record{Name: name, State: queued, Approved: approved})
-		return false, nil
+		b.Specs = append(b.Specs, &record{Name: name, State: queued, Approved: approved, Build: newBuild()})
+		return false, "", nil
 	case r.State == building:
-		return false, fmt.Errorf("%w: %s is building; approve it again once its build ends", errRefused, name)
+		return false, "", fmt.Errorf("%w: %s is building; approve it again once its build ends", errRefused, name)
+	}
+
+	// A queued build with a session was interrupted, and an amended one waits: neither has ended.
+	if r.State == amended || r.State == queued && r.Session != "" {
+		dropped = r.Build
 	}
 
 	drop = r.State != queued
-	*r = record{Name: name, State: queued, Approved: approved}
-	return drop, nil
+	*r = record{Name: name, State: queued, Approved: approved, Build: newBuild()}
+	return drop, dropped, nil
 }
 
 // accept returns the record of a spec waiting for the developer's acceptance.

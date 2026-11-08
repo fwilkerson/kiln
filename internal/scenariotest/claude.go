@@ -53,20 +53,25 @@ type ClaudeTool struct {
 	Name  string          `json:"name"`
 	Input json.RawMessage `json:"input"`
 	Raw   bool            `json:"raw,omitempty"`
+	// Usage is the usage of the message that makes the call, as Claude Code writes it. Without it, the usage is small.
+	Usage json.RawMessage `json:"usage,omitempty"`
 }
 
 // ClaudeLimit is a usage limit. Status is "rejected" unless it says otherwise, and it resets ResetsIn from now.
+// SevenDay, from 0 to 1, adds the use of the 7-day limit. A status of "allowed" with SevenDay is a reading of it.
 type ClaudeLimit struct {
 	Status       string         `json:"status,omitempty"`
 	ResetsIn     ClaudeDuration `json:"resets_in,omitempty"`
 	UsingOverage bool           `json:"using_overage,omitempty"`
+	SevenDay     *float64       `json:"seven_day,omitempty"`
 }
 
-// ClaudeResult is the session's result line.
+// ClaudeResult is the session's result line. CostUSD is what the run cost since the session's last result.
 type ClaudeResult struct {
 	IsError        bool    `json:"is_error,omitempty"`
 	Result         *string `json:"result,omitempty"`
 	APIErrorStatus *int    `json:"api_error_status,omitempty"`
+	CostUSD        float64 `json:"cost_usd,omitempty"`
 }
 
 // ClaudeDuration is a duration written as a string, such as "3s".

@@ -1,0 +1,63 @@
+# 5. A landed build's summary is in its commit.
+
+# Given: a build that landed.
+# Its session costs $0.30 over 2 turns, one of them a read of a file that is not there. Its audit costs $0.12 over 1.
+exec kiln approve x
+exec kiln run
+stdout '^x: landed on main'
+
+# When: the developer reads the landing commit's message.
+exec git log -1 --format=%B main
+
+# Then: it holds the build's time, cost, turns and failed calls.
+stdout '^feat\(x\): land the approved spec$'
+stdout '^Build: (\d+s|[\d.]+ min) · \$0\.42 · 3 turns · 1 failed call$'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Read", "input": {"file_path": "missing.go"}}},
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+    {"result": {"result": "Built x.", "cost_usd": 0.30}}
+  ]}},
+  "audit": {"1": {"1": [
+    {"tool": {"name": "Read", "input": {"file_path": "x.go"}}},
+    {"result": {"result": "read 2 packages, found 0", "cost_usd": 0.12}}
+  ]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

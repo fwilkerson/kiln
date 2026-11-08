@@ -5,12 +5,14 @@
 //	err = r.Approve(ctx, "x", os.Stdout)  // queues specs/x.md, as main holds it
 //	err = r.Run(ctx, os.Stdout)           // builds each queued spec, one at a time
 //	err = r.Status(ctx, os.Stdout)
+//	err = r.Stats(ctx, "", os.Stdout)     // what each build cost, one line each; "x" shows each build of x in full
 //	err = r.Accept(ctx, "x", os.Stdout)   // ends UAT, and retires the spec
 //
-// A build is one Claude Code session, on its own branch, kiln/<name>, in a worktree kiln makes. kiln commits what the
-// session leaves, then gates it. A failing gate goes back to the same session, at most kiln.json's rounds times;
-// past that, the build stops. Once the gate passes, the audit agent reads the changed packages once, and its findings
-// go back to the session. A build with no amendment then lands. It is rebased onto main as one commit, and gated
+// A build runs one build session of Claude Code, on its own branch, kiln/<name>, in a worktree kiln makes. kiln commits
+// what the session leaves, then gates it. A failing gate goes back to the same session, at most kiln.json's rounds
+// times; past that, the build stops. Once the gate passes, the audit agent reads the changed packages, in a session
+// of its own. An audit that ends with no result runs again in a new session, up to 3 tries. Its findings go back to
+// the build session. A build with no amendment then lands. It is rebased onto main as one commit, and gated
 // again. Then main moves to it, only if main has not moved since. A build that amended its spec waits on its branch
 // instead.
 //
@@ -21,8 +23,13 @@
 // A usage limit pauses the build until the limit resets, and then resumes the same session. A limit with no reset
 // pauses it for 5 minutes.
 //
-// kiln keeps each spec's state in kiln/ under the git common directory, so every worktree shares it. The worktrees
-// are in the user's cache directory, under kiln/. Main is the branch named main.
+// Each approval is a new build, with its own ID. kiln's ledger records every build, session run and gate, and how
+// each build ended. A build's time is its session runs' time plus its gates'. A pause for a usage limit adds nothing.
+// Its turns, cost and failed calls sum its runs. A number kiln could not read shows as unknown, never as zero. A
+// landed build's commit holds its time, cost, turns and failed calls.
+//
+// kiln keeps each spec's state and the ledger in kiln/ under the git common directory, so every worktree shares
+// them. The worktrees are in the user's cache directory, under kiln/. Main is the branch named main.
 package kiln
 
 import (
@@ -178,12 +185,19 @@ func (r *Repo) Approve(ctx context.Context, name string, out io.Writer) error {
 	}
 
 	var drop bool
+	var dropped string
 	err = r.store.update(func(b *book) error {
-		drop, err = b.approve(name, main)
+		drop, dropped, err = b.approve(name, main)
 		return err
 	})
 	if err != nil {
 		return err
+	}
+
+	if dropped != "" {
+		if err := r.store.write(entry{Kind: outcomeKind, Build: dropped, Outcome: outDropped}); err != nil {
+			fmt.Fprintf(out, "%s: kiln could not write its ledger: %v\n", name, err)
+		}
 	}
 
 	if drop {
@@ -277,6 +291,7 @@ func (r *Repo) Accept(ctx context.Context, name string, out io.Writer) error {
 		return err
 	}
 
+	b.record(entry{Kind: outcomeKind, Outcome: outAccepted})
 	fmt.Fprintf(out, "%s: accepted, and main is at %s\n", name, short(landed))
 	return nil
 }

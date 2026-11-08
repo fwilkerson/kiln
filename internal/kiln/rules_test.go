@@ -133,31 +133,36 @@ func TestSpecStates(t *testing.T) {
 		command string
 		then    state
 		drop    bool
+		// dropped is a build that the approval ends, which had not ended.
+		dropped bool
 		refused bool
 	}{
-		"a new spec is queued":                       {command: "approve", then: queued},
-		"approving a queued spec queues it":          {given: queued, command: "approve", then: queued},
-		"a building spec refuses approval":           {given: building, command: "approve", then: building, refused: true},
-		"approving a stopped spec builds it again":   {given: stopped, command: "approve", then: queued, drop: true},
-		"approving a landed spec builds it again":    {given: landed, command: "approve", then: queued, drop: true},
-		"approving an amended spec drops its branch": {given: amended, command: "approve", then: queued, drop: true},
-		"a landed spec is accepted":                  {given: landed, command: "accept", then: landed},
-		"an amended spec is accepted":                {given: amended, command: "accept", then: amended},
-		"a queued spec refuses acceptance":           {given: queued, command: "accept", then: queued, refused: true},
-		"a building spec refuses acceptance":         {given: building, command: "accept", then: building, refused: true},
-		"a stopped spec refuses acceptance":          {given: stopped, command: "accept", then: stopped, refused: true},
-		"an unknown spec refuses acceptance":         {command: "accept", refused: true},
+		"a new spec is queued":                     {command: "approve", then: queued},
+		"approving a queued spec queues it":        {given: queued, command: "approve", then: queued, dropped: true},
+		"a building spec refuses approval":         {given: building, command: "approve", then: building, refused: true},
+		"approving a stopped spec builds it again": {given: stopped, command: "approve", then: queued, drop: true},
+		"approving a landed spec builds it again":  {given: landed, command: "approve", then: queued, drop: true},
+		"approving an amended spec drops its branch": {given: amended, command: "approve", then: queued, drop: true,
+			dropped: true},
+		"a landed spec is accepted":          {given: landed, command: "accept", then: landed},
+		"an amended spec is accepted":        {given: amended, command: "accept", then: amended},
+		"a queued spec refuses acceptance":   {given: queued, command: "accept", then: queued, refused: true},
+		"a building spec refuses acceptance": {given: building, command: "accept", then: building, refused: true},
+		"a stopped spec refuses acceptance":  {given: stopped, command: "accept", then: stopped, refused: true},
+		"an unknown spec refuses acceptance": {command: "accept", refused: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var b book
 			if tc.given != "" {
-				b.Specs = []*record{{Name: "x", State: tc.given, Approved: "old", Session: "s", Why: "w"}}
+				b.Specs = []*record{{Name: "x", State: tc.given, Approved: "old", Session: "s", Why: "w",
+					Build: "b"}}
 			}
 
 			var drop bool
+			var dropped string
 			var err error
 			if tc.command == "approve" {
-				drop, err = b.approve("x", "new")
+				drop, dropped, err = b.approve("x", "new")
 			} else {
 				_, err = b.accept("x")
 			}
@@ -167,13 +172,18 @@ func TestSpecStates(t *testing.T) {
 				then = r.State
 			}
 
+			if (dropped == "b") != tc.dropped {
+				t.Errorf("dropped %q, want the old build dropped %v", dropped, tc.dropped)
+			}
+
 			if then != tc.then || drop != tc.drop || errors.Is(err, errRefused) != tc.refused {
 				t.Errorf("got %q, drop %v, %v; want %q, drop %v, refused %v", then, drop, err, tc.then, tc.drop,
 					tc.refused)
 			}
 
 			r := b.find("x")
-			if tc.command == "approve" && !tc.refused && (r.Approved != "new" || r.Session != "") {
+			if tc.command == "approve" && !tc.refused && (r.Approved != "new" || r.Session != "" ||
+				r.Build == "b" || r.Build == "") {
 				t.Errorf("a new approval keeps %+v of the old", r)
 			}
 		})

@@ -4,6 +4,7 @@
 //	kiln approve <name>  queue a build of specs/<name>.md, as main holds it
 //	kiln run             build each queued spec, one at a time, until none is queued
 //	kiln status          show where each spec stands
+//	kiln stats [<name>]  show what each build cost, one line each, or each build of one spec in full
 //	kiln accept <name>   end UAT: land the spec if it waits on its branch, then retire it
 //
 // kiln runs two commands of its own. A build's session runs kiln hook before each file it writes. The pre-commit hook
@@ -30,6 +31,7 @@ const usage = `usage:
   kiln approve <name>
   kiln run
   kiln status
+  kiln stats [<name>]
   kiln accept <name>
 `
 
@@ -66,6 +68,19 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 			}
 
 			return r.Status(ctx, stdout)
+		})
+	case "stats":
+		err = onRepo(ctx, func(r *kiln.Repo) error {
+			if len(args) > 1 {
+				return errUsage
+			}
+
+			name := ""
+			if len(args) == 1 {
+				name = args[0]
+			}
+
+			return r.Stats(ctx, name, stdout)
 		})
 	case "approve", "accept":
 		err = onRepo(ctx, func(r *kiln.Repo) error {

@@ -14,6 +14,9 @@
 //
 // A session's files are kept in Config.Sessions, under its ID. They are the system prompt, the settings, and the
 // stream it wrote, across every resume. Beside them is the end of its standard error, from its last run.
+//
+// Run totals what each run printed, in Ended.Totals: its turns, cost, context, tool calls, waits and failed calls.
+// Recount totals a run again from the stream, past the length Streamed answered before it ran.
 package claude
 
 import (
@@ -88,6 +91,8 @@ type Ended struct {
 	Failed bool
 	// Limit is set when a usage limit ended it.
 	Limit *Limit
+	// Totals counts what the run printed.
+	Totals Totals
 }
 
 // Limit is a usage limit that ended a session. Resets is the latest reset the session reported, and zero if it gave
@@ -228,6 +233,7 @@ type reading struct {
 	result  *result
 	limited bool
 	resets  time.Time
+	count   tally
 }
 
 type result struct {
@@ -240,6 +246,7 @@ type result struct {
 const apiRateLimited = 429
 
 func (r *reading) line(line []byte) {
+	r.count.line(line)
 	var head struct {
 		Type string `json:"type"`
 		Info struct {
@@ -270,7 +277,7 @@ func (r *reading) line(line []byte) {
 }
 
 func (r *reading) ended() Ended {
-	var e Ended
+	e := Ended{Totals: r.count.totals()}
 	if r.result == nil {
 		e.Failed = true
 	} else {

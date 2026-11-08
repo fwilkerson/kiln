@@ -1,0 +1,252 @@
+package kiln
+
+import (
+	"bufio"
+	"context"
+	"crypto/rand"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/fwilkerson/kiln/internal/claude"
+)
+
+// The ledger is kiln's record of every build, session run and gate, one JSON line each, appended and never
+// rewritten. It is kept beside the book, so it lives and dies with the clone, as the sessions' streams do.
+//
+//	build     when kiln run starts a build: its spec, the commit it was approved at, its size
+//	start     before each session run: its role, its session, the length of the session's stream
+//	end       after each session run: how it ended, and its totals
+//	gate      after each gate: when it ended, and whether it passed
+//	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted
+//
+// Each line names its build, and At is when it was written, or when its run or gate started.
+const ledgerFile = "ledger.jsonl"
+
+// kind is the kind of a ledger's line.
+type kind string
+
+const (
+	builtKind   kind = "build"
+	startKind   kind = "start"
+	endKind     kind = "end"
+	gateKind    kind = "gate"
+	outcomeKind kind = "outcome"
+)
+
+// How a session run ended, in an end line.
+const (
+	endedResult   = "result"
+	endedNoResult = "no result"
+	endedLimit    = "usage limit"
+)
+
+// How a build ended, in an outcome line.
+const (
+	outLanded   = "landed"
+	outStopped  = "stopped"
+	outWaits    = "waits on its branch"
+	outDropped  = "dropped"
+	outAccepted = "accepted"
+)
+
+// entry is one line of the ledger. Its kind says which of its fields it holds.
+type entry struct {
+	Kind  kind      `json:"kind"`
+	Build string    `json:"build"`
+	At    time.Time `json:"at"`
+	// A build line's.
+	Spec     string `json:"spec,omitempty"`
+	Approved string `json:"approved,omitempty"`
+	Size     int    `json:"size,omitempty"`
+	// A start line's, and Session an end line's.
+	Role    string `json:"role,omitempty"`
+	Session string `json:"session,omitempty"`
+	// Streamed is the length of the session's stream before the run, so its lines can be counted again.
+	Streamed int64 `json:"streamed,omitempty"`
+	// An end line's.
+	Ended  string         `json:"ended,omitempty"`
+	Totals *claude.Totals `json:"totals,omitempty"`
+	// A gate line's. At is when it started.
+	End    time.Time `json:"end,omitzero"`
+	Passed bool      `json:"passed,omitempty"`
+	// An outcome line's.
+	Outcome string `json:"outcome,omitempty"`
+}
+
+// write appends e to the ledger, as one line.
+func (s store) write(e entry) error {
+	if e.At.IsZero() {
+		e.At = time.Now()
+	}
+
+	raw, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+		return err
+	}
+
+	f, err := os.OpenFile(filepath.Join(s.dir, ledgerFile), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+
+	_, err = f.Write(append(raw, '\n'))
+	return errors.Join(err, f.Close())
+}
+
+// entries reads the ledger. It skips a line it cannot read, such as one cut short when kiln died writing it.
+func (s store) entries() ([]entry, error) {
+	f, err := os.Open(filepath.Join(s.dir, ledgerFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer f.Close()
+
+	var entries []entry
+	lines := bufio.NewScanner(f)
+	lines.Buffer(nil, 64<<20)
+	for lines.Scan() {
+		var e entry
+		if json.Unmarshal(lines.Bytes(), &e) == nil && e.Build != "" {
+			entries = append(entries, e)
+		}
+	}
+
+	return entries, lines.Err()
+}
+
+// newBuild returns a new build's ID.
+func newBuild() string {
+	return strings.ToLower(rand.Text()[:12])
+}
+
+// record writes e as a line of the build's. A build with no ID writes none: its spec was approved before kiln
+// kept a ledger.
+func (b *build) record(e entry) {
+	if b.rec.Build == "" {
+		return
+	}
+
+	e.Build = b.rec.Build
+	if err := b.r.store.write(e); err != nil {
+		b.say("kiln could not write its ledger: %v", err)
+	}
+}
+
+// begin writes the build's first line, with its size.
+func (b *build) begin(ctx context.Context) {
+	spec, _, err := b.r.git.Show(ctx, b.rec.Approved, specPath(b.rec.Name))
+	if err != nil {
+		b.say("kiln could not read the spec's size: %v", err)
+	}
+
+	b.record(entry{Kind: builtKind, Spec: b.rec.Name, Approved: b.rec.Approved, Size: size(string(spec))})
+}
+
+var acceptanceTest = regexp.MustCompile(`(?m)^###\s+\d+\.`)
+
+// size counts the numbered acceptance tests of a spec.
+func size(spec string) int {
+	_, tests, _ := strings.Cut(spec, "\n## Acceptance tests")
+	tests, _, _ = strings.Cut(tests, "\n## ")
+	return len(acceptanceTest.FindAllString(tests, -1))
+}
+
+// recount ends each run that has a start line but no end line. kiln leaves one when it dies mid-run. It totals the
+// run from its session's stream, past the length the start line holds. It ends the run as the stream shows: with a
+// result only if the stream holds one. kiln run calls it under its lock, before any build goes on, so no run is
+// still running.
+func (r *Repo) recount(out io.Writer) {
+	say := func(format string, args ...any) { fmt.Fprintf(out, "kiln: "+format+"\n", args...) }
+	entries, err := r.store.entries()
+	if err != nil {
+		say("kiln could not read its ledger: %v", err)
+		return
+	}
+
+	open := map[string]entry{}
+	var order []string
+	for _, e := range entries {
+		switch e.Kind {
+		case startKind:
+			if !slices.Contains(order, e.Session) {
+				order = append(order, e.Session)
+			}
+
+			open[e.Session] = e
+		case endKind:
+			delete(open, e.Session)
+		}
+	}
+
+	for _, session := range order {
+		start, ok := open[session]
+		if !ok {
+			continue
+		}
+
+		totals, written, err := r.claude.Recount(session, start.Streamed)
+		if err != nil {
+			say("kiln could not read session %s's stream: %v", session, err)
+		}
+
+		ended := endedNoResult
+		if totals.Turns != nil {
+			ended = endedResult
+		}
+
+		e := entry{Kind: endKind, Build: start.Build, At: written, Session: session, Ended: ended, Totals: &totals}
+		if written.Before(start.At) {
+			e.At = start.At
+		}
+
+		if err := r.store.write(e); err != nil {
+			say("kiln could not write its ledger: %v", err)
+		}
+	}
+}
+
+// how names how a session run ended, for its end line.
+func how(ended claude.Ended) string {
+	switch {
+	case ended.Limit != nil:
+		return endedLimit
+	case ended.Totals.Turns == nil:
+		return endedNoResult
+	}
+
+	return endedResult
+}
+
+// summary is the build's time, cost, turns and failed calls, as the ledger holds them so far.
+func (r *Repo) summary(build string) string {
+	entries, err := r.store.entries()
+	if err != nil {
+		return fmt.Sprintf("kiln could not read its ledger: %v", err)
+	}
+
+	for _, s := range collect(entries) {
+		if s.Build == build {
+			return s.brief()
+		}
+	}
+
+	return "the ledger holds no line of this build"
+}

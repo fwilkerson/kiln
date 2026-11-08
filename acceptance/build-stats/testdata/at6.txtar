@@ -1,0 +1,73 @@
+# 6. A run that wrote no result is not shown as free.
+
+# Given: a build whose audit session ended with no result, and whose next audit try answered.
+exec kiln approve x
+exec kiln run
+stdout '^x: the audit ended with no result; it runs again$'
+stdout '^x: landed on main'
+
+# When: the developer runs kiln stats <name>.
+exec kiln stats x
+
+# Then: it counts both audit runs, and shows the build's cost as unknown for the run with no result, not as zero.
+# The build as a whole: 1 run of its session, and 2 audit tries.
+stdout '^runs: +3 runs · at least 2 turns, 1 of 3 runs unknown · at least \$0\.60, 1 of 3 runs unknown · '
+stdout '^  audit role, 2 sessions$'
+stdout '^  runs: +2 runs · at least 1 turn, 1 of 2 runs unknown · at least \$0\.10, 1 of 2 runs unknown · '
+stdout '^    runs: +1 run · turns unknown · cost unknown · '
+stdout '^    runs: +1 run · 1 turn · \$0\.10 · '
+! stdout '\$0\.00'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+    {"result": {"result": "Built x.", "cost_usd": 0.50}}
+  ]}},
+  "audit": {
+    "1": {"1": [
+      {"tool": {"name": "Read", "input": {"file_path": "x.go"}}},
+      {"exit": 1}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Read", "input": {"file_path": "x.go"}}},
+      {"result": {"result": "read 2 packages, found 0", "cost_usd": 0.10}}
+    ]}
+  }
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

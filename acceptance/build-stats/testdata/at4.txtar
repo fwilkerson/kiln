@@ -1,0 +1,212 @@
+# 4. Stats outlive the spec.
+
+# Given: four builds: one whose spec the developer accepted; one that stopped after its last round; one that
+# waited on its branch with amendments until its spec was approved again, which dropped it; and the build of that new
+# approval, which landed.
+# Spec a has 1 acceptance test, b 2, and c 3. They are approved c, a, b, so the order they started is not their names'.
+exec kiln approve c
+exec kiln approve a
+exec kiln approve b
+exec kiln run
+stdout '^a: landed on main'
+stdout '^b: stopped'
+stdout '^c: waits on kiln/c'
+exec kiln accept a
+stdout '^a: accepted'
+exec kiln approve c
+exec kiln run
+stdout '^c: landed on main'
+
+# When: the developer runs kiln stats.
+exec kiln stats
+
+# Then: it shows one line for each of the four builds, in the order they started, each with its size and how it
+# ended.
+stdout -count=4 '^\d{4}-\d\d-\d\d \d\d:\d\d  '
+exec sh -c 'kiln stats | sed "s/^[0-9-]* [0-9:]*  //" | awk -F" · " "{print \$1 \" · \" \$2}"'
+cmp stdout _given/trend.txt
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/a.md --
+# Spec 1: a
+
+## Acceptance tests
+
+### 1. A answers
+
+- **Given**: nothing.
+- **When**: A is called.
+- **Then**: it answers 1.
+-- specs/b.md --
+# Spec 2: b
+
+## Acceptance tests
+
+### 1. B answers
+
+- **Given**: nothing.
+- **When**: B is called.
+- **Then**: it answers 2.
+
+### 2. B answers again
+
+- **Given**: B answered.
+- **When**: B is called again.
+- **Then**: it answers 2 again.
+-- specs/c.md --
+# Spec 3: c
+
+## Acceptance tests
+
+### 1. C answers
+
+- **Given**: nothing.
+- **When**: C is called.
+- **Then**: it answers 3.
+
+### 2. C answers again
+
+- **Given**: C answered.
+- **When**: C is called again.
+- **Then**: it answers 3 again.
+
+### 3. C answers a third time
+
+- **Given**: C answered twice.
+- **When**: C is called a third time.
+- **Then**: it answers 3 a third time.
+-- claude.json --
+{
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/c/.\" ."}}},
+      {"result": {"result": "Built c, under an amendment."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/a/.\" ."}}},
+      {"result": {"result": "Built a."}}
+    ]},
+    "3": {
+      "1": [
+        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/b/.\" ."}}},
+        {"result": {"result": "Built b."}}
+      ],
+      "2": [{"result": {"result": "I could not make B answer 2."}}]
+    },
+    "4": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/c2/.\" ."}}},
+      {"result": {"result": "Built c, as approved again."}}
+    ]}
+  },
+  "audit": {
+    "1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]},
+    "2": {"1": [{"result": {"result": "read 2 packages, found 0"}}]},
+    "3": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}
+  }
+}
+-- _given/trend.txt --
+c  dropped · 3 acceptance tests
+a  accepted · 1 acceptance test
+b  stopped · 2 acceptance tests
+c  landed · 3 acceptance tests
+-- _given/a/a.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// A answers 1.
+func A() int { return 1 }
+-- _given/a/acceptance/a/a_test.go --
+package a_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.A(); got != 1 {
+		t.Fatalf("A answers %d, want 1", got)
+	}
+}
+-- _given/b/b.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// B answers 1.
+func B() int { return 1 }
+-- _given/b/acceptance/b/b_test.go --
+package b_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.B(); got != 2 {
+		t.Fatalf("B answers %d, want 2", got)
+	}
+}
+-- _given/c/c.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// C answers 4.
+func C() int { return 4 }
+-- _given/c/acceptance/c/c_test.go --
+package c_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.C(); got != 4 {
+		t.Fatalf("C answers %d, want 4", got)
+	}
+}
+-- _given/c/specs/c.amend.md --
+# Amendments to specs/c.md
+
+## Acceptance test 1: C answers
+
+### Old
+
+- **Then**: it answers 3.
+
+### New
+
+- **Then**: it answers 4.
+
+### Reason
+
+3 is taken.
+-- _given/c2/c.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// C answers 3.
+func C() int { return 3 }
+-- _given/c2/acceptance/c/c_test.go --
+package c_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.C(); got != 3 {
+		t.Fatalf("C answers %d, want 3", got)
+	}
+}

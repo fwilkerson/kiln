@@ -282,6 +282,11 @@ func (s *claudeSession) limitLine(l *ClaudeLimit) jsonObject {
 
 	resets := time.Now().Add(time.Duration(l.ResetsIn) + time.Second - 1).Unix()
 	windows := jsonObject{{"five_hour", jsonObject{{"utilization", 1.0}, {"resetsAt", resets}}}}
+	if l.SevenDay != nil {
+		week := jsonObject{{"utilization", *l.SevenDay}, {"resetsAt", resets}}
+		windows = append(windows, jsonField{"seven_day", week})
+	}
+
 	info := jsonObject{
 		{"status", status}, {"resetsAt", resets}, {"rateLimitType", "five_hour"},
 		{"isUsingOverage", l.UsingOverage}, {"unifiedWindows", windows},
@@ -308,6 +313,7 @@ func (s *claudeSession) resultLine(r *ClaudeResult) jsonObject {
 		{"num_turns", s.turns}, {"result", text}, {"session_id", s.call.SessionID},
 		{"permission_denials", append([]jsonObject{}, s.denials...)}, {"terminal_reason", "completed"},
 		{"uuid", newUUID()}, {"result_index", s.results},
+		{"model_usage_since_last_result", jsonObject{{claudeModel, jsonObject{{"costUSD", r.CostUSD}}}}},
 	}
 	if r.APIErrorStatus != nil {
 		line = line.set("api_error_status", *r.APIErrorStatus)

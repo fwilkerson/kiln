@@ -223,6 +223,10 @@ func (s *claudeSession) tool(t *ClaudeTool) error {
 
 	id := newID("toolu_")
 	usage := json.RawMessage(`{"input_tokens":2,"cache_read_input_tokens":0,"output_tokens":16}`)
+	if t.Usage != nil {
+		usage = t.Usage
+	}
+
 	s.assistant(jsonObject{{"type", "tool_use"}, {"id", id}, {"name", t.Name}, {"input", input}}, usage)
 	if !t.Raw && s.flags.toolsGiven && !slices.Contains(s.flags.tools, t.Name) {
 		s.toolResult(id, "No such tool available: "+t.Name, true, nil)
@@ -291,6 +295,9 @@ func rejected(id, source, reason string) jsonObject {
 }
 
 func (s *claudeSession) hookRefusal(tool, id string, input jsonObject, text string) {
+	s.emit(jsonObject{{"type", "system"}, {"subtype", "permission_denied"}, {"tool_name", tool}, {"tool_use_id", id},
+		{"decision_reason_type", "hook"}, {"decision_reason", text}, {"message", text}, {"uuid", newUUID()},
+		{"session_id", s.call.SessionID}})
 	s.toolResult(id, text, true, nil, rejected(id, "hook", "hook"))
 	s.deny(tool, id, input)
 }

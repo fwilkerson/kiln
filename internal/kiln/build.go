@@ -45,6 +45,7 @@ func (r *Repo) run(ctx context.Context, out io.Writer, only string) error {
 
 	defer unlock()
 
+	r.recount(out)
 	err = r.store.update(func(b *book) error {
 		for _, s := range b.Specs {
 			if s.State == building {
@@ -104,6 +105,16 @@ type outOfRounds struct{ why string }
 func (s *outOfRounds) Error() string { return s.why }
 
 func (b *build) run(ctx context.Context) error {
+	// A spec approved before kiln kept a ledger has no build ID, and its build gets one where it stands.
+	fresh := b.rec.Build == ""
+	if fresh {
+		b.set(func(r *record) { r.Build = newBuild() })
+	}
+
+	if fresh || b.rec.Session == "" {
+		b.begin(ctx)
+	}
+
 	switch {
 	case b.rec.Session == "":
 		if err := b.start(ctx); err != nil {
@@ -120,7 +131,7 @@ func (b *build) run(ctx context.Context) error {
 			return err
 		}
 
-		v, err := b.r.gate(ctx, b.tree, b.rec.Name, b.allowed()...)
+		v, err := b.gate(ctx, b.allowed()...)
 		if err != nil {
 			return err
 		}
@@ -169,6 +180,10 @@ func (b *build) after(ctx context.Context, v verdict) (string, error) {
 		retire = b.retire
 	} else if amendments, found, err := b.r.git.Show(ctx, head, amendPath(b.rec.Name)); err != nil || found {
 		b.set(func(r *record) { r.State, r.Amendments = amended, string(amendments) })
+		if err == nil {
+			b.record(entry{Kind: outcomeKind, Outcome: outWaits})
+		}
+
 		b.say("waits on %s, with amendments for UAT", branchOf(b.rec.Name))
 		return "", err
 	}
@@ -187,10 +202,12 @@ func (b *build) after(ctx context.Context, v verdict) (string, error) {
 	}
 
 	if b.rec.Accepted {
+		b.record(entry{Kind: outcomeKind, Outcome: outAccepted})
 		b.say("accepted, and main is at %s", short(onMain))
 		return "", b.r.store.update(func(k *book) error { k.retire(b.rec.Name); return nil })
 	}
 
+	b.record(entry{Kind: outcomeKind, Outcome: outLanded})
 	b.set(func(r *record) { r.State = landed })
 	b.say("landed on main at %s, and waits for UAT", short(onMain))
 	return "", nil
@@ -281,10 +298,17 @@ func (b *build) sandboxed(l claude.Launch) claude.Launch {
 }
 
 // talk runs the session l launches, and answers how it ended. A usage limit pauses the build until it resets, and the
-// same session resumes.
+// same session resumes. The ledger gets a line before each run of the session, and one after.
 func (b *build) talk(ctx context.Context, l claude.Launch) (claude.Ended, error) {
 	for {
+		streamed, err := b.r.claude.Streamed(l.Session)
+		if err != nil {
+			b.say("kiln could not measure session %s's stream: %v", l.Session, err)
+		}
+
+		b.record(entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed})
 		ended, err := b.r.claude.Run(ctx, l)
+		b.record(entry{Kind: endKind, Session: l.Session, Ended: how(ended), Totals: &ended.Totals})
 		if ctx.Err() != nil {
 			// A session kiln's interrupt ended has not ended on its own, so how it ended says nothing.
 			return ended, ctx.Err()
@@ -402,7 +426,7 @@ func (b *build) land(ctx context.Context, from string, retire func(ctx context.C
 		}
 
 		if start != onto {
-			_, conflict, err := b.r.git.Rebase(ctx, b.tree, onto, b.message("land the approved spec"))
+			_, conflict, err := b.r.git.Rebase(ctx, b.tree, onto, b.landing())
 			if err != nil {
 				return "", "", err
 			}
@@ -424,7 +448,7 @@ func (b *build) land(ctx context.Context, from string, retire func(ctx context.C
 			}
 		}
 
-		v, err := b.r.gate(ctx, b.tree, b.rec.Name, allowed...)
+		v, err := b.gate(ctx, allowed...)
 		if err != nil || !v.passed {
 			return "", v.report, err
 		}
@@ -599,6 +623,7 @@ func (b *build) set(change func(*record)) {
 // stop records the build as stopped, and why.
 func (b *build) stop(why string) {
 	b.set(func(r *record) { r.State, r.Why, r.Paused = stopped, why, time.Time{} })
+	b.record(entry{Kind: outcomeKind, Outcome: outStopped})
 	b.say("stopped: %s", strings.SplitN(why, "\n", 2)[0])
 }
 
@@ -609,6 +634,20 @@ func (b *build) say(format string, args ...any) {
 func (b *build) message(what string) string {
 	return fmt.Sprintf("feat(%s): %s\n\nkiln built %s, approved at %s, in session %s.\n", b.rec.Name, what,
 		specPath(b.rec.Name), short(b.rec.Approved), b.rec.Session)
+}
+
+// landing is the message of the commit that lands the build. It holds the build's time, cost, turns and failed calls,
+// so git log shows what each landed build cost.
+func (b *build) landing() string {
+	return b.message("land the approved spec") + "\nBuild: " + b.r.summary(b.rec.Build) + "\n"
+}
+
+// gate runs the gate on the build's worktree, and writes it to the ledger.
+func (b *build) gate(ctx context.Context, allowed ...string) (verdict, error) {
+	start := time.Now()
+	v, err := b.r.gate(ctx, b.tree, b.rec.Name, allowed...)
+	b.record(entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed})
+	return v, err
 }
 
 func cmpOr(a, b string) string {
