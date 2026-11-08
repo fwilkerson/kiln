@@ -38,6 +38,26 @@ codebase.
   against.
 - **Open:** where each line is set. The draft had a checked-in `gauges.json`.
 
+## Build stats
+
+What one build cost and where it struggled, so the developer can compare builds. kiln keeps each session's stream at
+`.git/kiln/sessions/<id>/stream.jsonl`, but totals none of it. Spec 1's hand run, counted from its stream:
+
+```text
+hand run, spec 1:  42 min · 201 turns · $18.77 · 7-day limit 13% → 14%
+context:           25k → 237k → 343k → 411k → 457k tokens, never compacted
+tool calls:        135 Bash · 51 Read · 50 Write · 12 Edit · 1 audit subagent
+failed calls:      33 = 16 permission refusals + 11 style-checker loops + 6 other
+```
+
+- Each row comes from the stream. The `result` event holds time, turns and cost. Each `rate_limit_event` holds the
+  7-day use. Each assistant turn's usage holds its context. A failed call is a tool result marked an error, and a
+  refusal is a `permission_denied` event.
+- A build is several sessions: the build, its audit, and their resumes. Its stats sum them.
+- The failed calls' causes were read from each call's output. A cause kiln can name needs a rule per cause.
+- It overlaps the agent friction gauge under "Gauges".
+- **Build it when:** the developer wants a build's numbers beside the hand run's.
+
 ## Flaky tests in the gate
 
 Spec 1's acceptance test 4 lets a build land past a test that already fails on main. The fuller design:
