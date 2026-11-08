@@ -58,13 +58,6 @@ failed calls:      33 = 16 permission refusals + 11 style-checker loops + 6 othe
 - It overlaps the agent friction gauge under "Gauges".
 - **Build it when:** the developer wants a build's numbers beside the hand run's.
 
-## Build stats in a TUI
-
-Spec 2 prints the ledger as plain text, one line per build. The developer may want an interactive view: drilling from
-the trend into a build, a role and a failure, and charts of a number across builds.
-
-- **Build it when:** plain text no longer shows the developer what they look for.
-
 ## Flaky tests in the gate
 
 Spec 1's acceptance test 4 lets a build land past a test that already fails on main. The fuller design:

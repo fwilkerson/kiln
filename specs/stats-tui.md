@@ -19,10 +19,10 @@ home ──enter──▶ spec ──enter──▶ build ──enter──▶ r
 
 A run that has not ended and one that ended are the same screen. The running one grows as its session writes.
 
-What showed the need, per `docs/later.md` "Build stats in a TUI" and "Progress while a build runs": plain text can't
-show what a running session is doing. `kiln status` prints a spec's state, and `kiln stats` prints a run only once it
-ends, so the developer opens the stream's JSON to see whether a long build is working, waiting on a tool, or stuck.
-The developer asked for the trend on the home screen too, before the ledger holds builds, so that it is there as the
+What showed the need: the developer asked for this view. `docs/later.md` had deferred it until plain text no longer
+showed what the developer looks for, which overstated the bar; that entry is gone. Plain text can't show what a
+running session is doing: `kiln status` prints a spec's state, and `kiln stats` prints a run only once it ends. The
+developer asked for the trend on the home screen too, before the ledger holds builds, so that it is there as the
 builds come.
 
 ### Home

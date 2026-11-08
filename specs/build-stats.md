@@ -63,7 +63,7 @@ kiln, so it is not in the ledger. Its numbers stay in `docs/later.md`, and a uni
 ## Non-goals
 
 - Lines a number may not cross, and alarms: `docs/later.md` "Gauges".
-- An interactive view of the ledger: `docs/later.md` "Build stats in a TUI".
+- An interactive view of the ledger: spec 3, `specs/stats-tui.md`.
 - Counts while a build runs: `docs/later.md` "Progress while a build runs".
 - How long a usage limit paused a build. `kiln stats` says that it paused, not for how long.
 - Deleting old session files. kiln keeps them all today, and this spec changes nothing there.
