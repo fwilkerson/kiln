@@ -168,6 +168,29 @@ A notification says when a spec stops or waits for UAT, and should open what to 
   program prints an OSC 9 or OSC 777 escape sequence; this is not tried.
 - `terminal-notifier` can open a target on a click; `osascript`'s notification cannot. This is believed, not tried.
 
+## A project's own tools, agents and workflows
+
+kiln gives every session the same tools and permissions (`claude.Launch`'s `Tools`, `Deny`, `Forbidden`, `Writable`,
+`Domains`, set in `internal/kiln/build.go`). A project may need more: spec 3's view needs tui-test's CLI to explore a
+TUI, and auto mode refuses a program from outside until a rule allows it.
+
+What a project can set today, and what it can't:
+
+- **Permissions, per project: yes.** kiln's sessions read the project's `.claude/settings.json`
+  (`--setting-sources project`, `internal/claude/claude.go`), so an allow rule there reaches every role.
+- **Tools and prompt, per role: no.** kiln fixes each role's tools in its own code (`internal/kiln/build.go`, the
+  audit's `Tools`) and compiles the audit's prompt into its binary (`guidance.Audit`). The `tools:` line in
+  `guidance/agents/audit.md` is never read.
+
+The options, from least to most:
+
+- A project names the tools and permission rules each role gets, beside the gate in `kiln.json`.
+- A project defines its own agents, and kiln runs `.claude/agents/<role>.md` from the project's main, prompt and
+  `tools:` alike, falling back to its own. This is the lean: it is Claude Code's own format, so one file says what a
+  role is told and what it may use, where a list in `kiln.json` would be a second place for the same fact.
+- A project defines the workflow itself: which roles run, in what order, and what a failure sends back.
+- **Build it when:** a build fails or stalls for a tool or a permission its project needs and kiln does not give.
+
 ## Repositories in other languages
 
 Spec 1 names a test that already failed on main by its Go test name, and ties a Given, When, Then to its code by a Go
