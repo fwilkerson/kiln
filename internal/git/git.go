@@ -317,8 +317,18 @@ func (g *Git) Commit(ctx context.Context, checkout, message string) (string, err
 	return g.Head(ctx, checkout)
 }
 
-// Amend folds every change at checkout into the commit at HEAD, and answers the commit it makes.
+// Amend folds every change at checkout into the commit at HEAD, and answers the commit at HEAD. With no change it
+// amends nothing.
 func (g *Git) Amend(ctx context.Context, checkout string) (string, error) {
+	out, err := g.in(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	if err != nil {
+		return "", err
+	}
+
+	if out == "" {
+		return g.Head(ctx, checkout)
+	}
+
 	if _, err := g.in(ctx, checkout, "add", "--all"); err != nil {
 		return "", err
 	}
@@ -328,6 +338,17 @@ func (g *Git) Amend(ctx context.Context, checkout string) (string, error) {
 	}
 
 	return g.Head(ctx, checkout)
+}
+
+// Reset puts the branch at checkout, and its files, back at commit, and removes every untracked file.
+func (g *Git) Reset(ctx context.Context, checkout, commit string) error {
+	for _, args := range [][]string{{"reset", "--quiet", "--hard", commit}, {"clean", "-qfd"}} {
+		if _, err := g.in(ctx, checkout, args...); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Conflict is a merge that git could not make alone, and the files it conflicts in.
