@@ -1,0 +1,73 @@
+# 8. A usage limit only pauses.
+
+# Given: a build whose session hits the usage limit.
+exec kiln approve x
+
+# When: the limit resets.
+exec kiln run
+stdout '^x: paused for a usage limit'
+
+# Then: the same session resumes,
+exec sh -c 'grep -q "\"session_id\": \"$(sed -n "s/.*\"session_id\": \"\(.*\)\".*/\1/p" .claude-calls/build/1/1/call.json)\"" .claude-calls/build/1/2/call.json'
+grep '"resume": true' .claude-calls/build/1/2/call.json
+grep 'The usage limit has reset' .claude-calls/build/1/2/prompt
+
+# and nothing reaches the developer.
+! stdout 'stopped|amendments'
+exec kiln status
+stdout '^x: waiting for UAT$'
+! stdout 'stopped|amendments|paused'
+exec go test ./...
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp \"$WORK/_given/x/x.go\" ."}}},
+      {"limit": {"resets_in": "1s"}},
+      {"result": {"is_error": true, "result": "You've hit your limit"}},
+      {"exit": 1}
+    ],
+    "2": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+      {"result": {"result": "Built x."}}
+    ]
+  }},
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

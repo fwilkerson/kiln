@@ -1,0 +1,72 @@
+# 9. A build that can't pass its gate stops.
+
+# Given: a build whose gate still fails after its last round.
+# kiln.json gives the build 1 round, and the session fails to fix its test in it.
+exec kiln approve x
+exec git rev-parse main
+cp stdout .tmp/approved
+
+# When: the round ends.
+exec kiln run
+stdout '^x: the gate failed; it goes back to the session, round 1 of 1$'
+stdout '^x: stopped'
+
+# Then: main is unchanged,
+exec git rev-parse main
+cmp stdout .tmp/approved
+
+# and kiln status shows the build stopped with the gate's output.
+exec kiln status
+stdout '^x: stopped$'
+stdout '^  the gate still failed after its last round:$'
+stdout '^  --- FAIL: TestAT1 '
+stdout 'X answers 41, want 42'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+      {"result": {"result": "Built x."}}
+    ],
+    "2": [
+      {"result": {"result": "I could not make X answer 42."}}
+    ]
+  }}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 41.
+func X() int { return 41 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

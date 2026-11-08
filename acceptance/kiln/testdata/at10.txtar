@@ -1,0 +1,74 @@
+# 10. A test that fails on main too doesn't block a build.
+
+# Given: a test that fails on main, such as a flaky one.
+! exec go test ./...
+stdout '--- FAIL: TestFlaky'
+exec kiln approve x
+
+# When: a build's gate runs.
+exec kiln run
+
+# Then: the build lands,
+stdout '^x: landed on main'
+exec git show main:x.go
+stdout 'return 42'
+
+# and kiln status names the test as failing on main.
+exec kiln status
+stdout '^x: waiting for UAT$'
+stdout '^  failing at main before the build: TestFlaky \(example.com/scratch\)$'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- scratch.go --
+// Package scratch is where kiln's builds land.
+package scratch
+-- flaky_test.go --
+package scratch
+
+import "testing"
+
+func TestFlaky(t *testing.T) {
+	t.Fatal("it fails on main, as a flaky test does at times")
+}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+    {"result": {"result": "Built x. TestFlaky fails, as it does on main."}}
+  ]}},
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+}
+-- _given/x/x.go --
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

@@ -1,0 +1,124 @@
+# 3. Main moves only to work gated on it.
+
+# Given: a spec waiting on its branch with an amendment, while another spec's build lands.
+# The gate notes each commit it runs on in .tmp/gated.
+exec kiln approve a
+exec kiln approve b
+exec kiln run
+stdout '^a: waits on kiln/a'
+stdout '^b: landed on main'
+exec git rev-parse main
+cp stdout .tmp/b-landed
+
+# When: the developer accepts the waiting spec.
+exec kiln accept a
+stdout '^a: accepted'
+
+# Then: its work lands only after a gate that ran on main as the other build left it.
+# The commit main moved to is one the gate ran on, and it sits on b's landing: a's work, then the retired spec.
+exec sh -c 'grep -qx "$(git rev-parse main)" .tmp/gated'
+exec git rev-parse main~2
+cmp stdout .tmp/b-landed
+exec git show main~1:a.go
+stdout 'return 2'
+exec go test ./...
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./...", "git rev-parse HEAD >>\"$WORK/.tmp/gated\""], "rounds": 1}
+-- specs/a.md --
+# Spec 1: a
+
+## Acceptance tests
+
+### 1. A answers
+
+- **Given**: nothing.
+- **When**: A is called.
+- **Then**: it answers 1.
+-- specs/b.md --
+# Spec 2: b
+
+## Acceptance tests
+
+### 1. B answers
+
+- **Given**: nothing.
+- **When**: B is called.
+- **Then**: it answers 3.
+-- claude.json --
+{
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/a/.\" ."}}},
+      {"result": {"result": "Built a, under an amendment."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/b/.\" ."}}},
+      {"result": {"result": "Built b."}}
+    ]}
+  },
+  "audit": {
+    "1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]},
+    "2": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}
+  }
+}
+-- _given/a/a.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// A answers 2.
+func A() int { return 2 }
+-- _given/a/acceptance/a/a_test.go --
+package a_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.A(); got != 2 {
+		t.Fatalf("A answers %d, want 2", got)
+	}
+}
+-- _given/a/specs/a.amend.md --
+# Amendments to specs/a.md
+
+## Acceptance test 1: A answers
+
+### Old
+
+- **Then**: it answers 1.
+
+### New
+
+- **Then**: it answers 2.
+
+### Reason
+
+1 is taken.
+-- _given/b/b.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// B answers 3.
+func B() int { return 3 }
+-- _given/b/acceptance/b/b_test.go --
+package b_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.B(); got != 3 {
+		t.Fatalf("B answers %d, want 3", got)
+	}
+}

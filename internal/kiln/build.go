@@ -64,7 +64,10 @@ func (r *Repo) Run(ctx context.Context, out io.Writer) error {
 		}
 
 		b := &build{r: r, rec: rec, tree: r.tree(rec.Name), out: out}
-		if err := b.run(ctx); ctx.Err() != nil {
+		err = b.run(ctx)
+		if s, ok := errors.AsType[*stopped](err); ok {
+			b.stop(s.why)
+		} else if ctx.Err() != nil {
 			return ctx.Err()
 		} else if err != nil {
 			b.stop(fmt.Sprintf("kiln could not go on with the build: %v", err))
@@ -184,7 +187,7 @@ func (b *build) round(ctx context.Context, report string) (string, error) {
 	}
 
 	if b.rec.Rounds >= c.Rounds {
-		return "", &stopped{why: fmt.Sprintf("the gate still failed after %d rounds:\n%s", b.rec.Rounds, report)}
+		return "", &stopped{why: "the gate still failed after its last round:\n" + report}
 	}
 
 	b.set(func(r *record) { r.Rounds++ })

@@ -1,0 +1,124 @@
+# 7. Revising a spec builds it again.
+
+# Given: a spec waiting on its branch with an amendment.
+exec kiln approve x
+exec kiln run
+exec kiln status
+stdout '^x: waiting on its branch with amendments'
+
+# When: the developer edits the spec and approves it again.
+cp _given/edited.md specs/x.md
+exec git commit --quiet -am 'docs(x): revise the spec'
+exec kiln approve x
+exec kiln run
+
+# Then: a new build starts from the edited spec,
+exec kiln status
+stdout '^x: waiting for UAT$'
+cmp .tmp/seen.md _given/edited.md
+exists new.go
+
+# and the amended work never reaches main.
+! exists old.go
+exec git log --format=%H main -- old.go specs/x.amend.md
+! stdout .
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/old/.\" ."}}},
+      {"result": {"result": "Built x, under an amendment."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp specs/x.md \"$WORK/.tmp/seen.md\" && cp -R \"$WORK/_given/new/.\" ."}}},
+      {"result": {"result": "Built x, as revised."}}
+    ]}
+  },
+  "audit": {
+    "1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]},
+    "2": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}
+  }
+}
+-- _given/edited.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 43.
+-- _given/old/old.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 41.
+func X() int { return 41 }
+-- _given/old/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 41 {
+		t.Fatalf("X answers %d, want 41", got)
+	}
+}
+-- _given/old/specs/x.amend.md --
+# Amendments to specs/x.md
+
+## Acceptance test 1: X answers
+
+### Old
+
+- **Then**: it answers 42.
+
+### New
+
+- **Then**: it answers 41.
+
+### Reason
+
+42 is taken.
+-- _given/new/new.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 43.
+func X() int { return 43 }
+-- _given/new/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 43 {
+		t.Fatalf("X answers %d, want 43", got)
+	}
+}

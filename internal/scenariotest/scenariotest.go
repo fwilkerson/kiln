@@ -1,0 +1,115 @@
+// Package scenariotest runs kiln's acceptance tests. Each is a testscript file that runs kiln on a scratch
+// repository, with a scripted claude as the model.
+//
+//	func TestMain(m *testing.M) { scenariotest.Main(m) }
+//
+//	func TestAT1(t *testing.T) { scenariotest.Run(t, "testdata/at1.txtar") }
+//
+// A script's $WORK is the scratch repository's main checkout, on main. Its first commit holds every file the script
+// brings, but claude.json and what is under _given/. A session copies in the work it builds from _given/, which Go's
+// ./... leaves out too. HOME is a directory of the script's own, so kiln's worktrees are the script's own too.
+//
+// On the PATH, kiln is built from cmd/kiln, and claude is the scripted one. It follows $WORK/claude.json, a
+// [ClaudeScript], and records each call under $WORK/.claude-calls/<role>/<attempt>/<call>/. The record holds the
+// files that [ClaudeCallFile] and the constants beside it name. Go runs offline, from the developer's caches.
+package scenariotest
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/rogpeppe/go-internal/testscript"
+)
+
+// Main runs the tests of m, with kiln and the scripted claude first on the PATH. Call it from TestMain.
+func Main(m *testing.M) {
+	testscript.Main(tests{m}, map[string]func(){"claude": func() { os.Exit(claudeMain()) }})
+}
+
+type tests struct {
+	m *testing.M
+}
+
+// goEnv holds Go's caches, which each script shares with the developer, since a script's Go runs offline.
+var goEnv = map[string]string{}
+
+func (t tests) Run() int {
+	// testscript puts its commands first on the PATH. A claude elsewhere would be the real one, which calls the model.
+	first := filepath.SplitList(os.Getenv("PATH"))[0]
+	if claude, err := exec.LookPath("claude"); err != nil || filepath.Dir(claude) != first {
+		fmt.Fprintf(os.Stderr, "scenariotest: the first claude on PATH is %q, not the harness's own: %v\n", claude, err)
+		return 2
+	}
+
+	bin, err := os.MkdirTemp("", "kiln-bin-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "scenariotest:", err)
+		return 2
+	}
+
+	defer os.RemoveAll(bin)
+
+	build := exec.Command("go", "build", "-o", filepath.Join(bin, "kiln"), "github.com/fwilkerson/kiln/cmd/kiln")
+	if out, err := build.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "scenariotest: building kiln: %v\n%s", err, out)
+		return 2
+	}
+
+	os.Setenv("PATH", bin+string(filepath.ListSeparator)+os.Getenv("PATH"))
+	names := []string{"GOCACHE", "GOMODCACHE", "GOPATH"}
+	out, err := exec.Command("go", append([]string{"env"}, names...)...).Output()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "scenariotest: go env:", err)
+		return 2
+	}
+
+	for i, value := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		goEnv[names[i]] = value
+	}
+
+	return t.m.Run()
+}
+
+// Run runs the script in file, beside the other tests that call Run.
+func Run(t *testing.T, file string) {
+	t.Parallel()
+	if len(goEnv) == 0 {
+		t.Fatal("scenariotest: this package's TestMain must call scenariotest.Main(m)")
+	}
+
+	testscript.Run(t, testscript.Params{Files: []string{file}, Setup: setUp, RequireExplicitExec: true})
+}
+
+// givenDir holds the files a scripted session copies in, which the repository leaves out.
+const givenDir = "_given"
+
+func setUp(env *testscript.Env) error {
+	home := env.WorkDir + "-home"
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		return err
+	}
+
+	env.Setenv("HOME", home)
+	for name, value := range goEnv {
+		env.Setenv(name, value)
+	}
+
+	env.Setenv("GOTOOLCHAIN", "local")
+	env.Setenv("GOPROXY", "off")
+	env.Setenv("GOFLAGS", "-buildvcs=false")
+	excluded := strings.Join([]string{"/" + ClaudeScriptFile, "/" + ClaudeCallsDir + "/", "/" + givenDir + "/"}, `\n`)
+	script := "git init --quiet -b main && git config user.name kiln-test && " +
+		"git config user.email kiln-test@example.com && printf '" + excluded + `\n' >>.git/info/exclude && ` +
+		"git add -A && git commit --quiet --allow-empty -m start"
+	cmd := exec.Command("/bin/sh", "-c", script)
+	cmd.Dir, cmd.Env = env.WorkDir, env.Vars
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("scenariotest: making the scratch repository: %w\n%s", err, out)
+	}
+
+	return nil
+}

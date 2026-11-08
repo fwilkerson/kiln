@@ -1,0 +1,135 @@
+# 6. Accepting a spec retires it.
+
+# Given: a spec waiting for UAT, landed or on its branch with an amendment.
+# x lands, and y waits on its branch with an amendment.
+exec kiln approve x
+exec kiln approve y
+exec kiln run
+exec kiln status
+stdout '^x: waiting for UAT$'
+stdout '^y: waiting on its branch with amendments'
+
+# When: the developer runs kiln accept.
+exec kiln accept x
+stdout '^x: accepted'
+exec kiln accept y
+stdout '^y: accepted'
+
+# Then: main holds the spec's work and its amendments,
+exec git diff --quiet main
+exists x.go y.go
+exec go test ./...
+exec sh -c 'git show "$(sed -n "s/.*specs\/y.md, last held in \([0-9a-f]*\)\./\1/p" PRODUCT.md)":specs/y.md'
+stdout '^- \*\*Then\*\*: it answers 8.$'
+! stdout 'answers 7'
+
+# specs/ no longer holds it,
+! exists specs/x.md specs/y.md specs/y.amend.md
+
+# and PRODUCT.md names it with its commit.
+grep '^- Spec 1: x: specs/x.md, last held in [0-9a-f]{12}\.$' PRODUCT.md
+grep '^- Spec 2: y: specs/y.md, last held in [0-9a-f]{12}\.$' PRODUCT.md
+exec sh -c 'git show "$(sed -n "s/.*specs\/x.md, last held in \([0-9a-f]*\)\./\1/p" PRODUCT.md)":specs/x.md'
+stdout '^- \*\*Then\*\*: it answers 42.$'
+exec kiln status
+stdout '^kiln holds no approved spec$'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- specs/y.md --
+# Spec 2: y
+
+## Acceptance tests
+
+### 1. Y answers
+
+- **Given**: nothing.
+- **When**: Y is called.
+- **Then**: it answers 7.
+-- claude.json --
+{
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+      {"result": {"result": "Built x."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y/.\" ."}}},
+      {"result": {"result": "Built y, under an amendment."}}
+    ]}
+  },
+  "audit": {
+    "1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]},
+    "2": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}
+  }
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}
+-- _given/y/y.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// Y answers 8.
+func Y() int { return 8 }
+-- _given/y/acceptance/y/y_test.go --
+package y_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.Y(); got != 8 {
+		t.Fatalf("Y answers %d, want 8", got)
+	}
+}
+-- _given/y/specs/y.amend.md --
+# Amendments to specs/y.md
+
+## Acceptance test 1: Y answers
+
+### Old
+
+- **Then**: it answers 7.
+
+### New
+
+- **Then**: it answers 8.
+
+### Reason
+
+7 is taken.

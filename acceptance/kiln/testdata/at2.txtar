@@ -1,0 +1,109 @@
+# 2. A build can't change what the developer approved.
+
+# Given: a build that changes a Given, When, Then in specs/<name>.md, by an edit or by a shell command.
+# The build of x changes its spec by a shell command, after the hook refused its Edit. The build of y changes its spec
+# by an Edit that got past the hook.
+exec kiln approve x
+exec kiln approve y
+
+# When: its gate runs.
+exec kiln run
+stdout '^x: the gate failed'
+stdout '^y: the gate failed'
+
+# Then: the gate fails,
+exec kiln status
+stdout '^x: stopped$'
+stdout '^  specs/x.md is under specs/'
+stdout '^y: stopped$'
+stdout '^  specs/y.md is under specs/'
+
+# and specs/<name>.md on main is as approved.
+exec git show main:specs/x.md
+cmp stdout _given/approved/x.md
+exec git show main:specs/y.md
+cmp stdout _given/approved/y.md
+
+# The hook refused x's Edit before the shell command changed the spec.
+grep 'PreToolUse:Edit hook error: specs/x.md is under specs/' .claude-calls/build/1/1/stream.jsonl
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- specs/y.md --
+# Spec 2: y
+
+## Acceptance tests
+
+### 1. Y answers
+
+- **Given**: nothing.
+- **When**: Y is called.
+- **Then**: it answers 7.
+-- claude.json --
+{
+  "build": {
+    "1": {
+      "1": [
+        {"tool": {"name": "Edit", "input": {"file_path": "specs/x.md", "old_string": "answers 42", "new_string": "answers 41"}}},
+        {"tool": {"name": "Bash", "input": {"command": "sed -i '' 's/answers 42/answers 41/' specs/x.md"}}},
+        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+        {"result": {"result": "Built x, to the spec as I changed it."}}
+      ],
+      "2": [{"result": {"result": "The spec as I changed it is the one I built."}}]
+    },
+    "2": {
+      "1": [
+        {"tool": {"name": "Edit", "raw": true, "input": {"file_path": "specs/y.md", "old_string": "answers 7", "new_string": "answers 8"}}},
+        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y/.\" ."}}},
+        {"result": {"result": "Built y, to the spec as I changed it."}}
+      ],
+      "2": [{"result": {"result": "The spec as I changed it is the one I built."}}]
+    }
+  }
+}
+-- _given/approved/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- _given/approved/y.md --
+# Spec 2: y
+
+## Acceptance tests
+
+### 1. Y answers
+
+- **Given**: nothing.
+- **When**: Y is called.
+- **Then**: it answers 7.
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 41.
+func X() int { return 41 }
+-- _given/y/y.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// Y answers 8.
+func Y() int { return 8 }

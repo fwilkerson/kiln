@@ -1,0 +1,89 @@
+# 5. An amended spec is delivered whole, and waits.
+
+# Given: a build that finds a Given, When, Then can't hold, amends it, and finishes the work under the amendment.
+exec kiln approve x
+exec git rev-parse main
+cp stdout .tmp/approved
+
+# When: its gate passes.
+exec kiln run
+stdout '^x: waits on kiln/x'
+! stdout 'the gate failed|stopped'
+
+# Then: main is unchanged,
+exec git rev-parse main
+cmp stdout .tmp/approved
+
+# the finished work waits on the spec's branch,
+exec git show kiln/x:x.go
+stdout 'return 43'
+exec git show kiln/x:acceptance/x/x_test.go
+stdout 'TestAT1'
+
+# and kiln status shows the amendment.
+exec kiln status
+stdout '^x: waiting on its branch with amendments, kiln/x$'
+stdout '^  ### Old$'
+stdout '^  - \*\*Then\*\*: it answers 43.$'
+stdout '^  42 is taken.$'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+    {"result": {"result": "Built x, under an amendment."}}
+  ]}},
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 43.
+func X() int { return 43 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 43 {
+		t.Fatalf("X answers %d, want 43", got)
+	}
+}
+-- _given/x/specs/x.amend.md --
+# Amendments to specs/x.md
+
+## Acceptance test 1: X answers
+
+### Old
+
+- **Then**: it answers 42.
+
+### New
+
+- **Then**: it answers 43.
+
+### Reason
+
+42 is taken.

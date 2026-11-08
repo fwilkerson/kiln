@@ -1,0 +1,82 @@
+# 1. An approved spec lands.
+
+# Given: an approved spec whose build makes its acceptance tests pass.
+exec kiln approve x
+
+# When: the developer runs kiln run.
+exec kiln run
+stdout '^x: landed on main'
+
+# Then: main holds the build's work,
+exec git log -1 --format=%s main
+stdout '^feat\(x\): land the approved spec$'
+exec git diff --quiet main
+exists x.go
+cmp acceptance/x/x_test.go _given/x/acceptance/x/x_test.go
+
+# its acceptance tests pass there,
+exec go test ./acceptance/x/
+stdout '^ok'
+
+# and kiln status shows it waiting for UAT.
+exec kiln status
+stdout '^x: waiting for UAT$'
+! stdout 'stopped|amendments'
+
+# The audit's finding went back to the session, which fixed it before the work landed.
+grep 'x.go:3  false comment' .claude-calls/build/1/2/prompt
+exec git show main:x.go
+stdout '^// X answers 42.$'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+      {"result": {"result": "Built x."}}
+    ],
+    "2": [
+      {"tool": {"name": "Edit", "input": {"file_path": "x.go", "old_string": "answers 41", "new_string": "answers 42"}}},
+      {"result": {"result": "The finding is fixed."}}
+    ]
+  }},
+  "audit": {"1": {"1": [
+    {"result": {"result": "1. x.go:3  false comment\nreaches    the doc says 41\n\nread 2 packages, found 1"}}
+  ]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 41.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

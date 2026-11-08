@@ -1,0 +1,34 @@
+# 4. Main stays green.
+
+exec kiln init
+stdout '^installed .*pre-commit$'
+
+# Given: a change on main that fails a test.
+cp _given/broken_test.go broken_test.go
+exec git add broken_test.go
+
+# When: the developer commits it.
+! exec git commit -m 'test: add a broken test'
+
+# Then: the pre-commit hook refuses the commit, naming the test.
+stderr 'the commit to main is refused, since the gate fails on TestBroken \(example.com/scratch\)'
+exec git log -1 --format=%s main
+stdout '^start$'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- scratch.go --
+// Package scratch is where kiln's builds land.
+package scratch
+-- _given/broken_test.go --
+package scratch
+
+import "testing"
+
+func TestBroken(t *testing.T) {
+	t.Fatal("broken")
+}
