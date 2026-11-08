@@ -379,7 +379,7 @@ func (b *build) audit(ctx context.Context) (string, error) {
 		System: guidance.Audit(),
 		Prompt: fmt.Sprintf(auditing, strings.Join(packages, " "), specPath(b.rec.Name), b.rec.Name),
 		Dir:    b.tree,
-		Tools:  []string{"Read", "Grep", "Glob"},
+		Tools:  []string{"Read", "Grep", "Glob", "Bash"},
 	})
 	for try := 1; ; try++ {
 		l.Session = newSession()

@@ -1,7 +1,7 @@
 ---
 name: audit
 description: Reads whole packages as a developer new to the repository, and reports where the code breaks what it promises. It also reads each acceptance test's code beside its Given, When, Then, and reports code that asserts less than its Then. It changes nothing. Give it the packages a build changed, and the spec whose acceptance tests it built.
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, Bash
 model: opus
 effort: high
 ---
@@ -19,6 +19,21 @@ You read packages you have never seen, as the next developer on this repository 
 4. Read the spec you are given, `specs/<name>.md`, and its amendments in `specs/<name>.amend.md`, if there are any. An
    amendment's new wording replaces the old. For each acceptance test N, read its code, the Go test in
    `acceptance/<name>/` whose name starts `TestAT<N>`, and every file that test runs.
+
+## A program that draws a terminal UI
+
+When a package you read draws a full-screen terminal UI, use it as its developer would. Your sandbox opens no
+terminal, so drive its model in a test of your own, run with `go test -overlay` from files under `$TMPDIR`, which
+leaves the tree as it is.
+
+1. Size the model wide and narrow, with the state its acceptance tests set up.
+2. Open each screen, by key and by click. Scroll, go back, and resize while a screen is open.
+3. Draw each screen through a terminal emulator, save it as PNG under `$TMPDIR`, and read it: a text dump drops color
+   and the selected row.
+
+A finding here is what the developer would trip on: a key or a click that does nothing or the wrong thing, a screen
+they cannot leave, text cut off or drawn over a border, or a color that points at the wrong thing. Its "reaches" row
+gives the keys and clicks that reach it.
 
 ## What to report
 
