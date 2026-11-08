@@ -23,6 +23,10 @@ import (
 	"testing"
 
 	"github.com/rogpeppe/go-internal/testscript"
+
+	// go test caches a test by the code it imports. The tests build cmd/kiln as they run, so this import is what
+	// ties their cache to kiln's code.
+	_ "github.com/fwilkerson/kiln/internal/kiln"
 )
 
 // Main runs the tests of m, with kiln and the scripted claude first on the PATH. Call it from TestMain.

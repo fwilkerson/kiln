@@ -12,23 +12,23 @@ import (
 	"time"
 )
 
-// State is where a spec stands, in the words kiln status shows.
-type State string
+// state is where a spec stands, in the words kiln status shows.
+type state string
 
 const (
-	Queued   State = "queued"
-	Building State = "building"
-	Stopped  State = "stopped"
-	// Landed is a spec whose build is on main, waiting for the developer's acceptance.
-	Landed State = "waiting for UAT"
-	// Amended is a spec whose finished build waits on its branch, with amendments for the developer to read.
-	Amended State = "waiting on its branch with amendments"
+	queued   state = "queued"
+	building state = "building"
+	stopped  state = "stopped"
+	// landed is a spec whose build is on main, waiting for the developer's acceptance.
+	landed state = "waiting for UAT"
+	// amended is a spec whose finished build waits on its branch, with amendments for the developer to read.
+	amended state = "waiting on its branch with amendments"
 )
 
 // record is what kiln keeps of one approved spec.
 type record struct {
 	Name  string `json:"name"`
-	State State  `json:"state"`
+	State state  `json:"state"`
 	// Approved is main's tip when the developer approved the spec.
 	Approved string `json:"approved"`
 	// Session is the build's Claude Code session, once it has one.
@@ -71,14 +71,14 @@ func (b *book) approve(name, approved string) (drop bool, err error) {
 	r := b.find(name)
 	switch {
 	case r == nil:
-		b.Specs = append(b.Specs, &record{Name: name, State: Queued, Approved: approved})
+		b.Specs = append(b.Specs, &record{Name: name, State: queued, Approved: approved})
 		return false, nil
-	case r.State == Building:
+	case r.State == building:
 		return false, fmt.Errorf("%w: %s is building; approve it again once its build ends", errRefused, name)
 	}
 
-	drop = r.State != Queued
-	*r = record{Name: name, State: Queued, Approved: approved}
+	drop = r.State != queued
+	*r = record{Name: name, State: queued, Approved: approved}
 	return drop, nil
 }
 
@@ -88,7 +88,7 @@ func (b *book) accept(name string) (*record, error) {
 	switch {
 	case r == nil:
 		return nil, fmt.Errorf("%w: kiln holds no approved spec named %s", errRefused, name)
-	case r.State != Landed && r.State != Amended:
+	case r.State != landed && r.State != amended:
 		return nil, fmt.Errorf("%w: %s is %s, and only a spec waiting for UAT is accepted", errRefused, name, r.State)
 	}
 
@@ -102,8 +102,8 @@ func (b *book) retire(name string) {
 // next takes the first queued spec, and marks it building.
 func (b *book) next() (record, bool) {
 	for _, r := range b.Specs {
-		if r.State == Queued {
-			r.State = Building
+		if r.State == queued {
+			r.State = building
 			return *r, true
 		}
 	}
@@ -120,6 +120,7 @@ const (
 	bookFile = "state.json"
 	lockFile = "lock"
 	runLock  = "run.lock"
+	mainLock = "main.lock"
 )
 
 // update applies change to the book, holding the store's lock from the read to the write.

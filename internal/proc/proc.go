@@ -10,11 +10,8 @@
 //	cmd.Env = proc.Session.Env(env)
 //	stderr := proc.NewTail(64 << 10)
 //	cmd.Stderr = stderr
-//	proc.OwnGroup(cmd)
-//	if err := cmd.Start(); err != nil {
-//		return err
-//	}
-//	_ = proc.SignalGroup(cmd.Process.Pid, syscall.SIGTERM)
+//	proc.OwnGroup(cmd) // when ctx ends, the whole group is killed
+//	err = cmd.Run()
 //
 // Each adapter keeps its own policy: which program it runs, which [Child] that is, and how long it waits. Package
 // proc decides none of it.
@@ -24,12 +21,10 @@
 package proc
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -86,21 +81,6 @@ func Executable(path string) bool {
 func OwnGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-}
-
-// SignalGroup sends s to every process of group. It refuses a group of 0 or 1, which kill(2) reads as the caller's
-// own group and as every process. A group with no process left is not an error: it ended while the caller decided
-// to end it.
-func SignalGroup(group int, s syscall.Signal) error {
-	if group <= 1 {
-		return errors.New("no process group to signal: " + strconv.Itoa(group))
-	}
-
-	if err := syscall.Kill(-group, s); err != nil && !errors.Is(err, syscall.ESRCH) {
-		return err
-	}
-
-	return nil
 }
 
 // Tail is an [io.Writer] that keeps only the last bytes written to it. Those may be the end of a child's

@@ -1,0 +1,7 @@
+{
+  "gate": [
+    "go vet ./...",
+    "go test ./..."
+  ],
+  "rounds": 3
+}

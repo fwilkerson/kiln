@@ -13,7 +13,7 @@
 // left behind. It finds them by their process tree, their group, and their working directory.
 //
 // A session's files are kept in Config.Sessions, under its ID. They are the system prompt, the settings, and the
-// stream it wrote, across every resume.
+// stream it wrote, across every resume. Beside them is the end of its standard error, from its last run.
 package claude
 
 import (
@@ -28,7 +28,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/proc"
@@ -89,9 +88,6 @@ type Ended struct {
 	Failed bool
 	// Limit is set when a usage limit ended it.
 	Limit *Limit
-	// Exit is its exit code, or -1 if a signal ended it.
-	Exit   int
-	Stderr string
 }
 
 // Limit is a usage limit that ended a session. Resets is the latest reset the session reported, and zero if it gave
@@ -106,6 +102,7 @@ const (
 	// waiting with it.
 	outputGrace = 10 * time.Second
 	streamFile  = "stream.jsonl"
+	stderrFile  = "stderr"
 )
 
 var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -141,7 +138,8 @@ func (c Claude) Run(ctx context.Context, l Launch) (Ended, error) {
 
 	defer stream.Close()
 
-	return run(ctx, program, arguments(l, dir), l.Dir, sessionEnv(c.c.Env), l.Prompt, stream)
+	ended, stderr, err := run(ctx, program, arguments(l, dir), l.Dir, sessionEnv(c.c.Env), l.Prompt, stream)
+	return ended, errors.Join(err, os.WriteFile(filepath.Join(dir, stderrFile), []byte(stderr), 0o600))
 }
 
 func write(dir string, l Launch) error {
@@ -189,21 +187,21 @@ func sessionEnv(env []string) []string {
 }
 
 func run(ctx context.Context, program string, args []string, dir string, env []string, prompt string,
-	stream io.Writer) (Ended, error) {
+	stream io.Writer) (ended Ended, stderr string, err error) {
 	cmd := exec.CommandContext(ctx, program, args...)
 	cmd.Dir, cmd.Env = dir, env
 	cmd.Stdin = strings.NewReader(prompt)
-	stderr := proc.NewTail(stderrKept)
-	cmd.Stderr = stderr
+	tail := proc.NewTail(stderrKept)
+	cmd.Stderr = tail
 	proc.OwnGroup(cmd)
 	cmd.WaitDelay = outputGrace
 	out, err := cmd.StdoutPipe()
 	if err != nil {
-		return Ended{}, err
+		return Ended{}, "", err
 	}
 
 	if err := cmd.Start(); err != nil {
-		return Ended{}, err
+		return Ended{}, "", err
 	}
 
 	tree := watch(cmd.Process.Pid, dir)
@@ -218,19 +216,11 @@ func run(ctx context.Context, program string, args []string, dir string, env []s
 	scanned := lines.Err()
 	err = cmd.Wait()
 	tree.end()
-	ended := read.ended()
-	ended.Exit, ended.Stderr = -1, stderr.String()
-	if state := cmd.ProcessState; state != nil {
-		if status, _ := state.Sys().(syscall.WaitStatus); !status.Signaled() {
-			ended.Exit = state.ExitCode()
-		}
-	}
-
 	if _, exited := errors.AsType[*exec.ExitError](err); err != nil && !exited {
-		return ended, err
+		return read.ended(), tail.String(), err
 	}
 
-	return ended, scanned
+	return read.ended(), tail.String(), scanned
 }
 
 // reading is what a session's stream has said so far.

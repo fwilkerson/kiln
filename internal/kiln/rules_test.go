@@ -123,23 +123,23 @@ func TestGate(t *testing.T) {
 
 func TestSpecStates(t *testing.T) {
 	for name, tc := range map[string]struct {
-		given   State
+		given   state
 		command string
-		then    State
+		then    state
 		drop    bool
 		refused bool
 	}{
-		"a new spec is queued":                       {command: "approve", then: Queued},
-		"approving a queued spec queues it":          {given: Queued, command: "approve", then: Queued},
-		"a building spec refuses approval":           {given: Building, command: "approve", then: Building, refused: true},
-		"approving a stopped spec builds it again":   {given: Stopped, command: "approve", then: Queued, drop: true},
-		"approving a landed spec builds it again":    {given: Landed, command: "approve", then: Queued, drop: true},
-		"approving an amended spec drops its branch": {given: Amended, command: "approve", then: Queued, drop: true},
-		"a landed spec is accepted":                  {given: Landed, command: "accept", then: Landed},
-		"an amended spec is accepted":                {given: Amended, command: "accept", then: Amended},
-		"a queued spec refuses acceptance":           {given: Queued, command: "accept", then: Queued, refused: true},
-		"a building spec refuses acceptance":         {given: Building, command: "accept", then: Building, refused: true},
-		"a stopped spec refuses acceptance":          {given: Stopped, command: "accept", then: Stopped, refused: true},
+		"a new spec is queued":                       {command: "approve", then: queued},
+		"approving a queued spec queues it":          {given: queued, command: "approve", then: queued},
+		"a building spec refuses approval":           {given: building, command: "approve", then: building, refused: true},
+		"approving a stopped spec builds it again":   {given: stopped, command: "approve", then: queued, drop: true},
+		"approving a landed spec builds it again":    {given: landed, command: "approve", then: queued, drop: true},
+		"approving an amended spec drops its branch": {given: amended, command: "approve", then: queued, drop: true},
+		"a landed spec is accepted":                  {given: landed, command: "accept", then: landed},
+		"an amended spec is accepted":                {given: amended, command: "accept", then: amended},
+		"a queued spec refuses acceptance":           {given: queued, command: "accept", then: queued, refused: true},
+		"a building spec refuses acceptance":         {given: building, command: "accept", then: building, refused: true},
+		"a stopped spec refuses acceptance":          {given: stopped, command: "accept", then: stopped, refused: true},
 		"an unknown spec refuses acceptance":         {command: "accept", refused: true},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -156,7 +156,7 @@ func TestSpecStates(t *testing.T) {
 				_, err = b.accept("x")
 			}
 
-			var then State
+			var then state
 			if r := b.find("x"); r != nil {
 				then = r.State
 			}

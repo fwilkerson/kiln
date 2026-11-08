@@ -30,8 +30,7 @@ func Example() {
 
 	p, err := proc.Of(cmd.Process.Pid)
 	fmt.Println("leads a group of its own:", err == nil && p.Group == p.PID)
-	fmt.Println(proc.SignalGroup(cmd.Process.Pid, syscall.SIGKILL), cmd.Wait())
-	fmt.Println(proc.SignalGroup(cmd.Process.Pid, syscall.SIGKILL))
+	fmt.Println(syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL), cmd.Wait())
 
 	_, err = proc.Look(env, "no-such-program")
 	fmt.Println(err)
@@ -44,7 +43,6 @@ func Example() {
 	// [PATH=/usr/bin:/bin HOME=/home/dev ANTHROPIC_API_KEY=key]
 	// leads a group of its own: true
 	// <nil> signal: killed
-	// <nil>
 	// no-such-program is not on the PATH: /usr/bin:/bin
 	// "its end"
 }

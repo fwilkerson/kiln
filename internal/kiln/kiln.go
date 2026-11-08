@@ -99,17 +99,17 @@ func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
 		return nil, err
 	}
 
-	state := filepath.Join(common, "kiln")
+	kept := filepath.Join(common, "kiln")
 	sum := sha256.Sum256([]byte(common))
 	return &Repo{
 		top:    top,
 		common: common,
 		git:    g,
-		store:  store{dir: state},
+		store:  store{dir: kept},
 		trees:  filepath.Join(cache, "kiln", fmt.Sprintf("%s-%x", filepath.Base(top), sum[:4])),
 		env:    env,
 		exe:    exe,
-		claude: claude.New(claude.Config{Program: "claude", Env: env, Sessions: filepath.Join(state, "sessions")}),
+		claude: claude.New(claude.Config{Program: "claude", Env: env, Sessions: filepath.Join(kept, "sessions")}),
 	}, nil
 }
 
@@ -192,7 +192,7 @@ func (r *Repo) Approve(ctx context.Context, name string, out io.Writer) error {
 		}
 	}
 
-	fmt.Fprintf(out, "%s: %s, approved at %s\n", name, Queued, short(main))
+	fmt.Fprintf(out, "%s: %s, approved at %s\n", name, queued, short(main))
 	return nil
 }
 
@@ -210,9 +210,9 @@ func (r *Repo) Status(_ context.Context, out io.Writer) error {
 	for _, s := range b.Specs {
 		fmt.Fprintf(out, "%s: %s", s.Name, s.State)
 		switch {
-		case s.State == Building && !s.Paused.IsZero():
+		case s.State == building && !s.Paused.IsZero():
 			fmt.Fprintf(out, ", paused for a usage limit until %s", s.Paused.Local().Format("15:04:05 on Jan 2"))
-		case s.State == Amended:
+		case s.State == amended:
 			fmt.Fprintf(out, ", %s", branchOf(s.Name))
 		}
 
@@ -250,7 +250,7 @@ func (r *Repo) Accept(ctx context.Context, name string, out io.Writer) error {
 
 	b := &build{r: r, rec: rec, tree: r.tree(name), out: out}
 	from, tip := "", ""
-	if rec.State == Amended {
+	if rec.State == amended {
 		if tip, err = r.git.Head(ctx, b.tree); err != nil {
 			return err
 		}

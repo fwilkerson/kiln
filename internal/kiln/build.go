@@ -40,8 +40,8 @@ func (r *Repo) Run(ctx context.Context, out io.Writer) error {
 
 	err = r.store.update(func(b *book) error {
 		for _, s := range b.Specs {
-			if s.State == Building {
-				s.State = Queued
+			if s.State == building {
+				s.State = queued
 			}
 		}
 
@@ -65,7 +65,7 @@ func (r *Repo) Run(ctx context.Context, out io.Writer) error {
 
 		b := &build{r: r, rec: rec, tree: r.tree(rec.Name), out: out}
 		err = b.run(ctx)
-		if s, ok := errors.AsType[*stopped](err); ok {
+		if s, ok := errors.AsType[*outOfRounds](err); ok {
 			b.stop(s.why)
 		} else if ctx.Err() != nil {
 			return ctx.Err()
@@ -76,7 +76,7 @@ func (r *Repo) Run(ctx context.Context, out io.Writer) error {
 }
 
 func goesOn(r *record) int {
-	if r.State == Queued && r.Session != "" {
+	if r.State == queued && r.Session != "" {
 		return 1
 	}
 
@@ -91,10 +91,10 @@ type build struct {
 	out  io.Writer
 }
 
-// stopped is a build that its gate failed past its last round.
-type stopped struct{ why string }
+// outOfRounds is a build that its gate failed past its last round.
+type outOfRounds struct{ why string }
 
-func (s *stopped) Error() string { return s.why }
+func (s *outOfRounds) Error() string { return s.why }
 
 func (b *build) run(ctx context.Context) error {
 	if b.rec.Session == "" {
@@ -151,12 +151,12 @@ func (b *build) after(ctx context.Context, v verdict) (string, error) {
 	}
 
 	if amendments, found, err := b.r.git.Show(ctx, head, amendPath(b.rec.Name)); err != nil || found {
-		b.set(func(r *record) { r.State, r.Amendments = Amended, string(amendments) })
+		b.set(func(r *record) { r.State, r.Amendments = amended, string(amendments) })
 		b.say("waits on %s, with amendments for UAT", branchOf(b.rec.Name))
 		return "", err
 	}
 
-	landed, report, err := b.land(ctx, head, nil)
+	onMain, report, err := b.land(ctx, head, nil)
 	if err != nil || report != "" {
 		if err == nil {
 			return b.round(ctx, report)
@@ -169,8 +169,8 @@ func (b *build) after(ctx context.Context, v verdict) (string, error) {
 		return "", err
 	}
 
-	b.set(func(r *record) { r.State = Landed })
-	b.say("landed on main at %s, and waits for UAT", short(landed))
+	b.set(func(r *record) { r.State = landed })
+	b.say("landed on main at %s, and waits for UAT", short(onMain))
 	return "", nil
 }
 
@@ -187,7 +187,7 @@ func (b *build) round(ctx context.Context, report string) (string, error) {
 	}
 
 	if b.rec.Rounds >= c.Rounds {
-		return "", &stopped{why: "the gate still failed after its last round:\n" + report}
+		return "", &outOfRounds{why: "the gate still failed after its last round:\n" + report}
 	}
 
 	b.set(func(r *record) { r.Rounds++ })
@@ -320,6 +320,11 @@ func (b *build) audit(ctx context.Context) (string, error) {
 		Tools:   []string{"Read", "Grep", "Glob"},
 	})
 	ended, err := b.talk(ctx, l)
+	if err == nil && ended.Failed {
+		b.say("the audit ended with no result; the build goes on without it")
+		return "", nil
+	}
+
 	text := strings.TrimSpace(ended.Text)
 	if m := tally.FindStringSubmatch(text); err != nil || m != nil && m[1] == "0" {
 		return "", err
@@ -530,7 +535,7 @@ func (b *build) set(change func(*record)) {
 
 // stop records the build as stopped, and why.
 func (b *build) stop(why string) {
-	b.set(func(r *record) { r.State, r.Why, r.Paused = Stopped, why, time.Time{} })
+	b.set(func(r *record) { r.State, r.Why, r.Paused = stopped, why, time.Time{} })
 	b.say("stopped: %s", strings.SplitN(why, "\n", 2)[0])
 }
 

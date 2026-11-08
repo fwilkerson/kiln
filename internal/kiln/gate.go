@@ -204,8 +204,15 @@ func (r *Repo) gate(ctx context.Context, tree, spec string, allowed ...string) (
 }
 
 // atMain runs commands at main's tip, in a worktree of its own. It keeps the checks, and runs them again only once main
-// or the commands change.
+// or the commands change. kiln run and kiln accept share the worktree, one at a time.
 func (r *Repo) atMain(ctx context.Context, main string, commands []string) ([]check, error) {
+	unlock, err := r.store.lock(mainLock, true)
+	if err != nil {
+		return nil, err
+	}
+
+	defer unlock()
+
 	key := main + "\x00" + strings.Join(commands, "\x00")
 	b, err := r.store.read()
 	if err != nil {
