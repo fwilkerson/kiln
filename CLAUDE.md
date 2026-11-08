@@ -8,6 +8,7 @@ for macOS.
 - `specs/<name>.md`: an approved spec. Its Given, When, Then text is the developer's: never change it. Where one can't
   hold, write `specs/<name>.amend.md` with the old wording, the new wording and the reason, and finish the work under
   the amendment.
+- `PRODUCT.md`: each spec the developer accepted, and the commit that last held it.
 - `docs/practices.md`: how Go code is written and judged here. Read it before adding a package or an exported name.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
 - `acceptance/<spec>/`: the test code for each acceptance test of a spec, one Go test named `TestAT<N>` for test N.
@@ -21,8 +22,9 @@ Spec 1 copies code from two repositories. Read each at its commit, never its wor
 
 ## Rules
 
-- Tests: as `specs/kiln.md` "How a build writes tests" says. Each test costs time and care; write the ones a Then, a
-  domain rule or the wiring needs, and no more.
+- Tests: as `docs/practices.md` "Tests" says. Each test costs time and care; write the ones a Then, a domain rule or
+  the wiring needs, and no more. An acceptance test's code tests what its Then says, through the command line. Don't
+  write a test that only restates the code, pins a name no caller sees, or exists to raise coverage.
 - Comments: as `docs/practices.md` "Comments" says. A comment inside a body says why, never what.
 - Commits: [Conventional Commits](https://www.conventionalcommits.org), `type(scope): summary`, imperative and under
   72 characters. The body says why. `go test ./...` passes at each commit. Commit on main; never push.
