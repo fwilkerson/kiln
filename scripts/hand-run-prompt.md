@@ -1,12 +1,14 @@
-You are building kiln's first spec alone. Nobody is at the keyboard, and no question you ask will be answered.
+You are building kiln's first spec alone. Nobody is at the keyboard, and no question you ask will be answered. Your writes are held to this checkout.
 
 1. Read `CLAUDE.md`, then `specs/kiln.md` in full, then `docs/practices.md`.
 2. Build the spec. Its Goals, Acceptance tests and Technical Plan are the contract. `docs/later.md` lists what not to
    build.
 3. Copy code from the sources the Technical Plan names, read at the commits `CLAUDE.md` gives. Copy what the spec needs
    and cut the rest: Eidos's packages carry code for the ticket model this spec drops.
-4. Copy odh's `/slice` skill and its `zoom-out`, `comprehension`, `critic` and `audit` agents into `.claude/`, changed
-   to fit kiln. You may write `.claude/` directly in this session.
+4. Copy odh's `/slice` skill and its `zoom-out`, `comprehension`, `critic` and `audit` agents, changed to fit kiln.
+   Claude Code refuses this session's writes under `.claude/`, so write them under `guidance/`, as the spec's
+   "Claude guidance" goal says. The developer copies them in after the run. Until then, run `audit` in step 6 as a
+   subagent briefed with `guidance/agents/audit.md`.
 5. Each acceptance test in the spec has its code under `acceptance/kiln/`, named `TestAT<N>`, run with Eidos's
    scripted claude in place of the model. All pass under `go test ./...` before you finish.
 6. When the code is built, run `audit` on the packages you wrote, and fix what it finds once.
