@@ -1,7 +1,7 @@
 # 3. Main moves only to work gated on it.
 
 # Given: a spec waiting on its branch with an amendment, while another spec's build lands.
-# The gate notes each commit it runs on in .tmp/gated.
+# The gate notes each commit it runs on in .tmp/gated. Both builds write notes.txt, so a's work conflicts with b's.
 exec kiln approve a
 exec kiln approve b
 exec kiln run
@@ -13,6 +13,9 @@ cp stdout .tmp/b-landed
 # When: the developer accepts the waiting spec.
 exec kiln accept a
 stdout '^a: accepted'
+
+# The conflict went back to a's session, which merged main.
+grep 'conflicts with it in these files:\nnotes.txt' .claude-calls/build/1/2/prompt
 
 # Then: its work lands only after a gate that ran on main as the other build left it.
 # The commit main moved to is one the gate ran on, and it sits on b's landing: a's work, then the retired spec.
@@ -52,10 +55,16 @@ go 1.27
 -- claude.json --
 {
   "build": {
-    "1": {"1": [
-      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/a/.\" ."}}},
-      {"result": {"result": "Built a, under an amendment."}}
-    ]},
+    "1": {
+      "1": [
+        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/a/.\" ."}}},
+        {"result": {"result": "Built a, under an amendment."}}
+      ],
+      "2": [
+        {"tool": {"name": "Bash", "input": {"command": "git merge --quiet --no-edit -X theirs main"}}},
+        {"result": {"result": "Merged main, keeping b's notes."}}
+      ]
+    },
     "2": {"1": [
       {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/b/.\" ."}}},
       {"result": {"result": "Built b."}}
@@ -66,6 +75,10 @@ go 1.27
     "2": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}
   }
 }
+-- _given/a/notes.txt --
+a's notes
+-- _given/b/notes.txt --
+b's notes
 -- _given/a/a.go --
 // Package scratch is where kiln's builds land.
 package scratch

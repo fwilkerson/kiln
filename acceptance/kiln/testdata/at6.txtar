@@ -9,6 +9,11 @@ exec kiln status
 stdout '^x: waiting for UAT$'
 stdout '^y: waiting on its branch with amendments'
 
+# The developer adds an agent on main before accepting x, which landing copies to .claude/agents/.
+cp _given/agent.md guidance/agents/agent.md
+exec git add guidance/agents/agent.md
+exec git commit --quiet -m 'docs(guidance): add an agent'
+
 # When: the developer runs kiln accept.
 exec kiln accept x
 stdout '^x: accepted'
@@ -22,6 +27,8 @@ exec go test ./...
 exec sh -c 'git show "$(sed -n "s/.*specs\/y.md, last held in \([0-9a-f]*\)\./\1/p" PRODUCT.md)":specs/y.md'
 stdout '^- \*\*Then\*\*: it answers 8.$'
 ! stdout 'answers 7'
+exec sh -c 'git merge-base --is-ancestor "$(sed -n "s/.*specs\/y.md, last held in \([0-9a-f]*\)\./\1/p" PRODUCT.md)" main'
+cmp .claude/agents/agent.md _given/agent.md
 
 # specs/ no longer holds it,
 ! exists specs/x.md specs/y.md specs/y.amend.md
@@ -31,6 +38,7 @@ grep '^- Spec 1: x: specs/x.md, last held in [0-9a-f]{12}\.$' PRODUCT.md
 grep '^- Spec 2: y: specs/y.md, last held in [0-9a-f]{12}\.$' PRODUCT.md
 exec sh -c 'git show "$(sed -n "s/.*specs\/x.md, last held in \([0-9a-f]*\)\./\1/p" PRODUCT.md)":specs/x.md'
 stdout '^- \*\*Then\*\*: it answers 42.$'
+exec sh -c 'git merge-base --is-ancestor "$(sed -n "s/.*specs\/x.md, last held in \([0-9a-f]*\)\./\1/p" PRODUCT.md)" main'
 exec kiln status
 stdout '^kiln holds no approved spec$'
 
@@ -77,6 +85,13 @@ go 1.27
     "2": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}
   }
 }
+-- guidance/agents/.keep --
+-- _given/agent.md --
+---
+name: agent
+---
+
+An agent the developer added.
 -- _given/x/x.go --
 // Package scratch is where kiln's builds land.
 package scratch

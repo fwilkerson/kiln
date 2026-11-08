@@ -231,9 +231,11 @@ func (r *Repo) Status(_ context.Context, out io.Writer) error {
 	return nil
 }
 
-// Accept ends the developer's acceptance of a spec. A spec waiting on its branch first folds its amendments into the
-// spec, and lands as a build does. Then the spec is deleted from main, and PRODUCT.md gains a line that names the
-// commit that last held it. The commit that moves main is gated first, on main as it stands.
+// Accept ends the developer's acceptance of a spec. The spec is deleted from main, and PRODUCT.md gains a line that
+// names the commit that last held it. The commit that moves main is gated first, on main as it stands.
+//
+// A spec waiting on its branch first folds its amendments into the spec, and lands as a build does. A conflict or a
+// failing gate goes back to its build's session. While another kiln run builds, that run lands it instead.
 func (r *Repo) Accept(ctx context.Context, name string, out io.Writer) error {
 	var rec record
 	err := r.store.update(func(b *book) error {
@@ -249,31 +251,21 @@ func (r *Repo) Accept(ctx context.Context, name string, out io.Writer) error {
 	}
 
 	b := &build{r: r, rec: rec, tree: r.tree(name), out: out}
-	from, tip := "", ""
 	if rec.State == amended {
-		if tip, err = r.git.Head(ctx, b.tree); err != nil {
-			return err
-		}
+		return r.acceptAmended(ctx, b)
+	}
 
-		if from, err = b.foldAmendments(ctx); err != nil {
-			return errors.Join(err, r.git.Reset(ctx, b.tree, tip))
-		}
-	} else if err := b.checkoutMain(ctx); err != nil {
+	if err := b.checkoutMain(ctx); err != nil {
 		return err
 	}
 
-	landed, report, err := b.land(ctx, from, b.retire, specPath(name), amendPath(name))
+	landed, report, err := b.land(ctx, "", b.retire, specPath(name), amendPath(name))
 	if err == nil && report != "" {
 		err = fmt.Errorf("%w: the gate failed on main as it stands, so %s is not accepted:\n%s", errRefused, name,
 			report)
 	}
 
 	if err != nil {
-		// The spec still waits on its branch, as the build left it.
-		if tip != "" {
-			err = errors.Join(err, r.git.Reset(ctx, b.tree, tip))
-		}
-
 		return err
 	}
 
@@ -287,6 +279,32 @@ func (r *Repo) Accept(ctx context.Context, name string, out io.Writer) error {
 
 	fmt.Fprintf(out, "%s: accepted, and main is at %s\n", name, short(landed))
 	return nil
+}
+
+// acceptAmended folds the amendments of b's spec into the spec, on its branch, and queues its landing.
+func (r *Repo) acceptAmended(ctx context.Context, b *build) error {
+	name := b.rec.Name
+	tip, err := r.git.Head(ctx, b.tree)
+	if err != nil {
+		return err
+	}
+
+	if _, err := b.foldAmendments(ctx); err != nil {
+		return errors.Join(err, r.git.Reset(ctx, b.tree, tip))
+	}
+
+	err = r.store.set(name, func(s *record) { s.State, s.Accepted, s.Rounds, s.Amendments = queued, true, 0, "" })
+	if err != nil {
+		return err
+	}
+
+	err = r.run(ctx, b.out, name)
+	if errors.Is(err, errRunning) {
+		fmt.Fprintf(b.out, "%s: accepted; the kiln run that is building lands it\n", name)
+		return nil
+	}
+
+	return err
 }
 
 func (r *Repo) tree(name string) string { return filepath.Join(r.trees, name) }

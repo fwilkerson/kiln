@@ -59,6 +59,7 @@ func TestGate(t *testing.T) {
 	const failing = "--- FAIL: TestFlaky (0.00s)\n    flaky_test.go:5: no\nFAIL\nFAIL\texample.com/s\t0.1s\n"
 	const other = "--- FAIL: TestNew (0.00s)\nFAIL\nFAIL\texample.com/s\t0.1s\n"
 	const broken = "# example.com/s\n./s.go:3:1: syntax error\nFAIL\texample.com/s [build failed]\n"
+	const hung = "panic: test timed out after 10m0s\nFAIL\texample.com/t\t600.0s\n"
 	for name, tc := range map[string]struct {
 		tip, main []check
 		refused   []string
@@ -95,6 +96,11 @@ func TestGate(t *testing.T) {
 			tip:  []check{{Command: "go test ./...", Exit: 1, Output: broken}},
 			main: []check{{Command: "go test ./...", Exit: 1, Output: broken}},
 		},
+		"a package that hangs, while a test fails at main too": {
+			tip:    []check{{Command: "go test ./...", Exit: 1, Output: failing + hung}},
+			main:   []check{{Command: "go test ./...", Exit: 1, Output: failing}},
+			atMain: []string{"TestFlaky (example.com/s)"},
+		},
 		"a test that fails at main under another command": {
 			tip:    []check{{Command: "go test -race ./...", Exit: 1, Output: failing}},
 			main:   []check{{Command: "go test ./...", Exit: 1, Output: failing}},
@@ -108,7 +114,7 @@ func TestGate(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			for _, checks := range [][]check{tc.tip, tc.main} {
 				for i := range checks {
-					checks[i].Failed = failedTests(checks[i].Output)
+					checks[i].Failed, checks[i].Broken = failedTests(checks[i].Output)
 				}
 			}
 

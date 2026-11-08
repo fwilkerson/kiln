@@ -23,7 +23,9 @@ exec kiln status
 stdout '^x: waiting for UAT$'
 ! stdout 'stopped|amendments'
 
-# The audit's finding went back to the session, which fixed it before the work landed.
+# The first audit ended with no result, so it ran again. Its finding went back to the session, which fixed it
+# before the work landed.
+exists .claude-calls/audit/2/1/call.json
 grep 'x.go:3  false comment' .claude-calls/build/1/2/prompt
 exec git show main:x.go
 stdout '^// X answers 42.$'
@@ -56,9 +58,12 @@ go 1.27
       {"result": {"result": "The finding is fixed."}}
     ]
   }},
-  "audit": {"1": {"1": [
-    {"result": {"result": "1. x.go:3  false comment\nreaches    the doc says 41\n\nread 2 packages, found 1"}}
-  ]}}
+  "audit": {
+    "1": {"1": [{"result": {"is_error": true, "api_error_status": 529, "result": "API Error: 529 Overloaded"}}]},
+    "2": {"1": [
+      {"result": {"result": "1. x.go:3  false comment\nreaches    the doc says 41\n\nread 2 packages, found 1"}}
+    ]}
+  }
 }
 -- _given/x/x.go --
 // Package scratch is where kiln's builds land.

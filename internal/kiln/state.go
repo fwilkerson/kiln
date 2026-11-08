@@ -34,8 +34,12 @@ type record struct {
 	// Session is the build's Claude Code session, once it has one.
 	Session string `json:"session,omitempty"`
 	// Rounds counts the failed gates sent back to the session.
-	Rounds  int  `json:"rounds,omitempty"`
+	Rounds int `json:"rounds,omitempty"`
+	// Audited is true once the audit has answered.
 	Audited bool `json:"audited,omitempty"`
+	// Accepted is a spec the developer accepted while it waited on its branch. kiln lands it as a build does, then
+	// retires it.
+	Accepted bool `json:"accepted,omitempty"`
 	// Why says why the build stopped, with the gate's output.
 	Why string `json:"why,omitempty"`
 	// FailingAtMain names the Go tests that failed at main before the build.
@@ -99,10 +103,10 @@ func (b *book) retire(name string) {
 	b.Specs = slices.DeleteFunc(b.Specs, func(r *record) bool { return r.Name == name })
 }
 
-// next takes the first queued spec, and marks it building.
-func (b *book) next() (record, bool) {
+// next takes the first queued spec, or the one named only, and marks it building.
+func (b *book) next(only string) (record, bool) {
 	for _, r := range b.Specs {
-		if r.State == queued {
+		if r.State == queued && (only == "" || r.Name == only) {
 			r.State = building
 			return *r, true
 		}

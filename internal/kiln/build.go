@@ -27,9 +27,16 @@ const unknownReset = 5 * time.Minute
 // Run builds each queued spec, one at a time, until none is queued. A build that was building when kiln last stopped
 // goes on first, in the same session. Run refuses while another kiln run builds in the repository.
 func (r *Repo) Run(ctx context.Context, out io.Writer) error {
+	return r.run(ctx, out, "")
+}
+
+var errRunning = fmt.Errorf("%w: another kiln run is building in this repository", errRefused)
+
+// run builds the queued specs, or only the one named only, if it is not "".
+func (r *Repo) run(ctx context.Context, out io.Writer, only string) error {
 	unlock, err := r.store.lock(runLock, false)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
-		return fmt.Errorf("%w: another kiln run is building in this repository", errRefused)
+		return errRunning
 	}
 
 	if err != nil {
@@ -56,7 +63,7 @@ func (r *Repo) Run(ctx context.Context, out io.Writer) error {
 		var rec record
 		var found bool
 		err := r.store.update(func(b *book) error {
-			rec, found = b.next()
+			rec, found = b.next(only)
 			return nil
 		})
 		if err != nil || !found {
@@ -97,12 +104,15 @@ type outOfRounds struct{ why string }
 func (s *outOfRounds) Error() string { return s.why }
 
 func (b *build) run(ctx context.Context) error {
-	if b.rec.Session == "" {
+	switch {
+	case b.rec.Session == "":
 		if err := b.start(ctx); err != nil {
 			return err
 		}
-	} else if _, err := b.talk(ctx, b.launch(true, interrupted)); err != nil {
-		return err
+	case !b.rec.Accepted:
+		if _, err := b.talk(ctx, b.launch(true, interrupted)); err != nil {
+			return err
+		}
 	}
 
 	for {
@@ -110,7 +120,7 @@ func (b *build) run(ctx context.Context) error {
 			return err
 		}
 
-		v, err := b.r.gate(ctx, b.tree, b.rec.Name)
+		v, err := b.r.gate(ctx, b.tree, b.rec.Name, b.allowed()...)
 		if err != nil {
 			return err
 		}
@@ -138,10 +148,14 @@ func (b *build) after(ctx context.Context, v verdict) (string, error) {
 	}
 
 	if !b.rec.Audited {
-		b.set(func(r *record) { r.Audited = true })
 		findings, err := b.audit(ctx)
-		if err != nil || findings != "" {
-			return fmt.Sprintf(audited, findings), err
+		if err != nil {
+			return "", err
+		}
+
+		b.set(func(r *record) { r.Audited = true })
+		if findings != "" {
+			return fmt.Sprintf(audited, findings), nil
 		}
 	}
 
@@ -150,13 +164,16 @@ func (b *build) after(ctx context.Context, v verdict) (string, error) {
 		return "", err
 	}
 
-	if amendments, found, err := b.r.git.Show(ctx, head, amendPath(b.rec.Name)); err != nil || found {
+	var retire func(context.Context, string) error
+	if b.rec.Accepted {
+		retire = b.retire
+	} else if amendments, found, err := b.r.git.Show(ctx, head, amendPath(b.rec.Name)); err != nil || found {
 		b.set(func(r *record) { r.State, r.Amendments = amended, string(amendments) })
 		b.say("waits on %s, with amendments for UAT", branchOf(b.rec.Name))
 		return "", err
 	}
 
-	onMain, report, err := b.land(ctx, head, nil)
+	onMain, report, err := b.land(ctx, head, retire, b.allowed()...)
 	if err != nil || report != "" {
 		if err == nil {
 			return b.round(ctx, report)
@@ -169,9 +186,24 @@ func (b *build) after(ctx context.Context, v verdict) (string, error) {
 		return "", err
 	}
 
+	if b.rec.Accepted {
+		b.say("accepted, and main is at %s", short(onMain))
+		return "", b.r.store.update(func(k *book) error { k.retire(b.rec.Name); return nil })
+	}
+
 	b.set(func(r *record) { r.State = landed })
 	b.say("landed on main at %s, and waits for UAT", short(onMain))
 	return "", nil
+}
+
+// allowed are the paths under specs/ that an accepted spec's landing changes: it folds the amendments, and retires
+// the spec.
+func (b *build) allowed() []string {
+	if b.rec.Accepted {
+		return []string{specPath(b.rec.Name), amendPath(b.rec.Name)}
+	}
+
+	return nil
 }
 
 // round sends a failed gate's report back to the session, or stops the build past its last round.
@@ -210,7 +242,8 @@ func (b *build) start(ctx context.Context) error {
 		return err
 	}
 
-	b.set(func(r *record) { r.Session = newSession() })
+	session := newSession()
+	b.set(func(r *record) { r.Session = session })
 	b.say("building on %s, in %s", branchOf(b.rec.Name), b.tree)
 	prompt := fmt.Sprintf(starting, specPath(b.rec.Name), short(b.rec.Approved), branchOf(b.rec.Name))
 	_, err = b.talk(ctx, b.launch(false, prompt))
@@ -252,6 +285,11 @@ func (b *build) sandboxed(l claude.Launch) claude.Launch {
 func (b *build) talk(ctx context.Context, l claude.Launch) (claude.Ended, error) {
 	for {
 		ended, err := b.r.claude.Run(ctx, l)
+		if ctx.Err() != nil {
+			// A session kiln's interrupt ended has not ended on its own, so how it ended says nothing.
+			return ended, ctx.Err()
+		}
+
 		if err != nil || ended.Limit == nil {
 			return ended, err
 		}
@@ -277,7 +315,8 @@ func (b *build) talk(ctx context.Context, l claude.Launch) (claude.Ended, error)
 var tally = regexp.MustCompile(`found (\d+)\s*$`)
 
 // audit runs the audit agent on the packages the build changed, and its acceptance tests. It answers the findings, or
-// "" for none. An audit that names no finding count is all findings.
+// "" for none. An audit that names no finding count is all findings. An audit that ends with no result runs again, in a
+// new session, up to auditTries times.
 func (b *build) audit(ctx context.Context) (string, error) {
 	main, err := b.r.git.Tip(ctx, mainBranch)
 	if err != nil {
@@ -312,26 +351,35 @@ func (b *build) audit(ctx context.Context) (string, error) {
 
 	b.say("the audit reads %s", strings.Join(packages, " "))
 	l := b.sandboxed(claude.Launch{
-		Session: newSession(),
-		Role:    "audit",
-		System:  guidance.Audit(),
-		Prompt:  fmt.Sprintf(auditing, strings.Join(packages, " "), specPath(b.rec.Name), b.rec.Name),
-		Dir:     b.tree,
-		Tools:   []string{"Read", "Grep", "Glob"},
+		Role:   "audit",
+		System: guidance.Audit(),
+		Prompt: fmt.Sprintf(auditing, strings.Join(packages, " "), specPath(b.rec.Name), b.rec.Name),
+		Dir:    b.tree,
+		Tools:  []string{"Read", "Grep", "Glob"},
 	})
-	ended, err := b.talk(ctx, l)
-	if err == nil && ended.Failed {
-		b.say("the audit ended with no result; the build goes on without it")
-		return "", nil
-	}
+	for try := 1; ; try++ {
+		l.Session = newSession()
+		ended, err := b.talk(ctx, l)
+		switch {
+		case err != nil:
+			return "", err
+		case ended.Failed && try < auditTries:
+			b.say("the audit ended with no result; it runs again")
+			continue
+		case ended.Failed:
+			return "", fmt.Errorf("the audit ended with no result %d times", auditTries)
+		}
 
-	text := strings.TrimSpace(ended.Text)
-	if m := tally.FindStringSubmatch(text); err != nil || m != nil && m[1] == "0" {
-		return "", err
-	}
+		text := strings.TrimSpace(ended.Text)
+		if m := tally.FindStringSubmatch(text); m != nil && m[1] == "0" {
+			return "", nil
+		}
 
-	return text, nil
+		return text, nil
+	}
 }
+
+const auditTries = 3
 
 // land rebases the build's work onto main as one commit, copies its guidance in, and gates it. Then it moves main
 // there, only if main has not moved since the rebase; if it has, land starts again. from is the commit to rebase,
@@ -364,7 +412,8 @@ func (b *build) land(ctx context.Context, from string, retire func(ctx context.C
 			}
 		}
 
-		held, err := b.copyGuidance(ctx)
+		// Main already holds start when no rebase ran, so the copy needs a commit of its own.
+		held, err := b.copyGuidance(ctx, start != onto)
 		if err != nil {
 			return "", "", err
 		}
@@ -401,9 +450,9 @@ func (b *build) land(ctx context.Context, from string, retire func(ctx context.C
 	}
 }
 
-// copyGuidance copies guidance/agents/ and guidance/skills/ to .claude/, into the commit at HEAD. It answers that
-// commit.
-func (b *build) copyGuidance(ctx context.Context) (string, error) {
+// copyGuidance copies guidance/agents/ and guidance/skills/ to .claude/. With amend, the copy goes into the commit at
+// HEAD; without it, into a new commit, if it changed anything. It answers the commit at HEAD.
+func (b *build) copyGuidance(ctx context.Context, amend bool) (string, error) {
 	for _, dir := range []string{"agents", "skills"} {
 		from := filepath.Join(b.tree, "guidance", dir)
 		err := filepath.WalkDir(from, func(p string, d fs.DirEntry, err error) error {
@@ -433,7 +482,11 @@ func (b *build) copyGuidance(ctx context.Context) (string, error) {
 		}
 	}
 
-	return b.r.git.Amend(ctx, b.tree)
+	if amend {
+		return b.r.git.Amend(ctx, b.tree)
+	}
+
+	return b.r.git.Commit(ctx, b.tree, "chore: copy guidance into .claude\n")
 }
 
 // foldAmendments commits, on the spec's branch, the spec with its amendments folded in, and the amendment file
@@ -525,10 +578,18 @@ func (b *build) retire(ctx context.Context, held string) error {
 
 const productHead = "# Product\n\nEach spec the developer accepted, and the commit that last held it.\n\n"
 
-// set changes the build's record, and the copy the build keeps of it.
+// set applies change once, to the stored record, and takes that record as the build's copy.
 func (b *build) set(change func(*record)) {
-	change(&b.rec)
-	if err := b.r.store.set(b.rec.Name, change); err != nil {
+	err := b.r.store.update(func(k *book) error {
+		if r := k.find(b.rec.Name); r != nil {
+			change(r)
+			b.rec = *r
+		}
+
+		return nil
+	})
+	if err != nil {
+		change(&b.rec)
 		b.say("kiln could not record it: %v", err)
 	}
 }

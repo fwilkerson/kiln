@@ -64,6 +64,8 @@ type check struct {
 	Output string `json:"output,omitempty"`
 	// Failed names each Go test the output says failed, with its package.
 	Failed []string `json:"failed,omitempty"`
+	// Broken is true when a Go package failed with no test named. A timeout or a failed build does that.
+	Broken bool `json:"broken,omitempty"`
 }
 
 // outputKept is how much of a command's output a check keeps, from its end.
@@ -76,7 +78,8 @@ func runChecks(ctx context.Context, dir string, commands, env []string) ([]check
 		cmd.Dir, cmd.Env = dir, proc.Shell.Env(env)
 		proc.OwnGroup(cmd)
 		out, err := cmd.CombinedOutput()
-		c := check{Command: command, Failed: failedTests(string(out))}
+		c := check{Command: command}
+		c.Failed, c.Broken = failedTests(string(out))
 		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 			c.Exit = exit.ExitCode()
 		} else if err != nil {
@@ -90,9 +93,10 @@ func runChecks(ctx context.Context, dir string, commands, env []string) ([]check
 	return checks, ctx.Err()
 }
 
-// failedTests reads go test's output for the top-level tests that failed, each named with its package.
-func failedTests(output string) []string {
-	var failed, pending []string
+// failedTests reads go test's output for the top-level tests that failed, each named with its package. broken is true
+// when a package failed with no test named.
+func failedTests(output string) (failed []string, broken bool) {
+	var pending []string
 	for line := range strings.Lines(output) {
 		line = strings.TrimRight(line, "\r\n")
 		if name, ok := strings.CutPrefix(line, "--- FAIL: "); ok {
@@ -104,11 +108,12 @@ func failedTests(output string) []string {
 				failed = append(failed, name+" ("+pkg+")")
 			}
 
+			broken = broken || len(pending) == 0
 			pending = nil
 		}
 	}
 
-	return append(failed, pending...)
+	return append(failed, pending...), broken
 }
 
 // verdict is what a gate found.
@@ -120,8 +125,8 @@ type verdict struct {
 	report string
 }
 
-// judge passes a gate when each check at the tip exited 0, or failed on Go tests failing at main.
-// refused names each path the build may not change, and fails the gate.
+// judge passes a gate when each check at the tip exited 0, or failed on Go tests failing at main. A package that
+// failed with no test named is a failure nothing at main excuses. refused names each path the build may not change.
 func judge(tip, main []check, refused []string) verdict {
 	var v verdict
 	atMain := map[string]bool{}
@@ -135,7 +140,8 @@ func judge(tip, main []check, refused []string) verdict {
 	var failures []string
 	for _, c := range tip {
 		failedAtMain := func(t string) bool { return atMain[c.Command+"\x00"+t] }
-		if c.Exit == 0 || len(c.Failed) > 0 && !slices.ContainsFunc(c.Failed, not(failedAtMain)) {
+		excused := !c.Broken && len(c.Failed) > 0 && !slices.ContainsFunc(c.Failed, not(failedAtMain))
+		if c.Exit == 0 || excused {
 			continue
 		}
 
