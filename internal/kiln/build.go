@@ -381,7 +381,7 @@ func (b *build) audit(ctx context.Context) (string, error) {
 
 const auditTries = 3
 
-// land rebases the build's work onto main as one commit, copies its guidance in, and gates it. Then it moves main
+// land rebases the build's work onto main as one commit, links its guidance in, and gates it. Then it moves main
 // there, only if main has not moved since the rebase; if it has, land starts again. from is the commit to rebase,
 // or "" to start from main's tip. Before the gate, retire may add a commit. A path in allowed may change, though
 // guarded names it.
@@ -412,8 +412,8 @@ func (b *build) land(ctx context.Context, from string, retire func(ctx context.C
 			}
 		}
 
-		// Main already holds start when no rebase ran, so the copy needs a commit of its own.
-		held, err := b.copyGuidance(ctx, start != onto)
+		// Main already holds start when no rebase ran, so the links need a commit of their own.
+		held, err := b.linkGuidance(ctx, start != onto)
 		if err != nil {
 			return "", "", err
 		}
@@ -450,34 +450,26 @@ func (b *build) land(ctx context.Context, from string, retire func(ctx context.C
 	}
 }
 
-// copyGuidance copies guidance/agents/ and guidance/skills/ to .claude/. With amend, the copy goes into the commit at
-// HEAD; without it, into a new commit, if it changed anything. It answers the commit at HEAD.
-func (b *build) copyGuidance(ctx context.Context, amend bool) (string, error) {
+// linkGuidance links .claude/agents to guidance/agents/, and .claude/skills to guidance/skills/, for each that
+// guidance/ holds and .claude/ does not. A .claude/ directory the developer made stays theirs. With amend, the links go
+// into the commit at HEAD; without it, into a new commit, if they changed anything. It answers the commit at HEAD.
+func (b *build) linkGuidance(ctx context.Context, amend bool) (string, error) {
 	for _, dir := range []string{"agents", "skills"} {
-		from := filepath.Join(b.tree, "guidance", dir)
-		err := filepath.WalkDir(from, func(p string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
-				return err
-			}
+		held, err := isDir(filepath.Join(b.tree, "guidance", dir))
+		if err != nil {
+			return "", err
+		}
 
-			rel, err := filepath.Rel(from, p)
-			if err != nil {
-				return err
-			}
+		link := ".claude/" + dir
+		_, err = os.Lstat(filepath.Join(b.tree, link))
+		switch {
+		case !held || err == nil:
+			continue
+		case !errors.Is(err, fs.ErrNotExist):
+			return "", err
+		}
 
-			raw, err := os.ReadFile(p)
-			if err != nil {
-				return err
-			}
-
-			to := filepath.Join(b.tree, ".claude", dir, rel)
-			if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
-				return err
-			}
-
-			return os.WriteFile(to, raw, 0o644)
-		})
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err := b.r.git.Link(ctx, b.tree, link, "../guidance/"+dir); err != nil {
 			return "", err
 		}
 	}
@@ -486,7 +478,16 @@ func (b *build) copyGuidance(ctx context.Context, amend bool) (string, error) {
 		return b.r.git.Amend(ctx, b.tree)
 	}
 
-	return b.r.git.Commit(ctx, b.tree, "chore: copy guidance into .claude\n")
+	return b.r.git.Commit(ctx, b.tree, "chore: link guidance into .claude\n")
+}
+
+func isDir(p string) (bool, error) {
+	info, err := os.Stat(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+
+	return err == nil && info.IsDir(), err
 }
 
 // foldAmendments commits, on the spec's branch, the spec with its amendments folded in, and the amendment file
@@ -537,8 +538,8 @@ func (b *build) checkoutMain(ctx context.Context) error {
 	return b.r.git.Checkout(ctx, b.tree, branchOf(b.rec.Name), main)
 }
 
-// retire deletes the spec and its amendments, and adds its line to PRODUCT.md. The line names held, the commit that
-// last held the spec.
+// retire deletes the spec and its amendments, and adds its line to PRODUCT.md. The line holds the command that shows
+// the spec at held, the commit that last held it.
 func (b *build) retire(ctx context.Context, held string) error {
 	name := b.rec.Name
 	spec, err := os.ReadFile(filepath.Join(b.tree, specPath(name)))
@@ -561,7 +562,7 @@ func (b *build) retire(ctx context.Context, held string) error {
 		return err
 	}
 
-	line := fmt.Sprintf("- %s: %s, last held in %s.\n", title, specPath(name), short(held))
+	line := fmt.Sprintf("- %s: `git show %s:%s`\n", title, short(held), specPath(name))
 	if err := os.WriteFile(productPath, append(text, line...), 0o644); err != nil {
 		return err
 	}
@@ -576,7 +577,8 @@ func (b *build) retire(ctx context.Context, held string) error {
 	return err
 }
 
-const productHead = "# Product\n\nEach spec the developer accepted, and the commit that last held it.\n\n"
+const productHead = "# Product\n\nEach spec the developer accepted, and the command that shows it in the commit " +
+	"that last held it.\n\n"
 
 // set applies change once, to the stored record, and takes that record as the build's copy.
 func (b *build) set(change func(*record)) {

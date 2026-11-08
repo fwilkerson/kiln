@@ -1,7 +1,7 @@
 // Package guidance holds the Claude Code files a build stages for .claude/, and the audit kiln runs from them.
 //
 // Claude Code refuses a headless session's write under .claude/, so a build writes agents/ and skills/ here. Landing
-// copies guidance/agents/ to .claude/agents/ and guidance/skills/ to .claude/skills/.
+// links .claude/agents to guidance/agents/ and .claude/skills to guidance/skills/, where .claude/ has neither.
 package guidance
 
 import (

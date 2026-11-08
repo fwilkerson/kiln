@@ -1,5 +1,5 @@
 # Product
 
-Each spec the developer accepted, and the commit that last held it.
+Each spec the developer accepted, and the command that shows it in the commit that last held it.
 
-- Spec 1: kiln: specs/kiln.md, last held in d54b9a0718f9.
+- Spec 1: kiln: `git show d54b9a0718f9:specs/kiln.md`

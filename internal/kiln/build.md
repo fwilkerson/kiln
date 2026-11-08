@@ -11,8 +11,9 @@ lists what was deferred: don't build it.
   It tests what its Then says, through the program's command line or HTTP.
 - Below that, a test for a domain rule or for how the code is wired. A rule's test is not repeated at a higher layer.
   Don't write a test that only restates the code, pins a name no caller sees, or exists to raise coverage.
-- Files meant for `.claude/agents/` or `.claude/skills/` go under `guidance/agents/` or `guidance/skills/`. Landing
-  copies them in. Claude Code refuses your writes under `.claude/`, and `.claude/settings*` stays the developer's.
+- Files meant for `.claude/agents/` or `.claude/skills/` go under `guidance/agents/` or `guidance/skills/`. On main,
+  `.claude/agents` and `.claude/skills` link to them. Claude Code refuses your writes under `.claude/`, and
+  `.claude/settings*` stays the developer's.
 - You may write `CLAUDE.md`.
 
 ## What you never change

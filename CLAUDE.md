@@ -8,7 +8,8 @@ for macOS.
 - `specs/<name>.md`: an approved spec. Its Given, When, Then text is the developer's: never change it. Where one can't
   hold, write `specs/<name>.amend.md` with the old wording, the new wording and the reason, and finish the work under
   the amendment.
-- `PRODUCT.md`: each spec the developer accepted, and the commit that last held it.
+- `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.
+- `guidance/`: the agents and skills that `.claude/agents` and `.claude/skills` link to. Edit them here.
 - `docs/practices.md`: how Go code is written and judged here. Read it before adding a package or an exported name.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
 - `acceptance/<spec>/`: the test code for each acceptance test of a spec, one Go test named `TestAT<N>` for test N.

@@ -239,7 +239,7 @@ func (g *Git) Checkout(ctx context.Context, path, branch, at string) error {
 	}
 
 	_, there := os.Lstat(path)
-	_, err := g.in(ctx, g.repo, "worktree", "add", "--quiet", "-b", branch, path, at)
+	err := g.addWorktree(ctx, path, "-b", branch, path, at)
 	if err == nil {
 		return nil
 	}
@@ -277,8 +277,7 @@ func (g *Git) Detached(ctx context.Context, path, commit string) error {
 			return err
 		}
 
-		_, err := g.in(ctx, g.repo, "worktree", "add", "--quiet", "--detach", path, commit)
-		return err
+		return g.addWorktree(ctx, path, "--detach", path, commit)
 	}
 
 	for _, args := range [][]string{{"checkout", "--quiet", "--force", "--detach", commit}, {"clean", "-qfdx"}} {
@@ -288,6 +287,44 @@ func (g *Git) Detached(ctx context.Context, path, commit string) error {
 	}
 
 	return nil
+}
+
+// addWorktree runs git worktree add with args. It checks the worktree out with each symbolic link as a plain file
+// that holds its target. Claude Code's sandbox refuses a shell's write to where a link under .claude/ points. With
+// links, a session could not change guidance/ behind .claude/agents. The main checkout keeps its links.
+func (g *Git) addWorktree(ctx context.Context, path string, args ...string) error {
+	if _, err := g.in(ctx, g.repo, "config", "set", "extensions.worktreeConfig", "true"); err != nil {
+		return err
+	}
+
+	add := append([]string{"worktree", "add", "--quiet", "--no-checkout"}, args...)
+	if _, err := g.in(ctx, g.repo, add...); err != nil {
+		return err
+	}
+
+	if _, err := g.in(ctx, path, "config", "set", "--worktree", "core.symlinks", "false"); err != nil {
+		return err
+	}
+
+	_, err := g.in(ctx, path, "reset", "--quiet", "--hard")
+	return err
+}
+
+// Link stages, at checkout, a symbolic link at path to target, and writes it as checkout keeps links. A commit takes
+// it as a link, though checkout holds a plain file.
+func (g *Git) Link(ctx context.Context, checkout, path, target string) error {
+	blob, err := g.run(ctx, call{dir: g.at(checkout), stdin: target}, "hash-object", "-w", "--stdin")
+	if err != nil {
+		return err
+	}
+
+	info := "120000," + strings.TrimSpace(blob) + "," + path
+	if _, err := g.in(ctx, checkout, "update-index", "--add", "--cacheinfo", info); err != nil {
+		return err
+	}
+
+	_, err = g.in(ctx, checkout, "checkout-index", "--force", "--", path)
+	return err
 }
 
 // Head is the commit checked out at checkout.
