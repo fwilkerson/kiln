@@ -20,13 +20,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/rogpeppe/go-internal/testscript"
-
-	// go test caches a test by the code it imports. The tests build cmd/kiln as they run, so this import is what
-	// ties their cache to kiln's code.
-	_ "github.com/fwilkerson/kiln/internal/kiln"
 )
 
 // Main runs the tests of m, with kiln and the scripted claude first on the PATH. Call it from TestMain.
@@ -57,9 +54,14 @@ func (t tests) Run() int {
 
 	defer os.RemoveAll(bin)
 
-	build := exec.Command("go", "build", "-o", filepath.Join(bin, "kiln"), "github.com/fwilkerson/kiln/cmd/kiln")
+	build := exec.Command("go", "build", "-o", filepath.Join(bin, "kiln"), kilnCommand)
 	if out, err := build.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "scenariotest: building kiln: %v\n%s", err, out)
+		return 2
+	}
+
+	if kilnSource, err = sourceOf(kilnCommand); err != nil {
+		fmt.Fprintln(os.Stderr, "scenariotest:", err)
 		return 2
 	}
 
@@ -78,11 +80,45 @@ func (t tests) Run() int {
 	return t.m.Run()
 }
 
+const kilnCommand = "github.com/fwilkerson/kiln/cmd/kiln"
+
+// kilnSource is each file the kiln on the PATH is built from, but Go's own packages.
+var kilnSource []string
+
+// sourceOf lists the Go and embedded files that pkg is built from, with its dependencies, but Go's own packages.
+func sourceOf(pkg string) ([]string, error) {
+	format := `{{if not .Standard}}{{range .GoFiles}}{{$.Dir}}/{{.}}
+{{end}}{{range .EmbedFiles}}{{$.Dir}}/{{.}}
+{{end}}{{end}}`
+	out, err := exec.Command("go", "list", "-deps", "-f", format, pkg).Output()
+	if err != nil {
+		return nil, fmt.Errorf("listing the source of %s: %w", pkg, err)
+	}
+
+	return strings.Fields(string(out)), nil
+}
+
+// readSource reads kilnSource once. go test caches a test by its binary, and by the files it opens while it runs.
+// The scripts run a kiln built apart. Reading its source lets a change to kiln end the cached result.
+var readSource = sync.OnceValue(func() error {
+	for _, p := range kilnSource {
+		if _, err := os.ReadFile(p); err != nil {
+			return err
+		}
+	}
+
+	return nil
+})
+
 // Run runs the script in file, beside the other tests that call Run.
 func Run(t *testing.T, file string) {
 	t.Parallel()
 	if len(goEnv) == 0 {
 		t.Fatal("scenariotest: this package's TestMain must call scenariotest.Main(m)")
+	}
+
+	if err := readSource(); err != nil {
+		t.Fatal("scenariotest:", err)
 	}
 
 	testscript.Run(t, testscript.Params{Files: []string{file}, Setup: setUp, RequireExplicitExec: true})
