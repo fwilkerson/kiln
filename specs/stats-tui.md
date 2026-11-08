@@ -145,9 +145,10 @@ Spec 2's terms hold: build, session, role, session run, gate, ledger, size, caus
 - A number kiln could not read is shown as unknown, never as zero, as spec 2 holds.
 - No agent opens the view by accident: it opens only by its own command, and refuses with a message when its output
   is not a terminal.
-- The audit drives a TUI it reviews, as a developer would, and the developer sees in the ledger whether it changed
-  anything. Give it the tools first, and take them back if the ledger shows it misuses them. Its Edit and Write
-  counts would miss a file written by a shell command, so kiln compares the build's tree across each audit run.
+- The audit drives a TUI it reviews, as a developer would, through its model, and the developer sees in the ledger
+  whether it changed anything. Give it the tools first, and take them back if the ledger shows it misuses them. Its
+  Edit and Write counts would miss a file written by a shell command, so kiln compares the build's tree across each
+  audit run.
 
 ## Non-goals
 
@@ -297,9 +298,14 @@ Each test drives `kiln tui` in a pseudo-terminal, by keys unless it says the mou
   before it draws.
 - **Before approval: the audit's tools.** The audit that reviews this build is the one compiled into the `kiln`
   that runs it: `guidance.Audit()` embeds `guidance/agents/audit.md`, and its tools are set in
-  `internal/kiln/build.go`. So a hand change on main, before `kiln approve stats-tui`, gives the audit `Bash`,
-  allows `Bash(tui-test *)` in `.claude/settings.json`, which kiln's sessions read (`--setting-sources project`),
-  and tells the audit how to drive a TUI. tui-test's CLI is on the developer's `PATH`.
+  `internal/kiln/build.go`. So a hand change on main, before `kiln approve stats-tui`, gives the audit `Bash` and
+  tells it to drive a TUI's model in a test of its own, run with `go test -overlay` from `$TMPDIR`, and to read each
+  screen as PNG. No sandboxed command can open a pseudo-terminal, so neither tui-test nor termtest runs inside a
+  session (`docs/research/tui/runs/2026-11-08-sandbox.md`).
+- **Where the terminal tests run.** For the same reason, the build session cannot run the acceptance tests, which
+  drive `kiln tui` through termtest: they run only in kiln's gate, which runs outside any session. The build session
+  checks its screens through the model's `Update` and `View` in-process, and reads a failing acceptance test from
+  the gate's report.
 - **The specs list.** Each spec in the book, with its state, and each spec in the ledger the book no longer holds, as
   accepted. Newest build first.
 - **The spec text.** As approved: `git.Show(ctx, approved, specPath(name))`, as `build.begin` reads it. Its
@@ -339,6 +345,15 @@ Each test drives `kiln tui` in a pseudo-terminal, by keys unless it says the mou
   session's name, and the landing squash carries it to main; the red mark shows only after it landed.
 - **Reason for Rejection**: the ledger's paths are what the developer needs to judge the audit, and a stray
   screenshot or binary must not reach main.
+
+### The audit drives the real program with tui-test, outside the sandbox
+
+- **Pros**: the audit sees key and mouse decoding, the real renderer and a real resize.
+- **Cons**: no sandboxed command can open a pseudo-terminal, so tui-test would run under `excludedCommands`, which
+  only kiln's own settings can set. `tui-test run` starts any program it is given, with no filesystem or network
+  limit, and the ledger's tree check sees no write outside the build's tree.
+- **Reason for Rejection**: driving the model in-process found every layout fault in the trial, and the gate's
+  terminal acceptance tests cover decoding.
 
 ### The audit reads screens a test saved, and runs nothing
 
