@@ -23,7 +23,7 @@ A gauge is a number over time, with a line the developer sets.
 | Flaky tests        | Eidos's `scripts/gate.sh` `suite_again` notes each test that passed on a second run alone. A gauge counts those notes per gate |
 | Slow tests         | Eidos's `scripts/health.py`: the slowest tests, suite CPU and wall time                                                        |
 | Comment share      | odh's `tools/size`: comment lines per 100 lines, by directory                                                                  |
-| Agent friction     | kiln's ledger, `.git/kiln/ledger.jsonl`: failed calls, turns and context per build, which `kiln stats` already shows           |
+| Agent friction     | kiln's ledger, `.git/kiln/ledger.jsonl`: failed calls, turns and context per build, which `kiln tui` already shows             |
 | Mutation score     | Eidos's `scripts/mutate.sh`                                                                                                    |
 | GoLand inspections | odh's `tools/inspect`. It needs GoLand open on the machine, so it can't gate an unattended build                               |
 
@@ -68,7 +68,7 @@ monitor ─▶ observation, keyed by signature, counted
    Either way gauges come first, since a monitor's unreproduced observations show only as a gauge's count.
 
 2. **What does the first monitor watch?** No project kiln builds runs anywhere today. The one log kiln has is its own
-   session streams, where `kiln stats` already groups failed calls by message, which is a signature and a count. But
+   session streams, where `kiln tui` already groups failed calls by message, which is a signature and a count. But
    those are sandbox and tool failures that break no Given, When, Then, so the reproducer would cite nothing and each
    would stay an observation. Lean: wait for a running project, and name it here.
 

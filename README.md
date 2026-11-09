@@ -15,7 +15,6 @@ kiln init                      write a starting kiln.json, and install the pre-c
 kiln approve [--again] <name>  queue a build of specs/<name>.md, as main holds it
 kiln run                       build each queued spec, one at a time, until none is queued
 kiln status                    show where each spec stands
-kiln stats [<name>]            show what each build cost, one line each, or each build of one spec in full
 kiln tui [<name>]              show every build, live and past, in a full-screen view; or open it on one spec
 kiln accept <name>             end UAT: land the spec if it waits on its branch, then retire it
 ```
@@ -27,10 +26,8 @@ kiln accept <name>             end UAT: land the spec if it waits on its branch,
 3. Read `kiln status`. A spec waiting for UAT is on main. A spec waiting on its branch with amendments shows them.
 4. Run `kiln accept <name>`. The spec is deleted, and `PRODUCT.md` gains the command that shows it.
    To revise a spec that waits for UAT instead, commit the edit and run `kiln approve --again <name>`.
-5. Read `kiln stats` for the trend across builds, and `kiln stats <name>` for one spec's builds by role and session.
-   A landed build's commit holds its time, cost, turns and failed calls too. The ledger is
-   `.git/kiln/ledger.jsonl`, and each session's stream, for why a number is what it is, is
-   `.git/kiln/sessions/<id>/stream.jsonl`.
+5. Read a landed build's commit for its time, cost, turns and failed calls. The ledger is `.git/kiln/ledger.jsonl`,
+   and each session's stream, for why a number is what it is, is `.git/kiln/sessions/<id>/stream.jsonl`.
 6. Run `kiln tui` in a terminal of its own, beside `kiln run`, to watch the running session and look back over each
    build run by run. It only reads.
 

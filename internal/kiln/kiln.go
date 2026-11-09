@@ -5,7 +5,6 @@
 //	err = r.Approve(ctx, "x", os.Stdout)  // queues specs/x.md, as main holds it
 //	err = r.Run(ctx, os.Stdout)           // builds each queued spec, one at a time
 //	err = r.Status(ctx, os.Stdout)
-//	err = r.Stats(ctx, "", os.Stdout)     // what each build cost, one line each; "x" shows each build of x in full
 //	err = r.TUI(ctx, "", os.Stdin, os.Stdout)  // every build, live and past, in a full-screen view
 //	err = r.Accept(ctx, "x", os.Stdout)   // ends UAT, and retires the spec
 //
