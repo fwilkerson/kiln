@@ -264,27 +264,15 @@ func (r *Repo) atMain(ctx context.Context, main string, commands []string) ([]ch
 	})
 }
 
-// Precommit refuses a commit to main whose staged files fail one of kiln.json's commands. It runs them on a copy of
-// what the commit holds, and names each Go test that failed. A pre-commit hook in dir calls it, with git's env.
+// Precommit refuses a commit to main when one of kiln.json's commands fails. It runs them in dir, the working tree,
+// unstaged edits included, and names each Go test that failed. A pre-commit hook in dir calls it, with git's env.
 func Precommit(ctx context.Context, dir string, env []string, out *os.File) error {
 	branch, err := plainGit(ctx, dir, env, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil || branch != mainBranch {
 		return nil
 	}
 
-	copied, err := os.MkdirTemp("", "kiln-precommit-")
-	if err != nil {
-		return err
-	}
-
-	defer os.RemoveAll(copied)
-
-	// checkout-index reads the index the commit is made from, which git names in GIT_INDEX_FILE.
-	if _, err := plainGit(ctx, dir, env, "checkout-index", "--all", "--prefix="+copied+"/"); err != nil {
-		return err
-	}
-
-	raw, err := os.ReadFile(filepath.Join(copied, configFile))
+	raw, err := os.ReadFile(filepath.Join(dir, configFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -294,7 +282,7 @@ func Precommit(ctx context.Context, dir string, env []string, out *os.File) erro
 		return err
 	}
 
-	checks, err := runChecks(ctx, copied, c.Gate, env)
+	checks, err := runChecks(ctx, dir, c.Gate, env)
 	if err != nil {
 		return err
 	}
