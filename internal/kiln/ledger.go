@@ -24,7 +24,7 @@ import (
 //
 //	build     when kiln run starts a build: its spec, the commit it was approved at, its size
 //	start     before each session run: its role, its session, the length of the session's stream, why it started,
-//	          and the process ID of the kiln run that started it
+//	          the process ID of the kiln run that started it, and the commit an audit run read
 //	end       after each session run: how it ended, its totals, the stream's length, and what an audit changed
 //	gate      after each gate: when it ended, whether it passed, and whether it gated a landing
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
@@ -74,6 +74,8 @@ type entry struct {
 	Session string `json:"session,omitempty"`
 	PID     int    `json:"pid,omitempty"`
 	reason
+	// Read is the commit an audit run read, in its start line.
+	Read string `json:"read,omitempty"`
 	// Streamed is the length of the session's stream. A start line holds it before the run, and an end line after.
 	Streamed int64 `json:"streamed,omitempty"`
 	// An end line's. Changed names the paths an audit run changed in the build's tree, which kiln then put back.
@@ -199,9 +201,9 @@ func size(spec string) int {
 
 // recount ends each run that has a start line but no end line. kiln leaves one when it dies mid-run. It totals the
 // run from its session's stream, past the length the start line holds. It ends the run as the stream shows: with a
-// result only if the stream holds one. kiln run calls it under its lock, before any build goes on, so no run is
-// still running.
-func (r *Repo) recount(out io.Writer) {
+// result only if the stream holds one. A lost audit run's end line names what it changed in its worktree, as talk's
+// would. kiln run calls it under its lock, before any build goes on, so no run is still running.
+func (r *Repo) recount(ctx context.Context, out io.Writer) {
 	say := func(format string, args ...any) { fmt.Fprintf(out, "kiln: "+format+"\n", args...) }
 	entries, err := r.store.entries()
 	if err != nil {
@@ -211,8 +213,11 @@ func (r *Repo) recount(out io.Writer) {
 
 	open := map[string]entry{}
 	var order []string
+	specs := map[string]string{}
 	for _, e := range entries {
 		switch e.Kind {
+		case builtKind:
+			specs[e.Build] = e.Spec
 		case startKind:
 			if !slices.Contains(order, e.Session) {
 				order = append(order, e.Session)
@@ -245,6 +250,12 @@ func (r *Repo) recount(out io.Writer) {
 			Totals: &counted.Totals, Streamed: streamed}
 		if counted.Written.Before(start.At) {
 			e.At = start.At
+		}
+
+		if start.Role == auditRole && start.Read != "" {
+			if e.Changed, err = r.undo(ctx, r.auditTree(specs[start.Build]), start.Read); err != nil {
+				say("kiln could not read what the audit of %s changed: %v", specs[start.Build], err)
+			}
 		}
 
 		if err := r.store.write(e); err != nil {

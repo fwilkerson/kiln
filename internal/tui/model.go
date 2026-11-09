@@ -171,7 +171,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.openTarget(t)
 		}
 	case tea.MouseWheelMsg:
-		m.wheel(msg.Button == tea.MouseWheelDown)
+		m.wheel(msg.X, msg.Y, msg.Button == tea.MouseWheelDown)
 	}
 
 	m.refresh()
@@ -269,6 +269,20 @@ func (m *model) homeKey(k tea.KeyPressMsg) tea.Cmd {
 
 var paneTargets = [panes]string{specsPane: toSpec, nowPane: toNow, recentPane: toRecent}
 
+// paneAt is the home screen's pane drawn at column x, row y, if one is.
+func (m model) paneAt(x, y int) (pane, bool) {
+	t, ok := parseTarget(m.layout().Hit(x, y).ID())
+	switch {
+	case !ok:
+		return 0, false
+	case t.to == toPane:
+		return pane(t.i), true
+	}
+
+	p := slices.Index(paneTargets[:], t.to)
+	return pane(p), p >= 0
+}
+
 // nextPane is the pane by panes on from the focused one. It skips the now line while nothing runs.
 func (m model) nextPane(by int) pane {
 	p := m.focus
@@ -348,11 +362,17 @@ func (m *model) listKey(s *screen, k tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-func (m *model) wheel(down bool) {
+// wheel scrolls what is under the pointer, at column x and row y. On home, that is the pane it is over, which takes
+// the keys too.
+func (m *model) wheel(x, y int, down bool) {
 	s := m.top()
 	by := map[bool]int{true: 1, false: -1}[down]
 	if s.kind == homeScreen {
-		m.move(by)
+		if p, ok := m.paneAt(x, y); ok {
+			m.focus = p
+			m.move(by)
+		}
+
 		return
 	}
 

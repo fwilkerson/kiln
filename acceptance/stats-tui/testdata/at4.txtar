@@ -2,8 +2,10 @@
 
 # Given: a spec the developer accepted, which main no longer holds, and another spec waiting on its branch with an
 # amendment.
-# Both specs are longer than the terminal is tall, so their ends show only once scrolled to.
+# Both specs are longer than the terminal is tall, so their ends show only once scrolled to. Once a is approved, the
+# developer edits it on main, so only the text it was approved at lacks the edit.
 exec kiln approve a
+exec sh -c 'echo "This line came after the approval." >>specs/a.md && git commit --quiet -am "docs(a): edit"'
 exec kiln approve b
 exec kiln run
 stdout '^a: landed on main'
@@ -24,6 +26,7 @@ screen 'This line opens spec a\.'
 ! screen 'This line ends spec a\.'
 keys end
 screen 'This line ends spec a\.'
+! screen 'came after the approval'
 
 # The second shows its text and its amendment.
 keys esc esc / b enter enter

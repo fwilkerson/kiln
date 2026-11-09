@@ -1,6 +1,7 @@
 package kiln
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -91,7 +92,7 @@ func TestView(t *testing.T) {
 		"gone halted: first run ended",
 		"done accepted: first run ended, round 1 of 3 ended, audit, try 2 ended, audit's findings ended, " +
 			"conflict with main, round 2 of 3 ended, landing gate failed, round 3 of 3 ended, after a usage limit " +
-			"ended, after kiln stopped ended, why unknown ended",
+			"ended, after kiln stopped ended, ? ended",
 	}
 	if g, w := strings.Join(got, "\n"), strings.Join(want, "\n"); g != w {
 		t.Errorf("the view reads\n%s\nwant\n%s", g, w)
@@ -103,15 +104,86 @@ func shownStep(step tui.Step) string {
 	case *tui.Gate:
 		return map[bool]string{true: "gate passed", false: "gate failed"}[s.Passed]
 	case *tui.Run:
+		why := cmp.Or(s.Why, "?")
 		switch {
 		case s.Lost:
-			return s.Why + " lost"
+			return why + " lost"
 		case s.End.IsZero() && s.To == -1:
-			return s.Why + " running"
+			return why + " running"
 		}
 
-		return s.Why + " ended"
+		return why + " ended"
 	}
 
 	return "?"
+}
+
+// TestBeforeSpec3 holds how the view reads lines kiln wrote before spec 3, whose end lines hold no stream length. A
+// run's bytes then end where its session's next run starts, or at the stream's end.
+func TestBeforeSpec3(t *testing.T) {
+	r := &Repo{store: store{dir: t.TempDir()}}
+	at := time.Now().Add(-time.Hour)
+	for _, e := range []entry{
+		{Kind: builtKind, Spec: "old"},
+		{Kind: startKind, Role: "build", Session: "build"},
+		{Kind: endKind, Session: "build", Ended: endedResult},
+		{Kind: startKind, Role: "audit", Session: "audit"},
+		{Kind: endKind, Session: "audit", Ended: endedResult},
+		{Kind: startKind, Role: "build", Session: "build", Streamed: 3000},
+		{Kind: endKind, Session: "build", Ended: endedResult},
+		{Kind: outcomeKind, Outcome: outLanded},
+	} {
+		at = at.Add(time.Minute)
+		e.Build, e.At = "b-old", at
+		if err := r.store.write(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	specs, err := view{r}.Specs(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got []string
+	for _, step := range specs[0].Builds[0].Steps {
+		if run, ok := step.(*tui.Run); ok {
+			got = append(got, fmt.Sprintf("%s %d to %d", run.Role, run.From, run.To))
+		}
+	}
+
+	if g, w := strings.Join(got, ", "), "build 0 to 3000, audit 0 to -1, build 3000 to -1"; g != w {
+		t.Errorf("the runs' bytes are %s, want %s", g, w)
+	}
+}
+
+// TestStateOf holds where the view says a spec stands. A pause that a kiln run took ends with that run, so the next
+// kiln run's build runs. An accepted spec that waits for the kiln run building now is queued, not halted.
+func TestStateOf(t *testing.T) {
+	for name, tc := range map[string]struct {
+		given record
+		// next is true when a kiln run, this test's process, takes the spec from the queue.
+		next bool
+		want tui.State
+	}{
+		"a build paused by its own kiln run is paused": {given: record{State: building, Session: "s",
+			runner: runner{PID: os.Getpid(), Paused: time.Now().Add(time.Hour)}}, want: tui.Paused},
+		"a pause ends with the kiln run that took it": {given: record{State: queued, Session: "s",
+			runner: runner{Paused: time.Now().Add(-time.Hour)}}, next: true, want: tui.Running},
+		"an accepted spec waits for the kiln run building now": {given: record{State: queued, Session: "s",
+			Accepted: true}, want: tui.Queued},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := tc.given
+			rec.Name = "x"
+			b := book{Specs: []*record{&rec}}
+			if tc.next {
+				b.next("", os.Getpid())
+			}
+
+			if got := stateOf(&rec); got != tc.want {
+				t.Errorf("the view says %s, want %s", got, tc.want)
+			}
+		})
+	}
 }

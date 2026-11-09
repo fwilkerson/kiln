@@ -57,6 +57,8 @@ func TestTrend(t *testing.T) {
 			`cost per build +\$2\.00 ▃·█ +previous 0: —  2 of 3 *│`, "$2.00 ▃", nil},
 		{"a worse number is red", ended(1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2), 0,
 			`cost per build +✗ +\$2\.00 ██████████ +previous 2: \$1\.00 *│`, "$2.00 █", ansi.Red},
+		{"a trend too narrow for its sparklines does not label them", ended(1, 1), 74,
+			`│ +median *│`, "$1.00  previous", nil},
 		{"an 80-column terminal shows both medians",
 			ended(3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), 80,
 			`│cost +✓ +\$1\.00 ██████████ +previous 10: \$3\.00 *│`, "$1.00 █", ansi.Green},
@@ -72,6 +74,50 @@ func TestTrend(t *testing.T) {
 				t.Errorf("the median is drawn in %v, want %v", got, tc.color)
 			}
 		})
+	}
+}
+
+// TestRoundsUnknown holds that a build's rounds are unknown when a run does not say why it started. The trend
+// leaves it out of the median, and its spec's screen shows its rounds as unknown, never as 0.
+func TestRoundsUnknown(t *testing.T) {
+	now := time.Now()
+	b := &Build{Spec: "x", Started: now, Outcome: "landed", Steps: []Step{&Run{Role: "build", Start: now, End: now}}}
+	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}}
+	if m := drive(t, src, "", 140, 30); !regexp.MustCompile(`rounds per build +— .*  0 of 1 *│`).MatchString(
+		screenOf(m)) {
+		t.Errorf("the trend counts the rounds:\n%s", screenOf(m))
+	}
+
+	if m := drive(t, src, "x", 140, 30); !regexp.MustCompile(`(?m)^1 .* landed .* \?$`).MatchString(screenOf(m)) {
+		t.Errorf("the spec's screen shows the rounds:\n%s", screenOf(m))
+	}
+}
+
+// TestHomeWheel holds that the wheel on home scrolls the pane under the pointer, which then takes the keys.
+func TestHomeWheel(t *testing.T) {
+	now := time.Now().Truncate(time.Hour)
+	var builds []*Build
+	for i := range 14 {
+		at := now.Add(time.Duration(i-20) * time.Hour)
+		builds = append(builds, &Build{Spec: "x", Started: at, Outcome: "landed", Steps: []Step{
+			&Run{Role: "build", Why: "first run", Start: at, End: at.Add(time.Minute)},
+		}})
+	}
+
+	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: builds}, {Name: "y", State: Queued}}}
+	m := drive(t, src, "", 120, 24)
+	newest := builds[13].Started.Local().Format("Jan 02 15:04")
+	x, y := locate(t, m, newest)
+	for range 12 {
+		m = send(m, func() tea.Msg { return tea.MouseWheelMsg{X: x, Y: y, Button: tea.MouseWheelDown} })
+	}
+
+	if strings.Contains(screenOf(m), newest) {
+		t.Errorf("the wheel did not scroll the recent builds:\n%s", screenOf(m))
+	}
+
+	if m.focus != recentPane || m.sel[specsPane] != 0 {
+		t.Errorf("the wheel moved pane %d, and the specs' selection to %d", m.focus, m.sel[specsPane])
 	}
 }
 

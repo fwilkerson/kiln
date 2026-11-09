@@ -22,7 +22,8 @@ func (m model) View() tea.View {
 	return v
 }
 
-// target is what a click on a row opens. Only id writes a layer's ID, and only parseTarget reads one.
+// target is what a click on a row opens, or the home screen's pane a layer draws. Only id writes a layer's ID, and
+// only parseTarget reads one.
 type target struct {
 	to string
 	i  int
@@ -34,6 +35,8 @@ const (
 	toRecent = "recent"
 	toBuild  = "build"
 	toRun    = "run"
+	// toPane names a home screen's pane, by its number. A click there opens nothing, and the wheel scrolls it.
+	toPane = "pane"
 )
 
 func (t target) id() string {
@@ -48,7 +51,7 @@ func (t target) id() string {
 func parseTarget(id string) (target, bool) {
 	to, n, _ := strings.Cut(id, ":")
 	i, err := strconv.Atoi(n)
-	if err != nil || !slices.Contains([]string{toSpec, toNow, toRecent, toBuild, toRun}, to) {
+	if err != nil || !slices.Contains([]string{toSpec, toNow, toRecent, toBuild, toRun, toPane}, to) {
 		return target{}, false
 	}
 
@@ -167,8 +170,9 @@ func (m model) foot(k kind) *lipgloss.Layer {
 	return lipgloss.NewLayer(fit(" "+text, m.w)).Y(m.h - 1).Z(1)
 }
 
-// box draws a panel of w by h cells, with its title in its top border. Its rows are inside, from the top.
-func box(w, h int, title string, rows []row) *lipgloss.Layer {
+// box draws a panel of w by h cells, with its title in its top border. Its rows are inside, from the top. A wheel
+// turned over the panel scrolls the pane to names, if any.
+func box(to target, w, h int, title string, rows []row) *lipgloss.Layer {
 	if h < 2 {
 		return lipgloss.NewLayer("")
 	}
@@ -182,7 +186,7 @@ func box(w, h int, title string, rows []row) *lipgloss.Layer {
 	}
 
 	lines = append(lines, frame.Render("╰"+strings.Repeat("─", inner)+"╯"))
-	panel := lipgloss.NewLayer(strings.Join(lines, "\n")).Z(1)
+	panel := lipgloss.NewLayer(strings.Join(lines, "\n")).ID(to.id()).Z(1)
 	for i, r := range rows[:min(len(rows), max(0, h-2))] {
 		panel.AddLayers(lipgloss.NewLayer(fit(r.text, inner)).ID(r.to.id()).X(1).Y(1 + i).Z(2))
 	}
@@ -191,7 +195,7 @@ func box(w, h int, title string, rows []row) *lipgloss.Layer {
 }
 
 func (m model) home() []*lipgloss.Layer {
-	sideW := min(max(m.w/4, 20), 34)
+	sideW := m.sideWidth()
 	rightW, h := m.w-sideW, m.h-1
 	const nowH = 4
 	trendH := min(9, max(3, h-nowH-3))
@@ -203,12 +207,23 @@ func (m model) home() []*lipgloss.Layer {
 	}
 
 	return []*lipgloss.Layer{
-		box(sideW, h, "specs", m.side(h-2, sideW-2)),
-		box(rightW, nowH, "now", m.nowRows()).X(sideW),
-		box(rightW, trendH, title, m.trendRows(rightW-2)).X(sideW).Y(nowH),
-		box(rightW, recentH, "recent builds", m.recentRows(recentH-2, rightW-2)).X(sideW).Y(nowH + trendH),
+		box(target{toPane, int(specsPane)}, sideW, h, "specs", m.side(h-2, sideW-2)),
+		box(target{toPane, int(nowPane)}, rightW, nowH, "now", m.nowRows()).X(sideW),
+		box(target{}, rightW, trendH, title, m.trendRows(rightW-2)).X(sideW).Y(nowH),
+		box(target{toPane, int(recentPane)}, rightW, recentH, "recent builds",
+			m.recentRows(recentH-2, rightW-2)).X(sideW).Y(nowH + trendH),
 		m.foot(homeScreen),
 	}
+}
+
+// sideWidth fits the specs panel to its longest row, but takes at most a third of the terminal.
+func (m model) sideWidth() int {
+	need := 0
+	for _, s := range m.specs {
+		need = max(need, ansi.StringWidth(s.Name)+len(s.State)+3)
+	}
+
+	return max(20, min(need+2, 40, m.w/3))
 }
 
 func (m model) side(n, w int) []row {
@@ -267,7 +282,7 @@ func (m model) nowRows() []row {
 		return []row{{text: dim.Render("nothing is running")}}
 	}
 
-	first := fmt.Sprintf("%s %s · %s role · %s · running %s", yellow.Render("▶"), ref.spec, r.Role, r.Why,
+	first := fmt.Sprintf("%s %s · %s role · %s · running %s", yellow.Render("▶"), ref.spec, r.Role, r.why(),
 		span(m.now.Sub(r.Start)))
 	second := "reading its stream"
 	if m.live != nil {
@@ -326,7 +341,12 @@ func (m model) trendRows(w int) []row {
 		widths = widths[:3]
 	}
 
-	rows := []row{{text: dim.Render(cols(widths[:3], "", "", "median") + " oldest → newest")}}
+	head := cols(widths[:3], "", "", "median")
+	if sparked {
+		head += " oldest → newest"
+	}
+
+	rows := []row{{text: dim.Render(head)}}
 	for _, ms := range measures {
 		median, known := ms.median(recent)
 		shown, mark := "—", ""
@@ -381,8 +401,11 @@ func (m model) recentRows(n, w int) []row {
 		b := all[i].b
 		took, known := b.took()
 		time := "?"
-		if known {
+		switch {
+		case known:
 			time = span(took)
+		case slices.ContainsFunc(b.runs(), (*Run).running):
+			time = span(m.now.Sub(b.Started))
 		}
 
 		cost, costKnown := b.cost()
@@ -496,9 +519,10 @@ func (m model) specPage(s *screen) (head, body []row, sel int) {
 		cost, costKnown := b.cost()
 		turns, turnsKnown := b.turns()
 		failed, _, failedKnown := b.failed()
-		text := line(strconv.Itoa(i+1), b.Started.Local().Format("Jan 02 15:04"), short(b.Approved, 12),
+		text := line(strconv.Itoa(i+1), dim.Render(b.Started.Local().Format("Jan 02 15:04")),
+			dim.Render(short(b.Approved, 12)),
 			m.outcome(spec.Name, b), time, dollars(cost, costKnown), count(turns, turnsKnown),
-			count(failed, failedKnown), strconv.Itoa(b.rounds()))
+			count(failed, failedKnown), count(b.rounds()))
 		body = append(body, row{pick(text, i == s.sel), target{toBuild, i}})
 	}
 
@@ -521,7 +545,7 @@ func (m model) buildPage(s *screen) (head, body []row, sel int) {
 
 	head = []row{
 		{text: fmt.Sprintf("%s · build %d · approved at %s · %s · %s", bold.Render(s.spec), s.build+1,
-			short(b.Approved, 12), plural(b.Size, "test"), m.outcome(s.spec, b))},
+			dim.Render(short(b.Approved, 12)), plural(b.Size, "test"), m.outcome(s.spec, b))},
 		{text: m.summary(b)},
 		{},
 		{text: dim.Render(cols(m.runCols(), "", "run", "", "took", "turns", "cost", "failed", "context peak"))},
@@ -598,7 +622,7 @@ func (m model) runRow(n int, r *Run) string {
 		peak = tokens(c.Peak)
 	}
 
-	return cols(m.runCols(), strconv.Itoa(n+1), r.Role, r.Why, took, turns, cost, failed, peak)
+	return cols(m.runCols(), strconv.Itoa(n+1), r.Role, r.why(), took, turns, cost, failed, peak)
 }
 
 // summary is a build's time, cost, turns and failed calls.
@@ -657,7 +681,7 @@ func (m model) runPage(s *screen) (head, body []row, sel int) {
 	r := runs[s.run]
 	head = []row{
 		{text: fmt.Sprintf("%s · build %d · run %d: %s · %s role · session %s", bold.Render(s.spec), s.build+1,
-			s.run+1, r.Why, r.Role, short(r.Session, 8))},
+			s.run+1, r.why(), r.Role, dim.Render(short(r.Session, 8)))},
 		{text: m.runState(r, s.calls)},
 		{},
 	}
@@ -738,22 +762,23 @@ func (m model) runState(r *Run, c *claude.Recounted) string {
 func (m model) action(a claude.Action, r *Run, inputW int) string {
 	widths := []int{1, 8, 5, inputW, -6}
 	at := dim.Render(a.At.Local().Format("15:04:05"))
+	input := dim.Render(cut(a.Input, inputW))
 	switch {
 	case a.Tool == "":
-		return cols(widths, "", at, "said", dim.Render(a.Input))
+		return cols(widths, "", at, "said", input)
 	case a.Open && r.running():
 		took := m.now.Sub(a.At)
 		return yellow.Render(cols(widths, "▶", a.At.Local().Format("15:04:05"), a.Tool, a.Input, clock(took),
 			"running"))
 	case a.Open:
-		return cols(widths, red.Render("✗"), at, a.Tool, a.Input, "—", red.Render("cut off"))
+		return cols(widths, red.Render("✗"), at, a.Tool, input, "—", red.Render("cut off"))
 	case a.Refused:
-		return cols(widths, red.Render("✗"), at, a.Tool, a.Input, "—", red.Render("refused: "+a.Cause))
+		return cols(widths, red.Render("✗"), at, a.Tool, input, "—", red.Render("refused: "+a.Cause))
 	case a.Failed:
-		return cols(widths, red.Render("✗"), at, a.Tool, a.Input, seconds(a.Took), red.Render(a.Cause))
+		return cols(widths, red.Render("✗"), at, a.Tool, input, seconds(a.Took), red.Render(a.Cause))
 	}
 
-	return cols(widths, "", at, a.Tool, a.Input, seconds(a.Took))
+	return cols(widths, "", at, a.Tool, input, seconds(a.Took))
 }
 
 func seconds(d time.Duration) string {

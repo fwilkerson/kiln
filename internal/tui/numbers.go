@@ -84,14 +84,19 @@ func (b *Build) failed() (failed, refused int, known bool) {
 	return failed, refused, true
 }
 
-// rounds is the highest round any of its runs ran in, or 0 when kiln never sent the work back.
-func (b *Build) rounds() int {
+// rounds is the highest round any of its runs ran in, or 0 when kiln never sent the work back. It is unknown when a
+// run does not say why it started, since its round is unknown too.
+func (b *Build) rounds() (int, bool) {
 	most := 0
 	for _, r := range b.runs() {
+		if r.Why == "" {
+			return 0, false
+		}
+
 		most = max(most, r.Round)
 	}
 
-	return most
+	return most, true
 }
 
 // measure is one number of a build that the trend shows.
@@ -114,7 +119,10 @@ var measures = []measure{
 		n, _, ok := b.failed()
 		return float64(n), ok
 	}, decimal, true},
-	{"rounds per build", "rounds", func(b *Build) (float64, bool) { return float64(b.rounds()), true }, decimal, true},
+	{"rounds per build", "rounds", func(b *Build) (float64, bool) {
+		n, ok := b.rounds()
+		return float64(n), ok
+	}, decimal, true},
 	{"size, in tests", "size, tests", func(b *Build) (float64, bool) { return float64(b.Size), true }, decimal, false},
 }
 

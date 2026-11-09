@@ -93,10 +93,11 @@ func (v view) Text(ctx context.Context, b *tui.Build) (string, error) {
 }
 
 // stateOf is where a spec stands. A build is building only while the kiln run that marked it so lives. A kiln run
-// stopped by an interrupt, or killed, leaves the book saying building.
+// stopped by an interrupt, or killed, leaves the book saying building. A queued build waits for a kiln run, which may
+// be running already.
 func stateOf(rec *record) tui.State {
 	switch {
-	case rec.State == queued && rec.Session != "", rec.State == building && !alive(rec.PID):
+	case rec.State == building && !alive(rec.PID):
 		return tui.Halted
 	case rec.State == building && !rec.Paused.IsZero():
 		return tui.Paused
@@ -143,7 +144,7 @@ func alive(pid int) bool {
 	return pid > 0 && (err == nil || errors.Is(err, syscall.EPERM))
 }
 
-// shown is why a run started, in the words the view shows.
+// shown is why a run started, in the words the view shows. It is "" when its start line does not say.
 func (w reason) shown() string {
 	round := fmt.Sprintf("round %d of %d", w.Round, w.Rounds)
 	if w.Rounds == 0 {
@@ -169,5 +170,5 @@ func (w reason) shown() string {
 		return "after kiln stopped"
 	}
 
-	return "why unknown"
+	return ""
 }

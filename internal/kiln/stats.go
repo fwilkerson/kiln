@@ -67,7 +67,7 @@ type run struct {
 	why           reason
 	// pid is the kiln run's that started it.
 	pid int
-	// from and to are its bytes of the session's stream, and to is 0 until it ends.
+	// from and to are its bytes of the session's stream. A to below 0 reads to the stream's end.
 	from, to int64
 	changed  []string
 	// gates counts the build's gates that ran before it.
@@ -75,9 +75,13 @@ type run struct {
 }
 
 // collect groups the ledger's lines by build, in the order the builds started.
+//
+// An end line kiln wrote before it kept the stream's length holds none. That run's bytes end where the session's
+// next run starts, or at the stream's end.
 func collect(entries []entry) []*buildStats {
 	var all []*buildStats
 	byID := map[string]*buildStats{}
+	unbounded := map[string]func(to int64){}
 	for _, e := range entries {
 		// kiln writes a build line again if it died before the build's session started.
 		if e.Kind == builtKind && byID[e.Build] == nil {
@@ -92,6 +96,11 @@ func collect(entries []entry) []*buildStats {
 
 		switch e.Kind {
 		case startKind:
+			if bound := unbounded[e.Session]; bound != nil {
+				bound(e.Streamed)
+				delete(unbounded, e.Session)
+			}
+
 			s.runs = append(s.runs, run{role: e.Role, session: e.Session, start: e.At, why: e.reason, pid: e.PID,
 				from: e.Streamed, gates: len(s.gates)})
 		case endKind:
@@ -104,12 +113,20 @@ func collect(entries []entry) []*buildStats {
 			if e.Totals != nil {
 				s.runs[i].totals = *e.Totals
 			}
+
+			if e.Streamed == 0 {
+				unbounded[e.Session] = func(to int64) { s.runs[i].to = to }
+			}
 		case gateKind:
 			s.gates = append(s.gates, e)
 		case outcomeKind:
 			s.outcome = e.Outcome
 			s.amendments = cmpOr(e.Amendments, s.amendments)
 		}
+	}
+
+	for _, bound := range unbounded {
+		bound(-1)
 	}
 
 	return all

@@ -1,13 +1,19 @@
 package kiln
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/fwilkerson/kiln/internal/claude"
+	"github.com/fwilkerson/kiln/internal/git"
 )
 
 // TestRecount holds what kiln run does with each run that has a start line but no end line. kiln leaves one when it
@@ -46,8 +52,8 @@ func TestRecount(t *testing.T) {
 	b.record(entry{Kind: startKind, Role: "build", Session: buildSession, Streamed: int64(len(ended))})
 	b.record(entry{Kind: startKind, Role: "audit", Session: auditSession})
 
-	r.recount(io.Discard)
-	r.recount(io.Discard)
+	r.recount(t.Context(), io.Discard)
+	r.recount(t.Context(), io.Discard)
 	entries, err := r.store.entries()
 	if err != nil {
 		t.Fatal(err)
@@ -76,5 +82,53 @@ func TestRecount(t *testing.T) {
 
 	if n := len(entries); n != 7 {
 		t.Errorf("the ledger holds %d lines, want 7: a second recount ends nothing", n)
+	}
+}
+
+// TestRecountAudit holds that an audit run lost when kiln died still shows what it changed. recount names each path
+// in its end line, as talk would. Then it puts the audit's worktree back at the commit the audit read.
+func TestRecountAudit(t *testing.T) {
+	repo := t.TempDir()
+	start := exec.Command("sh", "-c", "git init --quiet -b main && git -c user.name=t -c user.email=t@t commit "+
+		"--quiet --allow-empty -m first && git rev-parse HEAD")
+	start.Dir = repo
+	head, err := start.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := git.New(repo, os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	r := &Repo{git: g, store: store{dir: dir}, trees: t.TempDir(),
+		claude: claude.New(claude.Config{Sessions: filepath.Join(dir, "sessions")})}
+	read := strings.TrimSpace(string(head))
+	if err := g.Detached(t.Context(), r.auditTree("x"), read); err != nil {
+		t.Fatal(err)
+	}
+
+	b := &build{r: r, rec: record{Name: "x", Build: "b1"}, out: io.Discard}
+	b.record(entry{Kind: builtKind, Spec: "x"})
+	b.record(entry{Kind: startKind, Role: auditRole, Session: "a", Read: read})
+	shot := filepath.Join(r.auditTree("x"), "shot.png")
+	if err := os.WriteFile(shot, []byte("a screen"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r.recount(t.Context(), io.Discard)
+	entries, err := r.store.entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if runs := collect(entries)[0].runs; len(runs) != 1 || !slices.Equal(runs[0].changed, []string{"shot.png"}) {
+		t.Errorf("the lost audit run changed %+v, want [shot.png]", runs)
+	}
+
+	if _, err := os.Stat(shot); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the audit's worktree still holds shot.png: %v", err)
 	}
 }

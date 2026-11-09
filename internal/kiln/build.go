@@ -45,7 +45,7 @@ func (r *Repo) run(ctx context.Context, out io.Writer, only string) error {
 
 	defer unlock()
 
-	r.recount(out)
+	r.recount(ctx, out)
 	err = r.store.update(func(b *book) error {
 		for _, s := range b.Specs {
 			if s.State == building {
@@ -309,8 +309,8 @@ func (b *build) sandboxed(l claude.Launch) claude.Launch {
 // talk runs the session l launches, and answers how it ended. A usage limit pauses the build until it resets, and the
 // same session resumes. The ledger gets a line before each run of the session, with why it started, and one after.
 //
-// The audit changes nothing, so kiln checks. It runs in a worktree of its own. Each audit run's end line names each
-// path the run changed there. Then kiln puts that worktree back at the commit the audit read.
+// The audit changes nothing, so kiln checks. It runs in a worktree of its own. Each audit run's start line names the
+// commit it read, and its end line each path the run changed. Then kiln puts that worktree back at the commit read.
 func (b *build) talk(ctx context.Context, l claude.Launch, why reason) (claude.Ended, error) {
 	for {
 		streamed, err := b.r.claude.Streamed(l.Session)
@@ -326,14 +326,14 @@ func (b *build) talk(ctx context.Context, l claude.Launch, why reason) (claude.E
 		}
 
 		b.record(entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed, PID: os.Getpid(),
-			reason: why})
+			reason: why, Read: read})
 		ended, err := b.r.claude.Run(ctx, l)
 		end := entry{Kind: endKind, Session: l.Session, Ended: how(ended), Totals: &ended.Totals}
 		end.Streamed, _ = b.r.claude.Streamed(l.Session)
 		var undone error
 		if l.Role == auditRole {
 			// An interrupted audit run may have changed its worktree too, and its end line names what it changed.
-			end.Changed, undone = b.undo(context.WithoutCancel(ctx), l.Dir, read)
+			end.Changed, undone = b.r.undo(context.WithoutCancel(ctx), l.Dir, read)
 		}
 
 		b.record(end)
@@ -372,19 +372,19 @@ const auditRole = "audit"
 
 // undo answers each path an audit run changed in its worktree at dir, committed or not, since the commit read. Then
 // it puts the worktree back at read, so the next run of the audit sees only the build's work.
-func (b *build) undo(ctx context.Context, dir, read string) ([]string, error) {
-	head, err := b.r.git.Head(ctx, dir)
+func (r *Repo) undo(ctx context.Context, dir, read string) ([]string, error) {
+	head, err := r.git.Head(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
 
-	changed, err := b.r.git.Status(ctx, dir)
+	changed, err := r.git.Status(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
 
 	if head != read {
-		committed, err := b.r.git.Changed(ctx, read, head)
+		committed, err := r.git.Changed(ctx, read, head)
 		if err != nil {
 			return nil, err
 		}
@@ -393,7 +393,7 @@ func (b *build) undo(ctx context.Context, dir, read string) ([]string, error) {
 	}
 
 	slices.Sort(changed)
-	return slices.Compact(changed), b.r.git.Detached(ctx, dir, read)
+	return slices.Compact(changed), r.git.Detached(ctx, dir, read)
 }
 
 var tally = regexp.MustCompile(`found (\d+)\s*$`)

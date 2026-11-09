@@ -48,10 +48,15 @@ type record struct {
 	FailingAtMain []string `json:"failing_at_main,omitempty"`
 	// Amendments is the text of the amendment file the build left on its branch.
 	Amendments string `json:"amendments,omitempty"`
-	// Paused is when a usage limit that paused the build resets.
-	Paused time.Time `json:"paused,omitzero"`
+	runner
+}
+
+// runner is what the kiln run that builds a spec holds of it. next replaces it whole, so no kiln run inherits it.
+type runner struct {
 	// PID is the process ID of the kiln run that marked the spec building. Once it is gone, the build has halted.
 	PID int `json:"pid,omitempty"`
+	// Paused is when a usage limit that paused the build resets.
+	Paused time.Time `json:"paused,omitzero"`
 }
 
 // book is every approved spec kiln has not retired, in the order they were approved. It keeps what the gate found
@@ -122,7 +127,7 @@ func (b *book) retire(name string) {
 func (b *book) next(only string, pid int) (record, bool) {
 	for _, r := range b.Specs {
 		if r.State == queued && (only == "" || r.Name == only) {
-			r.State, r.PID = building, pid
+			r.State, r.runner = building, runner{PID: pid}
 			return *r, true
 		}
 	}

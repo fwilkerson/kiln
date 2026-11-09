@@ -7,14 +7,15 @@
 //	err := tui.Show(ctx, source, "", os.Stdin, os.Stdout)  // "" opens home; a spec's name opens that spec
 //
 // It reads its [Source] again once a second, so a running run grows as its session writes. Keys and the mouse both
-// work: a click opens the row it hits, and the wheel scrolls the screen. Red marks what failed, yellow what runs or
-// waits, and green what passed. A glyph beside each color says the same: ✗, ▶ and ✓.
+// work. A click opens the row it hits, and the wheel scrolls what it is over. Red marks what failed, yellow what runs
+// or waits, and green what passed. A glyph beside each color says the same: ✗, ▶ and ✓.
 //
 // The home screen's trend is the last 10 builds that ended, beside the 10 before them. Each number is the median of
 // the builds that know it. A number kiln could not read shows as unknown, never as zero.
 package tui
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"os"
@@ -88,7 +89,8 @@ type Gate struct {
 type Run struct {
 	Role    string
 	Session string
-	// Why says why it started, in the words the view shows, such as "round 1 of 3".
+	// Why says why it started, in the words the view shows, such as "round 1 of 3". It is "" when the ledger does not
+	// say, as for a run kiln started before it kept the reason. Then the build's rounds are unknown too.
 	Why string
 	// Round is the round it runs in, of Rounds, or 0 outside any round.
 	Round, Rounds int
@@ -106,6 +108,9 @@ type Run struct {
 
 func (*Run) step()  {}
 func (*Gate) step() {}
+
+// why is why the run started, as Why says it, or that it is unknown.
+func (r *Run) why() string { return cmp.Or(r.Why, "why unknown") }
 
 // running reports whether the run is still running.
 func (r *Run) running() bool { return r.End.IsZero() && !r.Lost }
