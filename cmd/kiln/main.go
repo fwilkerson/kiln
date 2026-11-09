@@ -1,12 +1,14 @@
 // Command kiln builds the specs a developer approved, with headless Claude Code sessions, and lands them on main.
 //
-//	kiln init            write a starting kiln.json, and install the pre-commit hook
-//	kiln approve <name>  queue a build of specs/<name>.md, as main holds it
-//	kiln run             build each queued spec, one at a time, until none is queued
-//	kiln status          show where each spec stands
-//	kiln stats [<name>]  show what each build cost, one line each, or each build of one spec in full
-//	kiln tui [<name>]    show every build, live and past, in a full-screen view; or open it on one spec
-//	kiln accept <name>   end UAT: land the spec if it waits on its branch, then retire it
+//	kiln init                      write a starting kiln.json, and install the pre-commit hook
+//	kiln approve [--again] <name>  queue a build of specs/<name>.md, as main holds it
+//	kiln run                       build each queued spec, one at a time, until none is queued
+//	kiln status                    show where each spec stands
+//	kiln stats [<name>]            show what each build cost, one line each, or each build of one spec in full
+//	kiln tui [<name>]              show every build, live and past, in a full-screen view; or open it on one spec
+//	kiln accept <name>             end UAT: land the spec if it waits on its branch, then retire it
+//
+// kiln approve refuses a spec waiting for UAT unless --again says to build it anew.
 //
 // kiln tui draws only on a terminal. With its output elsewhere, it draws nothing, and refuses.
 //
@@ -30,13 +32,13 @@ import (
 )
 
 const usage = `usage:
-  kiln init
-  kiln approve <name>
-  kiln run
-  kiln status
-  kiln stats [<name>]
-  kiln tui [<name>]
-  kiln accept <name>
+  kiln init                      write a starting kiln.json, and install the pre-commit hook
+  kiln approve [--again] <name>  queue a build of specs/<name>.md, as main holds it
+  kiln run                       build each queued spec, one at a time, until none is queued
+  kiln status                    show where each spec stands
+  kiln stats [<name>]            show what each build cost, one line each, or each build of one spec in full
+  kiln tui [<name>]              show every build, live and past, in a full-screen view; or open it on one spec
+  kiln accept <name>             end UAT: land the spec if it waits on its branch, then retire it
 `
 
 func main() {
@@ -90,14 +92,20 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 
 			return r.Stats(ctx, name, stdout)
 		})
-	case "approve", "accept":
+	case "approve":
+		flags := flag.NewFlagSet("approve", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
+		again := flags.Bool("again", false, "build a spec waiting for UAT anew")
+		if err = flags.Parse(args); err != nil || flags.NArg() != 1 {
+			err = errUsage
+			break
+		}
+
+		err = onRepo(ctx, func(r *kiln.Repo) error { return r.Approve(ctx, flags.Arg(0), *again, stdout) })
+	case "accept":
 		err = onRepo(ctx, func(r *kiln.Repo) error {
 			if len(args) != 1 {
 				return errUsage
-			}
-
-			if command == "approve" {
-				return r.Approve(ctx, args[0], stdout)
 			}
 
 			return r.Accept(ctx, args[0], stdout)

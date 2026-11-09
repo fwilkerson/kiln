@@ -75,8 +75,9 @@ func (b *book) find(name string) *record {
 
 // approve queues a new build of name from the spec at main's tip, approved. It answers whether a build of an earlier
 // approval left a branch to drop. It also answers the ID of an earlier build this approval drops before it ended. A
-// spec that is building refuses: approve it again once its build ends.
-func (b *book) approve(name, approved string) (drop bool, dropped string, err error) {
+// spec that is building refuses: approve it again once its build ends. A spec waiting for UAT refuses unless again
+// says the developer means to build it anew.
+func (b *book) approve(name, approved string, again bool) (drop bool, dropped string, err error) {
 	r := b.find(name)
 	switch {
 	case r == nil:
@@ -84,6 +85,10 @@ func (b *book) approve(name, approved string) (drop bool, dropped string, err er
 		return false, "", nil
 	case r.State == building:
 		return false, "", fmt.Errorf("%w: %s is building; approve it again once its build ends", errRefused, name)
+	// Approving here would end UAT by throwing the build away, which a developer who meant kiln accept can't undo.
+	case (r.State == landed || r.State == amended) && !again:
+		return false, "", fmt.Errorf("%w: %s is %s; end UAT with kiln accept %s, or build it anew with "+
+			"kiln approve --again %s", errRefused, name, r.State, name, name)
 	}
 
 	// A queued build with a session was interrupted, and an amended one waits: neither has ended.

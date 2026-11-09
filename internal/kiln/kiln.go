@@ -168,8 +168,9 @@ func (r *Repo) Init(ctx context.Context, out io.Writer) error {
 var specName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // Approve records main's tip as the commit of the approved spec, specs/<name>.md, and queues a new build of it. A
-// build of an earlier approval that waits, landed or on its branch, is dropped: its branch never reaches main.
-func (r *Repo) Approve(ctx context.Context, name string, out io.Writer) error {
+// spec whose build waits, landed or on its branch, refuses unless again is true. Then the build is dropped, and its
+// branch never reaches main.
+func (r *Repo) Approve(ctx context.Context, name string, again bool, out io.Writer) error {
 	if !specName.MatchString(name) {
 		return fmt.Errorf("%w: %q is not a spec's name, such as checkout-flow", errRefused, name)
 	}
@@ -188,7 +189,7 @@ func (r *Repo) Approve(ctx context.Context, name string, out io.Writer) error {
 	var drop bool
 	var dropped string
 	err = r.store.update(func(b *book) error {
-		drop, dropped, err = b.approve(name, main)
+		drop, dropped, err = b.approve(name, main, again)
 		return err
 	})
 	if err != nil {

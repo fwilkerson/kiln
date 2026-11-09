@@ -6,37 +6,37 @@
 exec kiln approve t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve t
+exec kiln approve --again t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve t
+exec kiln approve --again t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve t
+exec kiln approve --again t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve t
+exec kiln approve --again t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve t
+exec kiln approve --again t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve t
+exec kiln approve --again t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve t
+exec kiln approve --again t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve t
+exec kiln approve --again t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve t
+exec kiln approve --again t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve t
+exec kiln approve --again t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve t
+exec kiln approve --again t
 exec kiln run
 stdout '^t: landed on main'
 

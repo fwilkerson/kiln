@@ -13,7 +13,7 @@ stdout '^b: stopped'
 stdout '^c: waits on kiln/c'
 exec kiln accept a
 stdout '^a: accepted'
-exec kiln approve c
+exec kiln approve --again c
 exec kiln run
 stdout '^c: landed on main'
 

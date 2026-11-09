@@ -9,7 +9,7 @@ stdout '^x: waiting on its branch with amendments'
 # When: the developer edits the spec and approves it again.
 cp _given/edited.md specs/x.md
 exec git commit --quiet -am 'docs(x): revise the spec'
-exec kiln approve x
+exec kiln approve --again x
 exec kiln run
 
 # Then: a new build starts from the edited spec,
