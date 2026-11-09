@@ -198,6 +198,31 @@ gate's results.
 
 - **Build it when:** the developer wants to see how far a long build has got.
 
+## The TUI, after its first use
+
+The developer's notes from using spec 3's `kiln tui` on its own second build.
+
+- **Newest first.** The run screen lists calls oldest first, so a running session's newest call is at the bottom.
+  Newest at the top serves a run both while it runs and after it ends. The spec screen lists builds oldest first too,
+  and should list the newest first.
+- **What an agent answered.** No agent answers in structured JSON. kiln runs `claude -p --output-format stream-json`,
+  and a session's answer is the free text of its stream's `result` event. The audit's findings are numbered text
+  blocks (reaches, chance, harm, design, proof) that kiln hands to the build session as a prompt. The run screen
+  shows that answer only as a `said` line cut to one row. Two ways to show it:
+    - Show a run's whole answer on the run screen, or on a screen of its own. This needs nothing new from the agent.
+    - Ask the audit for JSON with `claude -p --json-schema`, and draw each finding as a row that opens to its full
+      text. The scripted claude already accepts the flag (`internal/scenariotest/claude_call.go`).
+- **Scrolling without an End key.** A MacBook has no End or Page Down key. The run and spec text screens hand every
+  key they don't handle to Bubbles' viewport (`internal/tui/model.go:239-244`), which reads space and `f` as page
+  down, `b` as page up, and `d` and `u` as half a page. `g` and `G` go to the top and the end. Neither footer says so:
+  they name only pgup, pgdn and end (`internal/tui/draw.go:160-161`). The list screens take only `j`, `k`, the arrows
+  and pgup and pgdn (`internal/tui/model.go:347`). `fn+↓` and `fn+→` send Page Down and End in most terminals; this
+  is believed, not tried.
+- **"context peak" is "context".** The build screen's column header says "context peak"
+  (`internal/tui/draw.go:551`), but a run records one context figure, so "context" says it.
+- **Keep:** `j` and `k` move the selection on the list screens, and the developer finds them helpful.
+- **Build it when:** the next spec that changes `kiln tui`.
+
 ## odh practices not yet in spec 1
 
 - **Blind weigher.** When the interview's lean matches the developer's, a fresh agent weighs the options without
