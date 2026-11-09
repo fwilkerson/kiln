@@ -21,6 +21,10 @@ approved (c9d511d, "feat(audit): let the audit drive a TUI's model with Bash").
 - **Tools and prompt, per role: no.** kiln fixes the build's tools, denied commands, forbidden actions, writable paths
   and reachable hosts in `internal/kiln/build.go:295-305`, and the audit's tools at `internal/kiln/build.go:443`. The
   audit's prompt is compiled in (`guidance.Audit`), and the `tools:` line of `guidance/agents/audit.md` is never read.
+- **Model, effort and advisor: no.** Since c546d7c, every role runs `--model opus --effort medium`
+  (`internal/claude/claude.go`), with `advisorModel: fable` in the settings kiln writes (`internal/claude/settings.go`).
+  The `model:` and `effort:` lines of `guidance/agents/audit.md` reach the interactive `audit` subagent, but kiln's
+  headless audit never reads them.
 - **Reachable hosts and writable paths are Go's.** The build reaches only `proxy.golang.org`, `sum.golang.org` and
   `storage.googleapis.com`, and writes only beside Go's caches.
 
@@ -60,3 +64,18 @@ approved (c9d511d, "feat(audit): let the audit drive a TUI's model with Bash").
    the ones kiln sets is believed, not tried.
 
 4. **Is c) out of this spec?** Lean yes, until a project needs a role other than build and audit.
+
+5. **Do a role's model and effort come from its agent file?** Lean yes, from the `model:` and `effort:` lines of the
+   same file as b)'s prompt and `tools:`, with kiln's Opus at medium effort when a line is missing. An agent file
+   already carries both, so a project sets them where it sets the role's tools.
+
+6. **Who sets the advisor?** Lean: the project, with kiln's Fable only when the project's settings name no
+   `advisorModel`. The advisor is a settings key with no flag and no line in an agent file, so it can't come from the
+   role's file. A project's `.claude/settings.json` with `advisorModel` gives a headless session the tool (tried
+   2026-11-09). That kiln's own `--settings` value outranks the project's, so a project can't override Fable today, is
+   believed, not tried.
+
+7. **Which of the rest of what kiln passes stay kiln's?** These are `--permission-mode auto`,
+   `--setting-sources project`, `--output-format stream-json`, the sandbox's switches, and the auto mode rules. Lean:
+   all stay kiln's. kiln reads the stream, and the build's guard and refusals rest on the rest. Question 3 sorts only
+   the denied commands, forbidden actions, hosts and writable paths.
