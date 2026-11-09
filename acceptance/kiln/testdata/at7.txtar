@@ -1,7 +1,7 @@
 # 7. Revising a spec builds it again.
 
 # Given: a spec waiting on its branch with an amendment.
-exec kiln approve x
+exec kiln queue x
 exec kiln run
 exec kiln status
 stdout '^x: waiting on its branch with amendments'
@@ -9,7 +9,9 @@ stdout '^x: waiting on its branch with amendments'
 # When: the developer edits the spec and approves it again.
 cp _given/edited.md specs/x.md
 exec git commit --quiet -am 'docs(x): revise the spec'
-exec kiln approve --again x
+# Spec 4 turned the second approval into a reject of the amendments, then a queue.
+exec kiln reject x
+exec kiln queue x
 exec kiln run
 
 # Then: a new build starts from the edited spec,
@@ -31,6 +33,8 @@ go 1.27
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- specs/x.md --
 # Spec 1: x
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 
@@ -58,6 +62,8 @@ go 1.27
 }
 -- _given/edited.md --
 # Spec 1: x
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

@@ -3,12 +3,12 @@
 # Given: two specs, one of them approved twice, so it has two builds.
 # a lands. b's first build fails its gate with no round left, and stops. Approved again, b lands. Each run costs as
 # claude.json scripts it, so each build's runs can be told apart.
-exec kiln approve a
-exec kiln approve b
+exec kiln queue a
+exec kiln queue b
 exec kiln run
 stdout '^a: landed on main'
 stdout '^b: stopped'
-exec kiln approve b
+exec kiln queue b
 exec kiln run
 stdout '^b: landed on main'
 
@@ -46,6 +46,8 @@ go 1.27
 -- specs/a.md --
 # Spec 1: a
 
+Status: Approved, 2026-11-09
+
 ## Acceptance tests
 
 ### 1. A answers
@@ -55,6 +57,8 @@ go 1.27
 - **Then**: it answers 1.
 -- specs/b.md --
 # Spec 2: b
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

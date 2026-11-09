@@ -1,0 +1,123 @@
+# 3. A landed spec builds again only once its spec changed.
+
+# Given: a spec waiting for UAT.
+exec kiln queue x
+exec kiln run
+stdout '^x: landed on main'
+
+# When: the developer runs kiln queue on it,
+! exec kiln queue x
+
+# Then: the first is refused.
+stderr '^kiln queue: refused: '
+exec kiln status
+stdout '^x: waiting for UAT$'
+
+# When: then commits a change to the spec and runs kiln queue again.
+cp _given/changed.md specs/x.md
+exec git commit --quiet -am 'docs(x): change the spec'
+exec kiln queue x
+stdout '^x: queued'
+
+# Then: after the second, kiln run builds from the changed spec, starting from main with the first build's work on
+# it. The second build's session saw the changed spec, and the first build's work, before it built.
+exec kiln run
+stdout '^x: landed on main'
+cmp .tmp/seen.md _given/changed.md
+cmp .tmp/seen.go _given/first/first.go
+exists first.go second.go
+exec go test ./acceptance/x/
+stdout '^ok'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. First answers
+
+- **Given**: nothing.
+- **When**: First is called.
+- **Then**: it answers 1.
+-- _given/changed.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. First answers
+
+- **Given**: nothing.
+- **When**: First is called.
+- **Then**: it answers 1.
+
+### 2. Second answers
+
+- **Given**: nothing.
+- **When**: Second is called.
+- **Then**: it answers 2.
+-- claude.json --
+{
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/first/.\" ."}}},
+      {"result": {"result": "Built x."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp specs/x.md \"$WORK/.tmp/seen.md\" && cp first.go \"$WORK/.tmp/seen.go\" && cp -R \"$WORK/_given/second/.\" ."}}},
+      {"result": {"result": "Built x, as changed."}}
+    ]}
+  },
+  "audit": {
+    "1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]},
+    "2": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}
+  }
+}
+-- _given/first/first.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// First answers 1.
+func First() int { return 1 }
+-- _given/first/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.First(); got != 1 {
+		t.Fatalf("First answers %d, want 1", got)
+	}
+}
+-- _given/second/second.go --
+package scratch
+
+// Second answers 2.
+func Second() int { return 2 }
+-- _given/second/acceptance/x/second_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT2(t *testing.T) {
+	if got := scratch.Second(); got != 2 {
+		t.Fatalf("Second answers %d, want 2", got)
+	}
+}

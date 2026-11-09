@@ -25,13 +25,13 @@ const (
 	amended state = "waiting on its branch with amendments"
 )
 
-// record is what kiln keeps of one approved spec.
+// record is what kiln keeps of one spec the developer queued.
 type record struct {
 	Name  string `json:"name"`
 	State state  `json:"state"`
-	// Approved is main's tip when the developer approved the spec.
+	// Approved is main's tip when the developer queued the spec.
 	Approved string `json:"approved"`
-	// Build is the ID of this approval's build, which names it in the ledger.
+	// Build is the ID of this queue's build, which names it in the ledger.
 	Build string `json:"build,omitempty"`
 	// Session is the build's Claude Code session, once it has one.
 	Session string `json:"session,omitempty"`
@@ -42,6 +42,9 @@ type record struct {
 	// Accepted is a spec the developer accepted while it waited on its branch. kiln lands it as a build does, then
 	// retires it.
 	Accepted bool `json:"accepted,omitempty"`
+	// Before is the commit kiln/<name> stood at when its landing began. It is set only while a landing runs. A
+	// landing that doesn't move main puts the branch back there.
+	Before string `json:"before,omitempty"`
 	// Why says why the build stopped, with the gate's output.
 	Why string `json:"why,omitempty"`
 	// FailingAtMain names the Go tests that failed at main before the build.
@@ -59,7 +62,7 @@ type runner struct {
 	Paused time.Time `json:"paused,omitzero"`
 }
 
-// book is every approved spec kiln has not retired, in the order they were approved. It keeps what the gate found
+// book is every spec queued that kiln has not retired, in the order they were queued. It keeps what the gate found
 // at main.
 type book struct {
 	Specs []*record `json:"specs"`
@@ -78,44 +81,130 @@ func (b *book) find(name string) *record {
 	return nil
 }
 
-// approve queues a new build of name from the spec at main's tip, approved. It answers whether a build of an earlier
-// approval left a branch to drop. It also answers the ID of an earlier build this approval drops before it ended. A
-// spec that is building refuses: approve it again once its build ends. A spec waiting for UAT refuses unless again
-// says the developer means to build it anew.
-func (b *book) approve(name, approved string, again bool) (drop bool, dropped string, err error) {
+// The developer's commands on a spec, which the book takes or refuses by the state the spec is in.
+const (
+	queueCommand  = "queue"
+	acceptCommand = "accept"
+	rejectCommand = "reject"
+)
+
+// may answers nil when the book takes command on the spec name, or why it refuses. It holds spec 4's table:
+//
+//	state                                  queue                            accept           reject
+//	no record                              queues it                        refuses          refuses
+//	queued                                 queues it again, from main's tip refuses          refuses
+//	building                               refuses                          refuses          refuses
+//	stopped                                builds anew from main            refuses          refuses
+//	waiting for UAT                        only once its spec on main has   retires it       refuses
+//	                                       changed
+//	waiting on its branch with amendments  refuses                          folds, and lands drops build, branch
+//	landing accepted amendments, queued    refuses                          refuses          refuses
+//	landing accepted amendments, building  refuses                          refuses          refuses
+//	landing accepted amendments, stopped   refuses                          lands it again   drops build, branch
+//
+// changed answers whether the spec on main differs from the spec at the commit since. Only queue calls it, on a spec
+// waiting for UAT.
+func (b *book) may(command, name string, changed func(since string) (bool, error)) error {
 	r := b.find(name)
+	var why string
 	switch {
+	case r == nil && command == queueCommand:
+		return nil
 	case r == nil:
-		b.Specs = append(b.Specs, &record{Name: name, State: queued, Approved: approved, Build: newBuild()})
-		return false, "", nil
-	case r.State == building:
-		return false, "", fmt.Errorf("%w: %s is building; approve it again once its build ends", errRefused, name)
-	// Approving here would end UAT by throwing the build away, which a developer who meant kiln accept can't undo.
-	case (r.State == landed || r.State == amended) && !again:
-		return false, "", fmt.Errorf("%w: %s is %s; end UAT with kiln accept %s, or build it anew with "+
-			"kiln approve --again %s", errRefused, name, r.State, name, name)
+		why = "kiln holds no record of it"
+	case r.Accepted && r.State != stopped:
+		why = fmt.Sprintf("its landing is %s", r.State)
+	case command == queueCommand && (r.State == amended || r.Accepted):
+		why = fmt.Sprintf("it is %s: accept or reject them first, with kiln accept %s or kiln reject %s",
+			shownState(r), name, name)
+	case command == queueCommand && r.State == building:
+		why = "it is building: queue it again once its build ends"
+	case command == queueCommand && r.State == landed:
+		revised, err := changed(r.Approved)
+		if err != nil || revised {
+			return err
+		}
+
+		why = fmt.Sprintf("it is %s, and %s on main is as it was when its build was queued, so it would build the "+
+			"same work: change the spec, commit it, and queue it", landed, specPath(name))
+	case command == queueCommand:
+		return nil
+	case r.State == amended || r.Accepted && r.State == stopped:
+		return nil
+	case command == acceptCommand && r.State == landed:
+		return nil
+	case command == rejectCommand && r.State == landed:
+		why = fmt.Sprintf("it is %s, and its work is on main: change the spec, commit it, and queue it", landed)
+	default:
+		why = fmt.Sprintf("it is %s, and kiln %s takes a spec waiting on its branch with amendments", shownState(r),
+			command)
+		if command == acceptCommand {
+			why += ", or one waiting for UAT"
+		}
 	}
 
-	// A queued build with a session was interrupted, and an amended one waits: neither has ended.
-	if r.State == amended || r.State == queued && r.Session != "" {
+	return fmt.Errorf("%w: %s: %s", errRefused, name, why)
+}
+
+// shownState is where the spec of r stands, in the words kiln status shows.
+func shownState(r *record) string {
+	if r.Accepted {
+		return string(r.State) + ", landing accepted amendments"
+	}
+
+	return string(r.State)
+}
+
+// queue queues a new build of name from the spec at main's tip, main. It answers whether an earlier build left a
+// branch to drop. It answers the ID of an earlier build it drops before that build ended.
+func (b *book) queue(name, main string, changed func(since string) (bool, error)) (drop bool, dropped string,
+	err error) {
+	if err := b.may(queueCommand, name, changed); err != nil {
+		return false, "", err
+	}
+
+	r := b.find(name)
+	if r == nil {
+		b.Specs = append(b.Specs, &record{Name: name, State: queued, Approved: main, Build: newBuild()})
+		return false, "", nil
+	}
+
+	// A queued build with a session was interrupted, so it had not ended.
+	if r.State == queued && r.Session != "" {
 		dropped = r.Build
 	}
 
 	drop = r.State != queued
-	*r = record{Name: name, State: queued, Approved: approved, Build: newBuild()}
+	*r = record{Name: name, State: queued, Approved: main, Build: newBuild()}
 	return drop, dropped, nil
 }
 
-// accept returns the record of a spec waiting for the developer's acceptance.
-func (b *book) accept(name string) (*record, error) {
-	r := b.find(name)
-	switch {
-	case r == nil:
-		return nil, fmt.Errorf("%w: kiln holds no approved spec named %s", errRefused, name)
-	case r.State != landed && r.State != amended:
-		return nil, fmt.Errorf("%w: %s is %s, and only a spec waiting for UAT is accepted", errRefused, name, r.State)
+// accept answers the record of a spec the developer accepts, as it stood. A stopped landing of accepted amendments is
+// queued again afresh. It keeps only its build, session and audit, and that it lands accepted amendments. It keeps a
+// branch a landing left to put back, too.
+func (b *book) accept(name string) (record, error) {
+	if err := b.may(acceptCommand, name, nil); err != nil {
+		return record{}, err
 	}
 
+	r := b.find(name)
+	was := *r
+	if r.Accepted {
+		*r = record{Name: name, State: queued, Approved: r.Approved, Build: r.Build, Session: r.Session,
+			Audited: r.Audited, Accepted: true, Before: r.Before}
+	}
+
+	return was, nil
+}
+
+// reject removes the record of a spec whose amendments the developer turns away, and answers it.
+func (b *book) reject(name string) (record, error) {
+	if err := b.may(rejectCommand, name, nil); err != nil {
+		return record{}, err
+	}
+
+	r := *b.find(name)
+	b.retire(name)
 	return r, nil
 }
 
@@ -123,10 +212,11 @@ func (b *book) retire(name string) {
 	b.Specs = slices.DeleteFunc(b.Specs, func(r *record) bool { return r.Name == name })
 }
 
-// next takes the first queued spec, or the one named only, and marks it building by the kiln run pid.
+// next takes the first queued spec, and marks it building by the kiln run pid. With only, it takes the spec named only,
+// or a landing of accepted amendments. A kiln accept leaves such a landing for the kiln run that holds the lock.
 func (b *book) next(only string, pid int) (record, bool) {
 	for _, r := range b.Specs {
-		if r.State == queued && (only == "" || r.Name == only) {
+		if r.State == queued && (only == "" || r.Name == only || r.Accepted) {
 			r.State, r.runner = building, runner{PID: pid}
 			return *r, true
 		}
@@ -145,11 +235,14 @@ const (
 	lockFile = "lock"
 	runLock  = "run.lock"
 	mainLock = "main.lock"
+	// buildLock is the lock every kiln that drives a build session shares, in kiln's directory under the user's cache
+	// directory. The reinstall takes it alone.
+	buildLock = "build.lock"
 )
 
 // update applies change to the book, holding the store's lock from the read to the write.
 func (s store) update(change func(*book) error) error {
-	unlock, err := s.lock(lockFile, true)
+	unlock, err := s.lock(lockFile, syscall.LOCK_EX)
 	if err != nil {
 		return err
 	}
@@ -204,8 +297,9 @@ func (s store) set(name string, change func(*record)) error {
 	})
 }
 
-// lock takes the lock file name. With wait false it refuses at once a lock another kiln holds.
-func (s store) lock(name string, wait bool) (unlock func(), err error) {
+// lock takes the lock file name, as how says: syscall.LOCK_EX or LOCK_SH. With LOCK_NB, it refuses at once a lock
+// another kiln holds.
+func (s store) lock(name string, how int) (unlock func(), err error) {
 	if err := os.MkdirAll(s.dir, 0o700); err != nil {
 		return nil, err
 	}
@@ -213,11 +307,6 @@ func (s store) lock(name string, wait bool) (unlock func(), err error) {
 	f, err := os.OpenFile(filepath.Join(s.dir, name), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
-	}
-
-	how := syscall.LOCK_EX
-	if !wait {
-		how |= syscall.LOCK_NB
 	}
 
 	if err := syscall.Flock(int(f.Fd()), how); err != nil {

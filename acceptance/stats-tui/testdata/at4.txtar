@@ -4,9 +4,9 @@
 # amendment.
 # Both specs are longer than the terminal is tall, so their ends show only once scrolled to. Once a is approved, the
 # developer edits it on main, so only the text it was approved at lacks the edit.
-exec kiln approve a
+exec kiln queue a
 exec sh -c 'echo "This line came after the approval." >>specs/a.md && git commit --quiet -am "docs(a): edit"'
-exec kiln approve b
+exec kiln queue b
 exec kiln run
 stdout '^a: landed on main'
 stdout '^b: waits on kiln/b'
@@ -48,6 +48,8 @@ go 1.27
 -- specs/a.md --
 # Spec 1: a
 
+Status: Approved, 2026-11-09
+
 This line opens spec a.
 
 ## Overview
@@ -76,6 +78,8 @@ This line opens spec a.
 This line ends spec a.
 -- specs/b.md --
 # Spec 2: b
+
+Status: Approved, 2026-11-09
 
 This line opens spec b.
 

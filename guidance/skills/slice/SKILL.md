@@ -8,7 +8,7 @@ disable-model-invocation: true
 # Write a spec
 
 A spec is what the developer wants built, and the acceptance tests that show it was. This skill takes a spec from an
-idea to one the developer approves. Building it comes after: the developer runs `kiln approve <name>`, then
+idea to one the developer approves. Building it comes after: the developer runs `kiln queue <name>`, then
 `kiln run`, and a build never asks the developer anything.
 
 The developer's turns go to goals, taste, plans only they hold, and choices that are hard to undo. Settle the rest
@@ -66,9 +66,15 @@ developer asks. A run the developer asks for goes ahead even with questions open
 ## 5. Ask for approval
 
 Ask the developer to approve the spec, with each contested finding beside the request. Once they approve, set its
-Status to Approved, with the date, and commit it on main. Then tell them to run `kiln approve <name>`.
+Status to Approved, with the date, and commit it on main. Then tell them to run `kiln queue <name>`.
 
 ## Revising a spec
 
-Revising an approved spec is editing it with this skill, from step 1. Approving it again starts a new build from the
-edited spec. A build of the old one that waits on its branch with amendments is dropped, and never reaches main.
+Revising an approved spec is editing it with this skill, from step 1. Commit the revision on main, and tell the
+developer what to run next, by where `kiln status` shows the spec:
+
+- Waiting for UAT, when UAT found a problem: `kiln queue <name>`. The new build starts from main, which holds the
+  landed work, so it revises that work. kiln refuses to queue it until the spec on main has changed.
+- Waiting on its branch with amendments, to change an amendment's wording: commit the developer's wording, then
+  `kiln reject <name>` and `kiln queue <name>`. The rejected build never reaches main.
+- Stopped, or queued: `kiln queue <name>` builds it anew from the revision.

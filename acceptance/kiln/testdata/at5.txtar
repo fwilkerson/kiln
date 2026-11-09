@@ -1,7 +1,7 @@
 # 5. An amended spec is delivered whole, and waits.
 
 # Given: a build that finds a Given, When, Then can't hold, amends it, and finishes the work under the amendment.
-exec kiln approve x
+exec kiln queue x
 exec git rev-parse main
 cp stdout .tmp/approved
 
@@ -35,6 +35,8 @@ go 1.27
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- specs/x.md --
 # Spec 1: x
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

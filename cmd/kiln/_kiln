@@ -1,0 +1,15 @@
+#compdef kiln
+
+# The zsh completion of kiln. kiln answers both lists, so the rules of what each command takes live once, in Go:
+# kiln complete lists kiln's commands, and kiln complete <command> the spec names that command takes.
+local -a found expl
+case $CURRENT in
+  2)
+    found=(${(f)"$(_call_program commands kiln complete 2>/dev/null)"})
+    _wanted commands expl 'kiln command' compadd -a found
+    ;;
+  3)
+    found=(${(f)"$(_call_program specs kiln complete ${(q)words[2]} 2>/dev/null)"})
+    _wanted specs expl 'spec' compadd -a found
+    ;;
+esac

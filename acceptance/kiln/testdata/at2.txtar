@@ -3,8 +3,8 @@
 # Given: a build that changes a Given, When, Then in specs/<name>.md, by an edit or by a shell command.
 # The build of x changes its spec by a shell command, after the hook refused its Edit. The build of y changes its spec
 # by an Edit that got past the hook.
-exec kiln approve x
-exec kiln approve y
+exec kiln queue x
+exec kiln queue y
 
 # When: its gate runs.
 exec kiln run
@@ -36,6 +36,8 @@ go 1.27
 -- specs/x.md --
 # Spec 1: x
 
+Status: Approved, 2026-11-09
+
 ## Acceptance tests
 
 ### 1. X answers
@@ -45,6 +47,8 @@ go 1.27
 - **Then**: it answers 42.
 -- specs/y.md --
 # Spec 2: y
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 
@@ -78,6 +82,8 @@ go 1.27
 -- _given/approved/x.md --
 # Spec 1: x
 
+Status: Approved, 2026-11-09
+
 ## Acceptance tests
 
 ### 1. X answers
@@ -87,6 +93,8 @@ go 1.27
 - **Then**: it answers 42.
 -- _given/approved/y.md --
 # Spec 2: y
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

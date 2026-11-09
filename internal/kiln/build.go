@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,7 +26,8 @@ import (
 const unknownReset = 5 * time.Minute
 
 // Run builds each queued spec, one at a time, until none is queued. A build that was building when kiln last stopped
-// goes on first, in the same session. Run refuses while another kiln run builds in the repository.
+// goes on first, in the same session. Run refuses while another kiln run builds in the repository, and while kiln
+// is being reinstalled.
 func (r *Repo) Run(ctx context.Context, out io.Writer) error {
 	return r.run(ctx, out, "")
 }
@@ -34,7 +36,7 @@ var errRunning = fmt.Errorf("%w: another kiln run is building in this repository
 
 // run builds the queued specs, or only the one named only, if it is not "".
 func (r *Repo) run(ctx context.Context, out io.Writer, only string) error {
-	unlock, err := r.store.lock(runLock, false)
+	unlock, err := r.store.lock(runLock, syscall.LOCK_EX|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
 		return errRunning
 	}
@@ -43,7 +45,14 @@ func (r *Repo) run(ctx context.Context, out io.Writer, only string) error {
 		return err
 	}
 
+	unlock = sync.OnceFunc(unlock)
 	defer unlock()
+	unshare, err := shareBuilds()
+	if err != nil {
+		return err
+	}
+
+	defer unshare()
 
 	r.recount(ctx, out)
 	err = r.store.update(func(b *book) error {
@@ -65,6 +74,11 @@ func (r *Repo) run(ctx context.Context, out io.Writer, only string) error {
 		var found bool
 		err := r.store.update(func(b *book) error {
 			rec, found = b.next(only, os.Getpid())
+			// A landing queued after this update finds the run lock free, so no kiln accept counts on this run.
+			if !found {
+				unlock()
+			}
+
 			return nil
 		})
 		if err != nil || !found {
@@ -113,6 +127,13 @@ func (b *build) run(ctx context.Context) error {
 
 	if fresh || b.rec.Session == "" {
 		b.begin(ctx)
+	}
+
+	// A landing cut off left the branch where it moved it.
+	if b.rec.Before != "" {
+		if err := b.unland(ctx); err != nil {
+			return err
+		}
 	}
 
 	switch {
@@ -476,9 +497,24 @@ const auditTries = 3
 // guarded names it.
 //
 // It answers the commit main moved to. Or it answers what kept the work from landing, a conflict or the gate, for the
-// session.
+// session. A landing that doesn't move main puts the branch back where it stood, even after an error or an interrupt.
+// Should kiln die mid-landing, the record keeps that commit, and the next kiln run puts the branch back.
 func (b *build) land(ctx context.Context, from string, retire func(ctx context.Context, held string) error,
 	allowed ...string) (landed string, back setback, err error) {
+	before, err := b.r.git.Head(ctx, b.tree)
+	if err != nil {
+		return "", setback{}, err
+	}
+
+	b.set(func(r *record) { r.Before = before })
+	defer func() {
+		if landed == "" {
+			err = errors.Join(err, b.unland(context.WithoutCancel(ctx)))
+		} else {
+			b.set(func(r *record) { r.Before = "" })
+		}
+	}()
+
 	for {
 		onto, err := b.r.git.Tip(ctx, mainBranch)
 		if err != nil {
@@ -538,6 +574,16 @@ func (b *build) land(ctx context.Context, from string, retire func(ctx context.C
 			"main's checkout is in the way of the landing: busy in %q, or with changes to %s", way.Busy,
 			strings.Join(way.Files, ", "))
 	}
+}
+
+// unland puts the branch back at the commit it stood at before its landing began.
+func (b *build) unland(ctx context.Context) error {
+	if err := b.r.git.Reset(ctx, b.tree, b.rec.Before); err != nil {
+		return err
+	}
+
+	b.set(func(r *record) { r.Before = "" })
+	return nil
 }
 
 // linkGuidance links .claude/agents to guidance/agents/, and .claude/skills to guidance/skills/, for each that

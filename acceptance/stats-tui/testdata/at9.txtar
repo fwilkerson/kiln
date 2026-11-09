@@ -1,7 +1,7 @@
 # 9. No agent opens it by accident.
 
 # Given: kiln tui's output is not a terminal. Here it is a pipe to the script.
-exec kiln approve x
+exec kiln queue x
 
 # When: something runs kiln tui.
 ! exec kiln tui
@@ -14,6 +14,8 @@ stderr 'terminal'
 {"gate": ["true"], "rounds": 1}
 -- specs/x.md --
 # Spec 1: x
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

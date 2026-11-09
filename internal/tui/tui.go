@@ -58,6 +58,8 @@ const (
 	// Waits is a build that waits on its branch, with amendments.
 	Waits    State = "waits"
 	Accepted State = "accepted"
+	// Rejected is a spec whose amendments the developer turned away. Its last build was dropped, and never landed.
+	Rejected State = "rejected"
 )
 
 // Build is one build of a spec, from one approval.

@@ -3,7 +3,7 @@
 # Given: a build whose session went back after a failed gate, has had a call refused, and is inside a tool call.
 # Its first run writes code the gate fails. Its second, round 1 of 3, writes to specs/, which kiln's hook refuses. Then
 # it runs a command that waits for go-on, and touches waiting first, so the script knows it is inside the call.
-exec kiln approve x
+exec kiln queue x
 exec kiln run &
 exec sh -c 'i=0; while [ ! -e waiting ] && [ $i -lt 900 ]; do sleep 0.1; i=$((i+1)); done; [ -e waiting ]'
 
@@ -40,6 +40,8 @@ go 1.27
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 3}
 -- specs/x.md --
 # Spec 1: x
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

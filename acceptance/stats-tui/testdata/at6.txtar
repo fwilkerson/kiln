@@ -1,9 +1,9 @@
 # 6. Finding a spec by name.
 
 # Given: several specs.
-exec kiln approve gate-flakes
-exec kiln approve notifications
-exec kiln approve status-line
+exec kiln queue gate-flakes
+exec kiln queue notifications
+exec kiln queue status-line
 
 # When: the developer types part of one spec's name into the filter.
 term 100 20 kiln tui
@@ -23,6 +23,8 @@ screen 'gate-flakes'
 -- specs/gate-flakes.md --
 # Spec 1: gate-flakes
 
+Status: Approved, 2026-11-09
+
 ## Acceptance tests
 
 ### 1. It answers
@@ -33,6 +35,8 @@ screen 'gate-flakes'
 -- specs/notifications.md --
 # Spec 2: notifications
 
+Status: Approved, 2026-11-09
+
 ## Acceptance tests
 
 ### 1. It answers
@@ -42,6 +46,8 @@ screen 'gate-flakes'
 - **Then**: it answers.
 -- specs/status-line.md --
 # Spec 3: status-line
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

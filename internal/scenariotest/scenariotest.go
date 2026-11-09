@@ -8,6 +8,7 @@
 // A script's $WORK is the scratch repository's main checkout, on main. Its first commit holds every file the script
 // brings, but claude.json and what is under _given/. A session copies in the work it builds from _given/, which Go's
 // ./... leaves out too. HOME is a directory of the script's own, so kiln's worktrees are the script's own too.
+// $KILN_REPO is the checkout of kiln the test runs in, for a script that works on kiln's own repository.
 //
 // On the PATH, kiln is built from cmd/kiln, and claude is the scripted one. It follows $WORK/claude.json, a
 // [ClaudeScript], and records each call under $WORK/.claude-calls/<role>/<attempt>/<call>/. The record holds the
@@ -80,10 +81,21 @@ func (t tests) Run() int {
 		goEnv[names[i]] = value
 	}
 
+	mod, err := exec.Command("go", "env", "GOMOD").Output()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "scenariotest: go env GOMOD:", err)
+		return 2
+	}
+
+	kilnRepo = filepath.Dir(strings.TrimSpace(string(mod)))
+
 	return t.m.Run()
 }
 
 const kilnCommand = "github.com/fwilkerson/kiln/cmd/kiln"
+
+// kilnRepo is the checkout of kiln the test runs in.
+var kilnRepo string
 
 // kilnSource is each file the kiln on the PATH is built from, but Go's own packages.
 var kilnSource []string
@@ -145,6 +157,7 @@ func setUp(env *testscript.Env) error {
 	env.Setenv("GOTOOLCHAIN", "local")
 	env.Setenv("GOPROXY", "off")
 	env.Setenv("GOFLAGS", "-buildvcs=false")
+	env.Setenv("KILN_REPO", kilnRepo)
 	excluded := strings.Join([]string{"/" + ClaudeScriptFile, "/" + ClaudeCallsDir + "/", "/" + givenDir + "/"}, `\n`)
 	script := "git init --quiet -b main && git config user.name kiln-test && " +
 		"git config user.email kiln-test@example.com && printf '" + excluded + `\n' >>.git/info/exclude && ` +

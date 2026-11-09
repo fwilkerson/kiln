@@ -1,42 +1,53 @@
 # 5. The trend on the home screen.
 
 # Given: more builds than the home screen's recent window holds.
-# Spec t is built 12 times. Its first 2 builds each fail the gate once, fail a call, and cost $5.00. The last 10
-# each pass at once, fail no call, and cost $1.00.
-exec kiln approve t
+# Spec t is built 12 times, each from a revision of its spec. Its first 2 builds each fail the gate once, fail a
+# call, and cost $5.00. The last 10 each pass at once, fail no call, and cost $1.00.
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve --again t
+exec sh -c 'echo "Revision 2." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve --again t
+exec sh -c 'echo "Revision 3." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve --again t
+exec sh -c 'echo "Revision 4." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve --again t
+exec sh -c 'echo "Revision 5." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve --again t
+exec sh -c 'echo "Revision 6." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve --again t
+exec sh -c 'echo "Revision 7." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve --again t
+exec sh -c 'echo "Revision 8." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve --again t
+exec sh -c 'echo "Revision 9." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve --again t
+exec sh -c 'echo "Revision 10." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve --again t
+exec sh -c 'echo "Revision 11." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec kiln approve --again t
+exec sh -c 'echo "Revision 12." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
 
@@ -56,6 +67,8 @@ screen 'size, in tests +1 .*previous 2: 1 '
 {"gate": ["test -e ready"], "rounds": 1}
 -- specs/t.md --
 # Spec 1: t
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

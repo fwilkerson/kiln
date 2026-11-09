@@ -1,7 +1,7 @@
 # 8. A usage limit only pauses.
 
 # Given: a build whose session hits the usage limit.
-exec kiln approve x
+exec kiln queue x
 
 # When: the limit resets.
 exec kiln run
@@ -27,6 +27,8 @@ go 1.27
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- specs/x.md --
 # Spec 1: x
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

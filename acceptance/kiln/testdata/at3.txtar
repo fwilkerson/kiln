@@ -2,8 +2,8 @@
 
 # Given: a spec waiting on its branch with an amendment, while another spec's build lands.
 # The gate notes each commit it runs on in .tmp/gated. Both builds write notes.txt, so a's work conflicts with b's.
-exec kiln approve a
-exec kiln approve b
+exec kiln queue a
+exec kiln queue b
 exec kiln run
 stdout '^a: waits on kiln/a'
 stdout '^b: landed on main'
@@ -35,6 +35,8 @@ go 1.27
 -- specs/a.md --
 # Spec 1: a
 
+Status: Approved, 2026-11-09
+
 ## Acceptance tests
 
 ### 1. A answers
@@ -44,6 +46,8 @@ go 1.27
 - **Then**: it answers 1.
 -- specs/b.md --
 # Spec 2: b
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

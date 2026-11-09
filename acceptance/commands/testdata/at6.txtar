@@ -1,0 +1,64 @@
+# 6. The reinstall builds main.
+
+# Given: a clone of kiln's repository, with a commit on main and an uncommitted change in the working tree.
+# The clone's main is the commit under test, since the main kiln gates against may not hold the reinstall yet. The
+# commit on main and the uncommitted change each give kiln a command, built-from, that says which it is. Each adds a
+# line to _kiln too.
+env GOBIN=$WORK/bin
+env XDG_DATA_HOME=$WORK/data
+exec git -C $KILN_REPO rev-parse HEAD
+cp stdout .tmp/head
+exec git clone --quiet --no-checkout $KILN_REPO kiln
+exec sh -c 'git -C kiln checkout --quiet -B main "$(cat .tmp/head)"'
+cd kiln
+exec git config user.name kiln-test
+exec git config user.email kiln-test@example.com
+cp $WORK/_given/committed.go cmd/kiln/built_from.go
+exec sh -c 'echo "# main tip" >>cmd/kiln/_kiln'
+exec git add -A
+exec git commit --quiet -m 'test: a commit on main'
+cp $WORK/_given/uncommitted.go cmd/kiln/built_from.go
+exec sh -c 'echo "# working tree" >>cmd/kiln/_kiln'
+
+# When: the developer runs the reinstall in it.
+exec go run ./tools/install
+stdout '^installed kiln'
+
+# Then: the installed kiln was built from main's tip without the uncommitted change,
+exec $WORK/bin/kiln built-from
+stdout '^main tip$'
+
+# and the completion directory holds _kiln as that commit has it.
+exec git show main:cmd/kiln/_kiln
+cmp stdout $WORK/data/zsh/completions/_kiln
+grep '^# main tip$' $WORK/data/zsh/completions/_kiln
+! grep 'working tree' $WORK/data/zsh/completions/_kiln
+
+-- _given/committed.go --
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func init() {
+	if len(os.Args) == 2 && os.Args[1] == "built-from" {
+		fmt.Println("main tip")
+		os.Exit(0)
+	}
+}
+-- _given/uncommitted.go --
+package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func init() {
+	if len(os.Args) == 2 && os.Args[1] == "built-from" {
+		fmt.Println("working tree")
+		os.Exit(0)
+	}
+}

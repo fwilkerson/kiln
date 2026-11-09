@@ -1,7 +1,7 @@
 # 1. An approved spec lands.
 
 # Given: an approved spec whose build makes its acceptance tests pass.
-exec kiln approve x
+exec kiln queue x
 
 # When: the developer runs kiln run.
 exec kiln run
@@ -38,6 +38,8 @@ go 1.27
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- specs/x.md --
 # Spec 1: x
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

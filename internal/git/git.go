@@ -494,6 +494,17 @@ func (g *Git) MergeBase(ctx context.Context, a, b string) (string, error) {
 	return g.line(ctx, g.repo, "merge-base", a, b)
 }
 
+// Files lists the names of the entries directly in dir, in the commit at. A commit with no dir holds none.
+func (g *Git) Files(ctx context.Context, at, dir string) ([]string, error) {
+	out, err := g.in(ctx, g.repo, "--literal-pathspecs", "ls-tree", "-z", "--name-only", at+"^{commit}", "--", dir+"/")
+	found := paths(out)
+	for i, p := range found {
+		found[i] = strings.TrimPrefix(p, dir+"/")
+	}
+
+	return found, err
+}
+
 // Show reads the file at path in the commit at, and false when the commit holds no file there.
 func (g *Git) Show(ctx context.Context, at, path string) ([]byte, bool, error) {
 	listed, err := g.in(ctx, g.repo, "--literal-pathspecs", "ls-tree", "-z", "--full-tree", at+"^{commit}", "--", path)

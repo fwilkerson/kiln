@@ -68,7 +68,7 @@ s.pay = aggregate.On(orders).Wait((*model.Order).Paying).Send(s.authorize).Keep(
   the module.
 - Write programs by writing code, not by defining types (Ian Lance Taylor). Method expressions such as
   `(*model.Order).Paying` pass behavior without a new type.
-- kiln's command line is a call site too. kiln writes its own flags with two hyphens, as in `kiln approve --again`.
+- kiln's command line is a call site too. kiln writes its own flags with two hyphens, as in `kiln hook --spec <name>`.
 
 ## Make misuse impossible
 

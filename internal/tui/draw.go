@@ -267,6 +267,8 @@ func marked(s State) string {
 		return "◆"
 	case Accepted:
 		return green.Render("✓")
+	case Rejected:
+		return dim.Render("✗")
 	}
 
 	return "◌"

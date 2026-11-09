@@ -1,18 +1,20 @@
 // Command kiln builds the specs a developer approved, with headless Claude Code sessions, and lands them on main.
 //
-//	kiln init                      write a starting kiln.json, and install the pre-commit hook
-//	kiln approve [--again] <name>  queue a build of specs/<name>.md, as main holds it
-//	kiln run                       build each queued spec, one at a time, until none is queued
-//	kiln status                    show where each spec stands
-//	kiln tui [<name>]              show every build, live and past, in a full-screen view; or open it on one spec
-//	kiln accept <name>             end UAT: land the spec if it waits on its branch, then retire it
+//	kiln init                write a starting kiln.json, and install the pre-commit hook
+//	kiln queue <name>        queue a build of specs/<name>.md, as main holds it
+//	kiln run                 build each queued spec, one at a time, until none is queued
+//	kiln status              show where each spec stands
+//	kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
+//	kiln accept <name>       take the work: retire the spec, or land its amendments first
+//	kiln reject <name>       turn the amendments away: drop the build, and its branch
 //
-// kiln approve refuses a spec waiting for UAT unless --again says to build it anew.
+// Each refuses a spec in a state it does not take, as go doc ./internal/kiln shows.
 //
 // kiln tui draws only on a terminal. With its output elsewhere, it draws nothing, and refuses.
 //
-// kiln runs two commands of its own. A build's session runs kiln hook before each file it writes. The pre-commit hook
-// runs kiln precommit.
+// kiln runs three commands of its own. A build's session runs kiln hook before each file it writes. The pre-commit
+// hook runs kiln precommit. The zsh completion in _kiln runs kiln complete, which lists kiln's commands, one per line.
+// kiln complete <command> lists the spec names that command would not refuse.
 //
 // kiln exits 0 when the command did what it says, and 1 when it refused or failed. A usage error exits 2.
 package main
@@ -31,13 +33,17 @@ import (
 )
 
 const usage = `usage:
-  kiln init                      write a starting kiln.json, and install the pre-commit hook
-  kiln approve [--again] <name>  queue a build of specs/<name>.md, as main holds it
-  kiln run                       build each queued spec, one at a time, until none is queued
-  kiln status                    show where each spec stands
-  kiln tui [<name>]              show every build, live and past, in a full-screen view; or open it on one spec
-  kiln accept <name>             end UAT: land the spec if it waits on its branch, then retire it
+  kiln init                write a starting kiln.json, and install the pre-commit hook
+  kiln queue <name>        queue a build of specs/<name>.md, as main holds it
+  kiln run                 build each queued spec, one at a time, until none is queued
+  kiln status              show where each spec stands
+  kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
+  kiln accept <name>       take the work: retire the spec, or land its amendments first
+  kiln reject <name>       turn the amendments away: drop the build, and its branch
 `
+
+// commands are the developer's commands, as kiln complete lists them.
+var commands = []string{"init", "queue", "run", "status", "tui", "accept", "reject"}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
@@ -86,24 +92,23 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 
 			return r.TUI(ctx, name, os.Stdin, stdout)
 		})
-	case "approve":
-		flags := flag.NewFlagSet("approve", flag.ContinueOnError)
-		flags.SetOutput(io.Discard)
-		again := flags.Bool("again", false, "build a spec waiting for UAT anew")
-		if err = flags.Parse(args); err != nil || flags.NArg() != 1 {
-			err = errUsage
-			break
-		}
-
-		err = onRepo(ctx, func(r *kiln.Repo) error { return r.Approve(ctx, flags.Arg(0), *again, stdout) })
-	case "accept":
+	case "queue", "accept", "reject":
 		err = onRepo(ctx, func(r *kiln.Repo) error {
 			if len(args) != 1 {
 				return errUsage
 			}
 
-			return r.Accept(ctx, args[0], stdout)
+			switch command {
+			case "queue":
+				return r.Queue(ctx, args[0], stdout)
+			case "accept":
+				return r.Accept(ctx, args[0], stdout)
+			}
+
+			return r.Reject(ctx, args[0], stdout)
 		})
+	case "complete":
+		err = complete(ctx, args, stdout)
 	default:
 		err = errUsage
 	}
@@ -121,6 +126,29 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 }
 
 var errUsage = errors.New("usage")
+
+// complete lists kiln's commands, or with a command, the spec names it takes.
+func complete(ctx context.Context, args []string, out io.Writer) error {
+	names := commands
+	switch {
+	case len(args) > 1:
+		return errUsage
+	case len(args) == 1:
+		err := onRepo(ctx, func(r *kiln.Repo) (err error) {
+			names, err = r.Takes(ctx, args[0])
+			return err
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, name := range names {
+		fmt.Fprintln(out, name)
+	}
+
+	return nil
+}
 
 func onRepo(ctx context.Context, do func(*kiln.Repo) error) error {
 	r, err := kiln.Open(ctx, ".", os.Environ())

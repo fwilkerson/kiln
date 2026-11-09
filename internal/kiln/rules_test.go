@@ -2,10 +2,15 @@ package kiln
 
 import (
 	"bytes"
+	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"reflect"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -128,67 +133,103 @@ func TestGate(t *testing.T) {
 }
 
 func TestSpecStates(t *testing.T) {
-	for name, tc := range map[string]struct {
-		given   state
-		command string
-		again   bool
-		then    state
-		drop    bool
-		// dropped is a build that the approval ends, which had not ended.
-		dropped bool
-		refused bool
-	}{
-		"a new spec is queued":                     {command: "approve", then: queued},
-		"approving a queued spec queues it":        {given: queued, command: "approve", then: queued, dropped: true},
-		"a building spec refuses approval":         {given: building, command: "approve", then: building, refused: true},
-		"approving a stopped spec builds it again": {given: stopped, command: "approve", then: queued, drop: true},
-		"approving a landed spec again builds it anew": {given: landed, command: "approve", again: true, then: queued,
-			drop: true},
-		"approving an amended spec again drops its branch": {given: amended, command: "approve", again: true,
-			then: queued, drop: true, dropped: true},
-		"a landed spec refuses approval":     {given: landed, command: "approve", then: landed, refused: true},
-		"an amended spec refuses approval":   {given: amended, command: "approve", then: amended, refused: true},
-		"a landed spec is accepted":          {given: landed, command: "accept", then: landed},
-		"an amended spec is accepted":        {given: amended, command: "accept", then: amended},
-		"a queued spec refuses acceptance":   {given: queued, command: "accept", then: queued, refused: true},
-		"a building spec refuses acceptance": {given: building, command: "accept", then: building, refused: true},
-		"a stopped spec refuses acceptance":  {given: stopped, command: "accept", then: stopped, refused: true},
-		"an unknown spec refuses acceptance": {command: "accept", refused: true},
-	} {
+	// given is a spec's state, with " landing" for one landing accepted amendments, or "" for no record. then is "" for
+	// a refusal, and "no record" once the record is gone. drop is a branch to drop, and dropped a build ended unended.
+	type row struct {
+		given, command, then string
+		changed, drop        bool
+		dropped              bool
+	}
+
+	const none = "no record"
+	rows := map[string]row{
+		"queue a spec with no record":              {given: "", command: "queue", then: "queued"},
+		"queue a queued spec again":                {given: "queued", command: "queue", then: "queued", dropped: true},
+		"queue a building spec":                    {given: "building", command: "queue"},
+		"queue a stopped spec":                     {given: "stopped", command: "queue", then: "queued", drop: true},
+		"queue a spec waiting for UAT, unchanged":  {given: "waiting for UAT", command: "queue"},
+		"queue a spec waiting for UAT, changed":    {given: "waiting for UAT", command: "queue", changed: true, then: "queued", drop: true},
+		"queue a spec with amendments":             {given: "waiting on its branch with amendments", command: "queue"},
+		"queue a queued landing":                   {given: "queued landing", command: "queue"},
+		"queue a building landing":                 {given: "building landing", command: "queue"},
+		"queue a stopped landing":                  {given: "stopped landing", command: "queue"},
+		"accept a spec with no record":             {given: "", command: "accept"},
+		"accept a queued spec":                     {given: "queued", command: "accept"},
+		"accept a building spec":                   {given: "building", command: "accept"},
+		"accept a stopped spec":                    {given: "stopped", command: "accept"},
+		"accept a spec waiting for UAT":            {given: "waiting for UAT", command: "accept", then: "waiting for UAT"},
+		"accept a spec with amendments":            {given: "waiting on its branch with amendments", command: "accept", then: "waiting on its branch with amendments"},
+		"accept a queued landing":                  {given: "queued landing", command: "accept"},
+		"accept a building landing":                {given: "building landing", command: "accept"},
+		"accept a stopped landing lands it afresh": {given: "stopped landing", command: "accept", then: "queued landing"},
+		"reject a spec with no record":             {given: "", command: "reject"},
+		"reject a queued spec":                     {given: "queued", command: "reject"},
+		"reject a building spec":                   {given: "building", command: "reject"},
+		"reject a stopped spec":                    {given: "stopped", command: "reject"},
+		"reject a spec waiting for UAT":            {given: "waiting for UAT", command: "reject"},
+		"reject a spec with amendments":            {given: "waiting on its branch with amendments", command: "reject", then: none},
+		"reject a queued landing":                  {given: "queued landing", command: "reject"},
+		"reject a building landing":                {given: "building landing", command: "reject"},
+		"reject a stopped landing":                 {given: "stopped landing", command: "reject", then: none},
+	}
+
+	for name, tc := range rows {
 		t.Run(name, func(t *testing.T) {
 			var b book
 			if tc.given != "" {
-				b.Specs = []*record{{Name: "x", State: tc.given, Approved: "old", Session: "s", Why: "w",
-					Build: "b"}}
+				given, landing := strings.CutSuffix(tc.given, " landing")
+				b.Specs = []*record{{Name: "x", State: state(given), Accepted: landing, Approved: "old", Session: "s",
+					Build: "b", Rounds: 2, Audited: true, Why: "w", FailingAtMain: []string{"TestF"}}}
+			}
+
+			changed := func(since string) (bool, error) {
+				if since != "old" {
+					t.Errorf("changed since %q, want since the queue", since)
+				}
+
+				return tc.changed, nil
 			}
 
 			var drop bool
 			var dropped string
 			var err error
-			if tc.command == "approve" {
-				drop, dropped, err = b.approve("x", "new", tc.again)
-			} else {
+			switch tc.command {
+			case "queue":
+				drop, dropped, err = b.queue("x", "new", changed)
+			case "accept":
 				_, err = b.accept("x")
+			case "reject":
+				_, err = b.reject("x")
 			}
 
-			var then state
+			then := none
 			if r := b.find("x"); r != nil {
-				then = r.State
+				then = string(r.State)
+				if r.Accepted {
+					then += " landing"
+				}
 			}
 
-			if (dropped == "b") != tc.dropped {
-				t.Errorf("dropped %q, want the old build dropped %v", dropped, tc.dropped)
+			if tc.then == "" {
+				if !errors.Is(err, errRefused) || then != cmp.Or(tc.given, none) {
+					t.Errorf("got %q, %v; want it refused, and %q as it was", then, err, tc.given)
+				}
+
+				return
 			}
 
-			if then != tc.then || drop != tc.drop || errors.Is(err, errRefused) != tc.refused {
-				t.Errorf("got %q, drop %v, %v; want %q, drop %v, refused %v", then, drop, err, tc.then, tc.drop,
-					tc.refused)
+			if err != nil || then != tc.then || drop != tc.drop || (dropped == "b") != tc.dropped {
+				t.Errorf("got %q, %v, drop %v, dropped %q; want %q, drop %v, the build dropped %v", then, err, drop,
+					dropped, tc.then, tc.drop, tc.dropped)
 			}
 
 			r := b.find("x")
-			if tc.command == "approve" && !tc.refused && (r.Approved != "new" || r.Session != "" ||
-				r.Build == "b" || r.Build == "") {
-				t.Errorf("a new approval keeps %+v of the old", r)
+			switch {
+			case tc.command == "queue" && (r.Approved != "new" || r.Session != "" || r.Build == "b" || r.Build == ""):
+				t.Errorf("a new queue keeps %+v of the old", r)
+			case tc.then == "queued landing" && (r.Build != "b" || r.Session != "s" || !r.Audited || r.Rounds != 0 ||
+				r.Why != "" || r.FailingAtMain != nil):
+				t.Errorf("a landing accepted again keeps %+v", r)
 			}
 		})
 	}
@@ -219,5 +260,78 @@ func TestFoldAmendments(t *testing.T) {
 				t.Errorf("got %q, %v; want %q", got, err, tc.want)
 			}
 		})
+	}
+}
+
+func TestBuildLock(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	unshare, err := lockBuilds(syscall.LOCK_SH | syscall.LOCK_NB)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := HoldBuilds(); !errors.Is(err, errRefused) {
+		t.Errorf("the reinstall held builds while a kiln run drove one: %v", err)
+	}
+
+	unshare()
+	release, err := HoldBuilds()
+	if err != nil {
+		t.Fatalf("the reinstall could not hold builds once none ran: %v", err)
+	}
+
+	if _, err := lockBuilds(syscall.LOCK_SH | syscall.LOCK_NB); err == nil {
+		t.Error("a kiln run drove a build while the reinstall held builds")
+	}
+
+	release()
+}
+
+// TestNext holds which queued spec a kiln run takes. One started for a single spec, as kiln accept starts it, takes
+// every landing of accepted amendments too. A kiln accept that found it holding the lock counts on it to.
+func TestNext(t *testing.T) {
+	b := book{Specs: []*record{{Name: "y", State: queued}, {Name: "x", State: queued, Accepted: true},
+		{Name: "z", State: queued, Accepted: true}}}
+	var took []string
+	for {
+		r, found := b.next("z", 1)
+		if !found {
+			break
+		}
+
+		took = append(took, r.Name)
+	}
+
+	if !slices.Equal(took, []string{"x", "z"}) {
+		t.Errorf("a kiln run for z took %q, want the accepted landings x and z", took)
+	}
+}
+
+// TestAcceptDuringReinstall holds that an accept the reinstall refuses changes nothing.
+func TestAcceptDuringReinstall(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	release, err := HoldBuilds()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer release()
+	r := &Repo{store: store{dir: t.TempDir()}}
+	stopped := record{Name: "x", State: stopped, Accepted: true, Build: "b", Rounds: 1, Why: "w"}
+	if err := r.store.update(func(b *book) error { b.Specs = []*record{&stopped}; return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Accept(context.Background(), "x", io.Discard); !errors.Is(err, errRefused) {
+		t.Errorf("kiln accept during the reinstall answered %v, want it refused", err)
+	}
+
+	b, err := r.store.read()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := *b.find("x"); !reflect.DeepEqual(got, stopped) {
+		t.Errorf("a refused accept left %+v, want %+v", got, stopped)
 	}
 }

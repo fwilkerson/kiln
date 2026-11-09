@@ -13,7 +13,8 @@ import (
 	"github.com/fwilkerson/kiln/internal/tui"
 )
 
-// TestView holds what the view reads from the book and the ledger. A spec the book no longer holds was accepted. A
+// TestView holds what the view reads from the book and the ledger. A spec the book no longer holds was accepted, or
+// rejected when its last build was dropped. A
 // build, and a run with no end line, runs only while the kiln run that started it lives. An interrupt ends the run
 // but leaves the build building. Specs come newest build first, after any
 // with no build yet. Each run says why it started in the words of the spec's Terms.
@@ -59,6 +60,9 @@ func TestView(t *testing.T) {
 	}
 
 	line("b-done", entry{Kind: outcomeKind, Outcome: outAccepted})
+	line("b-turned", entry{Kind: builtKind, Spec: "turned"})
+	line("b-turned", entry{Kind: outcomeKind, Outcome: outWaits})
+	line("b-turned", entry{Kind: outcomeKind, Outcome: outDropped})
 	line("b-gone", entry{Kind: builtKind, Spec: "gone"})
 	line("b-lost", entry{Kind: builtKind, Spec: "lost"})
 	run("b-lost", reason{Why: whyFirst}, dead.Process.Pid, false)
@@ -90,6 +94,7 @@ func TestView(t *testing.T) {
 		"live running: first run ended, gate failed, round 1 of 3 running",
 		"lost halted: first run lost",
 		"gone halted: first run ended",
+		"turned rejected: ",
 		"done accepted: first run ended, round 1 of 3 ended, audit, try 2 ended, audit's findings ended, " +
 			"conflict with main, round 2 of 3 ended, landing gate failed, round 3 of 3 ended, after a usage limit " +
 			"ended, after kiln stopped ended, ? ended",

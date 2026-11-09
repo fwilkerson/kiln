@@ -2,7 +2,7 @@
 
 # Given: a build with a failed gate, a refused call and a passed gate.
 # Its first run writes to specs/, which kiln's hook refuses, and code the gate fails. Its second fixes the code.
-exec kiln approve x
+exec kiln queue x
 exec kiln run
 stdout '^x: landed on main'
 
@@ -29,6 +29,8 @@ go 1.27
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- specs/x.md --
 # Spec 1: x
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

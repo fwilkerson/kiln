@@ -2,8 +2,8 @@
 
 # Given: a spec waiting for UAT, landed or on its branch with an amendment.
 # x lands, and y waits on its branch with an amendment.
-exec kiln approve x
-exec kiln approve y
+exec kiln queue x
+exec kiln queue y
 exec kiln run
 exec kiln status
 stdout '^x: waiting for UAT$'
@@ -52,6 +52,8 @@ go 1.27
 -- specs/x.md --
 # Spec 1: x
 
+Status: Approved, 2026-11-09
+
 ## Acceptance tests
 
 ### 1. X answers
@@ -61,6 +63,8 @@ go 1.27
 - **Then**: it answers 42.
 -- specs/y.md --
 # Spec 2: y
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

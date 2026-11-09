@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/fwilkerson/kiln/internal/proc"
 )
@@ -212,7 +213,7 @@ func (r *Repo) gate(ctx context.Context, tree, spec string, allowed ...string) (
 // atMain runs commands at main's tip, in a worktree of its own. It keeps the checks, and runs them again only once main
 // or the commands change. kiln run and kiln accept share the worktree, one at a time.
 func (r *Repo) atMain(ctx context.Context, main string, commands []string) ([]check, error) {
-	unlock, err := r.store.lock(mainLock, true)
+	unlock, err := r.store.lock(mainLock, syscall.LOCK_EX)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,109 @@
+# 5. Completion offers only what a command takes.
+
+# Given: one approved spec waiting for UAT, one queued, one on main that kiln holds no record of, and one starter
+# with Status Proposed.
+# a lands and waits for UAT, b is queued, c has no record, and d is the starter.
+exec kiln queue a
+exec kiln run
+stdout '^a: landed on main'
+exec kiln queue b
+exec kiln status
+stdout '^a: waiting for UAT$'
+stdout '^b: queued$'
+! stdout '^[cd]:'
+
+# When: the completion asks kiln for the spec names after kiln accept, and after kiln queue.
+exec kiln complete accept
+cp stdout .tmp/accept
+exec kiln complete queue
+cp stdout .tmp/queue
+
+# Then: kiln accept gets only the spec waiting for UAT.
+cmp .tmp/accept _given/accept
+
+# kiln queue gets the queued spec and the one with no record, and neither the spec waiting for UAT nor the starter.
+cmp .tmp/queue _given/queue
+
+-- _given/accept --
+a
+-- _given/queue --
+b
+c
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/a.md --
+# Spec 1: a
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. A answers
+
+- **Given**: nothing.
+- **When**: A is called.
+- **Then**: it answers 1.
+-- specs/b.md --
+# Spec 2: b
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. B answers
+
+- **Given**: nothing.
+- **When**: B is called.
+- **Then**: it answers 2.
+-- specs/c.md --
+# Spec 3: c
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. C answers
+
+- **Given**: nothing.
+- **When**: C is called.
+- **Then**: it answers 3.
+-- specs/d.md --
+# Spec 4: d
+
+Status: Proposed
+
+## Open Questions
+
+1. What should D answer?
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/a/.\" ."}}},
+    {"result": {"result": "Built a."}}
+  ]}},
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+}
+-- _given/a/a.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// A answers 1.
+func A() int { return 1 }
+-- _given/a/acceptance/a/a_test.go --
+package a_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.A(); got != 1 {
+		t.Fatalf("A answers %d, want 1", got)
+	}
+}

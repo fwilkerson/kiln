@@ -4,7 +4,7 @@
 # audit's findings in its session, and landed.
 # Each run costs, takes turns and fails calls as claude.json scripts it. Only the first run fails a call: it reads a
 # file that is not there.
-exec kiln approve x
+exec kiln queue x
 exec kiln run
 stdout '^x: the gate failed; it goes back to the session, round 1 of 1$'
 stdout '^x: landed on main'
@@ -28,6 +28,8 @@ go 1.27
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- specs/x.md --
 # Spec 1: x
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

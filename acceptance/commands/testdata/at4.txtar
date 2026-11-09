@@ -1,0 +1,115 @@
+# 4. An accepted landing that stops can land again.
+
+# Given: a spec waiting on its branch, whose landing stops once accepted.
+# Main's checkout holds an uncommitted PRODUCT.md, which the landing writes, so main can't move to it.
+exec kiln queue x
+exec kiln run
+stdout '^x: waits on kiln/x'
+cp _given/PRODUCT.md PRODUCT.md
+! exec kiln accept x
+stdout '^x: stopped: '
+stderr '^kiln accept: the landing of x stopped'
+exec git log --format=%H main -- x.go
+! stdout .
+
+# When: the developer runs kiln queue on it,
+! exec kiln queue x
+
+# Then: the queue is refused, and kiln status shows the spec stopped, landing accepted amendments.
+stderr '^kiln queue: refused: '
+exec kiln status
+stdout '^x: stopped, landing accepted amendments$'
+
+# When: then fixes what stopped the landing and runs kiln accept again.
+exec git add PRODUCT.md
+exec git commit --quiet -m 'docs: start the product'
+exec kiln accept x
+stdout '^x: accepted, and main is at '
+
+# Then: after the second accept, main holds the spec's work,
+exec git diff --quiet main
+exists x.go acceptance/x/x_test.go
+exec go test ./acceptance/x/
+stdout '^ok'
+
+# the spec as accepted, amendments folded in, is retired,
+! exists specs/x.md specs/x.amend.md
+exec sh -c '$(sed -n "s/^- Spec 1: x: .\(git show .*\).$/\1/p" PRODUCT.md)'
+stdout '^- \*\*Then\*\*: it answers 43.$'
+! stdout 'answers 42'
+exec kiln status
+stdout '^kiln holds no approved spec$'
+
+# and PRODUCT.md names it, once.
+grep '^The developer''s own product page.$' PRODUCT.md
+grep '^- Spec 1: x: `git show [0-9a-f]{12}:specs/x.md`$' PRODUCT.md
+exec grep -c 'specs/x.md' PRODUCT.md
+stdout '^1$'
+
+-- _given/PRODUCT.md --
+# Product
+
+The developer's own product page.
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+    {"result": {"result": "Built x, under an amendment."}}
+  ]}},
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 43.
+func X() int { return 43 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 43 {
+		t.Fatalf("X answers %d, want 43", got)
+	}
+}
+-- _given/x/specs/x.amend.md --
+# Amendments to specs/x.md
+
+## Acceptance test 1: X answers
+
+### Old
+
+- **Then**: it answers 42.
+
+### New
+
+- **Then**: it answers 43.
+
+### Reason
+
+42 is taken.

@@ -3,7 +3,7 @@
 # Given: a test that fails on main, such as a flaky one.
 ! exec go test ./...
 stdout '--- FAIL: TestFlaky'
-exec kiln approve x
+exec kiln queue x
 
 # When: a build's gate runs.
 exec kiln run
@@ -37,6 +37,8 @@ func TestFlaky(t *testing.T) {
 }
 -- specs/x.md --
 # Spec 1: x
+
+Status: Approved, 2026-11-09
 
 ## Acceptance tests
 

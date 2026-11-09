@@ -24,8 +24,8 @@ type view struct {
 	r *Repo
 }
 
-// Specs answers each spec in the book. A spec the ledger holds and the book no longer does shows as accepted. The
-// newest build comes first, and a spec with no build yet before them all.
+// Specs answers each spec in the book. A spec the ledger holds and the book no longer does was accepted or rejected.
+// Its last build's outcome says which. The newest build comes first, and a spec with no build yet before them all.
 func (v view) Specs(context.Context) ([]tui.Spec, error) {
 	b, err := v.r.store.read()
 	if err != nil {
@@ -47,9 +47,16 @@ func (v view) Specs(context.Context) ([]tui.Spec, error) {
 	for _, s := range collect(entries) {
 		spec := named[s.Spec]
 		if spec == nil {
-			named[s.Spec] = &tui.Spec{Name: s.Spec, State: tui.Accepted}
+			named[s.Spec] = &tui.Spec{Name: s.Spec}
 			spec = named[s.Spec]
 			specs = append(specs, spec)
+		}
+
+		if b.find(s.Spec) == nil {
+			spec.State = tui.Rejected
+			if s.outcome == outAccepted {
+				spec.State = tui.Accepted
+			}
 		}
 
 		spec.Builds = append(spec.Builds, s.shown())
