@@ -218,6 +218,9 @@ The developer's notes from using spec 3's `kiln tui` on its own second build.
   they name only pgup, pgdn and end (`internal/tui/draw.go:160-161`). The list screens take only `j`, `k`, the arrows
   and pgup and pgdn (`internal/tui/model.go:347`). `fn+↓` and `fn+→` send Page Down and End in most terminals; this
   is believed, not tried.
+    - The developer's lean: each footer names the keys every keyboard has, such as `j`/`k`, space/`b` and `g`/`G`,
+      instead of end and the arrows. The footer also names one key, such as `?`, that opens a popover listing every key
+      the screen takes. `?` for help is the convention in Bubbles' `help` component and in TUIs such as lazygit and k9s.
 - **"context peak" is "context".** The build screen's column header says "context peak"
   (`internal/tui/draw.go:551`), but a run records one context figure, so "context" says it.
 - **Keep:** `j` and `k` move the selection on the list screens, and the developer finds them helpful.
