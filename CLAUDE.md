@@ -5,7 +5,8 @@ for macOS.
 
 ## Where things are
 
-- `specs/<name>.md`: an approved spec. Its Given, When, Then text is the developer's: never change it. Where one can't
+- `specs/<name>.md`: a spec. With Status Proposed it is a plan, a starter `/slice` takes up later; build only the
+  approved spec kiln names. Its Given, When, Then text is the developer's: never change it. Where one can't
   hold, write `specs/<name>.amend.md` with the old wording, the new wording and the reason, and finish the work under
   the amendment.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.

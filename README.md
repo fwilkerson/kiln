@@ -5,7 +5,8 @@ it on main. The developer comes back to the spec met, asked nothing but about th
 
 `PRODUCT.md` holds, for each accepted spec, the `git show` command that prints it from the commit that last held it.
 
-What spec 1 left for later is in `docs/later.md`.
+What spec 1 left for later is in `docs/later.md`. A plan the developer means to build waits in `specs/` as a starter
+spec, with Status Proposed, until `/slice` takes it up.
 
 ## Use
 

@@ -3,6 +3,10 @@
 Status: notes, not a spec. Each topic below was discussed while drafting spec 1 (`git show d54b9a0718f9:specs/kiln.md`),
 then left out. Each says what it is, why it came up, and what would show it is needed. A later spec starts from here.
 
+A topic the developer means to build leaves this file for a starter spec in `specs/`, with Status Proposed, which
+`/slice` takes up from its Open Questions. `specs/tui-after-use.md`, `specs/notify.md`,
+`specs/project-roles.md` and `specs/gauges.md` began here.
+
 ## The evidence behind spec 1
 
 Counted from Eidos's backlog and runner stores on 2026-11-07.
@@ -17,27 +21,6 @@ Counted from Eidos's backlog and runner stores on 2026-11-07.
 - **Scenarios that broke.** S65 locked a hash length of "7 to 40" that a later decision set to 7 to 64. S195 locked a
   5-second window. S136 locked which links Home draws. None of these was in the spec's intent.
 
-## Gauges
-
-A gauge is a number over time, with a line the developer sets. Gauges serve the developer's job of curating the
-codebase.
-
-| Gauge              | Source today                                                                                                                   |
-|--------------------|--------------------------------------------------------------------------------------------------------------------------------|
-| Flaky tests        | Eidos's `scripts/gate.sh` `suite_again` notes each test that passed on a second run alone. A gauge counts those notes per gate |
-| Slow tests         | Eidos's `scripts/health.py`: the slowest tests, suite CPU and wall time                                                        |
-| Comment share      | odh's `tools/size`: comment lines per 100 lines, by directory                                                                  |
-| Agent friction     | Eidos's runner record: refusals, context used before the first edit, failed gates per build                                    |
-| Mutation score     | Eidos's `scripts/mutate.sh`                                                                                                    |
-| GoLand inspections | odh's `tools/inspect`. It needs GoLand open on the machine, so it can't gate an unattended build                               |
-
-- **Testable code.** The developer cares that a build writes testable code, not in what order. Mutation score is the
-  lean for its gauge: it falls when tests can't catch a change, and extra tests that catch nothing don't raise it.
-  Coverage would reward tests written for their own sake.
-- **Build it when:** a suite has grown enough that flaky or slow tests appear, or the developer wants a trend to curate
-  against.
-- **Open:** where each line is set. The draft had a checked-in `gauges.json`.
-
 ## Flaky tests in the gate
 
 Spec 1's acceptance test 4 lets a build land past a test that already fails on main. The fuller design:
@@ -47,30 +30,7 @@ Spec 1's acceptance test 4 lets a build land past a test that already fails on m
 - A test stable on main that fails on the build fails the gate, even if it passes on a rerun. Today's `suite_again`
   passes the gate on a rerun; that hides a race the build added.
 - A quarantine list holds tests known to flake, and a session is started to fix each.
-- **Build it when:** a flaky test blocks a build, or the flaky-test gauge rises.
-
-## Monitors
-
-A monitor watches running software (tests, logs, metrics, traces) and hands what it finds to the engine.
-
-```text
-monitor ─▶ observation, keyed by signature, counted
-               │ new, or over its threshold?
-               ▼
-         reproducer: write a test that fails, citing the Given, When, Then or rule it breaks
-          │ fails, with a citation         │ can't, or cites nothing
-          ▼                                ▼
-   a spec of one acceptance test     stays an observation; a gauge shows its count
-          │
-          ▼
-       engine
-```
-
-- The store holds observations: signature, first and last seen, count, and state.
-- No judge weighs findings in English. A failing test is the only way in.
-- The developer approves no one-test spec. Its citation ties it to intent already approved.
-- Cap how often one signature reaches the engine, so a partial fix can't loop.
-- **Build it when:** a project the engine builds runs somewhere and produces logs or metrics.
+- **Build it when:** a flaky test blocks a build, or the flaky-test gauge in `specs/gauges.md` rises.
 
 ## Several builds per spec
 
@@ -133,37 +93,6 @@ odh has two agents design apart from the same brief, and a fresh judge scores bo
 - **Build it when:** a builder wants a design for a shared API or a critical piece of code, and can't get one inside
   its checkout.
 
-## Notifications
-
-A notification says when a spec stops or waits for UAT, and should open what to act on.
-
-- **Ghostty first.** The developer wants to try Ghostty's notifications. Ghostty is believed to show one when a
-  program prints an OSC 9 or OSC 777 escape sequence; this is not tried.
-- `terminal-notifier` can open a target on a click; `osascript`'s notification cannot. This is believed, not tried.
-
-## A project's own tools, agents and workflows
-
-kiln gives every session the same tools and permissions (`claude.Launch`'s `Tools`, `Deny`, `Forbidden`, `Writable`,
-`Domains`, set in `internal/kiln/build.go`). A project may need more: spec 3's view needs tui-test's CLI to explore a
-TUI, and auto mode refuses a program from outside until a rule allows it.
-
-What a project can set today, and what it can't:
-
-- **Permissions, per project: yes.** kiln's sessions read the project's `.claude/settings.json`
-  (`--setting-sources project`, `internal/claude/claude.go`), so an allow rule there reaches every role.
-- **Tools and prompt, per role: no.** kiln fixes each role's tools in its own code (`internal/kiln/build.go`, the
-  audit's `Tools`) and compiles the audit's prompt into its binary (`guidance.Audit`). The `tools:` line in
-  `guidance/agents/audit.md` is never read.
-
-The options, from least to most:
-
-- A project names the tools and permission rules each role gets, beside the gate in `kiln.json`.
-- A project defines its own agents, and kiln runs `.claude/agents/<role>.md` from the project's main, prompt and
-  `tools:` alike, falling back to its own. This is the lean: it is Claude Code's own format, so one file says what a
-  role is told and what it may use, where a list in `kiln.json` would be a second place for the same fact.
-- A project defines the workflow itself: which roles run, in what order, and what a failure sends back.
-- **Build it when:** a build fails or stalls for a tool or a permission its project needs and kiln does not give.
-
 ## Repositories in other languages
 
 Spec 1 names a test that already failed on main by its Go test name, and ties a Given, When, Then to its code by a Go
@@ -178,42 +107,9 @@ gate's results.
 
 - **Build it when:** the developer wants to see how far a long build has got.
 
-## The TUI, after its first use
-
-The developer's notes from using spec 3's `kiln tui` on its own second build.
-
-- **Newest first.** The run screen lists calls oldest first, so a running session's newest call is at the bottom.
-  Newest at the top serves a run both while it runs and after it ends. The spec screen lists builds oldest first too,
-  and should list the newest first.
-- **What an agent answered.** No agent answers in structured JSON. kiln runs `claude -p --output-format stream-json`,
-  and a session's answer is the free text of its stream's `result` event. The audit's findings are numbered text
-  blocks (reaches, chance, harm, design, proof) that kiln hands to the build session as a prompt. The run screen
-  shows that answer only as a `said` line cut to one row. Two ways to show it:
-    - Show a run's whole answer on the run screen, or on a screen of its own. This needs nothing new from the agent.
-    - Ask the audit for JSON with `claude -p --json-schema`, and draw each finding as a row that opens to its full
-      text. The scripted claude already accepts the flag (`internal/scenariotest/claude_call.go`).
-- **Scrolling without an End key.** A MacBook has no End or Page Down key. The run and spec text screens hand every
-  key they don't handle to Bubbles' viewport (`internal/tui/model.go:239-244`), which reads space and `f` as page
-  down, `b` as page up, and `d` and `u` as half a page. `g` and `G` go to the top and the end. Neither footer says so:
-  they name only pgup, pgdn and end (`internal/tui/draw.go:160-161`). The list screens take only `j`, `k`, the arrows
-  and pgup and pgdn (`internal/tui/model.go:347`). `fn+↓` and `fn+→` send Page Down and End in most terminals; this
-  is believed, not tried.
-    - The developer's lean: each footer names the keys every keyboard has, such as `j`/`k`, space/`b` and `g`/`G`,
-      instead of end and the arrows. The footer also names one key, such as `?`, that opens a popover listing every key
-      the screen takes. `?` for help is the convention in Bubbles' `help` component and in TUIs such as lazygit and k9s.
-- **"context peak" is "context".** The build screen's column header says "context peak"
-  (`internal/tui/draw.go:551`), but a run records one context figure, so "context" says it.
-- **Keep:** `j` and `k` move the selection on the list screens, and the developer finds them helpful.
-- **Build it when:** the next spec that changes `kiln tui`.
-
 ## odh practices not yet in spec 1
 
-- **Blind weigher.** When the interview's lean matches the developer's, a fresh agent weighs the options without
-  knowing whose is whose.
-- **Research reports** before a decision about the world, as in odh's `docs/research/`.
 - **`prose`** on each comment, in the session that writes it.
-- **`audit` scoring.** odh's audit gives at most five findings, each with a design or a patch, and a failing test where
-  one can fail today.
 
 ## What Eidos leaves behind
 
