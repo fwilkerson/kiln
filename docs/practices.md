@@ -68,6 +68,7 @@ s.pay = aggregate.On(orders).Wait((*model.Order).Paying).Send(s.authorize).Keep(
   the module.
 - Write programs by writing code, not by defining types (Ian Lance Taylor). Method expressions such as
   `(*model.Order).Paying` pass behavior without a new type.
+- kiln's command line is a call site too. kiln writes its own flags with two hyphens, as in `kiln approve --again`.
 
 ## Make misuse impossible
 
@@ -141,13 +142,13 @@ Change the README in the same commit as the code it describes. A stale doc is a 
 
 Score both designs on five weighted measures:
 
-| # | Weight | Measure                                                                        |
-|---|-------:|--------------------------------------------------------------------------------|
-| 1 |      3 | Fewer go-to-definition hops, summed over every line a reader traces            |
-| 2 |      2 | Fewer shallow pass-through functions                                           |
-| 3 |      2 | Less code that nearly repeats code in another package                          |
-| 4 |      3 | Fewer files and lines resting on a rule the compiler skips                     |
-| 5 |      1 | Fewer lines of code                                                            |
+| # | Weight | Measure                                                             |
+|---|-------:|---------------------------------------------------------------------|
+| 1 |      3 | Fewer go-to-definition hops, summed over every line a reader traces |
+| 2 |      2 | Fewer shallow pass-through functions                                |
+| 3 |      2 | Less code that nearly repeats code in another package               |
+| 4 |      3 | Fewer files and lines resting on a rule the compiler skips          |
+| 5 |      1 | Fewer lines of code                                                 |
 
 - In measure 4, a rule counts twice if breaking it stores wrong data, or makes or skips an outside call. The judge cites
   each file and line it counts.

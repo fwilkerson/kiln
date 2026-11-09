@@ -21,6 +21,8 @@ kiln accept <name>             end UAT: land the spec if it waits on its branch,
 
 1. Write `specs/<name>.md` with the `/slice` skill, in an interactive Claude Code session, and commit it on main.
 2. Run `kiln approve <name>`, then `kiln run`.
+   Approve only once the spec reads as you want it, diagrams included. `kiln tui` shows each build's spec as its
+   approval commit held it, so a later fix on main shows only in a build approved after the fix.
 3. Read `kiln status`. A spec waiting for UAT is on main. A spec waiting on its branch with amendments shows them.
 4. Run `kiln accept <name>`. The spec is deleted, and `PRODUCT.md` gains the command that shows it.
    To revise a spec that waits for UAT instead, commit the edit and run `kiln approve --again <name>`.
