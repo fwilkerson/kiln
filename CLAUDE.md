@@ -16,7 +16,8 @@ for macOS.
 
 ## Sources
 
-Spec 1 copies code from two repositories. Read each at its commit, never its working tree, and never write to either.
+Spec 1 copied code from two repositories, and `docs/later.md` still points at them. Read each at its commit, never its
+working tree, and never write to either.
 
 - Eidos at `07992d10`: `git -C ~/github.com/fwilkerson/eidos show 07992d10:<path>`.
 - odh at `b978d94`: `git -C ~/github.com/fwilkerson/odh show b978d94:<path>`.
