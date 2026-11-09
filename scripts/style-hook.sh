@@ -2,8 +2,9 @@
 # Claude Code runs this after each Edit or Write. It reports the style rules a session must fix by hand, and changes
 # nothing: a hook that rewrote the file would leave the session's copy of it stale. One gofmt fixes the formatting.
 f=$(jq -r '.tool_input.file_path // empty')
+# A Go file in another repository answers to that repository's rules, not kiln's.
 case "$f" in
-*.go) ;;
+"$CLAUDE_PROJECT_DIR"/*.go) ;;
 *) exit 0 ;;
 esac
 
