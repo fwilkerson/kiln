@@ -1,16 +1,16 @@
-# Spec N: Tell the developer when a spec waits on them
+# Spec 5: Tell the developer when a spec waits on them
 
-Status: Proposed
+Status: Approved, 2026-11-09
 
 <!-- Status is Proposed or Approved, with the date it was approved. kiln deletes the spec once the developer accepts
 it, and PRODUCT.md names the commit that last held it. -->
 
 ## Overview
 
-The developer approves a spec and walks away. When the spec needs them again, a macOS notification says which spec
-and whether it finished or stopped. A click on it brings forward the terminal that runs `kiln run`. There, the build's
-last lines sum it up from what kiln recorded, and say what to run next. For a stopped build, they say why it stopped,
-and give the command that opens a Claude Code session on it.
+The developer queues an approved spec and walks away. When the spec needs them again, a macOS notification says which
+spec and whether it finished or stopped. A click on it brings forward the terminal that runs `kiln run`. There, the
+build's last lines sum it up from what kiln recorded, and say what to run next. For a stopped build, they say why it
+stopped, and give the command that opens a Claude Code session on it.
 
 What showed the need: the developer wants to try Ghostty's notifications. Ghostty 1.4.1 is installed, and its
 `desktop-notifications` setting is on, so it shows a notification that a program asks for with OSC 9. OSC 9 is an
@@ -20,17 +20,22 @@ that printed it.
 
 ## Goals
 
-- This spec builds on `specs/commands.md`: its commands are `kiln queue`, `kiln accept` and `kiln reject`.
-
+- This spec builds on spec 4, `specs/commands.md`, which kiln builds first. Its commands are `kiln queue`,
+  `kiln accept` and `kiln reject`, and its states include a spec landing accepted amendments, which `kiln status`
+  shows beside the state.
 - A build that ends stopped, waiting for UAT, or waiting on its branch with amendments notifies the developer. These
   are the three states in `internal/kiln/state.go` that wait on the developer.
-- The notification names the spec, and the state `kiln status` shows for it.
+- The notification names the spec, and the state `kiln status` shows for it, such as "stopped, landing accepted
+  amendments".
 - Under the line `kiln run` prints today when a build ends, a summary of the build follows. Every line of it comes
   from kiln's state, its ledger and git, never from a session's words, so the same build always prints the same
   summary.
-- The summary ends with the next command for the developer to run. For a stopped build, that command resumes the
-  build's own session, in its worktree, to ask it why the build stopped. A fix the session makes on `kiln/<name>` is
-  dropped by `kiln queue <name>`, which builds anew from main, so the fix goes to main or the spec.
+- The summary ends with the next command for the developer to run. Where a stopped build has a session that saw why
+  it stopped, the summary gives the command that resumes that session, in its worktree, to ask it why. A fix the
+  session makes on `kiln/<name>` is dropped by `kiln queue <name>`, which builds anew from main, so the fix goes to
+  main or the spec.
+- A next step never names a command spec 4 would refuse in that state. A stopped landing of accepted amendments
+  names `kiln accept` and `kiln reject`, never `kiln queue`, which refuses it.
 - The summary holds these lines, for spec `x`. The first line is what `kiln run` prints today, colon included. The
   second is the line a landed build's commit already holds. The Technical Plan gives the rule for each other line.
 
@@ -39,7 +44,7 @@ that printed it.
     12 min · $3.40 · 41 turns · 2 failed calls
     1 of 3 rounds · the audit sent findings back
     7 files changed, 312 insertions, 40 deletions
-    next: read it with git show 1a2b3c4d5e6f, then run kiln accept x
+    next: read it with git show 1a2b3c4d5e6f, then run kiln accept x, or change the spec and run kiln queue x
 
   x: waits on kiln/x, with amendments for UAT
     12 min · $3.40 · 41 turns · 2 failed calls
@@ -55,24 +60,36 @@ that printed it.
     the work is on kiln/x, in ~/Library/Caches/kiln/kiln-1f2e3d4c/x
     next: cd ~/Library/Caches/kiln/kiln-1f2e3d4c/x && claude --resume <session>, to ask the session why;
           then fix main or the spec, and run kiln queue x
+
+  x: stopped: the gate still failed after its last round:
+    12 min · $3.40 · 41 turns · 2 failed calls
+    1 of 3 rounds · the audit found nothing
+    failing: TestAT2 (example.com/scratch)
+    the accepted spec is on kiln/x, in ~/Library/Caches/kiln/kiln-1f2e3d4c/x
+    next: cd ~/Library/Caches/kiln/kiln-1f2e3d4c/x && claude --resume <session>, to ask the session why;
+          then fix main, and run kiln accept x to land it again, or kiln reject x
   ```
+
+  The last is a landing of accepted amendments that stopped, which `kiln status` shows as "stopped, landing accepted
+  amendments".
 
 ## Non-goals
 
 - A notification for a state that needs nothing from the developer: queued, building, or paused for a usage limit.
 - A notification when `kiln run` ends. Each spec it built has notified by then.
 - A setting in kiln to turn notifications off. The terminal has its own, such as Ghostty's `desktop-notifications`.
-- A change to `kiln status`. It already shows why a build stopped, and the amendments.
+- A change to `kiln status` beyond spec 4's. It already shows why a build stopped, and the amendments.
 - A stopped build that goes on in its session once the developer has talked with it, instead of building anew.
   `specs/talk.md` takes it up.
 
 ## Open Questions
 
-None. `specs/commands.md`, built first, settles what a stopped accepted landing does.
+None.
 
 ## Acceptance tests
 
-Each test runs `kiln` on a scratch repository with the scripted claude, and reads the output of `kiln run`.
+Each test runs `kiln` on a scratch repository with the scripted claude, and reads the output of the command that
+built.
 
 ### 1. A stopped spec notifies, and says why
 
@@ -96,19 +113,27 @@ Each test runs `kiln` on a scratch repository with the scripted claude, and read
 - **When**: the developer runs `kiln run`.
 - **Then**: its output holds one notification, which names the spec and the state `kiln status` shows for it,
   waiting on its branch with amendments. After the line that says the build waits, the output shows the build's
-  time, cost, turns and failed calls, the amendments, and the command that accepts the spec.
+  time, cost, turns and failed calls, the amendments, and the commands that accept and reject them.
+
+### 4. A stopped landing of accepted amendments points back to accept
+
+- **Given**: a spec waiting on its branch with amendments, whose landing stops once accepted.
+- **When**: the developer runs `kiln accept` on it.
+- **Then**: its output holds one notification, which names the spec and the state `kiln status` shows for it,
+  stopped, landing accepted amendments. After the line that says the build stopped, the output names
+  `kiln accept` and `kiln reject` as what to run next, and doesn't name `kiln queue`.
 
 ## Technical Plan
 
-- `internal/kiln/build.go`: `stop` and `after` print the line they print today. Then `run`'s loop, once `b.run`
-  returns and any stop is recorded, reads the spec's record as stored. If its state is stopped, waiting for UAT, or
-  waiting on its branch, the loop prints one OSC 9 sequence to the same writer, then the summary. The sequence is
-  `ESC ] 9 ; kiln: <name> <state> BEL`, with the stored state. A build that set one waiting state and then stopped,
-  as `after` does when `git show` fails, so notifies once, with the state `kiln status` shows. The sequence goes first
-  so that no failed read in the summary can keep it from printing.
-  The body starts with `kiln:` so that a spec named, say, `4` can't read as ConEmu's OSC 9;4 progress bar, which
-  Ghostty also draws. The body holds no control character: `Queue` takes only a name that `specName` matches, and
-  the state is one of the constants in `state.go`.
+- `internal/kiln/build.go`: `stop` and `after` print the line they print today. Then `run`'s loop, once `b.run` returns
+  and any stop is recorded, reads the spec's record as stored. If its state is stopped, waiting for UAT, or waiting on
+  its branch, the loop prints one OSC 9 sequence to the same writer, then the summary. The sequence is
+  `ESC ] 9 ; kiln: <name> <state> BEL`, with the state as `kiln status` words it, spec 4's note included. A build that
+  set one waiting state and then stopped, as `after` does when `git show` fails, so notifies once, with the state
+  `kiln status` shows. The sequence goes first so that no failed read in the summary can keep it from printing. The body
+  starts with `kiln:` so that a spec named, say, `4` can't read as ConEmu's OSC 9;4 progress bar, which Ghostty also
+  draws. The body holds no control character: `Queue` takes only a name that `specName` matches, and the state is one of
+  the constants in `state.go`.
 - Print the sequence whether or not the output is a terminal. A terminal that doesn't know OSC 9 ignores it, as
   xterm does an unknown OSC. Output sent to a file holds the sequence, and `tail -f` of the file in Ghostty still
   notifies.
@@ -142,17 +167,22 @@ Each test runs `kiln` on a scratch repository with the scripted claude, and read
       `specs/`. A conflict with main counts the conflicting files. `setback` and `outOfRounds` carry that list, so a
       test the gate excused as failing at main is never shown as the build's. The `failing:` line shows the list.
     - A stop for a kiln error has a `Why` of "kiln could not go on with the build:" and the error, which the stop line
-      already shows. The build's session never saw it, so the next step names no session: it is to fix what the error
-      names, then run `kiln queue <name>`, which builds anew from main. A build its gate and audit passed, stopped
-      only because main's checkout was in the way of its landing, is built again. `specs/talk.md` takes up letting such
-      a build go on instead.
-    - A stop past the last round, of a build with a `Session`, shows the branch and worktree that hold its work. Its
-      next step resumes the session: `cd <worktree> && claude --resume <session>`, the worktree quoted with
-      `shellQuote`. `b.stop` leaves the worktree and session in place, and `kiln queue <name>` removes them.
-    - A stopped accepted landing, which `kiln status` shows as landing accepted amendments, has as its next step: fix
-      what stopped it, then run `kiln accept <name>`, or run `kiln reject <name>` to turn the amendments away.
-    - A build with no `Session` stopped before its session began, so it has no work and no session to resume. Its next
-      step is: read `kiln status`, fix main or the spec, and run `kiln queue <name>`.
+      already shows. No `failing:` line follows.
+    - A stop past the last round, of a build with a `Session`, shows the branch and worktree that hold its work, and
+      its next step starts with the command that resumes the session: `cd <worktree> && claude --resume <session>`,
+      the worktree quoted with `shellQuote`. `b.stop` leaves the worktree and session in place. A stop for a kiln
+      error names no session, since the session never saw the error.
+- The rest of a stopped build's next step, by the first row that holds:
+
+  | The stopped build                                     | Then                                                                                  |
+  |-------------------------------------------------------|---------------------------------------------------------------------------------------|
+  | Was landing accepted amendments (`Accepted` set)      | fix main, or what the error names, then `kiln accept <name>`, or `kiln reject <name>` |
+  | Stopped for a kiln error                              | fix what the error names, then `kiln queue <name>`, which builds anew                 |
+  | Stopped past its last round                           | fix main or the spec, then `kiln queue <name>`                                        |
+  | Has no `Session`: it stopped before its session began | read `kiln status`, fix main or the spec, then `kiln queue <name>`                    |
+
+  A build its gate and audit passed, stopped only because main's checkout was in the way of its landing, is built
+  again by `kiln queue`. `specs/talk.md` takes up letting such a build go on instead.
 - The resumed session is Claude Code's own record of the headless one. kiln runs `claude -p --session-id <id>` in the
   worktree, with Claude Code's default settings directory, so Claude Code keeps the session's transcript under that
   directory, by the worktree's path. `.git/kiln/sessions/<id>/` holds only kiln's copy of the stream, and the files
@@ -160,12 +190,16 @@ Each test runs `kiln` on a scratch repository with the scripted claude, and read
   try it, since the acceptance tests run the scripted claude.
 - The resumed session runs without kiln's hook and settings. That is meant: the developer is at the keyboard, and
   `kiln queue <name>` drops whatever the session writes on `kiln/<name>`.
-- The same code runs when `kiln accept` lands a spec that waited on its branch, since `acceptAmended` runs the
-  build. A landing that stops there notifies, and sums up, too. One that lands is retired, and doesn't.
+- `kiln accept` lands accepted amendments through `run`'s loop, as spec 4 has it, so a landing that stops notifies
+  and sums up there too. One that lands is retired, and doesn't. When another `kiln run` is building, that run lands
+  the spec, and notifies in its own output.
+- Spec 4 rebuilds the record whole when `kiln accept` lands a stopped landing again. The rounds limit this spec keeps
+  on the record is not among what it keeps, so the next gate sets it again.
 - The package doc in `internal/kiln/kiln.go`, the command's doc in `cmd/kiln/main.go`, and `README.md` say that a
   build that waits on the developer sums itself up, and prints a terminal notification.
 - `acceptance/notify/`: tests 1, 2 and 3 follow `acceptance/kiln/testdata/at9.txtar`, `at1.txtar` and `at5.txtar`.
-  Each matches the sequence in `stdout` with a regular expression.
+  Test 4 follows spec 4's test 4, in `acceptance/commands/`: its landing stops because main's checkout has an
+  uncommitted change to a file the landing changes. Each matches the sequence in `stdout` with a regular expression.
 
 ## Alternatives Considered
 
