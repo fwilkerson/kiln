@@ -10,7 +10,7 @@ by run, the spec as it was approved, and the trend of a few numbers across build
 which gains a few fields for it, and changes nothing; `kiln run` goes on in its own terminal.
 
 ```text
-                 ┌──────────────── side panel: specs, newest first, / filters by name ────────────────┐
+                 ┌──────────────── side panel: specs, newest first, / filters by name ─────────────────┐
                  ▼                                                                                     │
 home ──enter──▶ spec ──enter──▶ build ──enter──▶ run ──s──▶ spec text, as the build's approval held it │
   │                                                ▲                                                   │
@@ -30,10 +30,10 @@ builds come.
 ```text
 ╭ specs ─────────────────╮╭ now ─────────────────────────────────────────────────────────────────────╮
 │ / filter               ││ build-stats · build role · round 1 of 3 · running 14m                    │
-│                        ││ idle 0:42, in a call: go test ./...  ·  3 refused  ·  context 340k        │
+│                        ││ idle 0:42, in a call: go test ./...  ·  3 refused  ·  context 340k       │
 │ ● build-stats  running ││                                                                          │
 │ ◌ notifications queued │╰──────────────────────────────────────────────────────────────────────────╯
-│ ◆ gate-flakes  UAT     │╭ last 10 builds ──────────── median ── oldest → newest ────────────────────╮
+│ ◆ gate-flakes  UAT     │╭ last 10 builds ──────────── median ── oldest → newest ───────────────────╮
 │ ✓ status-line  accepted││ cost per build             $14.20    ▃▄▂▅█▃▂▂▁▂   previous 10: $16.90    │
 │ ✗ amendments   stopped ││ minutes per build              31    ▂▃▂▄▆▃▂▂▂▁   previous 10: 38        │
 │                        ││ failed calls per build         14    ▅▆▄█▇▃▃▂▂▂   previous 10: 21        │
