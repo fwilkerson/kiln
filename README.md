@@ -15,6 +15,7 @@ kiln approve <name>  queue a build of specs/<name>.md, as main holds it
 kiln run             build each queued spec, one at a time, until none is queued
 kiln status          show where each spec stands
 kiln stats [<name>]  show what each build cost, one line each, or each build of one spec in full
+kiln tui [<name>]    show every build, live and past, in a full-screen view; or open it on one spec
 kiln accept <name>   end UAT: land the spec if it waits on its branch, then retire it
 ```
 
@@ -26,6 +27,8 @@ kiln accept <name>   end UAT: land the spec if it waits on its branch, then reti
    A landed build's commit holds its time, cost, turns and failed calls too. The ledger is
    `.git/kiln/ledger.jsonl`, and each session's stream, for why a number is what it is, is
    `.git/kiln/sessions/<id>/stream.jsonl`.
+6. Run `kiln tui` in a terminal of its own, beside `kiln run`, to watch the running session and look back over each
+   build run by run. It only reads.
 
 `kiln.json` holds the gate's commands and the rounds a failing gate goes back to the session. kiln reads it from
 main's tip, so a build cannot weaken its own gate. The pre-commit hook runs the same commands on a commit to main.
@@ -34,8 +37,11 @@ main's tip, so a build cannot weaken its own gate. The pre-commit hook runs the 
 
 - `cmd/kiln`: the command line.
 - `internal/kiln`: approving, building, gating, landing and accepting a spec. `go doc ./internal/kiln` shows how.
+- `internal/tui`: the full-screen view of `kiln tui`, on Bubble Tea. `internal/kiln` feeds it what kiln wrote.
 - `internal/claude`, `internal/git`, `internal/proc`: Claude Code sessions, git, and child processes, from Eidos.
 - `internal/scenariotest`: the scripted claude and the harness the acceptance tests run on.
+- `internal/termtest`: a pseudo-terminal that runs a program and reads its screen, for the acceptance tests of
+  `kiln tui`. No sandboxed session can open one, so those tests run only in kiln's gate.
 - `acceptance/<spec>/`: the code of each acceptance test, `TestAT<N>` for test N.
 - `guidance/`: the `/slice` skill and the `zoom-out`, `comprehension`, `critic` and `audit` agents, for `.claude/`.
   `.claude/agents` and `.claude/skills` link to `guidance/agents/` and `guidance/skills/`, and a landing makes the

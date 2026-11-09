@@ -64,7 +64,7 @@ func (r *Repo) run(ctx context.Context, out io.Writer, only string) error {
 		var rec record
 		var found bool
 		err := r.store.update(func(b *book) error {
-			rec, found = b.next(only)
+			rec, found = b.next(only, os.Getpid())
 			return nil
 		})
 		if err != nil || !found {
@@ -121,7 +121,8 @@ func (b *build) run(ctx context.Context) error {
 			return err
 		}
 	case !b.rec.Accepted:
-		if _, err := b.talk(ctx, b.launch(true, interrupted)); err != nil {
+		why := reason{Why: whyInterrupted, Round: b.rec.Rounds}
+		if _, err := b.talk(ctx, b.launch(true, interrupted), why); err != nil {
 			return err
 		}
 	}
@@ -131,7 +132,7 @@ func (b *build) run(ctx context.Context) error {
 			return err
 		}
 
-		v, err := b.gate(ctx, b.allowed()...)
+		v, err := b.gate(ctx, false, b.allowed()...)
 		if err != nil {
 			return err
 		}
@@ -140,39 +141,39 @@ func (b *build) run(ctx context.Context) error {
 			b.set(func(r *record) { r.FailingAtMain = v.atMain })
 		}
 
-		next, err := b.after(ctx, v)
+		next, why, err := b.after(ctx, v)
 		if err != nil || next == "" {
 			return err
 		}
 
-		if _, err := b.talk(ctx, b.launch(true, next)); err != nil {
+		if _, err := b.talk(ctx, b.launch(true, next), why); err != nil {
 			return err
 		}
 	}
 }
 
-// after takes the build on from a gate's verdict. It answers what to tell the session next, or "" once the build has
-// landed, or waits on its branch.
-func (b *build) after(ctx context.Context, v verdict) (string, error) {
+// after takes the build on from a gate's verdict. It answers what to tell the session next, and why. It answers "" once
+// the build has landed, or waits on its branch.
+func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 	if !v.passed {
-		return b.round(ctx, v.report)
+		return b.round(ctx, setback{why: whyGate, report: v.report})
 	}
 
 	if !b.rec.Audited {
 		findings, err := b.audit(ctx)
 		if err != nil {
-			return "", err
+			return "", reason{}, err
 		}
 
 		b.set(func(r *record) { r.Audited = true })
 		if findings != "" {
-			return fmt.Sprintf(audited, findings), nil
+			return fmt.Sprintf(audited, findings), reason{Why: whyFindings}, nil
 		}
 	}
 
 	head, err := b.r.git.Head(ctx, b.tree)
 	if err != nil {
-		return "", err
+		return "", reason{}, err
 	}
 
 	var retire func(context.Context, string) error
@@ -181,36 +182,36 @@ func (b *build) after(ctx context.Context, v verdict) (string, error) {
 	} else if amendments, found, err := b.r.git.Show(ctx, head, amendPath(b.rec.Name)); err != nil || found {
 		b.set(func(r *record) { r.State, r.Amendments = amended, string(amendments) })
 		if err == nil {
-			b.record(entry{Kind: outcomeKind, Outcome: outWaits})
+			b.record(entry{Kind: outcomeKind, Outcome: outWaits, Amendments: string(amendments)})
 		}
 
 		b.say("waits on %s, with amendments for UAT", branchOf(b.rec.Name))
-		return "", err
+		return "", reason{}, err
 	}
 
-	onMain, report, err := b.land(ctx, head, retire, b.allowed()...)
-	if err != nil || report != "" {
+	onMain, back, err := b.land(ctx, head, retire, b.allowed()...)
+	if err != nil || back.report != "" {
 		if err == nil {
-			return b.round(ctx, report)
+			return b.round(ctx, back)
 		}
 
-		return "", err
+		return "", reason{}, err
 	}
 
 	if err := b.r.git.Remove(ctx, b.tree, branchOf(b.rec.Name)); err != nil {
-		return "", err
+		return "", reason{}, err
 	}
 
 	if b.rec.Accepted {
 		b.record(entry{Kind: outcomeKind, Outcome: outAccepted})
 		b.say("accepted, and main is at %s", short(onMain))
-		return "", b.r.store.update(func(k *book) error { k.retire(b.rec.Name); return nil })
+		return "", reason{}, b.r.store.update(func(k *book) error { k.retire(b.rec.Name); return nil })
 	}
 
 	b.record(entry{Kind: outcomeKind, Outcome: outLanded})
 	b.set(func(r *record) { r.State = landed })
 	b.say("landed on main at %s, and waits for UAT", short(onMain))
-	return "", nil
+	return "", reason{}, nil
 }
 
 // allowed are the paths under specs/ that an accepted spec's landing changes: it folds the amendments, and retires
@@ -223,25 +224,33 @@ func (b *build) allowed() []string {
 	return nil
 }
 
-// round sends a failed gate's report back to the session, or stops the build past its last round.
-func (b *build) round(ctx context.Context, report string) (string, error) {
+// setback is what kept the work from passing, for the session. It is a failed gate, a conflict with main, or a failed
+// gate on the work rebased onto main. why names which, as a start line does.
+type setback struct {
+	why, report string
+}
+
+// round sends a setback's report back to the session, or stops the build past its last round. It answers the prompt,
+// and the round it starts.
+func (b *build) round(ctx context.Context, back setback) (string, reason, error) {
 	main, err := b.r.git.Tip(ctx, mainBranch)
 	if err != nil {
-		return "", err
+		return "", reason{}, err
 	}
 
 	c, err := b.r.config(ctx, main)
 	if err != nil {
-		return "", err
+		return "", reason{}, err
 	}
 
 	if b.rec.Rounds >= c.Rounds {
-		return "", &outOfRounds{why: "the gate still failed after its last round:\n" + report}
+		return "", reason{}, &outOfRounds{why: "the gate still failed after its last round:\n" + back.report}
 	}
 
 	b.set(func(r *record) { r.Rounds++ })
 	b.say("the gate failed; it goes back to the session, round %d of %d", b.rec.Rounds, c.Rounds)
-	return fmt.Sprintf(gateFailed, b.rec.Rounds, c.Rounds, report), nil
+	why := reason{Why: back.why, Round: b.rec.Rounds, Rounds: c.Rounds}
+	return fmt.Sprintf(gateFailed, b.rec.Rounds, c.Rounds, back.report), why, nil
 }
 
 func (b *build) start(ctx context.Context) error {
@@ -263,7 +272,7 @@ func (b *build) start(ctx context.Context) error {
 	b.set(func(r *record) { r.Session = session })
 	b.say("building on %s, in %s", branchOf(b.rec.Name), b.tree)
 	prompt := fmt.Sprintf(starting, specPath(b.rec.Name), short(b.rec.Approved), branchOf(b.rec.Name))
-	_, err = b.talk(ctx, b.launch(false, prompt))
+	_, err = b.talk(ctx, b.launch(false, prompt), reason{Why: whyFirst})
 	return err
 }
 
@@ -298,24 +307,47 @@ func (b *build) sandboxed(l claude.Launch) claude.Launch {
 }
 
 // talk runs the session l launches, and answers how it ended. A usage limit pauses the build until it resets, and the
-// same session resumes. The ledger gets a line before each run of the session, and one after.
-func (b *build) talk(ctx context.Context, l claude.Launch) (claude.Ended, error) {
+// same session resumes. The ledger gets a line before each run of the session, with why it started, and one after.
+//
+// The audit changes nothing, so kiln checks. It runs in a worktree of its own. Each audit run's end line names each
+// path the run changed there. Then kiln puts that worktree back at the commit the audit read.
+func (b *build) talk(ctx context.Context, l claude.Launch, why reason) (claude.Ended, error) {
 	for {
 		streamed, err := b.r.claude.Streamed(l.Session)
 		if err != nil {
 			b.say("kiln could not measure session %s's stream: %v", l.Session, err)
 		}
 
-		b.record(entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed})
+		var read string
+		if l.Role == auditRole {
+			if read, err = b.r.git.Head(ctx, l.Dir); err != nil {
+				return claude.Ended{}, err
+			}
+		}
+
+		b.record(entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed, PID: os.Getpid(),
+			reason: why})
 		ended, err := b.r.claude.Run(ctx, l)
-		b.record(entry{Kind: endKind, Session: l.Session, Ended: how(ended), Totals: &ended.Totals})
+		end := entry{Kind: endKind, Session: l.Session, Ended: how(ended), Totals: &ended.Totals}
+		end.Streamed, _ = b.r.claude.Streamed(l.Session)
+		var undone error
+		if l.Role == auditRole {
+			// An interrupted audit run may have changed its worktree too, and its end line names what it changed.
+			end.Changed, undone = b.undo(context.WithoutCancel(ctx), l.Dir, read)
+		}
+
+		b.record(end)
+		if err := errors.Join(err, undone); err != nil && ctx.Err() == nil {
+			return ended, err
+		}
+
 		if ctx.Err() != nil {
 			// A session kiln's interrupt ended has not ended on its own, so how it ended says nothing.
 			return ended, ctx.Err()
 		}
 
-		if err != nil || ended.Limit == nil {
-			return ended, err
+		if ended.Limit == nil {
+			return ended, nil
 		}
 
 		until := ended.Limit.Resets
@@ -332,8 +364,36 @@ func (b *build) talk(ctx context.Context, l claude.Launch) (claude.Ended, error)
 		}
 
 		b.set(func(r *record) { r.Paused = time.Time{} })
-		l.Resume, l.Prompt = true, limitReset
+		l.Resume, l.Prompt, why.Why = true, limitReset, whyLimit
 	}
+}
+
+const auditRole = "audit"
+
+// undo answers each path an audit run changed in its worktree at dir, committed or not, since the commit read. Then
+// it puts the worktree back at read, so the next run of the audit sees only the build's work.
+func (b *build) undo(ctx context.Context, dir, read string) ([]string, error) {
+	head, err := b.r.git.Head(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+
+	changed, err := b.r.git.Status(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+
+	if head != read {
+		committed, err := b.r.git.Changed(ctx, read, head)
+		if err != nil {
+			return nil, err
+		}
+
+		changed = append(changed, committed...)
+	}
+
+	slices.Sort(changed)
+	return slices.Compact(changed), b.r.git.Detached(ctx, dir, read)
 }
 
 var tally = regexp.MustCompile(`found (\d+)\s*$`)
@@ -374,16 +434,21 @@ func (b *build) audit(ctx context.Context) (string, error) {
 	}
 
 	b.say("the audit reads %s", strings.Join(packages, " "))
+	// The audit's own worktree keeps what it writes out of the build's, even when kiln stops mid-audit.
 	l := b.sandboxed(claude.Launch{
-		Role:   "audit",
+		Role:   auditRole,
 		System: guidance.Audit(),
 		Prompt: fmt.Sprintf(auditing, strings.Join(packages, " "), specPath(b.rec.Name), b.rec.Name),
-		Dir:    b.tree,
+		Dir:    b.r.auditTree(b.rec.Name),
 		Tools:  []string{"Read", "Grep", "Glob", "Bash"},
 	})
 	for try := 1; ; try++ {
+		if err := b.r.git.Detached(ctx, l.Dir, head); err != nil {
+			return "", err
+		}
+
 		l.Session = newSession()
-		ended, err := b.talk(ctx, l)
+		ended, err := b.talk(ctx, l, reason{Why: whyAudit, Try: try})
 		switch {
 		case err != nil:
 			return "", err
@@ -413,64 +478,65 @@ const auditTries = 3
 // It answers the commit main moved to. Or it answers what kept the work from landing, a conflict or the gate, for the
 // session.
 func (b *build) land(ctx context.Context, from string, retire func(ctx context.Context, held string) error,
-	allowed ...string) (landed, report string, err error) {
+	allowed ...string) (landed string, back setback, err error) {
 	for {
 		onto, err := b.r.git.Tip(ctx, mainBranch)
 		if err != nil {
-			return "", "", err
+			return "", setback{}, err
 		}
 
 		start := cmpOr(from, onto)
 		if err := b.r.git.Reset(ctx, b.tree, start); err != nil {
-			return "", "", err
+			return "", setback{}, err
 		}
 
 		if start != onto {
 			_, conflict, err := b.r.git.Rebase(ctx, b.tree, onto, b.landing())
 			if err != nil {
-				return "", "", err
+				return "", setback{}, err
 			}
 
 			if conflict != nil {
-				return "", fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n")), nil
+				return "", setback{whyConflict, fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n"))}, nil
 			}
 		}
 
 		// Main already holds start when no rebase ran, so the links need a commit of their own.
 		held, err := b.linkGuidance(ctx, start != onto)
 		if err != nil {
-			return "", "", err
+			return "", setback{}, err
 		}
 
 		if retire != nil {
 			if err := retire(ctx, held); err != nil {
-				return "", "", err
+				return "", setback{}, err
 			}
 		}
 
-		v, err := b.gate(ctx, allowed...)
+		v, err := b.gate(ctx, true, allowed...)
 		if err != nil || !v.passed {
-			return "", v.report, err
+			return "", setback{whyLanding, v.report}, err
 		}
 
 		head, err := b.r.git.Head(ctx, b.tree)
 		if err != nil {
-			return "", "", err
+			return "", setback{}, err
 		}
 
 		way, err := b.r.git.Move(ctx, mainBranch, head, onto)
 		switch {
 		case err != nil:
-			return "", "", err
+			return "", setback{}, err
 		case way == nil:
-			return head, "", nil
+			return head, setback{}, nil
 		case way.Tip != "":
 			b.say("main moved while the gate ran; the work is rebased onto it again")
 			continue
 		}
 
-		return "", "", fmt.Errorf("main's checkout is in the way of the landing: busy in %q, or with changes to %s",
-			way.Busy, strings.Join(way.Files, ", "))
+		return "", setback{}, fmt.Errorf(
+			"main's checkout is in the way of the landing: busy in %q, or with changes to %s", way.Busy,
+			strings.Join(way.Files, ", "))
 	}
 }
 
@@ -642,11 +708,12 @@ func (b *build) landing() string {
 	return b.message("land the approved spec") + "\nBuild: " + b.r.summary(b.rec.Build) + "\n"
 }
 
-// gate runs the gate on the build's worktree, and writes it to the ledger.
-func (b *build) gate(ctx context.Context, allowed ...string) (verdict, error) {
+// gate runs the gate on the build's worktree, and writes it to the ledger. landing is the gate on the work rebased
+// onto main.
+func (b *build) gate(ctx context.Context, landing bool, allowed ...string) (verdict, error) {
 	start := time.Now()
 	v, err := b.r.gate(ctx, b.tree, b.rec.Name, allowed...)
-	b.record(entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed})
+	b.record(entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed, Landing: landing})
 	return v, err
 }
 

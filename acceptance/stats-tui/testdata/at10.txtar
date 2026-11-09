@@ -1,0 +1,65 @@
+# 10. An audit that changed the tree shows it.
+
+# Given: a build whose audit wrote a file in the build's tree.
+# The audit writes shot.png with a shell command, and has a finding, so the build session runs again and commits.
+exec kiln approve x
+exec kiln run
+stdout '^x: landed on main'
+grep 'Fix each finding' .claude-calls/build/1/2/prompt
+
+# When: the developer opens that build.
+term 120 30 kiln tui x
+screen '^x · ◆ UAT · approved once'
+keys enter
+
+# Then: the audit's run is marked as having changed the tree, and names the file,
+screen '^2 +audit +audit, try 1 .*\n +✗ changed the tree: shot\.png$'
+color red '✗ changed the tree: shot.png'
+
+# and the file is in no commit of the build.
+exec git log --all --format=%H -- shot.png
+! stdout .
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/right/.\" ."}}},
+      {"result": {"result": "Built x."}}
+    ],
+    "2": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/audited/.\" ."}}},
+      {"result": {"result": "Took the finding."}}
+    ]
+  }},
+  "audit": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "printf 'a screen' > shot.png"}}},
+    {"result": {"result": "X has no doc comment.\n\nread 1 package, found 1"}}
+  ]}}
+}
+-- _given/right/x.go --
+package scratch
+
+func X() int { return 42 }
+-- _given/audited/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }

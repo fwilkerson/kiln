@@ -23,12 +23,14 @@ import (
 // rewritten. It is kept beside the book, so it lives and dies with the clone, as the sessions' streams do.
 //
 //	build     when kiln run starts a build: its spec, the commit it was approved at, its size
-//	start     before each session run: its role, its session, the length of the session's stream
-//	end       after each session run: how it ended, and its totals
-//	gate      after each gate: when it ended, and whether it passed
-//	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted
+//	start     before each session run: its role, its session, the length of the session's stream, why it started,
+//	          and the process ID of the kiln run that started it
+//	end       after each session run: how it ended, its totals, the stream's length, and what an audit changed
+//	gate      after each gate: when it ended, whether it passed, and whether it gated a landing
+//	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
 //
-// Each line names its build, and At is when it was written, or when its run or gate started.
+// Each line names its build, and At is when it was written, or when its run or gate started. A run is the bytes of
+// its session's stream from its start line's length to its end line's.
 const ledgerFile = "ledger.jsonl"
 
 // kind is the kind of a ledger's line.
@@ -70,17 +72,43 @@ type entry struct {
 	// A start line's, and Session an end line's.
 	Role    string `json:"role,omitempty"`
 	Session string `json:"session,omitempty"`
-	// Streamed is the length of the session's stream before the run, so its lines can be counted again.
+	PID     int    `json:"pid,omitempty"`
+	reason
+	// Streamed is the length of the session's stream. A start line holds it before the run, and an end line after.
 	Streamed int64 `json:"streamed,omitempty"`
-	// An end line's.
-	Ended  string         `json:"ended,omitempty"`
-	Totals *claude.Totals `json:"totals,omitempty"`
-	// A gate line's. At is when it started.
-	End    time.Time `json:"end,omitzero"`
-	Passed bool      `json:"passed,omitempty"`
-	// An outcome line's.
-	Outcome string `json:"outcome,omitempty"`
+	// An end line's. Changed names the paths an audit run changed in the build's tree, which kiln then put back.
+	Ended   string         `json:"ended,omitempty"`
+	Totals  *claude.Totals `json:"totals,omitempty"`
+	Changed []string       `json:"changed,omitempty"`
+	// A gate line's. At is when it started. Landing is the gate on the work rebased onto main.
+	End     time.Time `json:"end,omitzero"`
+	Passed  bool      `json:"passed,omitempty"`
+	Landing bool      `json:"landing,omitempty"`
+	// An outcome line's. Amendments is the text of a waiting build's amendments.
+	Outcome    string `json:"outcome,omitempty"`
+	Amendments string `json:"amendments,omitempty"`
 }
+
+// reason is why a session run started, in its start line. Round and Rounds are set when kiln sent the work back,
+// and Try counts an audit's tries from 1.
+type reason struct {
+	Why    string `json:"why,omitempty"`
+	Round  int    `json:"round,omitempty"`
+	Rounds int    `json:"rounds,omitempty"`
+	Try    int    `json:"try,omitempty"`
+}
+
+// Why a session run started, in a start line.
+const (
+	whyFirst       = "first"
+	whyGate        = "gate"
+	whyAudit       = "audit"
+	whyFindings    = "findings"
+	whyConflict    = "conflict"
+	whyLanding     = "landing"
+	whyLimit       = "limit"
+	whyInterrupted = "interrupted"
+)
 
 // write appends e to the ledger, as one line.
 func (s store) write(e entry) error {
@@ -202,18 +230,20 @@ func (r *Repo) recount(out io.Writer) {
 			continue
 		}
 
-		totals, written, err := r.claude.Recount(session, start.Streamed)
+		counted, err := r.claude.Recount(session, start.Streamed, -1)
 		if err != nil {
 			say("kiln could not read session %s's stream: %v", session, err)
 		}
 
 		ended := endedNoResult
-		if totals.Turns != nil {
+		if counted.Totals.Turns != nil {
 			ended = endedResult
 		}
 
-		e := entry{Kind: endKind, Build: start.Build, At: written, Session: session, Ended: ended, Totals: &totals}
-		if written.Before(start.At) {
+		streamed, _ := r.claude.Streamed(session)
+		e := entry{Kind: endKind, Build: start.Build, At: counted.Written, Session: session, Ended: ended,
+			Totals: &counted.Totals, Streamed: streamed}
+		if counted.Written.Before(start.At) {
 			e.At = start.At
 		}
 

@@ -1,0 +1,24 @@
+# 9. No agent opens it by accident.
+
+# Given: kiln tui's output is not a terminal. Here it is a pipe to the script.
+exec kiln approve x
+
+# When: something runs kiln tui.
+! exec kiln tui
+
+# Then: it draws nothing, says why, and exits with an error.
+! stdout .
+stderr 'terminal'
+
+-- kiln.json --
+{"gate": ["true"], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.

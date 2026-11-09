@@ -1,0 +1,80 @@
+# 8. Color marks what failed.
+
+# Given: a build with a failed gate, a refused call and a passed gate.
+# Its first run writes to specs/, which kiln's hook refuses, and code the gate fails. Its second fixes the code.
+exec kiln approve x
+exec kiln run
+stdout '^x: landed on main'
+
+# When: the developer opens that build.
+term 120 30 kiln tui x
+screen '^x · ◆ UAT · approved once'
+keys enter
+screen '^x · build 1 · '
+
+# Then: the failed gate and the refusal are drawn in one color, and the passed gate in another, each beside a glyph
+# that says the same.
+screen '^ +gate +✗ failed '
+color red '✗ failed'
+screen '^✗ +1 +refused: '
+color red '✗   1  refused: '
+screen '^ +gate +✓ passed · landing '
+color green '✓ passed · landing'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Write", "input": {"file_path": "specs/x.md", "content": "changed"}}},
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/wrong/.\" ."}}},
+      {"result": {"result": "Built x."}}
+    ],
+    "2": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/right/.\" ."}}},
+      {"result": {"result": "Fixed x."}}
+    ]
+  }},
+  "audit": {"1": {"1": [{"result": {"result": "read 1 package, found 0"}}]}}
+}
+-- _given/wrong/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 41.
+func X() int { return 41 }
+-- _given/wrong/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}
+-- _given/right/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }

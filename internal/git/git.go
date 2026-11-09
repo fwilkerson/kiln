@@ -377,6 +377,17 @@ func (g *Git) Amend(ctx context.Context, checkout string) (string, error) {
 	return g.Head(ctx, checkout)
 }
 
+// Status lists each path at checkout that differs from the commit at HEAD, untracked files included.
+func (g *Git) Status(ctx context.Context, checkout string) ([]string, error) {
+	out, err := g.in(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+	var found []string
+	for _, p := range paths(out) {
+		found = append(found, p[min(3, len(p)):])
+	}
+
+	return found, err
+}
+
 // Reset puts the branch at checkout, and its files, back at commit, and removes every untracked file.
 func (g *Git) Reset(ctx context.Context, checkout, commit string) error {
 	for _, args := range [][]string{{"reset", "--quiet", "--hard", commit}, {"clean", "-qfd"}} {

@@ -1,0 +1,88 @@
+# 2. A past build, run by run.
+
+# Given: a build whose session failed the gate once, went back to the same session, passed, was audited, took the
+# audit's findings in its session, and landed.
+# Each run costs, takes turns and fails calls as claude.json scripts it. Only the first run fails a call: it reads a
+# file that is not there.
+exec kiln approve x
+exec kiln run
+stdout '^x: the gate failed; it goes back to the session, round 1 of 1$'
+stdout '^x: landed on main'
+
+# When: the developer opens that build.
+term 120 30 kiln tui x
+screen '^x · ◆ UAT · approved once'
+keys enter
+
+# Then: it shows each run in order, with its role, why it started, its round, its time, turns, cost and failed calls,
+# and each gate between the runs, passed or failed.
+screen '^x · build 1 · approved at [0-9a-f]{12} · 1 test · ✓ landed'
+screen '^ +run +took +turns +cost +failed'
+screen '^1 +build +first run +\S+ +2 +\$0\.50 +1 .*\n +gate +✗ failed +\S+\n2 +build +round 1 of 1 +\S+ +1 +\$0\.25 +0 .*\n +gate +✓ passed +\S+\n3 +audit +audit, try 1 +\S+ +1 +\$0\.75 +0 .*\n4 +build +audit''s findings +\S+ +1 +\$0\.25 +0 .*\n +gate +✓ passed +\S+\n +gate +✓ passed · landing +\S+\n +✓ landed$'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/wrong/.\" ."}}},
+      {"tool": {"name": "Read", "input": {"file_path": "missing.go"}}},
+      {"result": {"result": "Built x.", "cost_usd": 0.50}}
+    ],
+    "2": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/right/.\" ."}}},
+      {"result": {"result": "Fixed x.", "cost_usd": 0.25}}
+    ],
+    "3": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/audited/.\" ."}}},
+      {"result": {"result": "Took the finding.", "cost_usd": 0.25}}
+    ]
+  }},
+  "audit": {"1": {"1": [
+    {"tool": {"name": "Read", "input": {"file_path": "x.go"}}},
+    {"result": {"result": "X has no doc comment.\n\nread 1 package, found 1", "cost_usd": 0.75}}
+  ]}}
+}
+-- _given/wrong/x.go --
+package scratch
+
+func X() int { return 41 }
+-- _given/wrong/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}
+-- _given/right/x.go --
+package scratch
+
+func X() int { return 42 }
+-- _given/audited/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }

@@ -11,8 +11,9 @@ the same fake ledger: one on Bubble Tea, one on tview, and one on the standard l
 own agent, against one shared end-to-end contract. A fresh judge then scored the three by `docs/practices.md`
 "Judging two API designs", without knowing this report's lean. The numbers and screens are in
 [the run](runs/2026-11-08-prototypes.md). A second run tried Microsoft's tui-test beside kiln's own harness:
-[tui-test](runs/2026-11-08-tui-test.md). The code is in [prototypes/](prototypes/), a Go module of its own, so kiln's
-`go test ./...` never builds it.
+[tui-test](runs/2026-11-08-tui-test.md). The code was in `prototypes/`, a Go module of its own, so kiln's
+`go test ./...` never built it. Spec 3 lifted `termtest` into `internal/termtest`, and deleted the prototypes as it
+landed: `git show 48fd9542daf0:docs/research/tui/prototypes/<path>` prints each file.
 
 ## The recommendation
 

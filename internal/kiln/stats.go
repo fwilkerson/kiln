@@ -52,9 +52,10 @@ func (r *Repo) Stats(_ context.Context, name string, out io.Writer) error {
 // buildStats is one build, as the ledger holds it.
 type buildStats struct {
 	entry
-	outcome string
-	runs    []run
-	gates   []entry
+	outcome    string
+	amendments string
+	runs       []run
+	gates      []entry
 }
 
 // run is one session run. Its end is zero while it runs.
@@ -63,6 +64,14 @@ type run struct {
 	start, end    time.Time
 	ended         string
 	totals        claude.Totals
+	why           reason
+	// pid is the kiln run's that started it.
+	pid int
+	// from and to are its bytes of the session's stream, and to is 0 until it ends.
+	from, to int64
+	changed  []string
+	// gates counts the build's gates that ran before it.
+	gates int
 }
 
 // collect groups the ledger's lines by build, in the order the builds started.
@@ -83,14 +92,15 @@ func collect(entries []entry) []*buildStats {
 
 		switch e.Kind {
 		case startKind:
-			s.runs = append(s.runs, run{role: e.Role, session: e.Session, start: e.At})
+			s.runs = append(s.runs, run{role: e.Role, session: e.Session, start: e.At, why: e.reason, pid: e.PID,
+				from: e.Streamed, gates: len(s.gates)})
 		case endKind:
 			i := slices.IndexFunc(s.runs, func(r run) bool { return r.session == e.Session && r.end.IsZero() })
 			if i < 0 {
 				continue
 			}
 
-			s.runs[i].end, s.runs[i].ended = e.At, e.Ended
+			s.runs[i].end, s.runs[i].ended, s.runs[i].to, s.runs[i].changed = e.At, e.Ended, e.Streamed, e.Changed
 			if e.Totals != nil {
 				s.runs[i].totals = *e.Totals
 			}
@@ -98,6 +108,7 @@ func collect(entries []entry) []*buildStats {
 			s.gates = append(s.gates, e)
 		case outcomeKind:
 			s.outcome = e.Outcome
+			s.amendments = cmpOr(e.Amendments, s.amendments)
 		}
 	}
 
@@ -311,8 +322,8 @@ func (t totals) print(out io.Writer, indent string) {
 	}
 
 	p("failed", "%s", failedCalls(len(t.failed)))
-	for _, g := range groups(t.failed) {
-		fmt.Fprintf(out, "%s  %4d  %s\n%s        %s\n", indent, g.count, g.cause, indent, g.example)
+	for _, c := range claude.Causes(t.failed) {
+		fmt.Fprintf(out, "%s  %4d  %s\n%s        %s\n", indent, c.Count, c.Text, indent, clipped(c.Tool+": "+c.Input))
 	}
 }
 
@@ -358,34 +369,6 @@ func (t totals) toolCalls() string {
 	}
 
 	return strings.Join(calls, " · ")
-}
-
-// group is the failed calls of one cause.
-type group struct {
-	cause, example string
-	count          int
-}
-
-// groups groups failures by cause, the most first, and keeps the tool and input of each cause's first call.
-func groups(failed []claude.Failure) []group {
-	var all []group
-	for _, f := range failed {
-		cause := cmp.Or(f.Cause, "(no output)")
-		if f.Refused {
-			cause = "refused: " + cause
-		}
-
-		i := slices.IndexFunc(all, func(g group) bool { return g.cause == cause })
-		if i < 0 {
-			i = len(all)
-			all = append(all, group{cause: cause, example: clipped(f.Tool + ": " + f.Input)})
-		}
-
-		all[i].count++
-	}
-
-	slices.SortStableFunc(all, func(a, b group) int { return cmp.Compare(b.count, a.count) })
-	return all
 }
 
 // minutes shows a span of time in seconds below a minute, and in minutes above.

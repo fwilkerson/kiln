@@ -1,0 +1,144 @@
+# 4. The spec as its build saw it.
+
+# Given: a spec the developer accepted, which main no longer holds, and another spec waiting on its branch with an
+# amendment.
+# Both specs are longer than the terminal is tall, so their ends show only once scrolled to.
+exec kiln approve a
+exec kiln approve b
+exec kiln run
+stdout '^a: landed on main'
+stdout '^b: waits on kiln/b'
+exec kiln accept a
+stdout '^a: accepted'
+! exec git cat-file -e main:specs/a.md
+
+# When: the developer opens each one's spec text, and scrolls to its end.
+term 120 24 kiln tui a
+screen '^a · ✓ accepted · approved once'
+keys s
+screen '^a · as approved at [0-9a-f]{12}$'
+
+# Then: the first shows the text it was approved at.
+screen 'Spec 1: a'
+screen 'This line opens spec a\.'
+! screen 'This line ends spec a\.'
+keys end
+screen 'This line ends spec a\.'
+
+# The second shows its text and its amendment.
+keys esc esc / b enter enter
+screen '^b · ◆ waits · approved once'
+keys s
+screen '^b · as approved at [0-9a-f]{12}, with its amendments$'
+screen 'This line opens spec b\.'
+! screen 'b answers 3'
+keys end
+screen 'b answers 3'
+screen 'This line ends the amendment of spec b\.'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/a.md --
+# Spec 1: a
+
+This line opens spec a.
+
+## Overview
+
+- Line 1 of the overview.
+- Line 2 of the overview.
+- Line 3 of the overview.
+- Line 4 of the overview.
+- Line 5 of the overview.
+- Line 6 of the overview.
+- Line 7 of the overview.
+- Line 8 of the overview.
+- Line 9 of the overview.
+- Line 10 of the overview.
+- Line 11 of the overview.
+- Line 12 of the overview.
+
+## Acceptance tests
+
+### 1. A answers
+
+- **Given**: nothing.
+- **When**: A is called.
+- **Then**: it answers 1.
+
+This line ends spec a.
+-- specs/b.md --
+# Spec 2: b
+
+This line opens spec b.
+
+## Overview
+
+- Line 1 of the overview.
+- Line 2 of the overview.
+- Line 3 of the overview.
+- Line 4 of the overview.
+- Line 5 of the overview.
+- Line 6 of the overview.
+- Line 7 of the overview.
+- Line 8 of the overview.
+- Line 9 of the overview.
+- Line 10 of the overview.
+- Line 11 of the overview.
+- Line 12 of the overview.
+
+## Acceptance tests
+
+### 1. B answers
+
+- **Given**: nothing.
+- **When**: B is called.
+- **Then**: it answers 2.
+-- claude.json --
+{
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/a/.\" ."}}},
+      {"result": {"result": "Built a."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/b/.\" ."}}},
+      {"result": {"result": "Built b, under an amendment."}}
+    ]}
+  },
+  "audit": {
+    "1": {"1": [{"result": {"result": "read 1 package, found 0"}}]},
+    "2": {"1": [{"result": {"result": "read 1 package, found 0"}}]}
+  }
+}
+-- _given/a/a.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// A answers 1.
+func A() int { return 1 }
+-- _given/b/b.go --
+package scratch
+
+// B answers 3.
+func B() int { return 3 }
+-- _given/b/specs/b.amend.md --
+# Amendments to specs/b.md
+
+## Acceptance test 1: B answers
+
+### Old
+
+- **Then**: it answers 2.
+
+### New
+
+- **Then**: b answers 3.
+
+### Reason
+
+2 is taken. This line ends the amendment of spec b.

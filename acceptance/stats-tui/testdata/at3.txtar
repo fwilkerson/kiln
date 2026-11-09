@@ -1,0 +1,116 @@
+# 3. Builds are grouped by spec.
+
+# Given: two specs, one of them approved twice, so it has two builds.
+# a lands. b's first build fails its gate with no round left, and stops. Approved again, b lands. Each run costs as
+# claude.json scripts it, so each build's runs can be told apart.
+exec kiln approve a
+exec kiln approve b
+exec kiln run
+stdout '^a: landed on main'
+stdout '^b: stopped'
+exec kiln approve b
+exec kiln run
+stdout '^b: landed on main'
+
+# When: the developer opens the spec approved twice,
+term 120 30 kiln tui b
+
+# Then: the spec shows both builds, each with how it ended,
+screen '^b · ◆ UAT · approved 2 times'
+screen '^1 +.* [0-9a-f]{12} ✗ stopped .*\$0\.10'
+screen '^2 +.* [0-9a-f]{12} ✓ landed .*\$0\.21'
+
+# When: then each of its builds.
+keys up enter
+
+# Then: and each build shows only its own runs.
+screen '^b · build 1 · .* · ✗ stopped'
+screen '^1 +build +first run +\S+ +1 +\$0\.10 '
+screen '^ +gate +✗ failed'
+! screen '^2 +'
+! screen '\$0\.20'
+! screen '\$0\.30'
+keys esc down enter
+screen '^b · build 2 · .* · ✓ landed'
+screen '^1 +build +first run +\S+ +1 +\$0\.20 '
+screen '^2 +audit +audit, try 1 '
+! screen '\$0\.10'
+! screen '\$0\.30'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 0}
+-- specs/a.md --
+# Spec 1: a
+
+## Acceptance tests
+
+### 1. A answers
+
+- **Given**: nothing.
+- **When**: A is called.
+- **Then**: it answers 1.
+-- specs/b.md --
+# Spec 2: b
+
+## Acceptance tests
+
+### 1. B answers
+
+- **Given**: nothing.
+- **When**: B is called.
+- **Then**: it answers 2.
+-- claude.json --
+{
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/a/.\" ."}}},
+      {"result": {"result": "Built a.", "cost_usd": 0.30}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/wrong/.\" ."}}},
+      {"result": {"result": "Built b.", "cost_usd": 0.10}}
+    ]},
+    "3": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/b/.\" ."}}},
+      {"result": {"result": "Built b again.", "cost_usd": 0.20}}
+    ]}
+  },
+  "audit": {
+    "1": {"1": [{"result": {"result": "read 1 package, found 0", "cost_usd": 0.01}}]},
+    "2": {"1": [{"result": {"result": "read 1 package, found 0", "cost_usd": 0.01}}]}
+  }
+}
+-- _given/a/a.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// A answers 1.
+func A() int { return 1 }
+-- _given/wrong/b.go --
+package scratch
+
+// B answers 3.
+func B() int { return 3 }
+-- _given/wrong/acceptance/b/b_test.go --
+package b_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.B(); got != 2 {
+		t.Fatalf("B answers %d, want 2", got)
+	}
+}
+-- _given/b/b.go --
+package scratch
+
+// B answers 2.
+func B() int { return 2 }

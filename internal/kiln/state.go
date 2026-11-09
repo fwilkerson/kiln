@@ -50,6 +50,8 @@ type record struct {
 	Amendments string `json:"amendments,omitempty"`
 	// Paused is when a usage limit that paused the build resets.
 	Paused time.Time `json:"paused,omitzero"`
+	// PID is the process ID of the kiln run that marked the spec building. Once it is gone, the build has halted.
+	PID int `json:"pid,omitempty"`
 }
 
 // book is every approved spec kiln has not retired, in the order they were approved. It keeps what the gate found
@@ -111,11 +113,11 @@ func (b *book) retire(name string) {
 	b.Specs = slices.DeleteFunc(b.Specs, func(r *record) bool { return r.Name == name })
 }
 
-// next takes the first queued spec, or the one named only, and marks it building.
-func (b *book) next(only string) (record, bool) {
+// next takes the first queued spec, or the one named only, and marks it building by the kiln run pid.
+func (b *book) next(only string, pid int) (record, bool) {
 	for _, r := range b.Specs {
 		if r.State == queued && (only == "" || r.Name == only) {
-			r.State = building
+			r.State, r.PID = building, pid
 			return *r, true
 		}
 	}

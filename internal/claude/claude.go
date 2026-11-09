@@ -16,7 +16,7 @@
 // stream it wrote, across every resume. Beside them is the end of its standard error, from its last run.
 //
 // Run totals what each run printed, in Ended.Totals: its turns, cost, context, tool calls, waits and failed calls.
-// Recount totals a run again from the stream, past the length Streamed answered before it ran.
+// Recount totals a run again from the stream, from the length Streamed answered before it ran, and lists its calls.
 package claude
 
 import (

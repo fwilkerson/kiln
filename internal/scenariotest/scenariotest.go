@@ -12,6 +12,9 @@
 // On the PATH, kiln is built from cmd/kiln, and claude is the scripted one. It follows $WORK/claude.json, a
 // [ClaudeScript], and records each call under $WORK/.claude-calls/<role>/<attempt>/<call>/. The record holds the
 // files that [ClaudeCallFile] and the constants beside it name. Go runs offline, from the developer's caches.
+//
+// A script drives a full-screen program in a pseudo-terminal, such as kiln tui. Its commands are term, keys, click,
+// wheel, screen and color. No sandboxed session can open a pseudo-terminal, so such a script runs only outside one.
 package scenariotest
 
 import (
@@ -121,7 +124,8 @@ func Run(t *testing.T, file string) {
 		t.Fatal("scenariotest:", err)
 	}
 
-	testscript.Run(t, testscript.Params{Files: []string{file}, Setup: setUp, RequireExplicitExec: true})
+	testscript.Run(t, testscript.Params{Files: []string{file}, Setup: setUp, RequireExplicitExec: true,
+		Cmds: terminalCommands})
 }
 
 // givenDir holds the files a scripted session copies in, which the repository leaves out.
@@ -151,5 +155,12 @@ func setUp(env *testscript.Env) error {
 		return fmt.Errorf("scenariotest: making the scratch repository: %w\n%s", err, out)
 	}
 
+	t := &terminal{}
+	for _, kv := range env.Vars {
+		name, _, _ := strings.Cut(kv, "=")
+		t.names = append(t.names, name)
+	}
+
+	env.Values[terminalKey{}] = t
 	return nil
 }

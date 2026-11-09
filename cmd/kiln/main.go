@@ -5,7 +5,10 @@
 //	kiln run             build each queued spec, one at a time, until none is queued
 //	kiln status          show where each spec stands
 //	kiln stats [<name>]  show what each build cost, one line each, or each build of one spec in full
+//	kiln tui [<name>]    show every build, live and past, in a full-screen view; or open it on one spec
 //	kiln accept <name>   end UAT: land the spec if it waits on its branch, then retire it
+//
+// kiln tui draws only on a terminal. With its output elsewhere, it draws nothing, and refuses.
 //
 // kiln runs two commands of its own. A build's session runs kiln hook before each file it writes. The pre-commit hook
 // runs kiln precommit.
@@ -32,6 +35,7 @@ const usage = `usage:
   kiln run
   kiln status
   kiln stats [<name>]
+  kiln tui [<name>]
   kiln accept <name>
 `
 
@@ -69,7 +73,7 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 
 			return r.Status(ctx, stdout)
 		})
-	case "stats":
+	case "stats", "tui":
 		err = onRepo(ctx, func(r *kiln.Repo) error {
 			if len(args) > 1 {
 				return errUsage
@@ -78,6 +82,10 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 			name := ""
 			if len(args) == 1 {
 				name = args[0]
+			}
+
+			if command == "tui" {
+				return r.TUI(ctx, name, os.Stdin, stdout)
 			}
 
 			return r.Stats(ctx, name, stdout)

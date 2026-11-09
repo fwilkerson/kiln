@@ -6,15 +6,16 @@
 //	err = r.Run(ctx, os.Stdout)           // builds each queued spec, one at a time
 //	err = r.Status(ctx, os.Stdout)
 //	err = r.Stats(ctx, "", os.Stdout)     // what each build cost, one line each; "x" shows each build of x in full
+//	err = r.TUI(ctx, "", os.Stdin, os.Stdout)  // every build, live and past, in a full-screen view
 //	err = r.Accept(ctx, "x", os.Stdout)   // ends UAT, and retires the spec
 //
 // A build runs one build session of Claude Code, on its own branch, kiln/<name>, in a worktree kiln makes. kiln commits
 // what the session leaves, then gates it. A failing gate goes back to the same session, at most kiln.json's rounds
 // times; past that, the build stops. Once the gate passes, the audit agent reads the changed packages, in a session
-// of its own. An audit that ends with no result runs again in a new session, up to 3 tries. Its findings go back to
-// the build session. A build with no amendment then lands. It is rebased onto main as one commit, and gated
-// again. Then main moves to it, only if main has not moved since. A build that amended its spec waits on its branch
-// instead.
+// of its own. It runs in a worktree of its own at the build's commit, so nothing it writes reaches the build. An audit
+// that ends with no result runs again in a new session, up to 3 tries. Its findings go back to the build session. A
+// build with no amendment then lands. It is rebased onto main as one commit, and gated again. Then main moves to it,
+// only if main has not moved since. A build that amended its spec waits on its branch instead.
 //
 // The gate runs kiln.json's commands, read from main's tip, at the build's commit and at main. It passes when every
 // command exits 0, but for Go tests that fail at main too. It fails on any path the work changed under specs/ but
@@ -273,10 +274,10 @@ func (r *Repo) Accept(ctx context.Context, name string, out io.Writer) error {
 		return err
 	}
 
-	landed, report, err := b.land(ctx, "", b.retire, specPath(name), amendPath(name))
-	if err == nil && report != "" {
+	landed, back, err := b.land(ctx, "", b.retire, specPath(name), amendPath(name))
+	if err == nil && back.report != "" {
 		err = fmt.Errorf("%w: the gate failed on main as it stands, so %s is not accepted:\n%s", errRefused, name,
-			report)
+			back.report)
 	}
 
 	if err != nil {
@@ -323,6 +324,10 @@ func (r *Repo) acceptAmended(ctx context.Context, b *build) error {
 }
 
 func (r *Repo) tree(name string) string { return filepath.Join(r.trees, name) }
+
+// auditTree is the worktree the audit of name's build reads, detached at the build's commit. A spec's name never
+// starts with a dot, so it is no build's tree.
+func (r *Repo) auditTree(name string) string { return filepath.Join(r.trees, ".audit-"+name) }
 
 func branchOf(name string) string { return "kiln/" + name }
 

@@ -1,0 +1,92 @@
+# 1. The running session, live.
+
+# Given: a build whose session went back after a failed gate, has had a call refused, and is inside a tool call.
+# Its first run writes code the gate fails. Its second, round 1 of 3, writes to specs/, which kiln's hook refuses. Then
+# it runs a command that waits for go-on, and touches waiting first, so the script knows it is inside the call.
+exec kiln approve x
+exec kiln run &
+exec sh -c 'i=0; while [ ! -e waiting ] && [ $i -lt 900 ]; do sleep 0.1; i=$((i+1)); done; [ -e waiting ]'
+
+# When: the developer opens kiln tui, then the running run,
+term 120 30 kiln tui
+screen '▶ x · build role · round 1 of 3 · running'
+keys tab enter
+
+# Then: it shows the spec, the role, the round, how long the run has gone, how long since the session last wrote,
+# the open call, and the refusal, with the run's cost as unknown.
+screen '^x · build 1 · run 2: round 1 of 3 · build role · session '
+screen '^▶ running \S+ · idle \d+:\d\d · '
+screen ' · cost unknown'
+screen '^▶ \d\d:\d\d:\d\d Bash +touch .* \d+:\d\d running$'
+screen '^✗ \d\d:\d\d:\d\d Write +.*specs/x\.md +— refused: '
+screen ' · 1 refused · '
+! screen 'echo the next call'
+
+# When: the session makes another call.
+exec touch go-on
+
+# Then: the new call appears with no key pressed.
+screen '^▶ \d\d:\d\d:\d\d Bash +echo the next call'
+
+exec touch done
+wait
+stdout '^x: landed on main'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 3}
+-- specs/x.md --
+# Spec 1: x
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/wrong/.\" ."}}},
+      {"result": {"result": "Built x.", "cost_usd": 0.50}}
+    ],
+    "2": [
+      {"tool": {"name": "Write", "input": {"file_path": "specs/x.md", "content": "changed"}}},
+      {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/waiting\" && while [ ! -e \"$WORK/go-on\" ]; do sleep 0.1; done"}}},
+      {"tool": {"name": "Bash", "input": {"command": "echo the next call && cp -R \"$WORK/_given/right/.\" . && while [ ! -e \"$WORK/done\" ]; do sleep 0.1; done"}}},
+      {"result": {"result": "Fixed x.", "cost_usd": 0.25}}
+    ]
+  }},
+  "audit": {"1": {"1": [{"result": {"result": "read 1 package, found 0"}}]}}
+}
+-- _given/wrong/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 41.
+func X() int { return 41 }
+-- _given/wrong/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}
+-- _given/right/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }

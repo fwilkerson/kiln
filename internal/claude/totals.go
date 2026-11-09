@@ -88,37 +88,69 @@ func (c Claude) Streamed(session string) (int64, error) {
 	return info.Size(), nil
 }
 
-// Recount totals what the session's stream holds past its first from bytes, as Run totals a run it reads. It also
-// answers when the stream was last written. kiln recounts a run it lost track of, such as when it died mid-run.
-func (c Claude) Recount(session string, from int64) (Totals, time.Time, error) {
+// Recounted is a stretch of a session's stream, counted again.
+type Recounted struct {
+	Totals Totals
+	// Actions are the top-level tool calls the stretch holds, and the text the model said, in order.
+	Actions []Action
+	// Written is when the stream was last written, across all its runs.
+	Written time.Time
+}
+
+// Action is one tool call, or one text the model said.
+type Action struct {
+	At time.Time
+	// Tool is the tool called, or "" for text the model said.
+	Tool string
+	// Input is the first line of the call's input, or of the text.
+	Input string
+	// Took is how long a call took to return.
+	Took time.Duration
+	// Open is a call that has not returned.
+	Open bool
+	// Failed is a call that returned an error or was refused. Cause is as a [Failure]'s.
+	Failed  bool
+	Refused bool
+	Cause   string
+}
+
+// Recount totals the session's stream from byte from up to byte to, as Run totals a run it reads. A to below 0
+// reads to the end. kiln recounts a run it lost track of, such as when it died mid-run. Its view
+// recounts a run to show it.
+func (c Claude) Recount(session string, from, to int64) (Recounted, error) {
 	f, err := os.Open(c.stream(session))
 	if os.IsNotExist(err) {
-		return Totals{}, time.Time{}, nil
+		return Recounted{}, nil
 	}
 
 	if err != nil {
-		return Totals{}, time.Time{}, err
+		return Recounted{}, err
 	}
 
 	defer f.Close()
 
 	info, err := f.Stat()
 	if err != nil {
-		return Totals{}, time.Time{}, err
+		return Recounted{}, err
 	}
 
 	if _, err := f.Seek(from, io.SeekStart); err != nil {
-		return Totals{}, time.Time{}, err
+		return Recounted{}, err
+	}
+
+	var stretch io.Reader = f
+	if to >= 0 {
+		stretch = io.LimitReader(f, max(0, to-from))
 	}
 
 	var t tally
-	lines := bufio.NewScanner(f)
+	lines := bufio.NewScanner(stretch)
 	lines.Buffer(nil, 64<<20)
 	for lines.Scan() {
 		t.line(lines.Bytes())
 	}
 
-	return t.totals(), info.ModTime(), lines.Err()
+	return Recounted{Totals: t.totals(), Actions: t.actions, Written: info.ModTime()}, lines.Err()
 }
 
 func (c Claude) stream(session string) string {
@@ -142,6 +174,9 @@ type tally struct {
 	failed      []Failure
 	// refused maps a refused call's ID to its index in failed.
 	refused map[string]int
+	actions []Action
+	// acted maps a top-level call's ID to its index in actions.
+	acted map[string]int
 }
 
 type pending struct {
@@ -195,6 +230,7 @@ type block struct {
 	ToolUseID string          `json:"tool_use_id"`
 	Content   json.RawMessage `json:"content"`
 	IsError   bool            `json:"is_error"`
+	Text      string          `json:"text"`
 }
 
 func (t *tally) line(line []byte) {
@@ -254,6 +290,10 @@ func (t *tally) system(e event) {
 			f.Input = c.input
 		}
 
+		if i, ok := t.acted[e.ToolUseID]; ok {
+			t.actions[i].Failed, t.actions[i].Refused, t.actions[i].Cause = true, true, f.Cause
+		}
+
 		if t.refused == nil {
 			t.refused = map[string]int{}
 		}
@@ -293,11 +333,20 @@ func (t *tally) block(b block, top bool, at time.Time) {
 
 		t.calls[b.ID] = &pending{tool: b.Name, input: firstLine(b.Input), top: top, at: at}
 		t.tools[b.Name]++
+		if top {
+			t.act(b.ID, Action{At: at, Tool: b.Name, Input: t.calls[b.ID].input, Open: true})
+		}
+	case "text":
+		if said, _, _ := strings.Cut(strings.TrimSpace(b.Text), "\n"); top && said != "" {
+			t.actions = append(t.actions, Action{At: at, Input: clip(said)})
+		}
 	case "tool_result":
 		c := t.calls[b.ToolUseID]
 		if b.IsError {
 			t.fail(b, c)
 		}
+
+		t.returned(b, at)
 
 		if c == nil || !c.top || c.at.IsZero() || at.Before(c.at) {
 			return
@@ -311,6 +360,33 @@ func (t *tally) block(b block, top bool, at time.Time) {
 
 		t.waits = append(t.waits, s)
 		t.slowest = append(t.slowest, Call{Tool: c.tool, Input: c.input, Took: at.Sub(c.at)})
+	}
+}
+
+func (t *tally) act(id string, a Action) {
+	if t.acted == nil {
+		t.acted = map[string]int{}
+	}
+
+	t.acted[id] = len(t.actions)
+	t.actions = append(t.actions, a)
+}
+
+// returned marks a top-level call as returned, and failed if its result is an error.
+func (t *tally) returned(b block, at time.Time) {
+	i, ok := t.acted[b.ToolUseID]
+	if !ok {
+		return
+	}
+
+	a := &t.actions[i]
+	a.Open = false
+	if !a.At.IsZero() && !at.Before(a.At) {
+		a.Took = at.Sub(a.At)
+	}
+
+	if b.IsError && !a.Refused {
+		a.Failed, a.Cause = true, cause(text(b.Content))
 	}
 }
 
@@ -365,6 +441,36 @@ func (t *tally) totals() Totals {
 	}
 
 	return tt
+}
+
+// Cause is the failed calls of one cause: how many, and the tool and input of the first.
+type Cause struct {
+	// Text names the cause. A refusal's starts "refused: ".
+	Text        string
+	Tool, Input string
+	Count       int
+}
+
+// Causes groups failures by cause, the most first.
+func Causes(failed []Failure) []Cause {
+	var all []Cause
+	for _, f := range failed {
+		text := cmp.Or(f.Cause, "(no output)")
+		if f.Refused {
+			text = "refused: " + text
+		}
+
+		i := slices.IndexFunc(all, func(c Cause) bool { return c.Text == text })
+		if i < 0 {
+			i = len(all)
+			all = append(all, Cause{Text: text, Tool: f.Tool, Input: f.Input})
+		}
+
+		all[i].Count++
+	}
+
+	slices.SortStableFunc(all, func(a, b Cause) int { return cmp.Compare(b.Count, a.Count) })
+	return all
 }
 
 // union is the time that at least one of spans covers.

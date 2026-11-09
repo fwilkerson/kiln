@@ -1,0 +1,52 @@
+# 6. Finding a spec by name.
+
+# Given: several specs.
+exec kiln approve gate-flakes
+exec kiln approve notifications
+exec kiln approve status-line
+
+# When: the developer types part of one spec's name into the filter.
+term 100 20 kiln tui
+screen 'gate-flakes'
+screen 'notifications'
+screen 'status-line'
+keys / ate-fl
+
+# Then: the side panel holds only the specs whose names hold that text.
+screen '/ ate-fl'
+screen 'gate-flakes'
+! screen 'notifications'
+! screen 'status-line'
+
+-- kiln.json --
+{"gate": ["true"], "rounds": 1}
+-- specs/gate-flakes.md --
+# Spec 1: gate-flakes
+
+## Acceptance tests
+
+### 1. It answers
+
+- **Given**: nothing.
+- **When**: it is called.
+- **Then**: it answers.
+-- specs/notifications.md --
+# Spec 2: notifications
+
+## Acceptance tests
+
+### 1. It answers
+
+- **Given**: nothing.
+- **When**: it is called.
+- **Then**: it answers.
+-- specs/status-line.md --
+# Spec 3: status-line
+
+## Acceptance tests
+
+### 1. It answers
+
+- **Given**: nothing.
+- **When**: it is called.
+- **Then**: it answers.

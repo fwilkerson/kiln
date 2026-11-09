@@ -44,9 +44,15 @@ func violation(pkg, imp string) string {
 // outside lists the modules from outside the standard library that each package may import. A key is a package path
 // within kiln.
 var outside = map[string][]string{
-	"internal/proc":         {"golang.org/x/sys"},
-	"internal/claude":       {"golang.org/x/sys"},
-	"internal/scenariotest": {"github.com/rogpeppe/go-internal"},
+	"internal/proc":   {"golang.org/x/sys"},
+	"internal/claude": {"golang.org/x/sys"},
+	"internal/scenariotest": {"github.com/rogpeppe/go-internal", "github.com/charmbracelet/x/ansi",
+		"github.com/charmbracelet/x/vt"},
+	"internal/tui": {"charm.land/bubbletea/v2", "charm.land/bubbles/v2", "charm.land/lipgloss/v2",
+		"charm.land/glamour/v2", "github.com/charmbracelet/x/ansi", "github.com/charmbracelet/x/term",
+		"github.com/charmbracelet/x/vt"},
+	"internal/termtest": {"github.com/creack/pty", "github.com/charmbracelet/x/vt",
+		"github.com/charmbracelet/ultraviolet", "golang.org/x/image"},
 }
 
 // allowed reports whether pkg may import imp, a package from outside the standard library.
