@@ -4,7 +4,7 @@ Status: notes, not a spec. Each topic below was discussed while drafting spec 1 
 then left out. Each says what it is, why it came up, and what would show it is needed. A later spec starts from here.
 
 A topic the developer means to build leaves this file for a starter spec in `specs/`, with Status Proposed, which
-`/slice` takes up from its Open Questions. `specs/tui-after-use.md`, `specs/notify.md`,
+`/slice` takes up from its Open Questions. `specs/tui-reading.md`, `specs/notify.md`,
 `specs/project-roles.md` and `specs/gauges.md` began here.
 
 ## The evidence behind spec 1
