@@ -235,7 +235,7 @@ func clock(d time.Duration) string {
 
 func dollars(v float64, known bool) string {
 	if !known {
-		return "unknown"
+		return "?"
 	}
 
 	return fmt.Sprintf("$%.2f", v)

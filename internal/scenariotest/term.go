@@ -24,10 +24,13 @@ import (
 //	click <text>                            wait until text is on screen once, then click its first cell
 //	wheel up|down <turns>                   turn the wheel over the middle of the screen
 //	screen <regexp>                         wait until the screen matches; with !, until it does not
-//	color red|yellow|green <text>           wait until text is on screen once, its first cell in that color
+//	color [background] <color> <text>       wait until text is on screen once, its first cell in that color
 //
-// A named key is one of keyNames. A pattern matches the screen's text, line by line, with (?m) set. A check with !
-// passes at once when its text is not yet drawn, so wait for what the screen does hold first.
+// A named key is one of keyNames. A pattern matches the screen's text, line by line, with (?m) set. A screen check
+// with ! passes at once when its text is not yet drawn, so wait for what the screen does hold first.
+//
+// A color is red, yellow, green, or none for the terminal's own. color reads the cell's foreground, or with
+// background its background. With !, it waits until the cell is drawn in any other color.
 var terminalCommands = map[string]func(*testscript.TestScript, bool, []string){
 	"term":   startTerm,
 	"keys":   pressKeys,
@@ -43,7 +46,7 @@ var keyNames = map[string]rune{
 	"space": vt.KeySpace,
 }
 
-var colors = map[string]color.Color{"red": ansi.Red, "yellow": ansi.Yellow, "green": ansi.Green}
+var colors = map[string]color.Color{"red": ansi.Red, "yellow": ansi.Yellow, "green": ansi.Green, "none": nil}
 
 // terminalKey holds a script's terminal among testscript's values.
 type terminalKey struct{}
@@ -164,9 +167,14 @@ func waitScreen(ts *testscript.TestScript, neg bool, args []string) {
 }
 
 func waitColor(ts *testscript.TestScript, neg bool, args []string) {
+	background := len(args) == 3 && args[0] == "background"
+	if background {
+		args = args[1:]
+	}
+
 	want, ok := colors[strings.Join(args[:min(1, len(args))], "")]
-	if neg || len(args) != 2 || !ok {
-		ts.Fatalf("usage: color red|yellow|green <text>")
+	if len(args) != 2 || !ok {
+		ts.Fatalf("usage: color [background] red|yellow|green|none <text>")
 	}
 
 	term := termOf(ts)
@@ -176,7 +184,15 @@ func waitColor(ts *testscript.TestScript, neg bool, args []string) {
 			return err
 		}
 
-		if got := term.Foreground(x, y); !termtest.Same(got, want) {
+		got := term.Foreground(x, y)
+		if background {
+			got = term.Background(x, y)
+		}
+
+		switch same := termtest.Same(got, want); {
+		case same && neg:
+			return fmt.Errorf("%q is drawn in %s", args[1], args[0])
+		case !same && !neg:
 			return fmt.Errorf("%q is drawn in %v, not %s", args[1], got, args[0])
 		}
 

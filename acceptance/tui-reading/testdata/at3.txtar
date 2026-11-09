@@ -1,0 +1,90 @@
+# 3. A run's whole answer.
+
+# Given: a build whose audit answered in several paragraphs, longer than the screen.
+# The audit's answer is 22 lines, under headings, with inline code. The screen's body holds 16 rows.
+exec kiln queue x
+exec kiln run
+stdout '^x: landed on main'
+
+# When: the developer opens the audit's run,
+term 100 20 kiln tui x
+screen '^x · ◆ UAT · approved once'
+keys enter
+screen '^2 +audit +audit, try 1 '
+keys j enter
+screen '^x · build 1 · run 2: audit, try 1 · audit role · session '
+
+# Then: every line of the answer is shown, with its headings and its inline code colored.
+screen '^# Audit of x$'
+screen '^I read package `scratch` and the code of acceptance test 1\.$'
+screen '^## What I checked$'
+screen '^- `X` answers 42, as test 1''s Then says\.$'
+screen '^- The test calls `scratch\.X` through the package''s API\.$'
+screen '^- No exported name lacks a doc comment\.$'
+screen '^## What I did not check$'
+screen '^- The gate''s own commands, which kiln runs\.$'
+screen '^- Any package the build did not change\.$'
+! color none '# Audit of x'
+! color none '## What I checked'
+! color none '`scratch`'
+color none 'I read package'
+! screen 'The answer ends with its count'
+
+# When: and scrolls to the end of its answer.
+keys space
+
+# Then: every line of the answer is shown.
+screen '^## Findings$'
+screen '^None\. Each line of this answer is shown in the view\.$'
+screen '^The answer ends with its count\.$'
+screen '^read 1 package, found 0$'
+! color none '## Findings'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 0}
+-- specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/right/.\" ."}}},
+      {"result": {"result": "Built x.", "cost_usd": 0.50}}
+    ]
+  }},
+  "audit": {"1": {"1": [{"result": {"result": "# Audit of x\n\nI read package `scratch` and the code of acceptance test 1.\n\n## What I checked\n\n- `X` answers 42, as test 1's Then says.\n- The test calls `scratch.X` through the package's API.\n- No exported name lacks a doc comment.\n\n## What I did not check\n\n- The gate's own commands, which kiln runs.\n- Any package the build did not change.\n\n## Findings\n\nNone. Each line of this answer is shown in the view.\n\nThe answer ends with its count.\n\nread 1 package, found 0", "cost_usd": 0.25}}]}}
+}
+-- _given/right/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/right/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

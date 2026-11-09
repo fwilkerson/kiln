@@ -1,0 +1,174 @@
+# 5. Every key, on ?.
+
+# Given: a build that has ended.
+exec kiln queue x
+exec kiln run
+stdout '^x: landed on main'
+
+# When: on each screen of that build, the developer presses ?, then closes what it opened.
+# Then: a list of every key that screen takes shows over it, and once closed, the screen is as it was.
+# Each screen first shows a row the list then covers.
+term 120 30 kiln tui
+screen 'failed calls per build +0 ▁ +previous 0: —'
+keys ?
+screen '│ keys +│'
+screen '│ j ↓  '
+screen '│ k ↑  '
+screen '│ tab  '
+screen '│ shift\+tab  '
+screen '│ /  '
+screen '│ enter  '
+screen '│ esc  '
+screen '│ \?  '
+screen '│ q ctrl\+c  '
+! screen 'failed calls per build +0 ▁ +previous 0: —'
+keys esc
+! screen '│ keys +│'
+screen 'failed calls per build +0 ▁ +previous 0: —'
+screen '^ j/k select · tab panel · / filter · enter open · \? keys · q quit$'
+
+# The spec's screen.
+keys enter
+screen '^x · ◆ UAT · approved once$'
+screen '^1 +.* ✓ landed .*\$0\.75 '
+keys ?
+screen '│ keys +│'
+screen '│ j ↓  '
+screen '│ k ↑  '
+screen '│ space pgdn  '
+screen '│ b pgup  '
+screen '│ g home  '
+screen '│ G end  '
+screen '│ enter  '
+screen '│ s  '
+screen '│ esc  '
+screen '│ \?  '
+screen '│ q ctrl\+c  '
+keys esc
+! screen '│ keys +│'
+screen '^x · ◆ UAT · approved once$'
+screen '^1 +.* ✓ landed .*\$0\.75 '
+
+# The build's screen.
+keys enter
+screen '^x · build 1 · '
+screen '^ +gate +✓ passed · landing +\d+[sm]$'
+keys ?
+screen '│ keys +│'
+screen '│ j ↓  '
+screen '│ k ↑  '
+screen '│ space pgdn  '
+screen '│ b pgup  '
+screen '│ g home  '
+screen '│ G end  '
+screen '│ enter  '
+screen '│ s  '
+screen '│ esc  '
+screen '│ \?  '
+screen '│ q ctrl\+c  '
+! screen '^ +gate +✓ passed · landing +\d+[sm]$'
+keys esc
+! screen '│ keys +│'
+screen '^x · build 1 · '
+screen '^ +gate +✓ passed · landing +\d+[sm]$'
+
+# The run's screen.
+keys enter
+screen '^x · build 1 · run 1: first run · build role · '
+screen '^  \d\d:\d\d:\d\d Bash +cp -R .* +\d+\.\ds$'
+keys ?
+screen '│ keys +│'
+screen '│ j ↓  '
+screen '│ k ↑  '
+screen '│ f space pgdn  '
+screen '│ b pgup  '
+screen '│ d ctrl\+d  '
+screen '│ u ctrl\+u  '
+screen '│ h ←  '
+screen '│ l →  '
+screen '│ g home  '
+screen '│ G end  '
+screen '│ s  '
+screen '│ esc  '
+screen '│ \?  '
+screen '│ q ctrl\+c  '
+! screen '^  \d\d:\d\d:\d\d Bash +cp -R .* +\d+\.\ds$'
+keys esc
+! screen '│ keys +│'
+screen '^x · build 1 · run 1: first run · build role · '
+screen '^  \d\d:\d\d:\d\d Bash +cp -R .* +\d+\.\ds$'
+
+# The spec text.
+keys s
+screen '^x · as approved at [0-9a-f]{12}$'
+screen '^- \*\*Given\*\*: nothing\.$'
+keys ?
+screen '│ keys +│'
+screen '│ j ↓  '
+screen '│ k ↑  '
+screen '│ f space pgdn  '
+screen '│ b pgup  '
+screen '│ d ctrl\+d  '
+screen '│ u ctrl\+u  '
+screen '│ h ←  '
+screen '│ l →  '
+screen '│ g home  '
+screen '│ G end  '
+screen '│ esc  '
+screen '│ \?  '
+screen '│ q ctrl\+c  '
+! screen '│ s  '
+! screen '^- \*\*Given\*\*: nothing\.$'
+keys esc
+! screen '│ keys +│'
+screen '^x · as approved at [0-9a-f]{12}$'
+screen '^- \*\*Given\*\*: nothing\.$'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 0}
+-- specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/right/.\" ."}}},
+      {"result": {"result": "Built x.", "cost_usd": 0.50}}
+    ]
+  }},
+  "audit": {"1": {"1": [{"result": {"result": "read 1 package, found 0", "cost_usd": 0.25}}]}}
+}
+-- _given/right/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/right/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

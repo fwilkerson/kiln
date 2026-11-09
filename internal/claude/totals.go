@@ -95,6 +95,9 @@ type Recounted struct {
 	Actions []Action
 	// Written is when the stream was last written, across all its runs.
 	Written time.Time
+	// Answer is the text of the stretch's last result event: what the session answered. It is "" until the session
+	// writes one.
+	Answer string
 }
 
 // Action is one tool call, or one text the model said.
@@ -143,14 +146,19 @@ func (c Claude) Recount(session string, from, to int64) (Recounted, error) {
 		stretch = io.LimitReader(f, max(0, to-from))
 	}
 
-	var t tally
+	var read reading
 	lines := bufio.NewScanner(stretch)
 	lines.Buffer(nil, 64<<20)
 	for lines.Scan() {
-		t.line(lines.Bytes())
+		read.line(lines.Bytes())
 	}
 
-	return Recounted{Totals: t.totals(), Actions: t.actions, Written: info.ModTime()}, lines.Err()
+	counted := Recounted{Totals: read.count.totals(), Actions: read.count.actions, Written: info.ModTime()}
+	if read.result != nil {
+		counted.Answer = read.result.Text
+	}
+
+	return counted, lines.Err()
 }
 
 func (c Claude) stream(session string) string {

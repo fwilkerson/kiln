@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/glamour/v2"
 
 	"github.com/fwilkerson/kiln/internal/claude"
 )
@@ -29,6 +29,8 @@ type model struct {
 	stack []*screen
 	// open names the spec to open once the source is first read.
 	open string
+	// keysShown lists the top screen's keys over it. Until it is closed, no other key or click reaches the screen.
+	keysShown bool
 
 	// The home screen's.
 	focus  pane
@@ -68,10 +70,12 @@ type screen struct {
 	// reveal brings the selection into view at the next refresh.
 	reveal bool
 	body   viewport.Model
-	// follow keeps a run's newest call in view, until the developer scrolls up.
-	follow bool
 	calls  *claude.Recounted
-	// text is the spec as approved, as Markdown, and drawn is it drawn for a width of drawnW.
+	// anchored keeps the call at the top of a run's view there, as newer calls come in above it. anchor is that
+	// call's index in calls.Actions, counted from the oldest. So a read of any age finds the same call.
+	anchored bool
+	anchor   int
+	// text is the spec as approved, or the run's answer, as Markdown. drawn is it drawn for a width of drawnW.
 	text   string
 	drawn  []string
 	drawnW int
@@ -165,13 +169,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyPressMsg:
 		cmd = m.key(msg)
+		m.top().pin()
 	case tea.MouseClickMsg:
-		if msg.Button == tea.MouseLeft {
+		switch {
+		case m.keysShown:
+			m.keysShown = false
+		case msg.Button == tea.MouseLeft:
 			t, _ := parseTarget(m.layout().Hit(msg.X, msg.Y).ID())
 			cmd = m.openTarget(t)
 		}
 	case tea.MouseWheelMsg:
-		m.wheel(msg.X, msg.Y, msg.Button == tea.MouseWheelDown)
+		if !m.keysShown {
+			m.wheel(msg.X, msg.Y, msg.Button == tea.MouseWheelDown)
+			m.top().pin()
+		}
 	}
 
 	m.refresh()
@@ -186,6 +197,9 @@ func (m *model) loaded(msg loaded) {
 
 	if s := m.top(); s.kind == runScreen && msg.open != nil && msg.opened == (runRef{s.spec, s.build, s.run}) {
 		s.calls = msg.open
+		if msg.open.Answer != s.text {
+			s.text, s.drawn = msg.open.Answer, nil
+		}
 	}
 
 	if m.open != "" {
@@ -202,66 +216,18 @@ func (m *model) push(s *screen) {
 }
 
 func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
-	s := m.top()
 	switch {
 	case k.String() == "ctrl+c":
 		return tea.Quit
-	case s.kind == homeScreen && m.typing:
+	case m.top().kind == homeScreen && m.typing:
 		m.typeFilter(k)
 		return nil
-	}
-
-	switch k.String() {
-	case "q":
+	case !m.keysShown:
+		return m.do(k)
+	case key.Matches(k, quit):
 		return tea.Quit
-	case "esc":
-		if len(m.stack) > 1 {
-			m.stack = m.stack[:len(m.stack)-1]
-		} else {
-			m.filter = ""
-		}
-
-		return nil
-	}
-
-	switch s.kind {
-	case homeScreen:
-		return m.homeKey(k)
-	case specScreen, buildScreen:
-		return m.listKey(s, k)
-	}
-
-	switch k.String() {
-	case "s":
-		if s.kind == runScreen {
-			return m.openText(s.spec, s.build)
-		}
-	case "home", "g":
-		s.body.GotoTop()
-	case "end", "G":
-		s.body.GotoBottom()
-	default:
-		s.body, _ = s.body.Update(k)
-	}
-
-	s.follow = s.body.AtBottom()
-	return nil
-}
-
-func (m *model) homeKey(k tea.KeyPressMsg) tea.Cmd {
-	switch k.String() {
-	case "tab":
-		m.focus = m.nextPane(1)
-	case "shift+tab":
-		m.focus = m.nextPane(-1)
-	case "up", "k":
-		m.move(-1)
-	case "down", "j":
-		m.move(1)
-	case "/":
-		m.typing, m.focus, m.sel[specsPane] = true, specsPane, 0
-	case "enter":
-		return m.openTarget(target{paneTargets[m.focus], m.sel[m.focus]})
+	case key.Matches(k, keysList, back):
+		m.keysShown = false
 	}
 
 	return nil
@@ -331,35 +297,33 @@ func (m *model) typeFilter(k tea.KeyPressMsg) {
 	m.sel[specsPane] = 0
 }
 
-// listKey moves the selection on a spec's screen or a build's, and opens what is selected.
-func (m *model) listKey(s *screen, k tea.KeyPressMsg) tea.Cmd {
-	n := len(m.builds(s.spec))
-	open := target{toBuild, s.sel}
-	if s.kind == buildScreen {
-		n, open = len(m.runs(s.spec, s.build)), target{toRun, s.sel}
+// rows counts the rows of a spec's screen or a build's that a key selects.
+func (m model) rows(s *screen) int {
+	if s.kind == specScreen {
+		return len(m.builds(s.spec))
 	}
 
-	switch k.String() {
-	case "up", "k":
-		s.sel, s.reveal = max(0, s.sel-1), true
-	case "down", "j":
-		s.sel, s.reveal = max(0, min(n-1, s.sel+1)), true
-	case "pgdown", "pgup":
-		s.body, _ = s.body.Update(k)
-	case "enter":
-		if s.sel < n {
-			return m.openTarget(open)
-		}
-	case "s":
-		build := s.build
-		if s.kind == specScreen {
-			build = s.sel
-		}
+	return len(m.runs(s.spec, s.build))
+}
 
-		return m.openText(s.spec, build)
+// row is the selection's row, from the top. A spec's screen lists its builds newest first, and a build's its runs
+// in order.
+func (m model) row(s *screen) int {
+	if s.kind == specScreen {
+		return m.rows(s) - 1 - s.sel
 	}
 
-	return nil
+	return s.sel
+}
+
+// selectRow selects the row at i from the top, or the nearest row there is.
+func (m model) selectRow(s *screen, i int) {
+	i = max(0, min(m.rows(s)-1, i))
+	if s.kind == specScreen {
+		i = m.rows(s) - 1 - i
+	}
+
+	s.sel, s.reveal = max(0, i), true
 }
 
 // wheel scrolls what is under the pointer, at column x and row y. On home, that is the pane it is over, which takes
@@ -381,8 +345,6 @@ func (m *model) wheel(x, y int, down bool) {
 	} else {
 		s.body.ScrollUp(wheelLines)
 	}
-
-	s.follow = s.body.AtBottom()
 }
 
 // wheelLines is how far one turn of the wheel scrolls.
@@ -426,7 +388,7 @@ func (m *model) openTarget(t target) tea.Cmd {
 }
 
 func (m *model) openRun(ref runRef) tea.Cmd {
-	m.push(&screen{kind: runScreen, spec: ref.spec, build: ref.build, run: ref.run, follow: true})
+	m.push(&screen{kind: runScreen, spec: ref.spec, build: ref.build, run: ref.run})
 	return m.load()
 }
 
@@ -451,7 +413,7 @@ func (m *model) refresh() {
 		return
 	}
 
-	if s.kind == textScreen && s.text != "" && s.drawnW != m.w {
+	if s.text != "" && (s.drawn == nil || s.drawnW != m.w) {
 		s.drawn, s.drawnW = markdown(s.text, m.w), m.w
 	}
 
@@ -464,27 +426,38 @@ func (m *model) refresh() {
 	s.body.SetWidth(m.w)
 	s.body.SetHeight(max(1, m.h-len(head)-1))
 	s.body.SetContentLines(lines)
+	// A wider terminal may need less sideways scroll than the view has.
+	s.body.SetXOffset(s.body.XOffset())
 	if s.reveal && sel >= 0 {
 		s.body.EnsureVisible(sel, 0, 0)
 	}
 
-	if s.follow {
-		s.body.GotoBottom()
+	if s.anchored {
+		s.body.SetYOffset(s.callsFrom() + len(s.calls.Actions) - 1 - s.anchor)
 	}
 
 	s.reveal = false
 }
 
-// markdown draws text as Markdown, with its code highlighted, to fit width columns.
-func markdown(text string, width int) []string {
-	r, err := glamour.NewTermRenderer(glamour.WithStandardStyle("dark"), glamour.WithWordWrap(max(20, width-4)))
-	if err == nil {
-		if drawn, err := r.Render(text); err == nil {
-			return strings.Split(strings.TrimRight(drawn, "\n"), "\n")
-		}
+// callsFrom is the line of a run's body its newest call is on, below its answer.
+func (s *screen) callsFrom() int {
+	if len(s.drawn) == 0 {
+		return 0
 	}
 
-	return strings.Split(text, "\n")
+	return len(s.drawn) + 1
+}
+
+// pin anchors the call at the top of a run's view. At the view's top, or above the calls, the view keeps its offset
+// instead. So at the top it stays at the top, where the newest call comes in.
+func (s *screen) pin() {
+	if s.kind != runScreen || s.calls == nil {
+		return
+	}
+
+	row := s.body.YOffset() - s.callsFrom()
+	s.anchored = s.body.YOffset() > 0 && row >= 0 && row < len(s.calls.Actions)
+	s.anchor = len(s.calls.Actions) - 1 - row
 }
 
 func (m model) spec(name string) *Spec {

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"strconv"
@@ -80,13 +81,23 @@ func (m model) layout() *lipgloss.Compositor {
 	layers := []*lipgloss.Layer{lipgloss.NewLayer(strings.Repeat(strings.Repeat(" ", m.w)+"\n", m.h-1) +
 		strings.Repeat(" ", m.w))}
 	s := m.top()
+	if m.keysShown {
+		layers = append(layers, m.keyList(s.kind))
+	}
+
 	if s.kind == homeScreen {
 		return lipgloss.NewCompositor(append(layers, m.home()...)...)
 	}
 
 	head, body, _ := m.page(s)
 	off := s.body.YOffset()
-	shown := body[min(off, len(body)):min(off+s.body.Height(), len(body))]
+	shown := slices.Clone(body[min(off, len(body)):min(off+s.body.Height(), len(body))])
+	if x := s.body.XOffset(); x > 0 {
+		for i, r := range shown {
+			shown[i].text = ansi.Cut(r.text, x, x+m.w)
+		}
+	}
+
 	layers = append(layers, place(append(head, shown...), m.w)...)
 	return lipgloss.NewCompositor(append(layers, m.foot(s.kind))...)
 }
@@ -153,16 +164,8 @@ func pick(text string, selected bool) string {
 	return text
 }
 
-var help = map[kind]string{
-	homeScreen:  "tab panel · / filter · enter open · q quit",
-	specScreen:  "↑↓ select · enter build · s spec as approved · esc back",
-	buildScreen: "↑↓ select · enter run · s spec as approved · esc back",
-	runScreen:   "↑↓ scroll · end newest · s spec as approved · esc back",
-	textScreen:  "↑↓ pgup pgdn scroll · end bottom · esc back",
-}
-
 func (m model) foot(k kind) *lipgloss.Layer {
-	text := dim.Render(help[k])
+	text := dim.Render(footer(k, m.w-1))
 	if m.err != nil {
 		text = red.Render("✗ kiln could not read its ledger: " + m.err.Error())
 	}
@@ -411,10 +414,7 @@ func (m model) recentRows(n, w int) []row {
 		}
 
 		cost, costKnown := b.cost()
-		price := "cost unknown"
-		if costKnown {
-			price = dollars(cost, true)
-		}
+		price := dollars(cost, costKnown)
 
 		text := cols([]int{12, 16, 16, 8, -6}, dim.Render(b.Started.Local().Format("Jan 02 15:04")), all[i].spec,
 			m.outcome(all[i].spec, b), plural(b.Size, "test"), time, price)
@@ -511,7 +511,8 @@ func (m model) specPage(s *screen) (head, body []row, sel int) {
 		return head, []row{{text: dim.Render("no build yet")}}, -1
 	}
 
-	for i, b := range spec.Builds {
+	// Newest first, while sel and each row's target stay the build's index, which a new build never moves.
+	for i, b := range slices.Backward(spec.Builds) {
 		took, known := b.took()
 		time := "?"
 		if known {
@@ -528,7 +529,7 @@ func (m model) specPage(s *screen) (head, body []row, sel int) {
 		body = append(body, row{pick(text, i == s.sel), target{toBuild, i}})
 	}
 
-	return head, body, s.sel
+	return head, body, len(spec.Builds) - 1 - s.sel
 }
 
 func times(n int) string {
@@ -550,7 +551,7 @@ func (m model) buildPage(s *screen) (head, body []row, sel int) {
 			dim.Render(short(b.Approved, 12)), plural(b.Size, "test"), m.outcome(s.spec, b))},
 		{text: m.summary(b)},
 		{},
-		{text: dim.Render(cols(m.runCols(), "", "run", "", "took", "turns", "cost", "failed", "context peak"))},
+		{text: dim.Render(cols(m.runCols(), "", "run", "", "took", "turns", "cost", "failed", "context"))},
 	}
 	sel = -1
 	n := 0
@@ -615,16 +616,16 @@ func (m model) runRow(n int, r *Run) string {
 		cost = fmt.Sprintf("$%.2f", *r.Totals.CostUSD)
 	}
 
-	failed, peak := "?", "?"
+	failed, context := "?", "?"
 	if !r.End.IsZero() {
 		failed = strconv.Itoa(len(r.Totals.Failed))
 	}
 
 	if c := r.Totals.Context; c != nil {
-		peak = tokens(c.Peak)
+		context = tokens(c.Last)
 	}
 
-	return cols(m.runCols(), strconv.Itoa(n+1), r.Role, r.why(), took, turns, cost, failed, peak)
+	return cols(m.runCols(), strconv.Itoa(n+1), r.Role, cmp.Or(r.Why, "?"), took, turns, cost, failed, context)
 }
 
 // summary is a build's time, cost, turns and failed calls.
@@ -640,16 +641,21 @@ func (m model) summary(b *Build) string {
 		}
 	}
 
-	time := "time unknown"
+	time := "time ?"
 	if known {
 		time = "time " + span(took)
 	}
 
 	cost, costKnown := b.cost()
+	price := dollars(cost, costKnown)
+	if !costKnown {
+		price = "cost ?"
+	}
+
 	turns, turnsKnown := b.turns()
 	failed, refused, failedKnown := b.failed()
 	return fmt.Sprintf("%s: %s in gates, %s waiting on tools · %s · %s turns · %s failed, %s refused", time,
-		span(gates), span(waiting), dollars(cost, costKnown), count(turns, turnsKnown), count(failed, failedKnown),
+		span(gates), span(waiting), price, count(turns, turnsKnown), count(failed, failedKnown),
 		count(refused, failedKnown))
 }
 
@@ -691,13 +697,21 @@ func (m model) runPage(s *screen) (head, body []row, sel int) {
 		return head, []row{{text: dim.Render("reading its stream")}}, -1
 	}
 
+	for _, line := range s.drawn {
+		body = append(body, row{text: line})
+	}
+
+	if len(body) > 0 {
+		body = append(body, row{})
+	}
+
 	inputW := max(20, (m.w-34)/2)
-	for _, a := range s.calls.Actions {
+	for _, a := range slices.Backward(s.calls.Actions) {
 		body = append(body, row{text: m.action(a, r, inputW)})
 	}
 
-	if len(body) == 0 {
-		body = []row{{text: dim.Render("no call yet")}}
+	if len(s.calls.Actions) == 0 {
+		body = append(body, row{text: dim.Render("no call yet")})
 	}
 
 	return head, body, -1
@@ -743,16 +757,12 @@ func (m model) runState(r *Run, c *claude.Recounted) string {
 		facts = append(facts, plural(calls, "call"), fmt.Sprintf("%d refused", refused))
 	}
 
-	if r.running() {
-		return strings.Join(append(facts, "cost unknown until the run ends"), " · ")
-	}
-
-	turns := "turns unknown"
+	turns := "turns ?"
 	if r.Totals.Turns != nil {
 		turns = plural(*r.Totals.Turns, "turn")
 	}
 
-	cost := "cost unknown"
+	cost := "cost ?"
 	if r.Totals.CostUSD != nil {
 		cost = fmt.Sprintf("$%.2f", *r.Totals.CostUSD)
 	}

@@ -1,0 +1,186 @@
+# 4. Keys a MacBook has.
+
+# Given: a build long enough that its run screen, its spec's screen and its spec text each scroll.
+# The terminal is 7 rows tall. The spec has 4 builds, the last build's first run answers in 3 lines, and the spec's
+# text is 14 lines.
+exec kiln queue x
+exec kiln run
+stdout '^x: landed on main'
+exec sh -c 'echo "Revision 2." >>specs/x.md && git commit --quiet -am "docs(x): revise"'
+exec kiln queue x
+exec kiln run
+stdout '^x: landed on main'
+exec sh -c 'echo "Revision 3." >>specs/x.md && git commit --quiet -am "docs(x): revise"'
+exec kiln queue x
+exec kiln run
+stdout '^x: landed on main'
+exec sh -c 'echo "Revision 4." >>specs/x.md && git commit --quiet -am "docs(x): revise"'
+exec kiln queue x
+exec kiln run
+stdout '^x: landed on main'
+
+# When: the developer reads the footer of each of the five screens, and on each screen that scrolls, presses the
+# keys its footer names to page down, page up, go to the end and go to the top.
+# Then: no footer names a key a MacBook lacks, such as End or Page Down, and each key does what its footer says.
+# Each footer is the screen's last row. A key it names starts one of its entries, and each key pressed is named there.
+term 120 7 kiln tui
+screen '(?:^ |· )enter [^\n]*\z'
+! screen '(?:^ |· )\S*(?:[Ee]nd|[Hh]ome|[Pp]g|[Pp]age|↑|↓|←|→)\S* [^\n]*\z'
+
+# The spec's screen lists its builds newest first, 3 rows at a time.
+keys enter
+screen '^x · ◆ UAT · approved 4 times'
+screen '(?:^ |· )space/b [^\n]*\z'
+screen '(?:^ |· )g/G [^\n]*\z'
+screen '(?:^ |· )enter [^\n]*\z'
+screen '(?:^ |· )esc [^\n]*\z'
+! screen '(?:^ |· )\S*(?:[Ee]nd|[Hh]ome|[Pp]g|[Pp]age|↑|↓|←|→)\S* [^\n]*\z'
+screen '^4 +'
+! screen '^1 +'
+keys space
+screen '^1 +'
+! screen '^4 +'
+keys b
+screen '^4 +'
+! screen '^1 +'
+keys G
+screen '^1 +'
+! screen '^4 +'
+keys enter
+screen '^x · build 1 · '
+keys esc
+screen '^x · ◆ UAT · approved 4 times'
+keys g
+screen '^4 +'
+! screen '^1 +'
+keys enter
+screen '^x · build 4 · '
+
+# The build's screen shows its steps 2 rows at a time.
+screen '(?:^ |· )space/b [^\n]*\z'
+screen '(?:^ |· )g/G [^\n]*\z'
+screen '(?:^ |· )enter [^\n]*\z'
+! screen '(?:^ |· )\S*(?:[Ee]nd|[Hh]ome|[Pp]g|[Pp]age|↑|↓|←|→)\S* [^\n]*\z'
+screen '^1 +build +first run '
+! screen '^2 +audit '
+keys space
+screen '^2 +audit '
+! screen '^1 +build +first run '
+keys b
+screen '^1 +build +first run '
+! screen '^2 +audit '
+keys G
+screen '^2 +audit '
+! screen '^1 +build +first run '
+keys g
+screen '^1 +build +first run '
+! screen '^2 +audit '
+keys enter
+screen '^x · build 4 · run 1: first run · build role · '
+
+# The run's screen shows its answer, then its call, 3 rows at a time.
+screen '(?:^ |· )space/b [^\n]*\z'
+screen '(?:^ |· )g/G [^\n]*\z'
+screen '(?:^ |· )s [^\n]*\z'
+! screen '(?:^ |· )\S*(?:[Ee]nd|[Hh]ome|[Pp]g|[Pp]age|↑|↓|←|→)\S* [^\n]*\z'
+screen '^Built x 4 times\.$'
+! screen 'Bash'
+keys space
+screen '^  \d\d:\d\d:\d\d Bash '
+! screen '^Built x 4 times\.$'
+keys b
+screen '^Built x 4 times\.$'
+! screen 'Bash'
+keys G
+screen '^  \d\d:\d\d:\d\d Bash '
+! screen '^Built x 4 times\.$'
+keys g
+screen '^Built x 4 times\.$'
+! screen 'Bash'
+
+# The spec text shows 4 rows at a time.
+keys s
+screen '^x · as approved at [0-9a-f]{12}$'
+screen '(?:^ |· )space/b [^\n]*\z'
+screen '(?:^ |· )g/G [^\n]*\z'
+! screen '(?:^ |· )\S*(?:[Ee]nd|[Hh]ome|[Pp]g|[Pp]age|↑|↓|←|→)\S* [^\n]*\z'
+screen '^# Spec 1: x$'
+! screen 'Acceptance tests'
+keys space
+screen '^## Acceptance tests$'
+! screen '^# Spec 1: x$'
+keys b
+screen '^# Spec 1: x$'
+! screen 'Acceptance tests'
+keys G
+screen '^Revision 4\.$'
+! screen '^# Spec 1: x$'
+keys g
+screen '^# Spec 1: x$'
+! screen 'Revision 4'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 0}
+-- specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/right/.\" ."}}},
+      {"result": {"result": "Built x."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "echo '// Revision 2.' >>x.go"}}},
+      {"result": {"result": "Built x again."}}
+    ]},
+    "3": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "echo '// Revision 3.' >>x.go"}}},
+      {"result": {"result": "Built x 3 times."}}
+    ]},
+    "4": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "echo '// Revision 4.' >>x.go"}}},
+      {"result": {"result": "Built x 4 times.\n\nIt still answers 42."}}
+    ]}
+  },
+  "audit": {
+    "1": {"1": [{"result": {"result": "read 1 package, found 0"}}]},
+    "2": {"1": [{"result": {"result": "read 1 package, found 0"}}]},
+    "3": {"1": [{"result": {"result": "read 1 package, found 0"}}]},
+    "4": {"1": [{"result": {"result": "read 1 package, found 0"}}]}
+  }
+}
+-- _given/right/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/right/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

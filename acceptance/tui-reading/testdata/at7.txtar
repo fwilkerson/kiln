@@ -1,0 +1,90 @@
+# 7. A spec's text, legible.
+
+# Given: a spec with a code block and a table inside a list item, and a sentence with inline code.
+exec kiln queue x
+exec kiln run
+stdout '^x: landed on main'
+
+# When: the developer opens its spec text.
+term 120 40 kiln tui x
+screen '^x · ◆ UAT · approved once$'
+keys s
+screen '^x · as approved at [0-9a-f]{12}$'
+
+# Then: a blank line separates the code block and the table from the text after each, as in the spec's source,
+screen '^  ```go\n  func X\(\) int \{ return 42 \}\n  ```\n\n  The text after the code block\.$'
+screen '^  \| X +\| 42 +\|\n\n  The text after the table\.$'
+
+# and inline code has no background color.
+screen '^The view shows `kiln tui` and `kiln run` as written\.$'
+color background none '`kiln tui`'
+color background none '`kiln run`'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 0}
+-- specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-09
+
+## Overview
+
+The view shows `kiln tui` and `kiln run` as written.
+
+- **A code block.** Inside this item:
+
+  ```go
+  func X() int { return 42 }
+  ```
+
+  The text after the code block.
+
+- **A table.** Inside this item:
+
+  | name | answer |
+  |------|--------|
+  | X    | 42     |
+
+  The text after the table.
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/right/.\" ."}}},
+      {"result": {"result": "Built x.", "cost_usd": 0.50}}
+    ]
+  }},
+  "audit": {"1": {"1": [{"result": {"result": "read 1 package, found 0", "cost_usd": 0.25}}]}}
+}
+-- _given/right/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/right/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

@@ -16,7 +16,7 @@ keys tab enter
 # the open call, and the refusal, with the run's cost as unknown.
 screen '^x · build 1 · run 2: round 1 of 3 · build role · session '
 screen '^▶ running \S+ · idle \d+:\d\d · '
-screen ' · cost unknown'
+screen ' · cost \?'
 screen '^▶ \d\d:\d\d:\d\d Bash +touch .* \d+:\d\d running$'
 screen '^✗ \d\d:\d\d:\d\d Write +.*specs/x\.md +— refused: '
 screen ' · 1 refused · '

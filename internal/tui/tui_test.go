@@ -3,6 +3,7 @@ package tui
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"image/color"
 	"regexp"
 	"strings"
@@ -153,7 +154,7 @@ func TestRunScreen(t *testing.T) {
 			b := &Build{Spec: "x", Started: r.Start, Steps: []Step{&r}}
 			src := source{specs: []Spec{{Name: "x", State: Running, Builds: []*Build{b}}},
 				calls: map[string]claude.Recounted{"s": {Written: now.Add(-tc.written), Actions: tc.calls}}}
-			m := drive(t, src, "x", 100, 20, key(tea.KeyEnter), key(tea.KeyEnter))
+			m := drive(t, src, "x", 100, 20, press(tea.KeyEnter), press(tea.KeyEnter))
 			if got := colorOf(t, m, tc.shows); !sameColor(got, tc.color) {
 				t.Errorf("%q is drawn in %v, want %v:\n%s", tc.shows, got, tc.color, screenOf(m))
 			}
@@ -167,8 +168,8 @@ func TestSpecText(t *testing.T) {
 	b := &Build{Spec: "x", Started: now, Steps: []Step{&Run{Role: "build", Session: "s", Start: now, End: now}}}
 	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}, text: "# Spec\n\nThe approved text."}
 	for name, keys := range map[string][]tea.Msg{
-		"from a build": {key(tea.KeyEnter), key('s')},
-		"from a run":   {key(tea.KeyEnter), key(tea.KeyEnter), key('s')},
+		"from a build": {press(tea.KeyEnter), press('s')},
+		"from a run":   {press(tea.KeyEnter), press(tea.KeyEnter), press('s')},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if m := drive(t, src, "x", 100, 20, keys...); !strings.Contains(screenOf(m), "The approved text.") {
@@ -214,12 +215,7 @@ func (s source) Text(context.Context, *Build) (string, error) { return s.text, n
 func drive(t *testing.T, src Source, name string, w, h int, msgs ...tea.Msg) model {
 	t.Helper()
 	m := newModel(src, name, 0)
-	m = send(m, m.Init())
-	for _, msg := range append([]tea.Msg{tea.WindowSizeMsg{Width: w, Height: h}}, msgs...) {
-		m = send(m, func() tea.Msg { return msg })
-	}
-
-	return m
+	return sendAll(send(m, m.Init()), append([]tea.Msg{tea.WindowSizeMsg{Width: w, Height: h}}, msgs...)...)
 }
 
 func send(m model, cmd tea.Cmd) model {
@@ -260,4 +256,175 @@ func locate(t *testing.T, m model, text string) (x, y int) {
 	return x, y
 }
 
-func key(code rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: code} }
+func press(code rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: code} }
+
+// TestMarkdown holds how the view draws Markdown: as written. A line of prose wider than the view wraps under its own
+// text. A table's row and a fenced line are cut at the view's edge instead. Then h and l scroll to the rest.
+func TestMarkdown(t *testing.T) {
+	long := strings.Repeat("word ", 12)
+	for _, tc := range []struct {
+		name, text string
+		// keys are pressed on the spec text, and shows is what the screen's body then shows.
+		keys  []tea.Msg
+		shows string
+		// colored is a text whose first cell has a color, and plain one whose first cell has none. Either may be "".
+		colored, plain string
+	}{
+		{"prose wraps under its list item's text", "1. " + long, nil,
+			"1. word word word word word word\n   word word word word word word", "", ""},
+		{"a wrapped row keeps its line's color", "`" + long + "`", nil,
+			"`word word word word word word word\nword word word word word `", "word word word word word `", ""},
+		{"a table's row is cut", "| " + long + "|", nil, "| word word word word word word wo…", "", ""},
+		{"a fenced line is cut", "```\n" + long + "\n```", nil, "```\nword word word word word word word…\n```", "", ""},
+		{"l scrolls sideways", "| " + long + "|", []tea.Msg{press('l')}, " word word word word word word word", "", ""},
+		{"a fence in a list item is colored by its language", "- An item:\n\n  ```go\n  func X() {}\n  ```", nil,
+			"- An item:\n\n  ```go\n  func X() {}\n  ```", "func", ""},
+		{"no line's syntax reaches the next", "It fails when w < 0.\n\nThe plain prose after it.", nil,
+			"It fails when w < 0.\n\nThe plain prose after it.", "", "The plain prose"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := &Build{Spec: "x", Steps: []Step{&Run{Role: "build", Session: "s"}}}
+			src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}, text: tc.text}
+			m := drive(t, src, "x", 35, 20, append([]tea.Msg{press('s')}, tc.keys...)...)
+			body := strings.Split(screenOf(m), "\n")[2:]
+			if got := strings.Join(body, "\n"); !strings.HasPrefix(got, tc.shows+"\n") {
+				t.Errorf("the body shows\n%s\nwant\n%s", got, tc.shows)
+			}
+
+			if tc.colored != "" && colorOf(t, m, tc.colored) == nil {
+				t.Errorf("%q is drawn in the terminal's own color", tc.colored)
+			}
+
+			if tc.plain == "" {
+				return
+			}
+
+			if got := colorOf(t, m, tc.plain); got != nil {
+				t.Errorf("%q is drawn in %v, not the terminal's own color", tc.plain, got)
+			}
+		})
+	}
+}
+
+// TestLiveRun holds how a running run's screen takes what its session writes while the developer reads it. At the
+// top, the view stays there, where a new call comes in. Scrolled down, the call at the top stays there, even for a
+// read that arrives late. An answer that arrives is drawn above the calls.
+func TestLiveRun(t *testing.T) {
+	now := time.Now()
+	calls := func(n int) claude.Recounted {
+		var actions []claude.Action
+		for i := range n {
+			actions = append(actions, claude.Action{At: now, Tool: "Bash", Input: fmt.Sprintf("call %d", i)})
+		}
+
+		return claude.Recounted{Written: now, Actions: actions}
+	}
+
+	r := &Run{Role: "build", Session: "s", Why: "first run", Start: now, To: -1}
+	src := source{specs: []Spec{{Name: "x", State: Running, Builds: []*Build{{Spec: "x", Steps: []Step{r}}}}},
+		calls: map[string]claude.Recounted{"s": calls(20)}}
+	m := drive(t, src, "x", 80, 12, press(tea.KeyEnter), press(tea.KeyEnter))
+	tops := func(want string) {
+		t.Helper()
+		if top := strings.Split(screenOf(m), "\n")[3]; !strings.Contains(top, want) {
+			t.Errorf("the view's top row is %q, want %q in it", top, want)
+		}
+	}
+
+	tops("call 19 ")
+	src.calls["s"] = calls(21)
+	m = send(m, func() tea.Msg { return tick{} })
+	tops("call 20 ")
+	m = sendAll(m, press('j'), press('j'), press('j'))
+	tops("call 17 ")
+	src.calls["s"] = calls(23)
+	m = send(m, func() tea.Msg { return tick{} })
+	tops("call 17 ")
+	late := calls(21)
+	m = send(m, func() tea.Msg {
+		return loaded{at: now, specs: src.specs, opened: runRef{"x", 0, 0}, open: &late}
+	})
+
+	tops("call 17 ")
+	answered := calls(23)
+	answered.Answer = "Built x."
+	src.calls["s"] = answered
+	m = send(m, func() tea.Msg { return tick{} })
+	tops("call 17 ")
+	m = sendAll(m, press('g'))
+	tops("Built x.")
+}
+
+// TestNewBuild holds that a build queued while the developer is on its spec's screen leaves the selection where it
+// was. The new build is listed first.
+func TestNewBuild(t *testing.T) {
+	now := time.Now()
+	build := func(at time.Duration) *Build {
+		return &Build{Spec: "x", Started: now.Add(at), Steps: []Step{&Run{Role: "build", Session: "s", Start: now}}}
+	}
+
+	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{build(-2 * time.Hour), build(-time.Hour)}}}}
+	m := drive(t, src, "x", 100, 20, press('j'))
+	src.specs[0].Builds = append(src.specs[0].Builds, build(0))
+	m = send(m, func() tea.Msg { return tick{} })
+	if !regexp.MustCompile(`(?m)^#.*\n3 .*\n2 .*\n1 `).MatchString(screenOf(m)) {
+		t.Errorf("the builds are not listed newest first:\n%s", screenOf(m))
+	}
+
+	if m = sendAll(m, press(tea.KeyEnter)); !strings.Contains(screenOf(m), "x · build 1 · ") {
+		t.Errorf("enter opened another build than build 1:\n%s", screenOf(m))
+	}
+}
+
+// TestKeyList holds that while the key list shows, only a key that closes it or quits does anything. The wheel does
+// nothing. A click closes it, and opens nothing. On home, while the filter takes text, ? is text.
+func TestKeyList(t *testing.T) {
+	now := time.Now()
+	b := &Build{Spec: "x", Started: now, Steps: []Step{&Run{Role: "build", Session: "s", Why: "first run", Start: now,
+		End: now}}}
+	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}}
+	m := drive(t, src, "", 100, 20, press('?'), press('j'), press(tea.KeyTab),
+		tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelDown})
+	if !strings.Contains(screenOf(m), "? or esc closes this") || m.focus != specsPane || m.sel[specsPane] != 0 {
+		t.Errorf("a key reached the screen under the key list, or closed it:\n%s", screenOf(m))
+	}
+
+	x, y := locate(t, m, "◆ x")
+	if m = sendAll(m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft}); m.keysShown || len(m.stack) != 1 {
+		t.Errorf("a click left the key list open, or opened a screen:\n%s", screenOf(m))
+	}
+
+	if m = sendAll(m, press('/'), tea.KeyPressMsg{Code: '?', Text: "?"}); m.keysShown || m.filter != "?" {
+		t.Errorf("? while the filter takes text is not text: the filter is %q", m.filter)
+	}
+}
+
+// sendAll sends m each message in turn. It carries out each command the model answers.
+func sendAll(m model, msgs ...tea.Msg) model {
+	for _, msg := range msgs {
+		m = send(m, func() tea.Msg { return msg })
+	}
+
+	return m
+}
+
+// TestNarrow holds that in a narrow or short terminal, each footer still names ? and esc, and the key list fits.
+func TestNarrow(t *testing.T) {
+	now := time.Now()
+	b := &Build{Spec: "x", Started: now, Steps: []Step{&Run{Role: "build", Session: "s", Why: "first run", Start: now,
+		End: now}}}
+	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}}
+	for _, keys := range [][]tea.Msg{nil, {press(tea.KeyEnter)}, {press(tea.KeyEnter), press(tea.KeyEnter)}} {
+		rows := strings.Split(screenOf(drive(t, src, "x", 80, 24, keys...)), "\n")
+		if foot := rows[len(rows)-1]; !strings.Contains(foot, "? keys") || !strings.Contains(foot, "esc back") ||
+			strings.Contains(foot, "…") {
+			t.Errorf("the footer is %q", foot)
+		}
+	}
+
+	m := drive(t, src, "x", 80, 12, press(tea.KeyEnter), press(tea.KeyEnter), press('?'))
+	if rows := strings.Split(screenOf(m), "\n"); len(rows) != 12 || !strings.Contains(screenOf(m), "? or esc closes") ||
+		!strings.Contains(screenOf(m), "q ctrl+c") {
+		t.Errorf("the key list does not fit 12 rows:\n%s", screenOf(m))
+	}
+}

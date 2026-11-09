@@ -182,6 +182,15 @@ func (term *Term) Foreground(x, y int) color.Color {
 	return nil
 }
 
+// Background answers the color behind the cell at column x, row y, or nil for the terminal's own.
+func (term *Term) Background(x, y int) color.Color {
+	if c := term.emu.CellAt(x, y); c != nil {
+		return c.Style.Bg
+	}
+
+	return nil
+}
+
 // Same reports whether two colors draw the same.
 func Same(a, b color.Color) bool {
 	if a == nil || b == nil {

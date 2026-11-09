@@ -1,0 +1,80 @@
+# 1. A run's calls, newest first.
+
+# Given: a build whose session has made several calls and is inside another.
+# Its run makes two calls, then runs a command that waits for go-on, and touches waiting first, so the script knows
+# it is inside the call.
+exec kiln queue x
+exec kiln run &
+exec sh -c 'i=0; while [ ! -e waiting ] && [ $i -lt 900 ]; do sleep 0.1; i=$((i+1)); done; [ -e waiting ]'
+
+# When: the developer opens the running run,
+term 120 30 kiln tui
+screen '▶ x · build role · first run · running'
+keys tab enter
+screen '^x · build 1 · run 1: first run · build role · session '
+
+# Then: the calls are listed newest first,
+screen '\n\n▶ \d\d:\d\d:\d\d Bash +touch .* running\n  \d\d:\d\d:\d\d Bash +echo the second call .*\n  \d\d:\d\d:\d\d Bash +echo the first call '
+! screen 'echo the next call'
+
+# When: and the session makes another call.
+exec touch go-on
+
+# Then: and the new call appears at the top with no key pressed.
+screen '\n\n▶ \d\d:\d\d:\d\d Bash +echo the next call .* running\n  \d\d:\d\d:\d\d Bash +touch .*\n  \d\d:\d\d:\d\d Bash +echo the second call '
+
+exec touch done
+wait
+stdout '^x: landed on main'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 0}
+-- specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "echo the first call"}}},
+      {"tool": {"name": "Bash", "input": {"command": "echo the second call"}}},
+      {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/waiting\" && while [ ! -e \"$WORK/go-on\" ]; do sleep 0.1; done"}}},
+      {"tool": {"name": "Bash", "input": {"command": "echo the next call && cp -R \"$WORK/_given/right/.\" . && while [ ! -e \"$WORK/done\" ]; do sleep 0.1; done"}}},
+      {"result": {"result": "Built x.", "cost_usd": 0.50}}
+    ]
+  }},
+  "audit": {"1": {"1": [{"result": {"result": "read 1 package, found 0"}}]}}
+}
+-- _given/right/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/right/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

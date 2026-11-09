@@ -21,7 +21,7 @@ screen '^1 +.* [0-9a-f]{12} ✗ stopped .*\$0\.10'
 screen '^2 +.* [0-9a-f]{12} ✓ landed .*\$0\.21'
 
 # When: then each of its builds.
-keys up enter
+keys down enter
 
 # Then: and each build shows only its own runs.
 screen '^b · build 1 · .* · ✗ stopped'
@@ -30,7 +30,7 @@ screen '^ +gate +✗ failed'
 ! screen '^2 +'
 ! screen '\$0\.20'
 ! screen '\$0\.30'
-keys esc down enter
+keys esc up enter
 screen '^b · build 2 · .* · ✓ landed'
 screen '^1 +build +first run +\S+ +1 +\$0\.20 '
 screen '^2 +audit +audit, try 1 '

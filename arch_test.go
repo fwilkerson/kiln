@@ -49,7 +49,7 @@ var outside = map[string][]string{
 	"internal/scenariotest": {"github.com/rogpeppe/go-internal", "github.com/charmbracelet/x/ansi",
 		"github.com/charmbracelet/x/vt"},
 	"internal/tui": {"charm.land/bubbletea/v2", "charm.land/bubbles/v2", "charm.land/lipgloss/v2",
-		"charm.land/glamour/v2", "github.com/charmbracelet/x/ansi", "github.com/charmbracelet/x/term",
+		"github.com/alecthomas/chroma/v2", "github.com/charmbracelet/x/ansi", "github.com/charmbracelet/x/term",
 		"github.com/charmbracelet/x/vt"},
 	"internal/termtest": {"github.com/creack/pty", "github.com/charmbracelet/x/vt",
 		"github.com/charmbracelet/ultraviolet", "golang.org/x/image"},

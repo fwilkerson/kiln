@@ -82,7 +82,8 @@ func TestRecountCalls(t *testing.T) {
 			id, content, isError)
 	}
 
-	first := use("t1", "00", "Read", `{"file_path":"x.go"}`) + result("t1", "01", "package x", false)
+	first := use("t1", "00", "Read", `{"file_path":"x.go"}`) + result("t1", "01", "package x", false) +
+		`{"type":"result","result":"Read x.go.\n\n- It holds package x."}` + "\n"
 	second := `{"type":"assistant","timestamp":"2026-11-08T10:00:02Z","parent_tool_use_id":null,"message":` +
 		`{"id":"m2","content":[{"type":"text","text":"Now the test.\nMore."}],"usage":{}}}` + "\n" +
 		use("t2", "03", "Write", `{"file_path":"specs/x.md"}`) +
@@ -105,14 +106,16 @@ func TestRecountCalls(t *testing.T) {
 	for name, tc := range map[string]struct {
 		from, to int64
 		want     []string
+		// answer is what the stretch's session answered.
+		answer string
 	}{
-		"the first run's bytes": {0, int64(len(first)), []string{"Read x.go 1s"}},
+		"the first run's bytes": {0, int64(len(first)), []string{"Read x.go 1s"}, "Read x.go.\n\n- It holds package x."},
 		"the second run, still running, to the stream's end": {int64(len(first)), -1, []string{
 			"said Now the test. 0s",
 			"Write specs/x.md 0s refused: no",
 			"Bash go test ./... 3s failed: --- FAIL: TestX",
 			"Bash sleep 9 0s open",
-		}},
+		}, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			counted, err := c.Recount("s", tc.from, tc.to)
@@ -137,6 +140,10 @@ func TestRecountCalls(t *testing.T) {
 
 			if strings.Join(got, "\n") != strings.Join(tc.want, "\n") {
 				t.Errorf("the calls are\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(tc.want, "\n"))
+			}
+
+			if counted.Answer != tc.answer {
+				t.Errorf("the answer is %q, want %q", counted.Answer, tc.answer)
 			}
 		})
 	}

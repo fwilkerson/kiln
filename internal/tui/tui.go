@@ -6,12 +6,13 @@
 //
 //	err := tui.Show(ctx, source, "", os.Stdin, os.Stdout)  // "" opens home; a spec's name opens that spec
 //
-// It reads its [Source] again once a second, so a running run grows as its session writes. Keys and the mouse both
-// work. A click opens the row it hits, and the wheel scrolls what it is over. Red marks what failed, yellow what runs
-// or waits, and green what passed. A glyph beside each color says the same: ✗, ▶ and ✓.
+// It reads its [Source] again once a second, so a running run grows as its session writes. A run lists its calls
+// newest first, below its answer. Keys and the mouse both work, and ? lists every key a screen takes. A click opens
+// the row it hits, and the wheel scrolls what it is over. Red marks what failed, yellow what runs or waits, and green
+// what passed. A glyph beside each color says the same: ✗, ▶ and ✓.
 //
 // The home screen's trend is the last 10 builds that ended, beside the 10 before them. Each number is the median of
-// the builds that know it. A number kiln could not read shows as unknown, never as zero.
+// the builds that know it. A number kiln could not read shows as ?, never as zero.
 package tui
 
 import (
@@ -112,7 +113,7 @@ func (*Run) step()  {}
 func (*Gate) step() {}
 
 // why is why the run started, as Why says it, or that it is unknown.
-func (r *Run) why() string { return cmp.Or(r.Why, "why unknown") }
+func (r *Run) why() string { return cmp.Or(r.Why, "why ?") }
 
 // running reports whether the run is still running.
 func (r *Run) running() bool { return r.End.IsZero() && !r.Lost }
