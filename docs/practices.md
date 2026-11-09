@@ -166,18 +166,10 @@ Score both designs on five weighted measures:
   out of the brief. Each builds in its own worktree until every test passes.
 - Where the two converge, keep that. Where they split, a fresh judge scores both without your lean.
 - Record the rejected design, and the fact that decided, under Alternatives Considered or in the commit message.
-- When your lean matches the human's, have a blind agent weigh the options first. Give it the facts, not whose option
-  is whose. Hiding whose idea it is reduces sycophancy, while instructions alone do not.
 - After a change, run a fresh audit agent that reads whole packages and reports where code breaks a promise. Its
   findings go back to the build that made the change, which prefers a design that makes a finding impossible over a
   patch.
 - Do not audit the fix for an audit finding. Chasing one finding after another hides a better design.
-- Before approving a spec, run three readers once each: `zoom-out` asks whether each piece is needed now, or already
-  exists; `comprehension` paraphrases it as a newcomer and reports where it could not follow; `critic` traces each
-  flow to where it ends wrong.
-- Never contest a comprehension gap. If a fresh reader could not follow the design, the design lacks context.
-- Draft the document before the first discussion point. Its open questions, ranked with a lean, form the agenda. A
-  cut of scope is a question too.
 - Tell an agent to run `go doc -all` on a package before using it. Its doc is the contract, and its Example shows the
   use.
 
@@ -193,4 +185,4 @@ Let tools hold every rule that needs no judgment, so a review spends its attenti
 
 Ousterhout, *A Philosophy of Software Design* and CS 190. Bloch, "How to Design a Good API". Google's Go Style Guide,
 Best Practices. Effective Go. Abseil Tip #94. Cheney, *Practical Go*. Taylor, "When To Use Generics". Cox,
-"Go 1.4 Internal Packages". Ottinger's naming rules. Sharma et al. 2023 and ELEPHANT 2025 on sycophancy.
+"Go 1.4 Internal Packages". Ottinger's naming rules.

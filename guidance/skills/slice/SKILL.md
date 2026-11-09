@@ -36,9 +36,6 @@ that decides it. The developer answers in any order. Move each answer into the s
 - The size of a change is never a reason to cut a piece or keep one.
 - Prefer a fix the developer already plans over a workaround that avoids it. Ask when you cannot tell whether one is
   planned.
-- When your lean matches the developer's, have one fresh agent weigh the options before you agree. Give it the options
-  and the facts, but not which option is the developer's. Agreement is where a model's tilt toward the developer goes
-  unchecked.
 
 ## 3. Write the acceptance tests
 
