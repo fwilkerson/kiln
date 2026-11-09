@@ -1,8 +1,10 @@
 package kiln
 
 import (
+	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/claude"
@@ -188,4 +190,127 @@ func plural(n int, what string) string {
 	}
 
 	return fmt.Sprintf("%d %ss", n, what)
+}
+
+// sumUp sums up the build of rec, which waits on the developer. kiln run prints its lines under its last.
+// Each line comes from the record, the ledger and git, so the same build always sums up the same. A line kiln can't
+// read shows as unknown, and the others still show. tree is the build's worktree. landedAt is the commit the build
+// moved main to, if it landed.
+func (r *Repo) sumUp(ctx context.Context, rec record, tree, landedAt string) []string {
+	s, err := r.stats(rec.Build)
+	var runs []run
+	if s != nil {
+		runs = s.runs
+	}
+
+	lines := []string{r.summary(rec.Build), roundsOf(rec) + " · " + auditDid(rec.Audited, runs, s != nil && err == nil)}
+	switch {
+	case rec.State == landed:
+		lines = append(lines, r.filesChanged(ctx, landedAt+"^", landedAt))
+	case rec.State == amended:
+		base, err := r.git.MergeBase(ctx, mainBranch, branchOf(rec.Name))
+		changed := fmt.Sprintf("files changed unknown: %v", err)
+		if err == nil {
+			changed = r.filesChanged(ctx, base, branchOf(rec.Name))
+		}
+
+		lines = append(lines, changed, strings.TrimRight(rec.Amendments, "\n"))
+	case len(rec.Failing) > 0:
+		lines = append(lines, "failing: "+strings.Join(rec.Failing, ", "))
+	}
+
+	if rec.State == stopped && !byKiln(rec) && rec.Session != "" {
+		what := "the work"
+		if rec.Accepted {
+			what = "the accepted spec"
+		}
+
+		lines = append(lines, fmt.Sprintf("%s is on %s, in %s", what, branchOf(rec.Name), tree))
+	}
+
+	return append(lines, "next: "+nextStep(rec, tree, landedAt))
+}
+
+// roundsOf is the rounds the build of rec used, of those kiln.json gave its last gate.
+func roundsOf(rec record) string {
+	if rec.Limit == nil {
+		return fmt.Sprintf("%d of an unknown number of rounds", rec.Rounds)
+	}
+
+	return fmt.Sprintf("%d of %s", rec.Rounds, plural(*rec.Limit, "round"))
+}
+
+// auditDid says what the audit did, from whether it answered and the build's runs. known is false when the ledger
+// could not be read, or holds no line of the build.
+func auditDid(audited bool, runs []run, known bool) string {
+	var audits, findings bool
+	for _, r := range runs {
+		audits = audits || r.role == auditRole
+		findings = findings || r.why.Why == whyFindings
+	}
+
+	switch {
+	case !known:
+		return "what the audit did is unknown"
+	case !audited && !audits:
+		return "the audit had not run"
+	case !audited:
+		return "the audit ended with no result"
+	case findings:
+		return "the audit sent findings back"
+	case audits:
+		return "the audit found nothing"
+	}
+
+	return "no Go package changed, so no audit ran"
+}
+
+// filesChanged counts the files, insertions and deletions from the commit from to the commit to.
+func (r *Repo) filesChanged(ctx context.Context, from, to string) string {
+	s, err := r.git.Shortstat(ctx, from, to)
+	if err != nil {
+		return fmt.Sprintf("files changed unknown: %v", err)
+	}
+
+	return fmt.Sprintf("%s changed, %s, %s", plural(s.Files, "file"), plural(s.Insertions, "insertion"),
+		plural(s.Deletions, "deletion"))
+}
+
+// nextStep is what the developer runs next on the build of rec, which waits on them. It never names a command spec
+// 4's table refuses in the state rec is in. A build stopped past its last round first resumes its session, in tree,
+// to ask it why.
+func nextStep(rec record, tree, landedAt string) string {
+	name := rec.Name
+	var then string
+	switch {
+	case rec.State == landed:
+		return fmt.Sprintf("read it with git show %s, then run kiln accept %s, or change the spec and run "+
+			"kiln queue %s", short(landedAt), name, name)
+	case rec.State == amended:
+		return fmt.Sprintf("read the amendments, then run kiln accept %s, or kiln reject %s", name, name)
+	case rec.Accepted && byKiln(rec):
+		then = fmt.Sprintf("fix main, or what the error names, and run kiln accept %s to land it again, or "+
+			"kiln reject %s", name, name)
+	case rec.Accepted:
+		then = fmt.Sprintf("fix main, and run kiln accept %s to land it again, or kiln reject %s", name, name)
+	case byKiln(rec):
+		then = fmt.Sprintf("fix what the error names, then run kiln queue %s, which builds anew", name)
+	case rec.Session != "":
+		then = fmt.Sprintf("fix main or the spec, and run kiln queue %s", name)
+	default:
+		return fmt.Sprintf("read kiln status, fix main or the spec, then run kiln queue %s", name)
+	}
+
+	// The session never saw kiln's error, so it can't say why.
+	if byKiln(rec) || rec.Session == "" {
+		return then
+	}
+
+	return fmt.Sprintf("cd %s && claude --resume %s, to ask the session why;\n      then %s", shellQuote(tree),
+		rec.Session, then)
+}
+
+// byKiln reports whether the build of rec stopped for an error of kiln's, not its gate's.
+func byKiln(rec record) bool {
+	return rec.State == stopped && strings.HasPrefix(rec.Why, couldNotGoOn)
 }

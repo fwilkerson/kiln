@@ -9,8 +9,8 @@
 //	way, err := g.Move(ctx, "main", landed, onto)       // refused, with way.Tip, if main moved meanwhile
 //
 // Every call runs with hooks, signing, autostash and background work off. The developer's config and the repository's
-// cannot turn them on. A branch is named by its short name, as refs/heads/ holds it. A relative path is the main
-// checkout's.
+// cannot turn them on. Every call runs in the C locale, so git's words are never translated. A branch is named by
+// its short name, as refs/heads/ holds it. A relative path is the main checkout's.
 //
 // Its errors name the git command that failed and what it printed. Rebase answers a conflict as a [Conflict], not an
 // error. Move answers a move it refused as an [InTheWay], not an error.
@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -166,8 +167,10 @@ func throughShim(ctx context.Context, bin string, env []string) string {
 	return found
 }
 
+// environment pins LC_ALL to C, since kiln reads git's words, such as --shortstat's counts. A git built with gettext
+// would print them in the developer's language.
 func environment(base []string) []string {
-	return append(proc.Git.Env(base), "GIT_EDITOR=true", "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
+	return append(proc.Git.Env(base), "GIT_EDITOR=true", "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
 }
 
 type failed struct {
@@ -487,6 +490,32 @@ func (g *Git) mergeTree(ctx context.Context, checkout, base, onto, head string) 
 func (g *Git) Changed(ctx context.Context, from, to string) ([]string, error) {
 	out, err := g.in(ctx, g.repo, "diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", from, to, "--")
 	return paths(out), err
+}
+
+// Shortstat is how much a diff changed, as git diff --shortstat counts it.
+type Shortstat struct {
+	Files, Insertions, Deletions int
+}
+
+var shortstat = regexp.MustCompile(`(\d+) (file|insertion|deletion)`)
+
+// Shortstat counts what changed between the commits from and to.
+func (g *Git) Shortstat(ctx context.Context, from, to string) (Shortstat, error) {
+	out, err := g.in(ctx, g.repo, "diff", "--shortstat", "--no-renames", "--no-ext-diff", from, to, "--")
+	var s Shortstat
+	for _, m := range shortstat.FindAllStringSubmatch(out, -1) {
+		n, _ := strconv.Atoi(m[1])
+		switch m[2] {
+		case "file":
+			s.Files = n
+		case "insertion":
+			s.Insertions = n
+		case "deletion":
+			s.Deletions = n
+		}
+	}
+
+	return s, err
 }
 
 // MergeBase is the newest commit that both a and b descend from.

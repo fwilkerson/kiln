@@ -1,0 +1,84 @@
+# 2. A spec waiting for UAT notifies, and sums up its build.
+
+# Given: an approved spec whose build passes its gate with no amendment.
+# Its first audit ends with no result, and runs again. Its finding goes back to the session, which fixes it.
+exec kiln queue x
+
+# When: the developer runs kiln run.
+exec kiln run
+cp stdout .tmp/run
+
+# Then: its output holds one notification, which names the spec and the state kiln status shows for it, waiting for
+# UAT.
+stdout -count=1 '\x1b\]9;'
+stdout '^\x1b\]9;kiln: x waiting for UAT\x07'
+exec kiln status
+stdout '^x: waiting for UAT$'
+
+# After the line that says the build landed, the output shows the build's time, cost, turns and failed calls, its
+# rounds, the files it changed, and the command that accepts the spec.
+exec cat .tmp/run
+stdout '(?s)^x: landed on main at [0-9a-f]{12}, and waits for UAT$\n\x1b\]9;[^\x07]*\x07  [^·\n]+ · \$\d+\.\d\d · 2 turns · 0 failed calls$'
+stdout '(?s)^x: landed on main at .*^  0 of 1 round · the audit sent findings back$'
+stdout '(?s)^x: landed on main at .*^  2 files changed, 18 insertions, 0 deletions$'
+stdout '(?s)^x: landed on main at .*^  next: .*kiln accept x\b'
+exec git diff --shortstat main^ main
+stdout '^ 2 files changed, 18 insertions\(\+\)$'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+      {"result": {"result": "Built x."}}
+    ],
+    "2": [
+      {"tool": {"name": "Edit", "input": {"file_path": "x.go", "old_string": "answers 41", "new_string": "answers 42"}}},
+      {"result": {"result": "The finding is fixed."}}
+    ]
+  }},
+  "audit": {
+    "1": {"1": [{"result": {"is_error": true, "api_error_status": 529, "result": "API Error: 529 Overloaded"}}]},
+    "2": {"1": [
+      {"result": {"result": "1. x.go:3  false comment\nreaches    the doc says 41\n\nread 2 packages, found 1"}}
+    ]}
+  }
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 41.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

@@ -37,6 +37,8 @@ type record struct {
 	Session string `json:"session,omitempty"`
 	// Rounds counts the failed gates sent back to the session.
 	Rounds int `json:"rounds,omitempty"`
+	// Limit is how many rounds kiln.json gave the build's last gate. It is nil until a gate has run.
+	Limit *int `json:"limit,omitempty"`
 	// Audited is true once the audit has answered.
 	Audited bool `json:"audited,omitempty"`
 	// Accepted is a spec the developer accepted while it waited on its branch. kiln lands it as a build does, then
@@ -47,6 +49,9 @@ type record struct {
 	Before string `json:"before,omitempty"`
 	// Why says why the build stopped, with the gate's output.
 	Why string `json:"why,omitempty"`
+	// Failing names what failed a build stopped past its last round. It names tests, commands and refused paths, or
+	// the files in conflict with main.
+	Failing []string `json:"failing,omitempty"`
 	// FailingAtMain names the Go tests that failed at main before the build.
 	FailingAtMain []string `json:"failing_at_main,omitempty"`
 	// Amendments is the text of the amendment file the build left on its branch.

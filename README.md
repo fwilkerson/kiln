@@ -24,7 +24,12 @@ kiln reject <name>       turn the amendments away: drop the build, and its branc
 2. Run `kiln queue <name>`, then `kiln run`. kiln queues only a spec whose Status is Approved.
    Queue only once the spec reads as you want it, diagrams included. `kiln tui` shows each build's spec as the
    commit it was queued at held it, so a later fix on main shows only in a build queued after the fix.
-3. Read `kiln status`. A spec waiting for UAT is on main. A spec waiting on its branch with amendments shows them.
+3. When a build waits on you, `kiln run` prints a terminal notification that names the spec and its state. Ghostty
+   shows it with `desktop-notifications` on, and a click on it brings forward the terminal. There, the build sums
+   itself up: its time, cost, rounds and audit, what it changed or what failed, and the command to run next. A
+   build stopped past its last round names the command that resumes its session in its worktree, to ask it why.
+   A fix that session makes on `kiln/<name>` is lost to `kiln queue <name>`, which builds anew from main.
+   Read `kiln status`. A spec waiting for UAT is on main. A spec waiting on its branch with amendments shows them.
 4. Run `kiln accept <name>`. A spec waiting on its branch lands with its amendments folded in. The spec is deleted,
    and `PRODUCT.md` gains the command that shows it. If that landing stops, `kiln accept <name>` lands it again.
    - When UAT finds a problem, change the spec with `/slice`, commit it, and run `kiln queue <name>`. The new build

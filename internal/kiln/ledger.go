@@ -108,6 +108,7 @@ const (
 	whyFindings    = "findings"
 	whyConflict    = "conflict"
 	whyLanding     = "landing"
+	whyUnchanged   = "unchanged"
 	whyLimit       = "limit"
 	whyInterrupted = "interrupted"
 )
@@ -278,16 +279,29 @@ func how(ended claude.Ended) string {
 
 // summary is the build's time, cost, turns and failed calls, as the ledger holds them so far.
 func (r *Repo) summary(build string) string {
+	s, err := r.stats(build)
+	switch {
+	case err != nil:
+		return fmt.Sprintf("time, cost, turns and failed calls unknown: kiln could not read its ledger: %v", err)
+	case s == nil:
+		return "the ledger holds no line of this build"
+	}
+
+	return s.brief()
+}
+
+// stats is the build as the ledger holds it so far. It is nil if the ledger holds no line of it.
+func (r *Repo) stats(build string) (*buildStats, error) {
 	entries, err := r.store.entries()
 	if err != nil {
-		return fmt.Sprintf("kiln could not read its ledger: %v", err)
+		return nil, err
 	}
 
 	for _, s := range collect(entries) {
 		if s.Build == build {
-			return s.brief()
+			return s, nil
 		}
 	}
 
-	return "the ledger holds no line of this build"
+	return nil, nil
 }

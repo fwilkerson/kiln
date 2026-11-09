@@ -10,6 +10,9 @@
 //
 // Each refuses a spec in a state it does not take, as go doc ./internal/kiln shows.
 //
+// A build that ends stopped, waiting for UAT, or waiting on its branch prints a terminal notification. kiln run or
+// kiln accept prints it, as OSC 9. Then it sums the build up, and says what to run next.
+//
 // kiln tui draws only on a terminal. With its output elsewhere, it draws nothing, and refuses.
 //
 // kiln runs three commands of its own. A build's session runs kiln hook before each file it writes. The pre-commit

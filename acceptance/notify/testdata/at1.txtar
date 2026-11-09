@@ -1,0 +1,83 @@
+# 1. A stopped spec notifies, and says why.
+
+# Given: an approved spec whose build fails its gate past its last round.
+# kiln.json gives the build 1 round, and the session fails to fix its test in it.
+exec kiln queue x
+
+# When: the developer runs kiln run.
+exec kiln run
+cp stdout .tmp/run
+
+# Then: its output holds one notification, which names the spec and the state kiln status shows for it, stopped.
+stdout -count=1 '\x1b\]9;'
+stdout '^\x1b\]9;kiln: x stopped\x07'
+exec kiln status
+stdout '^x: stopped$'
+
+# After the line that says the build stopped, the output names the failing test, the branch and the worktree that
+# hold the work,
+exec cat .tmp/run
+stdout '(?s)^x: stopped: .*^  failing: TestAT1 \(example\.com/scratch/acceptance/x\)$.*^  the work is on kiln/x, in '
+stdout '(?s)^x: stopped: .*^  next: cd .* && claude --resume '
+exec sh -c 'cd "$(sed -n "s/^  the work is on kiln\/x, in //p" .tmp/run)" && git branch --show-current'
+stdout '^kiln/x$'
+
+# and a command that opens a Claude Code session on the stopped build. A stand-in claude shows where the command runs
+# it, and with what. It runs in the session's directory, and resumes the build's session.
+exec sh -c 'sed -n "s/^  next: \(cd .* && claude --resume [^,]*\), to ask the session why;$/\1/p" .tmp/run >.tmp/resume'
+exec sh -c 'mkdir .tmp/bin && printf "#!/bin/sh\npwd -P\necho \"\$@\"\n" >.tmp/bin/claude && chmod +x .tmp/bin/claude'
+exec sh -c 'PATH="$PWD/.tmp/bin:$PATH" && eval "$(cat .tmp/resume)"'
+cp stdout .tmp/resumed
+exec sh -c 'call=.claude-calls/build/1/1/call.json && cd "$(sed -n "s/.*\"dir\": \"\(.*\)\".*/\1/p" $call)" && pwd -P && echo --resume "$(sed -n "s/.*\"session_id\": \"\(.*\)\".*/\1/p" $OLDPWD/$call)"'
+cmp stdout .tmp/resumed
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+      {"result": {"result": "Built x."}}
+    ],
+    "2": [
+      {"result": {"result": "I could not make X answer 42."}}
+    ]
+  }}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 41.
+func X() int { return 41 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

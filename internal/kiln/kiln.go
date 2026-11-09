@@ -36,7 +36,8 @@
 // that ends with no result runs again in a new session, up to 3 tries. Its findings go back to the build session. A
 // build with no amendment then lands. It is rebased onto main as one commit, and gated again. Then main moves to it,
 // only if main has not moved since. A build that amended its spec waits on its branch instead. A landing that doesn't
-// move main leaves the branch as it stood before the landing began.
+// move main leaves the branch as it stood before the landing began. Work that changes nothing on main never lands. It
+// goes back to the session, as a failed gate does.
 //
 // The gate runs kiln.json's commands, read from main's tip, at the build's commit and at main. It passes when every
 // command exits 0, but for Go tests that fail at main too. It fails on any path the work changed under specs/ but
@@ -49,6 +50,22 @@
 // each build ended. A build's time is its session runs' time plus its gates'. A pause for a usage limit adds nothing.
 // Its turns, cost and failed calls sum its runs. A number kiln could not read shows as unknown, never as zero. A
 // landed build's commit holds its time, cost, turns and failed calls.
+//
+// A build that ends waiting on the developer notifies them, in kiln run's output or kiln accept's. It ends stopped,
+// waiting for UAT, or waiting on its branch. kiln prints an OSC 9 sequence, which a terminal such as Ghostty shows as
+// a notification. Its body is "kiln: <name> <state>", with the state as kiln status words it. kiln prints it whether
+// or not the output is a terminal. A summary of the build follows, from kiln's record, its ledger and git:
+//
+//	x: stopped: the gate still failed after its last round:
+//	  12 min · $3.40 · 41 turns · 2 failed calls
+//	  3 of 3 rounds · the audit had not run
+//	  failing: TestAT2 (example.com/scratch)
+//	  the work is on kiln/x, in /Users/me/Library/Caches/kiln/scratch-1f2e3d4c/x
+//	  next: cd /Users/me/Library/Caches/kiln/scratch-1f2e3d4c/x && claude --resume <session>, to ask the session why;
+//	        then fix main or the spec, and run kiln queue x
+//
+// A landed build shows the files its commit changed, and a build on its branch those it changed since main. That
+// build shows its amendments too. The last line is the next command, never one the spec's state refuses.
 //
 // kiln keeps each spec's state and the ledger in kiln/ under the git common directory, so every worktree shares
 // them. The worktrees are in the user's cache directory, under kiln/. So is build.lock, which every kiln that drives a

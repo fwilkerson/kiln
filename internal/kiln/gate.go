@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -124,11 +125,17 @@ type verdict struct {
 	atMain []string
 	// report says what failed, for the session and for kiln status.
 	report string
+	// failing names each failure report counts. A Go test is named as check.Failed names it, and only if it passes
+	// at main. A command that failed is named when it names no such test. A refused path is named too.
+	failing []string
+	// rounds is how many times kiln.json lets a failing gate go back to the session.
+	rounds int
 }
 
 // judge passes a gate when each check at the tip exited 0, or failed on Go tests failing at main. A package that
-// failed with no test named is a failure nothing at main excuses. refused names each path the build may not change.
-func judge(tip, main []check, refused []string) verdict {
+// failed with no test named is a failure nothing at main excuses. refused says, by path, why the build may not change
+// each path it holds.
+func judge(tip, main []check, refused map[string]string) verdict {
 	var v verdict
 	atMain := map[string]bool{}
 	for _, c := range main {
@@ -147,9 +154,18 @@ func judge(tip, main []check, refused []string) verdict {
 		}
 
 		failures = append(failures, fmt.Sprintf("`%s` exited %d:\n%s", c.Command, c.Exit, strings.TrimSpace(c.Output)))
+		fresh := slices.DeleteFunc(slices.Clone(c.Failed), failedAtMain)
+		v.failing = append(v.failing, fresh...)
+		if c.Broken || len(fresh) == 0 {
+			v.failing = append(v.failing, "`"+c.Command+"`")
+		}
 	}
 
-	failures = append(failures, refused...)
+	for _, p := range slices.Sorted(maps.Keys(refused)) {
+		failures = append(failures, refused[p])
+		v.failing = append(v.failing, p)
+	}
+
 	slices.Sort(v.atMain)
 	v.atMain = slices.Compact(v.atMain)
 	v.passed = len(failures) == 0
@@ -190,10 +206,10 @@ func (r *Repo) gate(ctx context.Context, tree, spec string, allowed ...string) (
 		return verdict{}, err
 	}
 
-	var refused []string
+	refused := map[string]string{}
 	for _, p := range changed {
 		if why := guarded(p, spec); why != "" && !slices.Contains(allowed, p) {
-			refused = append(refused, why)
+			refused[p] = why
 		}
 	}
 
@@ -207,7 +223,9 @@ func (r *Repo) gate(ctx context.Context, tree, spec string, allowed ...string) (
 		return verdict{}, err
 	}
 
-	return judge(tip, atMain, refused), nil
+	v := judge(tip, atMain, refused)
+	v.rounds = c.Rounds
+	return v, nil
 }
 
 // atMain runs commands at main's tip, in a worktree of its own. It keeps the checks, and runs them again only once main

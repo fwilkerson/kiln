@@ -171,6 +171,8 @@ func (w reason) shown() string {
 		return "conflict with main, " + round
 	case whyLanding:
 		return "landing gate failed, " + round
+	case whyUnchanged:
+		return "work changed nothing on main, " + round
 	case whyLimit:
 		return "after a usage limit"
 	case whyInterrupted:

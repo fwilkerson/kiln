@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"os/exec"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"syscall"
@@ -67,20 +70,23 @@ func TestGate(t *testing.T) {
 	const hung = "panic: test timed out after 10m0s\nFAIL\texample.com/t\t600.0s\n"
 	for name, tc := range map[string]struct {
 		tip, main []check
-		refused   []string
+		refused   map[string]string
 		passed    bool
 		atMain    []string
+		failing   []string
 	}{
 		"every command exits 0": {
 			tip: []check{{Command: "go test ./...", Exit: 0}}, passed: true,
 		},
 		"a command fails": {
-			tip:  []check{{Command: "go vet ./...", Exit: 1, Output: "vet: x"}},
-			main: []check{{Command: "go vet ./...", Exit: 0}},
+			tip:     []check{{Command: "go vet ./...", Exit: 1, Output: "vet: x"}},
+			main:    []check{{Command: "go vet ./...", Exit: 0}},
+			failing: []string{"`go vet ./...`"},
 		},
 		"a test fails that passes at main": {
-			tip:  []check{{Command: "go test ./...", Exit: 1, Output: other}},
-			main: []check{{Command: "go test ./...", Exit: 0}},
+			tip:     []check{{Command: "go test ./...", Exit: 1, Output: other}},
+			main:    []check{{Command: "go test ./...", Exit: 0}},
+			failing: []string{"TestNew (example.com/s)"},
 		},
 		"a test fails that fails at main too": {
 			tip:    []check{{Command: "go test ./...", Exit: 1, Output: failing}},
@@ -88,9 +94,10 @@ func TestGate(t *testing.T) {
 			passed: true, atMain: []string{"TestFlaky (example.com/s)"},
 		},
 		"a test fails at main, and another fails only at the tip": {
-			tip:    []check{{Command: "go test ./...", Exit: 1, Output: failing + other}},
-			main:   []check{{Command: "go test ./...", Exit: 1, Output: failing}},
-			atMain: []string{"TestFlaky (example.com/s)"},
+			tip:     []check{{Command: "go test ./...", Exit: 1, Output: failing + other}},
+			main:    []check{{Command: "go test ./...", Exit: 1, Output: failing}},
+			atMain:  []string{"TestFlaky (example.com/s)"},
+			failing: []string{"TestNew (example.com/s)"},
 		},
 		"a test that fails at main is named though the tip passes": {
 			tip:    []check{{Command: "go test ./...", Exit: 0}},
@@ -98,22 +105,26 @@ func TestGate(t *testing.T) {
 			passed: true, atMain: []string{"TestFlaky (example.com/s)"},
 		},
 		"a build that fails at main too still fails": {
-			tip:  []check{{Command: "go test ./...", Exit: 1, Output: broken}},
-			main: []check{{Command: "go test ./...", Exit: 1, Output: broken}},
+			tip:     []check{{Command: "go test ./...", Exit: 1, Output: broken}},
+			main:    []check{{Command: "go test ./...", Exit: 1, Output: broken}},
+			failing: []string{"`go test ./...`"},
 		},
 		"a package that hangs, while a test fails at main too": {
-			tip:    []check{{Command: "go test ./...", Exit: 1, Output: failing + hung}},
-			main:   []check{{Command: "go test ./...", Exit: 1, Output: failing}},
-			atMain: []string{"TestFlaky (example.com/s)"},
+			tip:     []check{{Command: "go test ./...", Exit: 1, Output: failing + hung}},
+			main:    []check{{Command: "go test ./...", Exit: 1, Output: failing}},
+			atMain:  []string{"TestFlaky (example.com/s)"},
+			failing: []string{"`go test ./...`"},
 		},
 		"a test that fails at main under another command": {
-			tip:    []check{{Command: "go test -race ./...", Exit: 1, Output: failing}},
-			main:   []check{{Command: "go test ./...", Exit: 1, Output: failing}},
-			atMain: []string{"TestFlaky (example.com/s)"},
+			tip:     []check{{Command: "go test -race ./...", Exit: 1, Output: failing}},
+			main:    []check{{Command: "go test ./...", Exit: 1, Output: failing}},
+			atMain:  []string{"TestFlaky (example.com/s)"},
+			failing: []string{"TestFlaky (example.com/s)"},
 		},
 		"a guarded path changed": {
 			tip:     []check{{Command: "go test ./...", Exit: 0}},
-			refused: []string{"specs/x.md is under specs/"},
+			refused: map[string]string{"specs/x.md": "specs/x.md is under specs/"},
+			failing: []string{"specs/x.md"},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -124,9 +135,10 @@ func TestGate(t *testing.T) {
 			}
 
 			v := judge(tc.tip, tc.main, tc.refused)
-			if v.passed != tc.passed || !slices.Equal(v.atMain, tc.atMain) || v.passed != (v.report == "") {
-				t.Errorf("passed %v, at main %q, report %q; want passed %v, at main %q", v.passed, v.atMain, v.report,
-					tc.passed, tc.atMain)
+			if v.passed != tc.passed || !slices.Equal(v.atMain, tc.atMain) || v.passed != (v.report == "") ||
+				!slices.Equal(v.failing, tc.failing) {
+				t.Errorf("passed %v, at main %q, failing %q, report %q; want passed %v, at main %q, failing %q",
+					v.passed, v.atMain, v.failing, v.report, tc.passed, tc.atMain, tc.failing)
 			}
 		})
 	}
@@ -333,5 +345,144 @@ func TestAcceptDuringReinstall(t *testing.T) {
 
 	if got := *b.find("x"); !reflect.DeepEqual(got, stopped) {
 		t.Errorf("a refused accept left %+v, want %+v", got, stopped)
+	}
+}
+
+func TestAuditDid(t *testing.T) {
+	audit := run{role: auditRole, why: reason{Why: whyAudit}}
+	findings := run{role: "build", why: reason{Why: whyFindings}}
+	for name, tc := range map[string]struct {
+		audited bool
+		runs    []run
+		known   bool
+		want    string
+	}{
+		"no audit run":                    {known: true, want: "the audit had not run"},
+		"an audit run with no answer":     {runs: []run{audit, audit, audit}, known: true, want: "the audit ended with no result"},
+		"an audit that sent findings":     {audited: true, runs: []run{audit, findings}, known: true, want: "the audit sent findings back"},
+		"an audit that found nothing":     {audited: true, runs: []run{audit}, known: true, want: "the audit found nothing"},
+		"an audit with nothing to read":   {audited: true, known: true, want: "no Go package changed, so no audit ran"},
+		"a ledger that could not be read": {audited: true, want: "what the audit did is unknown"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := auditDid(tc.audited, tc.runs, tc.known); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestNextStep holds the next step to spec 4's table: each command it names is one the book takes.
+func TestNextStep(t *testing.T) {
+	const why = "the gate still failed after its last round:\nreport"
+	for name, tc := range map[string]struct {
+		rec      record
+		commands []string
+		resume   bool
+	}{
+		"waiting for UAT": {rec: record{State: landed}, commands: []string{"accept", "queue"}},
+		"waiting on its branch with amendments": {
+			rec: record{State: amended}, commands: []string{"accept", "reject"},
+		},
+		"stopped past its last round": {
+			rec: record{State: stopped, Session: "s", Why: why}, commands: []string{"queue"}, resume: true,
+		},
+		"stopped for a kiln error": {
+			rec: record{State: stopped, Session: "s", Why: couldNotGoOn + "no disk"}, commands: []string{"queue"},
+		},
+		"stopped before its session began": {rec: record{State: stopped, Why: why}, commands: []string{"queue"}},
+		"a landing of accepted amendments stopped past its last round": {
+			rec:      record{State: stopped, Accepted: true, Session: "s", Why: why},
+			commands: []string{"accept", "reject"}, resume: true,
+		},
+		"a landing of accepted amendments stopped for a kiln error": {
+			rec:      record{State: stopped, Accepted: true, Session: "s", Why: couldNotGoOn + "main's checkout"},
+			commands: []string{"accept", "reject"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tc.rec.Name = "x"
+			next := nextStep(tc.rec, "/cache/kiln/a b/x", "1a2b3c4d5e6f7a8b")
+			var named []string
+			for _, m := range regexp.MustCompile(`kiln (\w+) x\b`).FindAllStringSubmatch(next, -1) {
+				named = append(named, m[1])
+			}
+
+			b := book{Specs: []*record{&tc.rec}}
+			for _, c := range named {
+				if err := b.may(c, "x", func(string) (bool, error) { return true, nil }); err != nil {
+					t.Errorf("%q names kiln %s, which the book refuses: %v", next, c, err)
+				}
+			}
+
+			slices.Sort(named)
+			resume := strings.HasPrefix(next, "cd '/cache/kiln/a b/x' && claude --resume s, ")
+			if !slices.Equal(named, tc.commands) || resume != tc.resume {
+				t.Errorf("%q names kiln %q, and resumes the session %v; want %q, %v", next, named, resume,
+					tc.commands, tc.resume)
+			}
+		})
+	}
+}
+
+// TestLandChanges holds that main moves only to work that changes it. A session that ended with no result can leave
+// its branch at main's tip. That work goes back to the session.
+func TestLandChanges(t *testing.T) {
+	for name, tc := range map[string]struct {
+		work   string
+		landed bool
+	}{
+		"work that changes a file lands":     {work: "echo 42 >x && git add x && git commit --quiet -m x", landed: true},
+		"work that changes nothing does not": {work: "true"},
+		"an empty commit changes nothing":    {work: "git commit --quiet --allow-empty -m nothing"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			repo := t.TempDir()
+			run := func(dir, script string) string {
+				cmd := exec.Command("/bin/sh", "-c", script)
+				cmd.Dir = dir
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("%s: %v\n%s", script, err, out)
+				}
+
+				return strings.TrimSpace(string(out))
+			}
+
+			run(repo, `git init --quiet -b main && git config user.name t && git config user.email t@t && `+
+				`echo '{"gate": ["true"], "rounds": 1}' >kiln.json && git add . && git commit --quiet -m start`)
+			main := run(repo, "git rev-parse HEAD")
+			r, err := Open(t.Context(), repo, os.Environ())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			rec := record{Name: "x", State: building}
+			if err := r.store.update(func(k *book) error { k.Specs = []*record{&rec}; return nil }); err != nil {
+				t.Fatal(err)
+			}
+
+			b := &build{r: r, rec: rec, tree: r.tree("x"), out: io.Discard}
+			if err := r.git.Checkout(t.Context(), b.tree, branchOf("x"), main); err != nil {
+				t.Fatal(err)
+			}
+
+			run(b.tree, tc.work)
+			head := run(b.tree, "git rev-parse HEAD")
+			landed, back, err := b.land(t.Context(), head, nil)
+			tip := run(repo, "git rev-parse main")
+			switch {
+			case err != nil:
+				t.Fatal(err)
+			case tc.landed && (landed == "" || tip != landed):
+				t.Errorf("landed %q, main at %s, setback %+v; want main moved to the work", landed, tip, back)
+			case !tc.landed && (landed != "" || tip != main || back.why != whyUnchanged):
+				t.Errorf("landed %q, main at %s, setback %+v; want main unmoved, and the work sent back", landed, tip,
+					back)
+			}
+		})
 	}
 }

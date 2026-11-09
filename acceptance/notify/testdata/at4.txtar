@@ -1,0 +1,93 @@
+# 4. A stopped landing of accepted amendments points back to accept.
+
+# Given: a spec waiting on its branch with amendments, whose landing stops once accepted.
+# Main's checkout holds an uncommitted PRODUCT.md, which the landing writes, so main can't move to it.
+exec kiln queue x
+exec kiln run
+stdout '^x: waits on kiln/x'
+cp _given/PRODUCT.md PRODUCT.md
+
+# When: the developer runs kiln accept on it.
+! exec kiln accept x
+cp stdout .tmp/accept
+
+# Then: its output holds one notification, which names the spec and the state kiln status shows for it, stopped,
+# landing accepted amendments.
+stdout -count=1 '\x1b\]9;'
+stdout '^\x1b\]9;kiln: x stopped, landing accepted amendments\x07'
+exec kiln status
+stdout '^x: stopped, landing accepted amendments$'
+
+# After the line that says the build stopped, the output names kiln accept and kiln reject as what to run next, and
+# doesn't name kiln queue.
+exec cat .tmp/accept
+stdout '(?s)^x: stopped: .*^  next: .*kiln accept x\b.*kiln reject x\b'
+! stdout 'kiln queue'
+
+-- _given/PRODUCT.md --
+# Product
+
+The developer's own product page.
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-09
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+    {"result": {"result": "Built x, under an amendment."}}
+  ]}},
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 43.
+func X() int { return 43 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 43 {
+		t.Fatalf("X answers %d, want 43", got)
+	}
+}
+-- _given/x/specs/x.amend.md --
+# Amendments to specs/x.md
+
+## Acceptance test 1: X answers
+
+### Old
+
+- **Then**: it answers 42.
+
+### New
+
+- **Then**: it answers 43.
+
+### Reason
+
+42 is taken.

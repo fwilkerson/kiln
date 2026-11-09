@@ -88,12 +88,39 @@ func (r *Repo) run(ctx context.Context, out io.Writer, only string) error {
 		b := &build{r: r, rec: rec, tree: r.tree(rec.Name), out: out}
 		err = b.run(ctx)
 		if s, ok := errors.AsType[*outOfRounds](err); ok {
-			b.stop(s.why)
+			b.stop(s.why, s.failing)
 		} else if ctx.Err() != nil {
 			return ctx.Err()
 		} else if err != nil {
-			b.stop(fmt.Sprintf("kiln could not go on with the build: %v", err))
+			b.stop(couldNotGoOn+err.Error(), nil)
 		}
+
+		b.waits(ctx)
+	}
+}
+
+// couldNotGoOn starts the Why of a build stopped for an error of kiln's, not its gate's.
+const couldNotGoOn = "kiln could not go on with the build: "
+
+// waits tells the developer when the build ended waiting on them: stopped, waiting for UAT, or waiting on its branch.
+// It prints an OSC 9 sequence, which a terminal such as Ghostty shows as a notification, then the build's summary.
+// The sequence names the spec, and where it stands as kiln status shows it.
+func (b *build) waits(ctx context.Context) {
+	k, err := b.r.store.read()
+	if err != nil {
+		b.say("kiln could not read where it stands: %v", err)
+		return
+	}
+
+	rec := k.find(b.rec.Name)
+	if rec == nil || !slices.Contains([]state{stopped, landed, amended}, rec.State) {
+		return
+	}
+
+	// The body starts with kiln:, so a spec named 4 can't read as OSC 9;4, a progress bar Ghostty draws.
+	fmt.Fprintf(b.out, "\x1b]9;kiln: %s %s\a", rec.Name, shownState(rec))
+	for _, line := range b.r.sumUp(ctx, *rec, b.tree, b.landed) {
+		fmt.Fprintln(b.out, indent(line))
 	}
 }
 
@@ -111,10 +138,15 @@ type build struct {
 	rec  record
 	tree string
 	out  io.Writer
+	// landed is the commit the build moved main to, once it has.
+	landed string
 }
 
-// outOfRounds is a build that its gate failed past its last round.
-type outOfRounds struct{ why string }
+// outOfRounds is a build that its gate failed past its last round. failing names what failed.
+type outOfRounds struct {
+	why     string
+	failing []string
+}
 
 func (s *outOfRounds) Error() string { return s.why }
 
@@ -177,7 +209,7 @@ func (b *build) run(ctx context.Context) error {
 // the build has landed, or waits on its branch.
 func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 	if !v.passed {
-		return b.round(ctx, setback{why: whyGate, report: v.report})
+		return b.round(setback{why: whyGate, report: v.report, failing: v.failing})
 	}
 
 	if !b.rec.Audited {
@@ -213,7 +245,7 @@ func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 	onMain, back, err := b.land(ctx, head, retire, b.allowed()...)
 	if err != nil || back.report != "" {
 		if err == nil {
-			return b.round(ctx, back)
+			return b.round(back)
 		}
 
 		return "", reason{}, err
@@ -231,6 +263,7 @@ func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 
 	b.record(entry{Kind: outcomeKind, Outcome: outLanded})
 	b.set(func(r *record) { r.State = landed })
+	b.landed = onMain
 	b.say("landed on main at %s, and waits for UAT", short(onMain))
 	return "", reason{}, nil
 }
@@ -245,33 +278,31 @@ func (b *build) allowed() []string {
 	return nil
 }
 
-// setback is what kept the work from passing, for the session. It is a failed gate, a conflict with main, or a failed
-// gate on the work rebased onto main. why names which, as a start line does.
+// setback is what kept the work from passing, for the session. It is a failed gate, or a conflict with main. It is
+// work that changes nothing there, or a failed gate on the work rebased onto it. why names which, as a start line
+// does. failing names what failed: the gate's failures, or the files in conflict.
 type setback struct {
 	why, report string
+	failing     []string
 }
 
 // round sends a setback's report back to the session, or stops the build past its last round. It answers the prompt,
-// and the round it starts.
-func (b *build) round(ctx context.Context, back setback) (string, reason, error) {
-	main, err := b.r.git.Tip(ctx, mainBranch)
-	if err != nil {
-		return "", reason{}, err
+// and the round it starts. The rounds it allows are those kiln.json gave the build's last gate.
+func (b *build) round(back setback) (string, reason, error) {
+	rounds := 0
+	if b.rec.Limit != nil {
+		rounds = *b.rec.Limit
 	}
 
-	c, err := b.r.config(ctx, main)
-	if err != nil {
-		return "", reason{}, err
-	}
-
-	if b.rec.Rounds >= c.Rounds {
-		return "", reason{}, &outOfRounds{why: "the gate still failed after its last round:\n" + back.report}
+	if b.rec.Rounds >= rounds {
+		return "", reason{}, &outOfRounds{why: "the gate still failed after its last round:\n" + back.report,
+			failing: back.failing}
 	}
 
 	b.set(func(r *record) { r.Rounds++ })
-	b.say("the gate failed; it goes back to the session, round %d of %d", b.rec.Rounds, c.Rounds)
-	why := reason{Why: back.why, Round: b.rec.Rounds, Rounds: c.Rounds}
-	return fmt.Sprintf(gateFailed, b.rec.Rounds, c.Rounds, back.report), why, nil
+	b.say("the gate failed; it goes back to the session, round %d of %d", b.rec.Rounds, rounds)
+	why := reason{Why: back.why, Round: b.rec.Rounds, Rounds: rounds}
+	return fmt.Sprintf(gateFailed, b.rec.Rounds, rounds, back.report), why, nil
 }
 
 func (b *build) start(ctx context.Context) error {
@@ -496,9 +527,10 @@ const auditTries = 3
 // or "" to start from main's tip. Before the gate, retire may add a commit. A path in allowed may change, though
 // guarded names it.
 //
-// It answers the commit main moved to. Or it answers what kept the work from landing, a conflict or the gate, for the
-// session. A landing that doesn't move main puts the branch back where it stood, even after an error or an interrupt.
-// Should kiln die mid-landing, the record keeps that commit, and the next kiln run puts the branch back.
+// It answers the commit main moved to. Or it answers what kept the work from landing, for the session. That is a
+// conflict, work that changes nothing on main, or the gate. A landing that doesn't move main puts the branch back
+// where it stood, even after an error or an interrupt. Should kiln die mid-landing, the record keeps that commit,
+// and the next kiln run puts the branch back.
 func (b *build) land(ctx context.Context, from string, retire func(ctx context.Context, held string) error,
 	allowed ...string) (landed string, back setback, err error) {
 	before, err := b.r.git.Head(ctx, b.tree)
@@ -533,7 +565,8 @@ func (b *build) land(ctx context.Context, from string, retire func(ctx context.C
 			}
 
 			if conflict != nil {
-				return "", setback{whyConflict, fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n"))}, nil
+				report := fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n"))
+				return "", setback{whyConflict, report, conflict.Files}, nil
 			}
 		}
 
@@ -549,14 +582,22 @@ func (b *build) land(ctx context.Context, from string, retire func(ctx context.C
 			}
 		}
 
-		v, err := b.gate(ctx, true, allowed...)
-		if err != nil || !v.passed {
-			return "", setback{whyLanding, v.report}, err
-		}
-
 		head, err := b.r.git.Head(ctx, b.tree)
 		if err != nil {
 			return "", setback{}, err
+		}
+
+		// A session that ended with no result may leave nothing, and main would "move" to the commit it holds.
+		changed, err := b.r.git.Changed(ctx, onto, head)
+		if err != nil {
+			return "", setback{}, err
+		} else if len(changed) == 0 {
+			return "", setback{why: whyUnchanged, report: unchanged}, nil
+		}
+
+		v, err := b.gate(ctx, true, allowed...)
+		if err != nil || !v.passed {
+			return "", setback{whyLanding, v.report, v.failing}, err
 		}
 
 		way, err := b.r.git.Move(ctx, mainBranch, head, onto)
@@ -732,9 +773,9 @@ func (b *build) set(change func(*record)) {
 	}
 }
 
-// stop records the build as stopped, and why.
-func (b *build) stop(why string) {
-	b.set(func(r *record) { r.State, r.Why, r.Paused = stopped, why, time.Time{} })
+// stop records the build as stopped, why, and what failed. It leaves the worktree and the session in place.
+func (b *build) stop(why string, failing []string) {
+	b.set(func(r *record) { r.State, r.Why, r.Failing, r.Paused = stopped, why, failing, time.Time{} })
 	b.record(entry{Kind: outcomeKind, Outcome: outStopped})
 	b.say("stopped: %s", strings.SplitN(why, "\n", 2)[0])
 }
@@ -760,6 +801,10 @@ func (b *build) gate(ctx context.Context, landing bool, allowed ...string) (verd
 	start := time.Now()
 	v, err := b.r.gate(ctx, b.tree, b.rec.Name, allowed...)
 	b.record(entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed, Landing: landing})
+	if err == nil {
+		b.set(func(r *record) { r.Limit = &v.rounds })
+	}
+
 	return v, err
 }
 
@@ -789,6 +834,7 @@ const (
 	auditing  = "Audit these packages: %s. The spec is %s, and its acceptance tests' code is in acceptance/%s/."
 	conflicts = "Main moved, and your work conflicts with it in these files:\n%s\n\nMerge main into your " +
 		"branch with git merge main, resolve each conflict, commit, and end your turn."
+	unchanged   = "Your work changes nothing on main, so it can't land. Build the spec, and end your turn."
 	limitReset  = "The usage limit has reset. Go on where you stopped."
 	interrupted = "kiln stopped while you worked. Go on where you stopped."
 )
