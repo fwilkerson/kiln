@@ -7,10 +7,11 @@
 //		ended, err = c.Run(ctx, claude.Launch{Session: id, Resume: true, Prompt: "Go on.", ...})
 //	}
 //
-// Each session runs Opus at high effort, in auto permission mode, with only the project's settings and those Run
-// writes. A question it would ask is refused instead, since no one answers it. Its commands run in Claude Code's
-// sandbox, which writes only in Dir and Writable, and reaches only Domains. When it exits, Run kills every process it
-// left behind. It finds them by their process tree, their group, and their working directory.
+// Each session runs Opus at medium effort, with Fable as its advisor. It runs in auto permission mode, with only the
+// project's settings and those Run writes. A question it would ask is refused instead, since no one answers it. Its
+// commands run in Claude Code's sandbox, which writes only in Dir and Writable, and reaches only Domains. When it
+// exits, Run kills every process it left behind. It finds them by their process tree, their group, and their working
+// directory.
 //
 // A session's files are kept in Config.Sessions, under its ID. They are the system prompt, the settings, and the
 // stream it wrote, across every resume. Beside them is the end of its standard error, from its last run.
@@ -179,7 +180,7 @@ func arguments(l Launch, dir string) []string {
 		args = append(args, "--tools", strings.Join(l.Tools, ","))
 	}
 
-	return append(args, "--model", "opus", "--effort", "high",
+	return append(args, "--model", "opus", "--effort", "medium",
 		"--permission-mode", "auto",
 		"--setting-sources", "project",
 		"--settings", filepath.Join(dir, settingsFile),
