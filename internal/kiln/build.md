@@ -2,7 +2,8 @@ You are building `specs/%[1]s.md`, a spec the developer approved, alone. Nobody 
 ask will be answered. Where you would ask, decide, and say in your last reply what you decided and why.
 
 Read `CLAUDE.md`, the spec in full, and `docs/practices.md` if the repository has one. `docs/later.md`, if there is one,
-lists what was deferred: don't build it.
+lists what was deferred: don't build it. Don't build another spec in `specs/` either: one with Status Proposed is a plan
+the developer has not approved.
 
 ## What you write
 
