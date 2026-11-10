@@ -5,7 +5,7 @@ then left out. Each says what it is, why it came up, and what would show it is n
 
 A topic the developer means to build leaves this file for a starter spec in `specs/`, with Status Proposed, which
 `/slice` takes up from its Open Questions. `specs/tui-reading.md`, `specs/notify.md`,
-`specs/project-roles.md` and `specs/gauges.md` began here.
+`specs/project-roles.md`, `specs/gauges.md` and `specs/languages.md` began here.
 
 ## The evidence behind spec 1
 
@@ -93,13 +93,6 @@ odh has two agents design apart from the same brief, and a fresh judge scores bo
 - **Build it when:** a builder wants a design for a shared API or a critical piece of code, and can't get one inside
   its checkout.
 
-## Repositories in other languages
-
-Spec 1 names a test that already failed on main by its Go test name, and ties a Given, When, Then to its code by a Go
-test's name. Another language needs its own way to name a test and to read which failed.
-
-- **Build it when:** the developer points kiln at a project that isn't Go.
-
 ## Progress while a build runs
 
 `kiln status` shows a spec's state, not how many of its acceptance tests pass yet. A count was drafted, read from each
@@ -117,3 +110,19 @@ The backlog (9,174 lines of code), the runner's stage machine (13,271), the view
 (4,197) are built around tickets. They stay in Eidos at `07992d10` for reference. The runner's design,
 `docs/design/runner.md`, holds the rules for landing, usage limits and the lines no session crosses. A later spec can
 lift a rule from it by name.
+
+## An audit of the fixes
+
+The audit reads a build's work once, and its findings go back to the build. Nothing but the gate reads the fixes.
+Spec 7 weighed an audit that runs again on the fixes, up to a count in `kiln.json`. Through 2026-11-10, every audit
+found 2 to 5 problems, each build said it fixed them all, and the one fix that broke a test, the gate caught. Each
+audit cost $3 to $9.
+
+- **Build it when:** a fix lands a defect that a second audit would have caught.
+
+## A project's own workflow
+
+Spec 7 lets a project set each role's prompt, tools, model and effort, but keeps kiln's two roles, build then audit.
+A project could name its own roles, their order, and which role a role's findings go back to.
+
+- **Build it when:** a project needs a role other than build and audit.
