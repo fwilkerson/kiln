@@ -50,54 +50,80 @@ func main() {
 		roots = []string{"."}
 	}
 
-	wrong := false
+	r := &run{list: *list}
 	for _, root := range roots {
-		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			switch {
-			case err != nil:
-				return err
-			case d.IsDir() && path != root && skip(d.Name()):
-				return filepath.SkipDir
-			case d.IsDir() || !strings.HasSuffix(path, ".go"):
-				return nil
-			}
-
-			src, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-
-			out, problems, err := style(path, src)
-			if err != nil {
-				return err
-			}
-
-			for _, p := range problems {
-				if *list || !p.fixed {
-					fmt.Printf("%s:%d: %s\n", path, p.line, p.msg)
-					wrong = true
-				}
-			}
-
-			if *list || string(out) == string(src) {
-				return nil
-			}
-
-			return os.WriteFile(path, out, 0o644)
-		})
-		if err != nil {
+		if err := filepath.WalkDir(root, r.visit(root)); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	if wrong {
+	if r.wrong {
 		os.Exit(1)
 	}
+}
+
+// run is one run of style over its roots.
+type run struct {
+	// list is -l: list every problem, and change nothing.
+	list bool
+	// wrong is true once a problem was listed.
+	wrong bool
+}
+
+// visit styles each Go file under root that ./... would hold.
+func (r *run) visit(root string) fs.WalkDirFunc {
+	return func(path string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return err
+		case skips(root, path, d):
+			return filepath.SkipDir
+		case d.IsDir() || !strings.HasSuffix(path, ".go"):
+			return nil
+		}
+
+		return r.file(path)
+	}
+}
+
+// skips reports whether the walk from root leaves out d at path, a directory below root that ./... leaves out.
+func skips(root, path string, d fs.DirEntry) bool {
+	return d.IsDir() && path != root && skip(d.Name())
 }
 
 // skip reports whether ./... leaves dir out, as it does testdata, vendor, and names that start with . or _.
 func skip(dir string) bool {
 	return strings.HasPrefix(dir, ".") || strings.HasPrefix(dir, "_") || dir == "testdata" || dir == "vendor"
+}
+
+// file styles the file at path. It reports what it found, and writes the fixes back unless r lists.
+func (r *run) file(path string) error {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	out, problems, err := style(path, src)
+	if err != nil {
+		return err
+	}
+
+	r.report(path, problems)
+	if r.list || string(out) == string(src) {
+		return nil
+	}
+
+	return os.WriteFile(path, out, 0o644)
+}
+
+// report prints each problem in path that r lists, or that style could not fix.
+func (r *run) report(path string, problems []problem) {
+	for _, p := range problems {
+		if r.list || !p.fixed {
+			fmt.Printf("%s:%d: %s\n", path, p.line, p.msg)
+			r.wrong = true
+		}
+	}
 }
 
 const (
@@ -131,55 +157,109 @@ func style(path string, src []byte) ([]byte, []problem, error) {
 
 // spacing returns src with its blank lines fixed, and the problems it found.
 func spacing(path string, src []byte) ([]byte, []problem, error) {
-	var problems []problem
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, src, parser.ParseComments)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	lines := strings.Split(string(src), "\n")
-	line := func(p token.Pos) int { return fset.Position(p).Line }
-	blank := func(n int) bool { return strings.TrimSpace(lines[n-1]) == "" }
-	addAfter, drop := map[int]bool{}, map[int]bool{}
-	for a, b := range pairs(f) {
-		end, next := line(a.End()), line(b.Pos())
-		gap := slices.ContainsFunc(lineRange(end+1, next), blank)
-		switch {
-		case checks(a, b) && gap:
-			problems = append(problems, problem{next, extraBlank, true})
-			for _, n := range lineRange(end+1, next) {
-				drop[n] = drop[n] || blank(n)
-			}
-		case !checks(a, b) && closesBlock(a, line, lines) && !gap:
-			problems = append(problems, problem{next, needsBlank, true})
-			addAfter[end] = true
+	s := source{fset: fset, file: f, lines: strings.Split(string(src), "\n")}
+	fix := fixes{addAfter: map[int]bool{}, drop: map[int]bool{}}
+	problems := s.blankLines(fix)
+	problems = append(problems, s.wideLines()...)
+	for _, n := range longSentences(f, s.line) {
+		problems = append(problems, problem{n, tooLong, false})
+	}
+
+	return fix.apply(s.lines), problems, nil
+}
+
+// source is a parsed Go file, with its lines.
+type source struct {
+	fset  *token.FileSet
+	file  *ast.File
+	lines []string
+}
+
+func (s source) line(p token.Pos) int { return s.fset.Position(p).Line }
+
+// fixes are the lines, by number, that spacing drops, and those it adds a blank line after.
+type fixes struct {
+	addAfter, drop map[int]bool
+}
+
+// apply returns lines with fix made.
+func (fix fixes) apply(lines []string) []byte {
+	var out []string
+	for i, l := range lines {
+		if !fix.drop[i+1] {
+			out = append(out, l)
+		}
+
+		if fix.addAfter[i+1] {
+			out = append(out, "")
 		}
 	}
 
-	rows := tableRows(f, line)
-	for i, l := range lines {
+	return []byte(strings.Join(out, "\n"))
+}
+
+// blankLines returns the problems in the blank lines between statements, and keeps how to fix each in fix.
+func (s source) blankLines(fix fixes) []problem {
+	var problems []problem
+	for a, b := range pairs(s.file) {
+		if p, ok := s.spaced(a, b, fix); ok {
+			problems = append(problems, p)
+		}
+	}
+
+	return problems
+}
+
+// spaced returns the problem in the blank lines between a and b, the statement after it, and false if none.
+func (s source) spaced(a, b ast.Stmt, fix fixes) (problem, bool) {
+	end, next := s.line(a.End()), s.line(b.Pos())
+	blanks := s.blanks(a, b)
+	gap := len(blanks) > 0
+	checked := checks(a, b)
+	switch {
+	case checked && gap:
+		for _, n := range blanks {
+			fix.drop[n] = true
+		}
+
+		return problem{next, extraBlank, true}, true
+	case checked, gap, !s.closesBlock(a):
+		return problem{}, false
+	}
+
+	fix.addAfter[end] = true
+	return problem{next, needsBlank, true}, true
+}
+
+// blanks returns the blank lines between a and b, the statement after it.
+func (s source) blanks(a, b ast.Stmt) []int {
+	var blanks []int
+	for n := s.line(a.End()) + 1; n < s.line(b.Pos()); n++ {
+		if strings.TrimSpace(s.lines[n-1]) == "" {
+			blanks = append(blanks, n)
+		}
+	}
+
+	return blanks
+}
+
+// wideLines returns a problem for each line wider than maxWidth that is not a table's row.
+func (s source) wideLines() []problem {
+	var problems []problem
+	rows := tableRows(s.file, s.line)
+	for i, l := range s.lines {
 		if width(l) > maxWidth && !rows[i+1] {
 			problems = append(problems, problem{i + 1, tooWide, false})
 		}
 	}
 
-	for _, n := range longSentences(f, line) {
-		problems = append(problems, problem{n, tooLong, false})
-	}
-
-	var out []string
-	for i, l := range lines {
-		if !drop[i+1] {
-			out = append(out, l)
-		}
-
-		if addAfter[i+1] {
-			out = append(out, "")
-		}
-	}
-
-	return []byte(strings.Join(out, "\n")), problems, nil
+	return problems
 }
 
 // pairs yields each statement in a function body with the statement after it. The cases of a switch or select are
@@ -221,26 +301,17 @@ func clause(s ast.Stmt) bool {
 	return false
 }
 
-func lineRange(from, to int) []int {
-	var r []int
-	for n := from; n < to; n++ {
-		r = append(r, n)
-	}
-
-	return r
-}
-
 // closesBlock reports whether s ends with a block's closing brace, as an if, a for or a func literal does. The brace
 // must start its line. A closing composite literal does not count.
-func closesBlock(s ast.Stmt, line func(token.Pos) int, lines []string) bool {
-	end := line(s.End())
-	if !strings.HasPrefix(strings.TrimSpace(lines[end-1]), "}") {
+func (s source) closesBlock(st ast.Stmt) bool {
+	end := s.line(st.End())
+	if !strings.HasPrefix(strings.TrimSpace(s.lines[end-1]), "}") {
 		return false
 	}
 
 	found := false
-	ast.Inspect(s, func(n ast.Node) bool {
-		if b, ok := n.(*ast.BlockStmt); ok && line(b.Rbrace) == end {
+	ast.Inspect(st, func(n ast.Node) bool {
+		if b, ok := n.(*ast.BlockStmt); ok && s.line(b.Rbrace) == end {
 			found = true
 		}
 
@@ -254,10 +325,16 @@ func closesBlock(s ast.Stmt, line func(token.Pos) int, lines []string) bool {
 func checks(prev, next ast.Stmt) bool {
 	as, ok := prev.(*ast.AssignStmt)
 	is, isIf := next.(*ast.IfStmt)
-	if !ok || !isIf || is.Init != nil {
+	switch {
+	case !ok, !isIf, is.Init != nil:
 		return false
 	}
 
+	return uses(is.Cond, assigned(as))
+}
+
+// assigned returns the names as assigns, but the blank one.
+func assigned(as *ast.AssignStmt) map[string]bool {
 	names := map[string]bool{}
 	for _, e := range as.Lhs {
 		if id, ok := e.(*ast.Ident); ok && id.Name != "_" {
@@ -265,8 +342,13 @@ func checks(prev, next ast.Stmt) bool {
 		}
 	}
 
+	return names
+}
+
+// uses reports whether cond uses one of names.
+func uses(cond ast.Expr, names map[string]bool) bool {
 	used := false
-	ast.Inspect(is.Cond, func(n ast.Node) bool {
+	ast.Inspect(cond, func(n ast.Node) bool {
 		if id, ok := n.(*ast.Ident); ok && names[id.Name] {
 			used = true
 		}
@@ -296,44 +378,71 @@ func tableRows(f *ast.File, line func(token.Pos) int) map[int]bool {
 // longSentences returns the line each comment sentence of more than maxWords words starts on. It skips a directive,
 // such as //go:embed, and a line indented past one space, as a list item is. It also skips an example's output.
 func longSentences(f *ast.File, line func(token.Pos) int) []int {
-	var long []int
+	var c counter
 	for _, g := range f.Comments {
-		if output(g) {
+		if !output(g) {
+			c.group(g, line)
+		}
+	}
+
+	return c.long
+}
+
+// counter counts the words of each comment sentence, and keeps the line each long one starts on.
+type counter struct {
+	start, words int
+	long         []int
+}
+
+// group counts the sentences of g. A sentence ends with g, and at a line that holds no prose.
+func (c *counter) group(g *ast.CommentGroup, line func(token.Pos) int) {
+	for _, comment := range g.List {
+		text, ok := prose(comment)
+		if !ok {
+			c.end()
 			continue
 		}
 
-		start, words := 0, 0
-		end := func() {
-			if words > maxWords {
-				long = append(long, start)
-			}
-
-			words = 0
+		at := line(comment.Pos())
+		for w := range strings.FieldsSeq(text) {
+			c.word(w, at)
 		}
-
-		for _, c := range g.List {
-			text, ok := strings.CutPrefix(c.Text, "// ")
-			if !ok || strings.HasPrefix(text, " ") || strings.HasPrefix(text, "\t") {
-				end()
-				continue
-			}
-
-			for w := range strings.FieldsSeq(text) {
-				if words == 0 {
-					start = line(c.Pos())
-				}
-
-				words++
-				if t := strings.TrimRight(w, `"')`); t != "" && strings.ContainsRune(".?!", rune(t[len(t)-1])) {
-					end()
-				}
-			}
-		}
-
-		end()
 	}
 
-	return long
+	c.end()
+}
+
+// word counts w, a word on the line at.
+func (c *counter) word(w string, at int) {
+	if c.words == 0 {
+		c.start = at
+	}
+
+	c.words++
+	if endsSentence(w) {
+		c.end()
+	}
+}
+
+// end ends the sentence counted so far.
+func (c *counter) end() {
+	if c.words > maxWords {
+		c.long = append(c.long, c.start)
+	}
+
+	c.words = 0
+}
+
+// prose returns the text of comment, and false for a directive or a line indented past one space.
+func prose(comment *ast.Comment) (string, bool) {
+	text, ok := strings.CutPrefix(comment.Text, "// ")
+	return text, ok && !strings.HasPrefix(text, " ") && !strings.HasPrefix(text, "\t")
+}
+
+// endsSentence reports whether w ends with a period, a question mark or an exclamation mark, before any closing quote.
+func endsSentence(w string) bool {
+	t := strings.TrimRight(w, `"')`)
+	return t != "" && strings.ContainsRune(".?!", rune(t[len(t)-1]))
 }
 
 // output reports whether g is the output an example must print. go test compares it, and go doc does not show it.

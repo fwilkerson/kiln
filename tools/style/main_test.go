@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 	"testing"
@@ -67,34 +68,39 @@ func TestStyle(t *testing.T) {
 		},
 	} {
 		t.Run(rule, func(t *testing.T) {
-			if tc.want == "" {
-				tc.want = tc.body
-			}
-
-			wrap := func(body string) string {
-				lines := strings.Split(body, "\n")
-				for i, l := range lines {
-					if l != "" {
-						lines[i] = "\t" + l
-					}
-				}
-
-				return "package p\n\nfunc _() {\n" + strings.Join(lines, "\n") + "\n}\n"
-			}
-
-			out, problems, err := style("p.go", []byte(wrap(tc.body)))
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			var found []string
-			for _, p := range problems {
-				found = append(found, p.msg)
-			}
-
-			if got := string(out); got != wrap(tc.want) || !slices.Equal(found, tc.problems) {
-				t.Errorf("got\n%s%q\nwant\n%s%q", got, found, wrap(tc.want), tc.problems)
+			want := cmp.Or(tc.want, tc.body)
+			out, found := styled(t, tc.body)
+			if out != wrap(want) || !slices.Equal(found, tc.problems) {
+				t.Errorf("got\n%s%q\nwant\n%s%q", out, found, wrap(want), tc.problems)
 			}
 		})
 	}
+}
+
+// styled returns the file that holds body as its func's body, styled, and the problems style found in it.
+func styled(t *testing.T, body string) (string, []string) {
+	t.Helper()
+	out, problems, err := style("p.go", []byte(wrap(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var found []string
+	for _, p := range problems {
+		found = append(found, p.msg)
+	}
+
+	return string(out), found
+}
+
+// wrap returns a file whose one func has body as its body.
+func wrap(body string) string {
+	lines := strings.Split(body, "\n")
+	for i, l := range lines {
+		if l != "" {
+			lines[i] = "\t" + l
+		}
+	}
+
+	return "package p\n\nfunc _() {\n" + strings.Join(lines, "\n") + "\n}\n"
 }
