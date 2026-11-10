@@ -36,7 +36,6 @@ A package is a contract its users read through `go doc`, or a piece two packages
 - Confirm the seam in git history: most commits should change the piece or the rest, not both.
 - Name each file for its concept. Give one role the same file name everywhere, such as `outbox.go` in every service. A
   file name then works as an index from `ls`.
-- Size alone never splits a file. Nine Go files in ten stay under 500 lines, and `context` is one file of 807 lines.
 - For an agent, `go doc -all` reads the package and ignores its files. A split changes only what a source read costs.
 
 ## The call site is the API
@@ -66,8 +65,6 @@ s.pay = aggregate.On(orders).Wait((*model.Order).Paying).Send(s.authorize).Keep(
 - Avoid shallow pass-throughs, such as a func that only calls another with a default.
 - A shared signature can hide a choice. When the caller's choice of `Do` decides what gets sent, fold the choice into
   the module.
-- Write programs by writing code, not by defining types (Ian Lance Taylor). Method expressions such as
-  `(*model.Order).Paying` pass behavior without a new type.
 - kiln's command line is a call site too. kiln writes its own flags with two hyphens, as in `kiln hook --spec <name>`.
 
 ## Make misuse impossible
@@ -184,5 +181,5 @@ Let tools hold every rule that needs no judgment, so a review spends its attenti
 ## Sources
 
 Ousterhout, *A Philosophy of Software Design* and CS 190. Bloch, "How to Design a Good API". Google's Go Style Guide,
-Best Practices. Effective Go. Abseil Tip #94. Cheney, *Practical Go*. Taylor, "When To Use Generics". Cox,
-"Go 1.4 Internal Packages". Ottinger's naming rules.
+Best Practices. Effective Go. Abseil Tip #94. Cheney, *Practical Go*. Cox, "Go 1.4 Internal Packages". Ottinger's
+naming rules.
