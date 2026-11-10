@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/fwilkerson/kiln/internal/claude"
 )
 
 // runs are the build's session runs, in order.
@@ -22,29 +24,27 @@ func (b *Build) runs() []*Run {
 
 // cost sums its runs' cost. It is unknown when a run's is.
 func (b *Build) cost() (float64, bool) {
-	var sum float64
-	for _, r := range b.runs() {
-		if r.Totals.CostUSD == nil {
-			return 0, false
-		}
-
-		sum += *r.Totals.CostUSD
-	}
-
-	return sum, true
+	return sum(b.runs(), func(t claude.Totals) *float64 { return t.CostUSD })
 }
 
+// turns sums its runs' turns. It is unknown when a run's are.
 func (b *Build) turns() (int, bool) {
-	var sum int
-	for _, r := range b.runs() {
-		if r.Totals.Turns == nil {
+	return sum(b.runs(), func(t claude.Totals) *int { return t.Turns })
+}
+
+// sum adds up the number of each run's totals. It is unknown when a run's is.
+func sum[N int | float64](runs []*Run, of func(claude.Totals) *N) (N, bool) {
+	var total N
+	for _, r := range runs {
+		n := of(r.Totals)
+		if n == nil {
 			return 0, false
 		}
 
-		sum += *r.Totals.Turns
+		total += *n
 	}
 
-	return sum, true
+	return total, true
 }
 
 // took is its runs' time and its gates' time. It is unknown while a run has no end.
@@ -73,15 +73,23 @@ func (b *Build) failed() (failed, refused int, known bool) {
 			return 0, 0, false
 		}
 
-		for _, f := range r.Totals.Failed {
-			failed++
-			if f.Refused {
-				refused++
-			}
-		}
+		failed += len(r.Totals.Failed)
+		refused += refusals(r.Totals.Failed)
 	}
 
 	return failed, refused, true
+}
+
+// refusals counts the failures that were refused.
+func refusals(failed []claude.Failure) int {
+	n := 0
+	for _, f := range failed {
+		if f.Refused {
+			n++
+		}
+	}
+
+	return n
 }
 
 // rounds is the highest round any of its runs ran in, or 0 when kiln never sent the work back. It is unknown when a
@@ -198,9 +206,14 @@ func (m measure) spark(builds []*Build) string {
 // change says how the recent median moved from the previous one: +1 worse, -1 better. It is 0 when they show the
 // same, or one is unknown.
 func (m measure) change(recent, previous []*Build) int {
+	if !m.judged {
+		return 0
+	}
+
 	now, known := m.median(recent)
 	before, knownBefore := m.median(previous)
-	if !m.judged || known == 0 || knownBefore == 0 || m.shown(now) == m.shown(before) {
+	switch {
+	case known == 0, knownBefore == 0, m.shown(now) == m.shown(before):
 		return 0
 	}
 
