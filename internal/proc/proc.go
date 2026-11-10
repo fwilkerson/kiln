@@ -38,13 +38,7 @@ func Look(env []string, program string) (string, error) {
 		return program, nil
 	}
 
-	var path string
-	for _, kv := range env {
-		if v, ok := strings.CutPrefix(kv, "PATH="); ok {
-			path = v
-		}
-	}
-
+	path := pathOf(env)
 	for _, dir := range filepath.SplitList(path) {
 		if !filepath.IsAbs(dir) {
 			continue
@@ -56,6 +50,18 @@ func Look(env []string, program string) (string, error) {
 	}
 
 	return "", &NotOnPath{Program: program, Path: path}
+}
+
+// pathOf returns the value of the last PATH entry in env, or "" when env holds none.
+func pathOf(env []string) string {
+	var path string
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "PATH="); ok {
+			path = v
+		}
+	}
+
+	return path
 }
 
 // NotOnPath is [Look]'s answer for a program that no absolute entry of Path holds.
