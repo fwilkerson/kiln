@@ -15,17 +15,18 @@ import (
 // wider than that wraps under its own text. A table's row or a fenced line never wraps, since it would no longer
 // line up. The screen cuts it at its edge, and h and l scroll it.
 func markdown(text string, width int) []string {
-	source := strings.Split(strings.ReplaceAll(strings.TrimRight(text, "\n"), "\t", "    "), "\n")
-	colored := highlight(source)
-	var lines []string
+	source := lines(strings.Split(strings.ReplaceAll(strings.TrimRight(text, "\n"), "\t", "    "), "\n"))
+	colored := source.highlight()
+	var drawn []string
 	fenced := false
 	for i, line := range source {
 		trimmed := strings.TrimSpace(line)
 		fence := isFence(trimmed)
-		if fenced || fence || strings.HasPrefix(trimmed, "|") || ansi.StringWidth(line) <= width {
-			lines = append(lines, colored[i])
-		} else {
-			lines = append(lines, wrap(colored[i], len(indent.FindString(line)), width)...)
+		switch {
+		case fenced, fence, strings.HasPrefix(trimmed, "|"), ansi.StringWidth(line) <= width:
+			drawn = append(drawn, colored[i])
+		default:
+			drawn = append(drawn, wrap(colored[i], len(indent.FindString(line)), width)...)
 		}
 
 		if fence {
@@ -33,8 +34,11 @@ func markdown(text string, width int) []string {
 		}
 	}
 
-	return lines
+	return drawn
 }
+
+// lines are lines of Markdown source, or of the code in one of its fences.
+type lines []string
 
 // indent is a line's indent, with its list item's marker if it has one.
 var indent = regexp.MustCompile(`^ *(?:(?:[-*+]|\d+[.)]) +)?`)
@@ -47,38 +51,19 @@ func isFence(trimmed string) bool {
 // highlight colors each line of Markdown source by its syntax, and the code in each fence by the fence's language.
 // It colors prose a line at a time. So no lexer state, such as an unclosed HTML tag, reaches the next line. A fence
 // inside a list item counts too: its code is colored without its indent. Each line it answers has its colors closed.
-func highlight(source []string) []string {
+func (source lines) highlight() []string {
 	markdown := lexers.Get("markdown")
 	var colored []string
 	for i := 0; i < len(source); i++ {
-		trimmed := strings.TrimSpace(source[i])
-		colored = append(colored, paint([]string{source[i]}, markdown)...)
-		if !isFence(trimmed) {
+		colored = append(colored, source[i:i+1].paint(markdown)...)
+		if !isFence(strings.TrimSpace(source[i])) {
 			continue
 		}
 
-		pad := source[i][:len(source[i])-len(strings.TrimLeft(source[i], " "))]
-		var lexer chroma.Lexer
-		if lang := strings.Fields(strings.TrimLeft(trimmed, "`~")); len(lang) > 0 {
-			lexer = lexers.Get(lang[0])
-		}
-
-		end := i + 1
-		for end < len(source) && !isFence(strings.TrimSpace(source[end])) {
-			end++
-		}
-
-		var code []string
-		for _, line := range source[i+1 : end] {
-			code = append(code, strings.TrimPrefix(line, pad))
-		}
-
-		for _, line := range paint(code, lexer) {
-			colored = append(colored, pad+line)
-		}
-
+		end := source.closing(i)
+		colored = append(colored, fencedCode(source[i], source[i+1:end])...)
 		if end < len(source) {
-			colored = append(colored, paint([]string{source[end]}, markdown)...)
+			colored = append(colored, source[end:end+1].paint(markdown)...)
 		}
 
 		i = end
@@ -87,31 +72,63 @@ func highlight(source []string) []string {
 	return colored
 }
 
-// paint colors lines as lexer reads them, one answer for each line. With no lexer, or one that fails, they stay
+// closing is the index of the line that closes the fence opened at open, or len(source) when none does.
+func (source lines) closing(open int) int {
+	end := open + 1
+	for end < len(source) && !isFence(strings.TrimSpace(source[end])) {
+		end++
+	}
+
+	return end
+}
+
+// fencedCode colors the code inside a fence by the language its opening line names. It colors the code without the
+// fence's indent, then puts the indent back.
+func fencedCode(fence string, code lines) []string {
+	pad := fence[:len(fence)-len(strings.TrimLeft(fence, " "))]
+	var lexer chroma.Lexer
+	if lang := strings.Fields(strings.TrimLeft(strings.TrimSpace(fence), "`~")); len(lang) > 0 {
+		lexer = lexers.Get(lang[0])
+	}
+
+	unindented := make(lines, len(code))
+	for i, line := range code {
+		unindented[i] = strings.TrimPrefix(line, pad)
+	}
+
+	painted := unindented.paint(lexer)
+	for i, line := range painted {
+		painted[i] = pad + line
+	}
+
+	return painted
+}
+
+// paint colors the lines as lexer reads them, one answer for each line. With no lexer, or one that fails, they stay
 // plain.
-func paint(lines []string, lexer chroma.Lexer) []string {
-	if lexer == nil || len(lines) == 0 {
-		return lines
+func (ls lines) paint(lexer chroma.Lexer) []string {
+	if lexer == nil || len(ls) == 0 {
+		return ls
 	}
 
 	// Markdown's lexer reads a heading only up to its newline, so the last line needs one too.
-	tokens, err := lexer.Tokenise(nil, strings.Join(lines, "\n")+"\n")
+	tokens, err := lexer.Tokenise(nil, strings.Join(ls, "\n")+"\n")
 	if err != nil {
-		return lines
+		return ls
 	}
 
 	var painted []string
 	for _, line := range chroma.SplitTokensIntoLines(tokens.Tokens()) {
 		var b strings.Builder
 		if formatters.TTY256.Format(&b, markdownStyle, chroma.Literator(line...)) != nil {
-			return lines
+			return ls
 		}
 
 		painted = append(painted, strings.ReplaceAll(b.String(), "\n", ""))
 	}
 
-	if len(painted) != len(lines) {
-		return lines
+	if len(painted) != len(ls) {
+		return ls
 	}
 
 	return painted
