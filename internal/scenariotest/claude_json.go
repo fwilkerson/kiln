@@ -95,28 +95,19 @@ func marshalJSON(v any) ([]byte, error) {
 
 func parseObject(raw []byte) (jsonObject, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
+	notObject := fmt.Errorf("%s is not a JSON object", raw)
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
-		return nil, fmt.Errorf("%s is not a JSON object", raw)
+		return nil, notObject
 	}
 
 	obj := jsonObject{}
 	for dec.More() {
-		tok, err := dec.Token()
+		f, err := readField(dec, notObject)
 		if err != nil {
 			return nil, err
 		}
 
-		key, ok := tok.(string)
-		if !ok {
-			return nil, fmt.Errorf("%s is not a JSON object", raw)
-		}
-
-		var value json.RawMessage
-		if err := dec.Decode(&value); err != nil {
-			return nil, err
-		}
-
-		obj = append(obj, jsonField{key, value})
+		obj = append(obj, f)
 	}
 
 	if _, err := dec.Token(); err != nil {
@@ -128,6 +119,23 @@ func parseObject(raw []byte) (jsonObject, error) {
 	}
 
 	return obj, nil
+}
+
+// readField reads an object's next key and value. It answers notObject for a key that is not a string.
+func readField(dec *json.Decoder, notObject error) (jsonField, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return jsonField{}, err
+	}
+
+	key, ok := tok.(string)
+	if !ok {
+		return jsonField{}, notObject
+	}
+
+	var value json.RawMessage
+	err = dec.Decode(&value)
+	return jsonField{key, value}, err
 }
 
 func readFile(path string) ([]byte, error) {
