@@ -331,7 +331,7 @@ func (m model) liveFacts(r *Run, c *claude.Recounted) []string {
 		said += ", in no call"
 	}
 
-	facts := []string{said, fmt.Sprintf("%d refused", tally(c.Actions, refused))}
+	facts := []string{said, fmt.Sprintf("%d refused", tally(c.Actions, isRefused))}
 	if ctx := c.Totals.Context; ctx != nil {
 		facts = append(facts, "context "+tokens(ctx.Last))
 	}
@@ -824,7 +824,7 @@ func streamFacts(c *claude.Recounted) []string {
 	}
 
 	calls := tally(c.Actions, func(a claude.Action) bool { return a.Tool != "" })
-	return append(facts, plural(calls, "call"), fmt.Sprintf("%d refused", tally(c.Actions, refused)))
+	return append(facts, plural(calls, "call"), fmt.Sprintf("%d refused", tally(c.Actions, isRefused)))
 }
 
 // tally counts the actions that is reports true for.
@@ -839,7 +839,7 @@ func tally(actions []claude.Action, is func(claude.Action) bool) int {
 	return n
 }
 
-func refused(a claude.Action) bool { return a.Refused }
+func isRefused(a claude.Action) bool { return a.Refused }
 
 // action is one call of a run, or one thing it said. Its input takes half the room the other columns leave.
 func (m model) action(a claude.Action, r *Run) string {

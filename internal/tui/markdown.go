@@ -15,7 +15,7 @@ import (
 // wider than that wraps under its own text. A table's row or a fenced line never wraps, since it would no longer
 // line up. The screen cuts it at its edge, and h and l scroll it.
 func markdown(text string, width int) []string {
-	source := lines(strings.Split(strings.ReplaceAll(strings.TrimRight(text, "\n"), "\t", "    "), "\n"))
+	source := sourceLines(strings.Split(strings.ReplaceAll(strings.TrimRight(text, "\n"), "\t", "    "), "\n"))
 	colored := source.highlight()
 	var drawn []string
 	fenced := false
@@ -37,8 +37,8 @@ func markdown(text string, width int) []string {
 	return drawn
 }
 
-// lines are lines of Markdown source, or of the code in one of its fences.
-type lines []string
+// sourceLines are lines of Markdown source, or of the code in one of its fences.
+type sourceLines []string
 
 // indent is a line's indent, with its list item's marker if it has one.
 var indent = regexp.MustCompile(`^ *(?:(?:[-*+]|\d+[.)]) +)?`)
@@ -51,7 +51,7 @@ func isFence(trimmed string) bool {
 // highlight colors each line of Markdown source by its syntax, and the code in each fence by the fence's language.
 // It colors prose a line at a time. So no lexer state, such as an unclosed HTML tag, reaches the next line. A fence
 // inside a list item counts too: its code is colored without its indent. Each line it answers has its colors closed.
-func (source lines) highlight() []string {
+func (source sourceLines) highlight() []string {
 	markdown := lexers.Get("markdown")
 	var colored []string
 	for i := 0; i < len(source); i++ {
@@ -73,7 +73,7 @@ func (source lines) highlight() []string {
 }
 
 // closing is the index of the line that closes the fence opened at open, or len(source) when none does.
-func (source lines) closing(open int) int {
+func (source sourceLines) closing(open int) int {
 	end := open + 1
 	for end < len(source) && !isFence(strings.TrimSpace(source[end])) {
 		end++
@@ -84,14 +84,14 @@ func (source lines) closing(open int) int {
 
 // fencedCode colors the code inside a fence by the language its opening line names. It colors the code without the
 // fence's indent, then puts the indent back.
-func fencedCode(fence string, code lines) []string {
+func fencedCode(fence string, code sourceLines) []string {
 	pad := fence[:len(fence)-len(strings.TrimLeft(fence, " "))]
 	var lexer chroma.Lexer
 	if lang := strings.Fields(strings.TrimLeft(strings.TrimSpace(fence), "`~")); len(lang) > 0 {
 		lexer = lexers.Get(lang[0])
 	}
 
-	unindented := make(lines, len(code))
+	unindented := make(sourceLines, len(code))
 	for i, line := range code {
 		unindented[i] = strings.TrimPrefix(line, pad)
 	}
@@ -106,7 +106,7 @@ func fencedCode(fence string, code lines) []string {
 
 // paint colors the lines as lexer reads them, one answer for each line. With no lexer, or one that fails, they stay
 // plain.
-func (ls lines) paint(lexer chroma.Lexer) []string {
+func (ls sourceLines) paint(lexer chroma.Lexer) []string {
 	if lexer == nil || len(ls) == 0 {
 		return ls
 	}
