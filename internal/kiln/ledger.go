@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -213,57 +212,82 @@ func (r *Repo) recount(ctx context.Context, out io.Writer) {
 		return
 	}
 
+	lost := lostRuns(entries)
+	for _, start := range lost.starts {
+		if err := r.store.write(r.lostEnd(ctx, start, lost.specs[start.Build], say)); err != nil {
+			say("kiln could not write its ledger: %v", err)
+		}
+	}
+}
+
+// lost is the start lines of the runs that have no end line. They are in the order their sessions first ran. It keeps
+// each build's spec.
+type lost struct {
+	starts []entry
+	specs  map[string]Spec
+}
+
+func lostRuns(entries []entry) lost {
 	open := map[string]entry{}
 	var order []string
-	specs := map[string]Spec{}
+	l := lost{specs: map[string]Spec{}}
 	for _, e := range entries {
 		switch e.Kind {
 		case builtKind:
-			specs[e.Build] = e.Spec
+			l.specs[e.Build] = e.Spec
 		case startKind:
-			if !slices.Contains(order, e.Session) {
-				order = append(order, e.Session)
-			}
-
+			order = append(order, e.Session)
 			open[e.Session] = e
 		case endKind:
 			delete(open, e.Session)
 		}
 	}
 
+	l.starts = inOrder(order, open)
+	return l
+}
+
+// inOrder is the start lines open holds, by session, in the order of order. A session that ran more than once is in
+// order more than once. Its start goes in its first place.
+func inOrder(order []string, open map[string]entry) []entry {
+	var starts []entry
 	for _, session := range order {
-		start, ok := open[session]
-		if !ok {
-			continue
-		}
-
-		counted, err := r.claude.Recount(session, start.Streamed, -1)
-		if err != nil {
-			say("kiln could not read session %s's stream: %v", session, err)
-		}
-
-		ended := endedNoResult
-		if counted.Totals.Turns != nil {
-			ended = endedResult
-		}
-
-		streamed, _ := r.claude.Streamed(session)
-		e := entry{Kind: endKind, Build: start.Build, At: counted.Written, Session: session, Ended: ended,
-			Totals: &counted.Totals, Streamed: streamed}
-		if counted.Written.Before(start.At) {
-			e.At = start.At
-		}
-
-		if start.Role == auditRole && start.Read != "" {
-			if e.Changed, err = r.undo(ctx, r.auditTree(specs[start.Build]), start.Read); err != nil {
-				say("kiln could not read what the audit of %s changed: %v", specs[start.Build], err)
-			}
-		}
-
-		if err := r.store.write(e); err != nil {
-			say("kiln could not write its ledger: %v", err)
+		if start, ok := open[session]; ok {
+			starts = append(starts, start)
+			delete(open, session)
 		}
 	}
+
+	return starts
+}
+
+// lostEnd is the end line of the run whose start line is start, totaled from its session's stream. spec is its
+// build's spec.
+func (r *Repo) lostEnd(ctx context.Context, start entry, spec Spec, say func(format string, args ...any)) entry {
+	counted, err := r.claude.Recount(start.Session, start.Streamed, -1)
+	if err != nil {
+		say("kiln could not read session %s's stream: %v", start.Session, err)
+	}
+
+	ended := endedNoResult
+	if counted.Totals.Turns != nil {
+		ended = endedResult
+	}
+
+	streamed, _ := r.claude.Streamed(start.Session)
+	e := entry{Kind: endKind, Build: start.Build, At: counted.Written, Session: start.Session, Ended: ended,
+		Totals: &counted.Totals, Streamed: streamed}
+	if counted.Written.Before(start.At) {
+		e.At = start.At
+	}
+
+	if start.Role == auditRole && start.Read != "" {
+		if e.Changed, err = r.undo(ctx, r.auditTree(spec), start.Read); err != nil {
+			say("kiln could not read what the audit of %s changed: %v", spec, err)
+		}
+	}
+
+	return e
 }
 
 // how names how a session run ended, for its end line.
