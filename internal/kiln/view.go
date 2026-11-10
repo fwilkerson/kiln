@@ -17,7 +17,7 @@ import (
 // name, or on home when name is "". It reads what kiln run writes, takes no lock, and writes nothing. It refuses an
 // out that is not a terminal.
 func (r *Repo) TUI(ctx context.Context, name string, in, out *os.File) error {
-	return tui.Show(ctx, view{r}, name, in, out)
+	return tui.Show(ctx, view{r}, name, tui.Terminal{In: in, Out: out})
 }
 
 // view reads the book, the ledger and the sessions' streams for the TUI.
