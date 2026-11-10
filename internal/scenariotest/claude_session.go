@@ -21,12 +21,14 @@ const (
 )
 
 type claudeSession struct {
-	work       string
-	flags      claudeFlags
-	call       ClaudeCall
-	calls      claudeCalls
-	prompt     []byte
-	record     string
+	work   string
+	flags  claudeFlags
+	call   ClaudeCall
+	calls  claudeCalls
+	prompt []byte
+	record string
+	// taken is what Claude Code says to a session ID another call holds, or "".
+	taken      string
 	transcript string
 	promptID   string
 	hooks      []claudeHookGroup
@@ -83,7 +85,7 @@ func admitClaude(args []string) (*claudeSession, error) {
 		return nil, errNoWork
 	}
 
-	flags, flagErr := parseClaudeFlags(args)
+	flags := parseClaudeFlags(args)
 	call, err := flags.newCall(args)
 	if err != nil {
 		return nil, fmt.Errorf("scripted claude: %w", err)
@@ -96,12 +98,11 @@ func admitClaude(args []string) (*claudeSession, error) {
 
 	s := &claudeSession{work: work, flags: flags, call: call, calls: claudeCalls{filepath.Join(work, ClaudeCallsDir)},
 		prompt: prompt, promptID: newUUID()}
-	refused, err := s.keepRecord()
-	if err != nil {
+	if err := s.keepRecord(); err != nil {
 		return nil, fmt.Errorf("scripted claude: recording the call: %w", err)
 	}
 
-	if msg := s.refusal(flagErr, refused); msg != "" {
+	if msg := s.refusal(); msg != "" {
 		return nil, errors.New(msg)
 	}
 
@@ -109,7 +110,7 @@ func admitClaude(args []string) (*claudeSession, error) {
 }
 
 // newCall is the call that flags and args make, from the working directory, before the call is numbered.
-func (f claudeFlags) newCall(args []string) (ClaudeCall, error) {
+func (f *claudeFlags) newCall(args []string) (ClaudeCall, error) {
 	dir, err := os.Getwd()
 	call := ClaudeCall{SessionID: cmp.Or(f.sessionID, newUUID()), Dir: dir, Args: args, Role: f.role()}
 	if f.resume != "" {
@@ -121,22 +122,18 @@ func (f claudeFlags) newCall(args []string) (ClaudeCall, error) {
 
 var claudeUUID = regexp.MustCompile(`^(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-// refusal is what Claude Code says to a call it refuses, or "" for one it takes. refused is what s.calls said.
-func (s *claudeSession) refusal(flagErr error, refused string) string {
-	if flagErr != nil {
-		return flagErr.Error()
-	}
-
+// refusal is what Claude Code says to a call it refuses, or "" for one it takes.
+func (s *claudeSession) refusal() string {
 	prompt := ""
 	if len(strings.TrimSpace(string(s.prompt))) == 0 {
 		prompt = "Error: Input must be provided either through stdin or as a prompt argument when using --print"
 	}
 
-	return cmp.Or(s.flags.sessionRefusal(), refused, s.flags.formatRefusal(), prompt)
+	return cmp.Or(s.flags.refusal, s.flags.sessionRefusal(), s.taken, s.flags.formatRefusal(), prompt)
 }
 
 // sessionRefusal is what Claude Code says to a session ID it refuses, or "".
-func (f claudeFlags) sessionRefusal() string {
+func (f *claudeFlags) sessionRefusal() string {
 	switch {
 	case f.sessionID == "":
 		return ""
@@ -150,7 +147,7 @@ func (f claudeFlags) sessionRefusal() string {
 }
 
 // formatRefusal is what the scripted claude says to an output format it does not write, or "".
-func (f claudeFlags) formatRefusal() string {
+func (f *claudeFlags) formatRefusal() string {
 	switch {
 	case f.outputFormat == "stream-json" && !f.verbose:
 		return "Error: When using --print, --output-format=stream-json requires --verbose"

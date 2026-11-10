@@ -467,7 +467,11 @@ func (m model) recentRows(in area) []row {
 
 // outcome is how a build ended, in its color and beside its glyph. A build that has not ended shows where it stands.
 func (m model) outcome(ref buildRef) string {
-	said := m.build(ref).Outcome
+	var said string
+	if b := m.build(ref); b != nil {
+		said = b.Outcome
+	}
+
 	if said == "" {
 		said = "not ended"
 		if s := m.spec(ref.spec); ref.build == len(s.Builds)-1 {

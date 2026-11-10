@@ -106,29 +106,29 @@ func fencedCode(fence string, code sourceLines) []string {
 
 // paint colors the lines as lexer reads them, one answer for each line. With no lexer, or one that fails, they stay
 // plain.
-func (ls sourceLines) paint(lexer chroma.Lexer) []string {
-	if lexer == nil || len(ls) == 0 {
-		return ls
+func (source sourceLines) paint(lexer chroma.Lexer) []string {
+	if lexer == nil || len(source) == 0 {
+		return source
 	}
 
 	// Markdown's lexer reads a heading only up to its newline, so the last line needs one too.
-	tokens, err := lexer.Tokenise(nil, strings.Join(ls, "\n")+"\n")
+	tokens, err := lexer.Tokenise(nil, strings.Join(source, "\n")+"\n")
 	if err != nil {
-		return ls
+		return source
 	}
 
 	var painted []string
 	for _, line := range chroma.SplitTokensIntoLines(tokens.Tokens()) {
 		var b strings.Builder
 		if formatters.TTY256.Format(&b, markdownStyle, chroma.Literator(line...)) != nil {
-			return ls
+			return source
 		}
 
 		painted = append(painted, strings.ReplaceAll(b.String(), "\n", ""))
 	}
 
-	if len(painted) != len(ls) {
-		return ls
+	if len(painted) != len(source) {
+		return source
 	}
 
 	return painted

@@ -470,22 +470,22 @@ func (r *Repo) Status(_ context.Context, out io.Writer) error {
 	return nil
 }
 
-// status shows where the spec of s stands, as kiln status does.
-func (s *record) status(out io.Writer) {
-	fmt.Fprintf(out, "%s: %s", s.Name, shownState(s))
+// status shows where the spec of r stands, as kiln status does.
+func (r *record) status(out io.Writer) {
+	fmt.Fprintf(out, "%s: %s", r.Name, shownState(r))
 	switch {
-	case s.State == building && !s.Paused.IsZero():
-		fmt.Fprintf(out, ", paused for a usage limit until %s", s.Paused.Local().Format("15:04:05 on Jan 2"))
-	case s.State == amended:
-		fmt.Fprintf(out, ", %s", s.Name.branch())
+	case r.State == building && !r.Paused.IsZero():
+		fmt.Fprintf(out, ", paused for a usage limit until %s", r.Paused.Local().Format("15:04:05 on Jan 2"))
+	case r.State == amended:
+		fmt.Fprintf(out, ", %s", r.Name.branch())
 	}
 
 	fmt.Fprintln(out)
-	if len(s.FailingAtMain) > 0 {
-		fmt.Fprintf(out, "  failing at main before the build: %s\n", strings.Join(s.FailingAtMain, ", "))
+	if len(r.FailingAtMain) > 0 {
+		fmt.Fprintf(out, "  failing at main before the build: %s\n", strings.Join(r.FailingAtMain, ", "))
 	}
 
-	for _, text := range []string{s.Why, s.Amendments} {
+	for _, text := range []string{r.Why, r.Amendments} {
 		if text != "" {
 			fmt.Fprintln(out, indent(text))
 		}

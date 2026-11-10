@@ -23,6 +23,8 @@ type claudeFlags struct {
 	settingSources claudeList
 	settings       string
 	outputFormat   string
+	// refusal is what Claude Code says to the arguments it could not parse, or "".
+	refusal string
 }
 
 // claudeList is a flag's list of names. Given tells an empty list from a flag the call left out.
@@ -41,13 +43,14 @@ var claudeValueFlags = map[string]bool{
 	"--agents": true, "--agent": true,
 }
 
-func parseClaudeFlags(args []string) (claudeFlags, error) {
+func parseClaudeFlags(args []string) claudeFlags {
 	f := claudeFlags{effort: "medium", permissionMode: "default", outputFormat: "text"}
 	for i := 0; i < len(args); i++ {
 		name, value, inline := cutFlag(args[i])
 		if claudeValueFlags[name] && !inline {
 			if i++; i == len(args) {
-				return f, fmt.Errorf("error: option '%s' argument missing", name)
+				f.refusal = fmt.Sprintf("error: option '%s' argument missing", name)
+				return f
 			}
 
 			value = args[i]
@@ -56,7 +59,7 @@ func parseClaudeFlags(args []string) (claudeFlags, error) {
 		f.set(name, value)
 	}
 
-	return f, nil
+	return f
 }
 
 // cutFlag splits an argument such as --name=value. Only a flag with two hyphens takes its value inline.
@@ -92,7 +95,7 @@ func (f *claudeFlags) set(name, value string) {
 func listSeparator(r rune) bool { return r == ',' || r == ' ' }
 
 // role names a call's role by the file its system prompt was appended from. kiln names the file for the role.
-func (f claudeFlags) role() string {
+func (f *claudeFlags) role() string {
 	if f.roleFile == "" {
 		return "none"
 	}
@@ -230,25 +233,26 @@ func (c claudeCalls) open(call ClaudeCall) (refused string, err error) {
 	return refused, err
 }
 
-// keepRecord numbers the call and writes its record. It answers what Claude Code says to a session ID it refuses.
-func (s *claudeSession) keepRecord() (refused string, err error) {
-	s.record, refused, err = s.calls.add(&s.call)
+// keepRecord numbers the call and writes its record. It keeps in s.taken what Claude Code says to a session ID in use.
+func (s *claudeSession) keepRecord() error {
+	var err error
+	s.record, s.taken, err = s.calls.add(&s.call)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	files, err := s.recordFiles()
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(s.record, name), content, 0o644); err != nil {
-			return "", err
+			return err
 		}
 	}
 
-	return refused, nil
+	return nil
 }
 
 // recordFiles holds the call's arguments, one a line, its prompt, and the file --settings names. A missing file is

@@ -87,7 +87,7 @@ func (s *claudeSession) settingsPaths() []string {
 }
 
 // givenSettings reads the settings --settings gives, as JSON or as a file's path.
-func (f claudeFlags) givenSettings() ([][]byte, error) {
+func (f *claudeFlags) givenSettings() ([][]byte, error) {
 	switch {
 	case f.settings == "":
 		return nil, nil
