@@ -313,14 +313,7 @@ func (m model) liveFacts(r *Run, c *claude.Recounted) []string {
 		said += ", in no call"
 	}
 
-	refused := 0
-	for _, a := range c.Actions {
-		if a.Refused {
-			refused++
-		}
-	}
-
-	facts := []string{said, fmt.Sprintf("%d refused", refused)}
+	facts := []string{said, fmt.Sprintf("%d refused", tally(c.Actions, refused))}
 	if ctx := c.Totals.Context; ctx != nil {
 		facts = append(facts, "context "+tokens(ctx.Last))
 	}
@@ -334,63 +327,88 @@ const idleWarned = time.Minute
 // trendRows lays the trend out in w cells. A narrow terminal gets short labels, then loses the sparklines, before it
 // cuts the previous window's median.
 func (m model) trendRows(w int) []row {
-	recent, previous := trend(m.specs)
-	const fixed = 2 + 8 + 21 + 3 // the mark, the median, "  previous 10: $99.99", and the spaces between
-	long, sparked := w >= 24+fixed+1+window+1, w >= 12+fixed+1+window+1
-	widths := []int{12, 2, -8, window}
-	if long {
-		widths[0] = 24
-	}
-
-	if !sparked {
-		widths = widths[:3]
-	}
-
-	head := cols(widths[:3], "", "", "median")
-	if sparked {
-		head += " oldest → newest"
-	}
-
-	rows := []row{{text: dim.Render(head)}}
+	t := layTrend(w)
+	t.recent, t.previous = trend(m.specs)
+	rows := []row{{text: dim.Render(t.head())}}
 	for _, ms := range measures {
-		median, known := ms.median(recent)
-		shown, mark := "—", ""
-		if known > 0 {
-			shown = ms.shown(median)
-		}
-
-		switch ms.change(recent, previous) {
-		case 1:
-			mark, shown = red.Render("✗"), red.Render(shown)
-		case -1:
-			mark, shown = green.Render("✓"), green.Render(shown)
-		}
-
-		before, knownBefore := ms.median(previous)
-		was := "—"
-		if knownBefore > 0 {
-			was = ms.shown(before)
-		}
-
-		label := ms.short
-		if long {
-			label = ms.label
-		}
-
-		cells := []string{label, mark, shown, ms.spark(recent), fmt.Sprintf(" previous %d: %s", len(previous), was)}
-		if !sparked {
-			cells = slices.Delete(cells, 3, 4)
-		}
-
-		text := cols(widths, cells...)
-		if known < len(recent) {
-			text += dim.Render(fmt.Sprintf("  %d of %d", known, len(recent)))
-		}
-
-		rows = append(rows, row{text: text})
+		rows = append(rows, row{text: t.line(ms)})
 	}
 
 	return rows
+}
+
+// trendTable is the trend's columns in a width, with the builds whose numbers it shows. A long table labels each
+// number in full, and a sparked one draws its sparkline.
+type trendTable struct {
+	recent, previous []*Build
+	widths           []int
+	long, sparked    bool
+}
+
+// layTrend fits the trend's columns to w cells.
+func layTrend(w int) trendTable {
+	const fixed = 2 + 8 + 21 + 3 // the mark, the median, "  previous 10: $99.99", and the spaces between
+	t := trendTable{widths: []int{12, 2, -8, window}, long: w >= 24+fixed+1+window+1,
+		sparked: w >= 12+fixed+1+window+1}
+	if t.long {
+		t.widths[0] = 24
+	}
+
+	if !t.sparked {
+		t.widths = t.widths[:3]
+	}
+
+	return t
+}
+
+// head labels the trend's columns.
+func (t trendTable) head() string {
+	head := cols(t.widths[:3], "", "", "median")
+	if t.sparked {
+		head += " oldest → newest"
+	}
+
+	return head
+}
+
+// line is one measure's row of the trend. A median worse than before is red, and a better one green.
+func (t trendTable) line(ms measure) string {
+	shown, known := ms.shownMedian(t.recent)
+	was, _ := ms.shownMedian(t.previous)
+	mark := ""
+	switch ms.change(t.recent, t.previous) {
+	case 1:
+		mark, shown = red.Render("✗"), red.Render(shown)
+	case -1:
+		mark, shown = green.Render("✓"), green.Render(shown)
+	}
+
+	label := ms.short
+	if t.long {
+		label = ms.label
+	}
+
+	cells := []string{label, mark, shown, ms.spark(t.recent), fmt.Sprintf(" previous %d: %s", len(t.previous), was)}
+	if !t.sparked {
+		cells = slices.Delete(cells, 3, 4)
+	}
+
+	text := cols(t.widths, cells...)
+	if known < len(t.recent) {
+		text += dim.Render(fmt.Sprintf("  %d of %d", known, len(t.recent)))
+	}
+
+	return text
+}
+
+// shownMedian is the median of m over the builds that know it, as shown, and how many do. It is — when none does.
+func (m measure) shownMedian(builds []*Build) (string, int) {
+	median, known := m.median(builds)
+	if known == 0 {
+		return "—", 0
+	}
+
+	return m.shown(median), known
 }
 
 // recentRows lists every build, newest first, in w cells. A narrow terminal drops the date before the cost.
@@ -553,8 +571,17 @@ func (m model) buildPage(s *screen) (head, body []row, sel int) {
 		{},
 		{text: dim.Render(cols(m.runCols(), "", "run", "", "took", "turns", "cost", "failed", "context"))},
 	}
-	sel = -1
-	n := 0
+	body, sel = m.stepRows(s, b)
+	if b.Outcome != "" {
+		body = append(body, row{text: cols(m.runCols()[:1], "", m.outcome(s.spec, b))})
+	}
+
+	return head, append(body, causes(b)...), sel
+}
+
+// stepRows are a build's runs and gates, in the order they ran, and the line of the selected run.
+func (m model) stepRows(s *screen, b *Build) (body []row, sel int) {
+	sel, n := -1, 0
 	for _, step := range b.Steps {
 		switch step := step.(type) {
 		case *Run:
@@ -563,34 +590,42 @@ func (m model) buildPage(s *screen) (head, body []row, sel int) {
 			}
 
 			body = append(body, row{pick(m.runRow(n, step), n == s.sel), target{toRun, n}})
+			body = append(body, runNotes(step)...)
 			n++
-			if step.Lost {
-				body = append(body, row{text: "    " + yellow.Render("! kiln stopped mid-run")})
-			}
-
-			if len(step.Changed) > 0 {
-				body = append(body, row{text: "    " + red.Render("✗ changed the tree: "+
-					strings.Join(step.Changed, ", "))})
-			}
 		case *Gate:
-			verdict := red.Render("✗ failed")
-			if step.Passed {
-				verdict = green.Render("✓ passed")
-			}
-
-			if step.Landing {
-				verdict += " · landing"
-			}
-
-			body = append(body, row{text: cols(m.runCols(), "", "gate", verdict, span(step.End.Sub(step.Start)))})
+			body = append(body, row{text: cols(m.runCols(), "", "gate", verdict(step), span(step.End.Sub(step.Start)))})
 		}
 	}
 
-	if b.Outcome != "" {
-		body = append(body, row{text: cols(m.runCols()[:1], "", m.outcome(s.spec, b))})
+	return body, sel
+}
+
+// runNotes say, below a run's row, that kiln stopped mid-run, and which paths it changed in the build's tree.
+func runNotes(r *Run) []row {
+	var notes []row
+	if r.Lost {
+		notes = append(notes, row{text: "    " + yellow.Render("! kiln stopped mid-run")})
 	}
 
-	return head, append(body, causes(b)...), sel
+	if len(r.Changed) > 0 {
+		notes = append(notes, row{text: "    " + red.Render("✗ changed the tree: "+strings.Join(r.Changed, ", "))})
+	}
+
+	return notes
+}
+
+// verdict says whether a gate passed, and whether it was the landing's.
+func verdict(g *Gate) string {
+	said := red.Render("✗ failed")
+	if g.Passed {
+		said = green.Render("✓ passed")
+	}
+
+	if g.Landing {
+		said += " · landing"
+	}
+
+	return said
 }
 
 // runCols are the widths of a build's columns. A narrow terminal narrows why each run started, down to 16 cells.
@@ -719,56 +754,75 @@ func (m model) runPage(s *screen) (head, body []row, sel int) {
 
 // runState is how a run stands: how long it ran, how long since its session wrote, and its numbers.
 func (m model) runState(r *Run, c *claude.Recounted) string {
-	var facts []string
-	switch {
-	case r.running():
-		facts = append(facts, yellow.Render("▶ running "+long(m.now.Sub(r.Start))))
-		if c != nil {
-			idle := m.now.Sub(c.Written)
-			said := "idle " + clock(idle)
-			if idle > idleWarned && !slices.ContainsFunc(c.Actions, func(a claude.Action) bool { return a.Open }) {
-				said = yellow.Render(said)
-			}
-
-			facts = append(facts, said)
-		}
-	case r.Lost:
-		facts = append(facts, yellow.Render("! kiln stopped mid-run"))
-	default:
-		facts = append(facts, "took "+span(r.End.Sub(r.Start)))
-	}
-
+	facts := m.ran(r, c)
 	if c != nil {
-		calls, refused := 0, 0
-		for _, a := range c.Actions {
-			if a.Tool != "" {
-				calls++
-			}
-
-			if a.Refused {
-				refused++
-			}
-		}
-
-		if ctx := c.Totals.Context; ctx != nil {
-			facts = append(facts, "context "+tokens(ctx.Last))
-		}
-
-		facts = append(facts, plural(calls, "call"), fmt.Sprintf("%d refused", refused))
+		facts = append(facts, streamFacts(c)...)
 	}
 
-	turns := "turns ?"
+	turns, cost := "turns ?", "cost ?"
 	if r.Totals.Turns != nil {
 		turns = plural(*r.Totals.Turns, "turn")
 	}
 
-	cost := "cost ?"
 	if r.Totals.CostUSD != nil {
 		cost = fmt.Sprintf("$%.2f", *r.Totals.CostUSD)
 	}
 
 	return strings.Join(append(facts, turns, cost), " · ")
 }
+
+// ran is how long a run ran, or how long it has run and how long since its session wrote.
+func (m model) ran(r *Run, c *claude.Recounted) []string {
+	switch {
+	case r.running():
+		facts := []string{yellow.Render("▶ running " + long(m.now.Sub(r.Start)))}
+		if c != nil {
+			facts = append(facts, m.idle(c))
+		}
+
+		return facts
+	case r.Lost:
+		return []string{yellow.Render("! kiln stopped mid-run")}
+	}
+
+	return []string{"took " + span(r.End.Sub(r.Start))}
+}
+
+// idle is how long since the session wrote. Past idleWarned with no call open, it is yellow.
+func (m model) idle(c *claude.Recounted) string {
+	idle := m.now.Sub(c.Written)
+	said := "idle " + clock(idle)
+	if idle > idleWarned && !slices.ContainsFunc(c.Actions, func(a claude.Action) bool { return a.Open }) {
+		said = yellow.Render(said)
+	}
+
+	return said
+}
+
+// streamFacts are what a run's stream counts: its context, its calls and its refusals.
+func streamFacts(c *claude.Recounted) []string {
+	var facts []string
+	if ctx := c.Totals.Context; ctx != nil {
+		facts = append(facts, "context "+tokens(ctx.Last))
+	}
+
+	calls := tally(c.Actions, func(a claude.Action) bool { return a.Tool != "" })
+	return append(facts, plural(calls, "call"), fmt.Sprintf("%d refused", tally(c.Actions, refused)))
+}
+
+// tally counts the actions that is reports true for.
+func tally(actions []claude.Action, is func(claude.Action) bool) int {
+	n := 0
+	for _, a := range actions {
+		if is(a) {
+			n++
+		}
+	}
+
+	return n
+}
+
+func refused(a claude.Action) bool { return a.Refused }
 
 // action is one call of a run, or one thing it said.
 func (m model) action(a claude.Action, r *Run, inputW int) string {
