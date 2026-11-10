@@ -54,15 +54,15 @@ type hookCall struct {
 }
 
 // Hook answers the PreToolUse call on in, for a session building spec in the worktree at place. It refuses a write
-// outside place, and one to a path [guarded] names. It writes its refusal to out, as Claude Code reads it. It reads no
-// shell command: the gate's own check finds a guarded path a command changed.
+// outside place, and one to a path that guard.guarded names. It writes its refusal to out, as Claude Code reads it.
+// It reads no shell command: the gate's own check finds a guarded path a command changed.
 func Hook(in io.Reader, out io.Writer, spec Spec, place git.Worktree) error {
 	var c hookCall
 	if err := json.NewDecoder(in).Decode(&c); err != nil {
 		return fmt.Errorf("the hook's input: %w", err)
 	}
 
-	why := guard{spec: spec, place: place}.refusal(c)
+	why := guard{spec: spec, place: place}.denial(c)
 	if why == "" {
 		return nil
 	}
@@ -74,7 +74,8 @@ func Hook(in io.Reader, out io.Writer, spec Spec, place git.Worktree) error {
 	}})
 }
 
-func (g guard) refusal(c hookCall) string {
+// denial says why the hook denies the call c, or "" if it allows it.
+func (g guard) denial(c hookCall) string {
 	target := cmpOr(c.Input.File, c.Input.Notebook)
 	if target == "" {
 		return c.Tool + " names no file, so the hook cannot tell where it writes"

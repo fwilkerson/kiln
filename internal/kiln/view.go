@@ -100,12 +100,12 @@ func (v view) Recount(r *tui.Run) (claude.Recounted, error) {
 // Text reads the spec as the build's approval held it. A spec main no longer holds shows as the build saw it. Its
 // amendments follow it.
 func (v view) Text(ctx context.Context, b *tui.Build) (string, error) {
-	spec, found, err := v.r.git.Show(ctx, git.Rev(b.Approved), Spec(b.Spec).path())
+	spec, found, err := v.r.git.Show(ctx, git.Rev(b.Approved), Spec(b.Spec).file())
 	switch {
 	case err != nil:
 		return "", err
 	case !found:
-		return "", fmt.Errorf("the commit %s holds no %s", short(git.Rev(b.Approved)), Spec(b.Spec).path())
+		return "", fmt.Errorf("the commit %s holds no %s", short(git.Rev(b.Approved)), Spec(b.Spec).file())
 	case b.Amendments == "":
 		return string(spec), nil
 	}
@@ -144,7 +144,7 @@ func (s *buildStats) shown() *tui.Build {
 	gates := 0
 	for _, r := range s.runs {
 		before := max(gates, min(r.gates, len(s.gates)))
-		b.Steps = append(append(b.Steps, gateSteps(s.gates[gates:before])...), r.shown())
+		b.Steps = append(append(b.Steps, gateSteps(s.gates[gates:before])...), r.tuiRun())
 		gates = before
 	}
 
@@ -152,8 +152,8 @@ func (s *buildStats) shown() *tui.Build {
 	return b
 }
 
-// shown is the run as the TUI shows it. A run with no end line reads to its stream's end.
-func (r run) shown() *tui.Run {
+// tuiRun is the run as the TUI shows it. A run with no end line reads to its stream's end.
+func (r run) tuiRun() *tui.Run {
 	shown := &tui.Run{Role: r.role, Session: r.session, Why: r.why.shown(), Round: r.why.Round,
 		Rounds: r.why.Rounds, Start: r.start, End: r.end, Totals: r.totals, Changed: r.changed, From: r.from,
 		To: r.to}

@@ -264,7 +264,7 @@ func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
 // Spec is a spec's name, such as checkout-flow: specs/checkout-flow.md holds the spec.
 type Spec string
 
-func (s Spec) path() string      { return "specs/" + string(s) + ".md" }
+func (s Spec) file() string      { return "specs/" + string(s) + ".md" }
 func (s Spec) amendPath() string { return "specs/" + string(s) + amendSuffix }
 
 // branch is the branch the spec's build works on.
@@ -319,15 +319,15 @@ func (r *Repo) approvedSpec(ctx context.Context, main git.Rev, name Spec) ([]byt
 		return nil, fmt.Errorf("%w: %q is not a spec's name, such as checkout-flow", errRefused, name)
 	}
 
-	spec, found, err := r.git.Show(ctx, main, name.path())
+	spec, found, err := r.git.Show(ctx, main, name.file())
 	switch {
 	case err != nil:
 		return nil, err
 	case !found:
-		return nil, fmt.Errorf("%w: main holds no %s: commit it there first", errRefused, name.path())
+		return nil, fmt.Errorf("%w: main holds no %s: commit it there first", errRefused, name.file())
 	case !approved.Match(spec):
 		return nil, fmt.Errorf("%w: %s is not Approved: finish it with /slice, and commit it, first", errRefused,
-			name.path())
+			name.file())
 	}
 
 	return spec, nil
@@ -336,7 +336,7 @@ func (r *Repo) approvedSpec(ctx context.Context, main git.Rev, name Spec) ([]byt
 // changed answers whether specs/<name>.md at a commit differs from spec.
 func (r *Repo) changed(ctx context.Context, name Spec, spec []byte) func(since git.Rev) (bool, error) {
 	return func(since git.Rev) (bool, error) {
-		old, _, err := r.git.Show(ctx, since, name.path())
+		old, _, err := r.git.Show(ctx, since, name.file())
 		return !bytes.Equal(old, spec), err
 	}
 }
@@ -533,7 +533,7 @@ func (r *Repo) acceptLanded(ctx context.Context, b *build) error {
 		return err
 	}
 
-	landed, back, err := b.land(ctx, "", b.retire, name.path(), name.amendPath())
+	landed, back, err := b.land(ctx, "", b.retire, name.file(), name.amendPath())
 	if err == nil && back.report != "" {
 		err = fmt.Errorf("%w: the gate failed on main as it stands, so %s is not accepted:\n%s", errRefused, name,
 			back.report)

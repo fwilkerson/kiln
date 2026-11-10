@@ -133,8 +133,8 @@ func TestGate(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			readOutputs(tc.tip, tc.main)
 			v := judge(tc.tip, tc.main, tc.refused)
-			got := judgment{v.passed, fmt.Sprint(v.atMain), fmt.Sprint(v.failing), v.report != ""}
-			want := judgment{tc.passed, fmt.Sprint(tc.atMain), fmt.Sprint(tc.failing), !tc.passed}
+			got := judgment{v.passed, fmt.Sprintf("%q", v.atMain), fmt.Sprintf("%q", v.failing), v.report != ""}
+			want := judgment{tc.passed, fmt.Sprintf("%q", tc.atMain), fmt.Sprintf("%q", tc.failing), !tc.passed}
 			if got != want {
 				t.Errorf("got %+v, report %q; want %+v", got, v.report, want)
 			}

@@ -155,7 +155,7 @@ func (r *record) queueRefusal(changed func(since git.Rev) (bool, error)) (string
 	}
 
 	return fmt.Sprintf("it is %s, and %s on main is as it was when its build was queued, so it would build the "+
-		"same work: change the spec, commit it, and queue it", landed, r.Name.path()), nil
+		"same work: change the spec, commit it, and queue it", landed, r.Name.file()), nil
 }
 
 // takeRefusal says why command, kiln accept or kiln reject, refuses the spec of r. It says "" if command takes it.

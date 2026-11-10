@@ -115,7 +115,7 @@ func TestRecountAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if runs := collect(entries)[0].runs; fmt.Sprint(changedBy(runs)) != "[[shot.png]]" {
+	if runs := collect(entries)[0].runs; fmt.Sprintf("%q", changedBy(runs)) != `[["shot.png"]]` {
 		t.Errorf("the lost audit run changed %+v, want [shot.png]", runs)
 	}
 

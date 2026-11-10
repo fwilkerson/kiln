@@ -178,7 +178,7 @@ func (b *build) run(ctx context.Context) error {
 func (b *build) goOn(ctx context.Context) error {
 	b.ledger(ctx)
 	// A landing cut off left the branch where it moved it.
-	if err := b.unlandCutOff(ctx); err != nil {
+	if err := b.unland(ctx); err != nil {
 		return err
 	}
 
@@ -205,15 +205,6 @@ func (b *build) ledger(ctx context.Context) {
 	if fresh || b.rec.Session == "" {
 		b.begin(ctx)
 	}
-}
-
-// unlandCutOff puts the branch back where a landing kiln was cut off in left it, if one was.
-func (b *build) unlandCutOff(ctx context.Context) error {
-	if b.rec.Before == "" {
-		return nil
-	}
-
-	return b.unland(ctx)
 }
 
 // gateWork commits what the session left, gates it, and takes the build on from the verdict, as after does.
@@ -339,7 +330,7 @@ func (b *build) onMain(at git.Rev) error {
 // the spec.
 func (b *build) allowed() []string {
 	if b.rec.Accepted {
-		return []string{b.rec.Name.path(), b.rec.Name.amendPath()}
+		return []string{b.rec.Name.file(), b.rec.Name.amendPath()}
 	}
 
 	return nil
@@ -390,7 +381,7 @@ func (b *build) start(ctx context.Context) error {
 	session := newSession()
 	b.set(func(r *record) { r.Session = session })
 	b.say("building on %s, in %s", b.rec.Name.branch(), b.tree)
-	prompt := fmt.Sprintf(starting, b.rec.Name.path(), short(b.rec.Approved), b.rec.Name.branch())
+	prompt := fmt.Sprintf(starting, b.rec.Name.file(), short(b.rec.Approved), b.rec.Name.branch())
 	_, err = b.talk(ctx, b.launch(false, prompt), reason{Why: whyFirst})
 	return err
 }
@@ -548,7 +539,7 @@ func (b *build) audit(ctx context.Context) (string, error) {
 	l := b.sandboxed(claude.Launch{
 		Role:   auditRole,
 		System: guidance.Audit(),
-		Prompt: fmt.Sprintf(auditing, strings.Join(packages, " "), b.rec.Name.path(), b.rec.Name),
+		Prompt: fmt.Sprintf(auditing, strings.Join(packages, " "), b.rec.Name.file(), b.rec.Name),
 		Dir:    string(b.r.auditTree(b.rec.Name)),
 		Tools:  []string{"Read", "Grep", "Glob", "Bash"},
 	})
@@ -771,8 +762,12 @@ func (b *build) move(ctx context.Context, head, onto git.Rev) (git.Rev, setback,
 		way.Busy, strings.Join(way.Files, ", "))
 }
 
-// unland puts the branch back at the commit it stood at before its landing began.
+// unland puts the branch back at the commit it stood at before its landing began, if a landing began.
 func (b *build) unland(ctx context.Context) error {
+	if b.rec.Before == "" {
+		return nil
+	}
+
 	if err := b.r.git.Reset(ctx, b.tree, b.rec.Before); err != nil {
 		return err
 	}
@@ -830,7 +825,7 @@ func (b *build) foldAmendments(ctx context.Context) (git.Rev, error) {
 		return "", err
 	}
 
-	spec, _, err := b.r.git.Show(ctx, head, name.path())
+	spec, _, err := b.r.git.Show(ctx, head, name.file())
 	if err != nil {
 		return "", err
 	}
@@ -842,10 +837,10 @@ func (b *build) foldAmendments(ctx context.Context) (git.Rev, error) {
 
 	folded, err := foldAmendments(string(spec), string(amendments))
 	if err != nil {
-		return "", fmt.Errorf("%w: %s cannot fold into %s: %w", errRefused, name.amendPath(), name.path(), err)
+		return "", fmt.Errorf("%w: %s cannot fold into %s: %w", errRefused, name.amendPath(), name.file(), err)
 	}
 
-	if err := os.WriteFile(b.path(name.path()), []byte(folded), 0o644); err != nil {
+	if err := os.WriteFile(b.path(name.file()), []byte(folded), 0o644); err != nil {
 		return "", err
 	}
 
@@ -878,11 +873,11 @@ func (b *build) retire(ctx context.Context, held git.Rev) error {
 		return err
 	}
 
-	if err := b.addProduct(fmt.Sprintf("- %s: `git show %s:%s`\n", title, short(held), name.path())); err != nil {
+	if err := b.addProduct(fmt.Sprintf("- %s: `git show %s:%s`\n", title, short(held), name.file())); err != nil {
 		return err
 	}
 
-	for _, p := range []string{name.path(), name.amendPath()} {
+	for _, p := range []string{name.file(), name.amendPath()} {
 		if err := os.Remove(b.path(p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
@@ -894,7 +889,7 @@ func (b *build) retire(ctx context.Context, held git.Rev) error {
 
 // title is the spec's title, from its first line, or its name if that line is no title.
 func (b *build) title() (string, error) {
-	spec, err := os.ReadFile(b.path(b.rec.Name.path()))
+	spec, err := os.ReadFile(b.path(b.rec.Name.file()))
 	if err != nil {
 		return "", err
 	}
@@ -954,7 +949,7 @@ func (b *build) say(format string, args ...any) {
 
 func (b *build) message(what string) string {
 	return fmt.Sprintf("feat(%s): %s\n\nkiln built %s, approved at %s, in session %s.\n", b.rec.Name, what,
-		b.rec.Name.path(), short(b.rec.Approved), b.rec.Session)
+		b.rec.Name.file(), short(b.rec.Approved), b.rec.Session)
 }
 
 // landing is the message of the commit that lands the build. It holds the build's time, cost, turns and failed calls,
