@@ -199,17 +199,10 @@ func footer(k kind, w int) string {
 
 	order := append(slices.DeleteFunc(slices.Clone(foot), func(b key.Binding) bool { return !first(b) }),
 		slices.DeleteFunc(slices.Clone(foot), first)...)
-	kept, used := map[string]bool{}, 0
-	for _, b := range order {
-		named := b.Help().Key + " " + b.Help().Desc
-		if need := ansi.StringWidth(named) + 3*min(1, used); used+need <= w {
-			kept[named], used = true, used+need
-		}
-	}
-
+	kept := fitting(order, w)
 	var named []string
 	for _, b := range foot {
-		if n := b.Help().Key + " " + b.Help().Desc; kept[n] {
+		if n := footName(b); kept[n] {
 			named = append(named, n)
 		}
 	}
@@ -217,40 +210,37 @@ func footer(k kind, w int) string {
 	return strings.Join(named, " · ")
 }
 
+// fitting names the bindings that fit in w cells, taken in order, with 3 cells between each two.
+func fitting(order []key.Binding, w int) map[string]bool {
+	kept, used := map[string]bool{}, 0
+	for _, b := range order {
+		named := footName(b)
+		if need := ansi.StringWidth(named) + 3*min(1, used); used+need <= w {
+			kept[named], used = true, used+need
+		}
+	}
+
+	return kept
+}
+
+// footName is a binding as the footer names it, such as "? keys".
+func footName(b key.Binding) string { return b.Help().Key + " " + b.Help().Desc }
+
 // keyNames shows a key as the key list names it, where its name is not the key list's.
 var keyNames = map[string]string{"up": "↑", "down": "↓", "left": "←", "right": "→", "pgdown": "pgdn"}
 
 // keyList is a box that lists every key the screen of kind k takes, and what each does.
 func (m model) keyList(k kind) *lipgloss.Layer {
-	type line struct{ keys, desc string }
-	var lines []line
+	var lines []keyLine
 	for _, c := range keyMaps[k].commands {
-		keys := slices.Clone(c.Keys())
-		// A letter first, then a key's name, as the footer names a letter.
-		slices.SortStableFunc(keys, func(a, b string) int { return cmp.Compare(len(a), len(b)) })
-		for i, k := range keys {
-			keys[i] = cmp.Or(keyNames[k], k)
-		}
-
-		shown := strings.Join(keys, " ")
-		lines = append(lines, line{shown, c.Help().Desc})
+		lines = append(lines, keyLine{listedKeys(c.Binding), c.Help().Desc})
 	}
 
 	// A list taller than the terminal goes into columns, so the box always fits its height.
 	perColumn := max(1, min(len(lines), m.h-4))
 	var columns []string
 	for chunk := range slices.Chunk(lines, perColumn) {
-		keysW := 0
-		for _, l := range chunk {
-			keysW = max(keysW, ansi.StringWidth(l.keys))
-		}
-
-		var rows []string
-		for _, l := range chunk {
-			rows = append(rows, fmt.Sprintf("%-*s  %s", keysW, l.keys, dim.Render(l.desc)))
-		}
-
-		columns = append(columns, strings.Join(rows, "\n"), "   ")
+		columns = append(columns, column(chunk), "   ")
 	}
 
 	body := []string{bold.Render("keys"), lipgloss.JoinHorizontal(lipgloss.Top, columns[:len(columns)-1]...)}
@@ -264,6 +254,35 @@ func (m model) keyList(k kind) *lipgloss.Layer {
 	x := max(0, (m.w-lipgloss.Width(box))/2)
 	y := max(0, (m.h-lipgloss.Height(box))/2)
 	return lipgloss.NewLayer(box).X(x).Y(y).Z(keyListZ)
+}
+
+// keyLine is one line of the key list: a binding's keys, and what it does.
+type keyLine struct{ keys, desc string }
+
+// listedKeys are a binding's keys as the key list names them. A letter comes first, as the footer names a letter.
+func listedKeys(b key.Binding) string {
+	keys := slices.Clone(b.Keys())
+	slices.SortStableFunc(keys, func(a, b string) int { return cmp.Compare(len(a), len(b)) })
+	for i, k := range keys {
+		keys[i] = cmp.Or(keyNames[k], k)
+	}
+
+	return strings.Join(keys, " ")
+}
+
+// column draws lines as one column of the key list, its keys aligned.
+func column(lines []keyLine) string {
+	keysW := 0
+	for _, l := range lines {
+		keysW = max(keysW, ansi.StringWidth(l.keys))
+	}
+
+	rows := make([]string, len(lines))
+	for i, l := range lines {
+		rows[i] = fmt.Sprintf("%-*s  %s", keysW, l.keys, dim.Render(l.desc))
+	}
+
+	return strings.Join(rows, "\n")
 }
 
 // keyListZ puts the key list above every layer of a screen.
