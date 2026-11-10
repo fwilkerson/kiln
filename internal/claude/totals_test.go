@@ -93,16 +93,7 @@ func TestRecountCalls(t *testing.T) {
 		result("t3", "07", "Exit code 1\n--- FAIL: TestX", true) +
 		use("t4", "08", "Bash", `{"command":"sleep 9"}`)
 
-	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "s"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.WriteFile(filepath.Join(dir, "s", streamFile), []byte(first+second), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	c := New(Config{Sessions: dir})
+	c := streamed(t, "s", first+second)
 	for name, tc := range map[string]struct {
 		from, to int64
 		want     []string
@@ -125,17 +116,7 @@ func TestRecountCalls(t *testing.T) {
 
 			var got []string
 			for _, a := range counted.Actions {
-				said := fmt.Sprintf("%s %s %s", cmp.Or(a.Tool, "said"), a.Input, a.Took)
-				switch {
-				case a.Refused:
-					said += " refused: " + a.Cause
-				case a.Failed:
-					said += " failed: " + a.Cause
-				case a.Open:
-					said += " open"
-				}
-
-				got = append(got, said)
+				got = append(got, describe(a))
 			}
 
 			if strings.Join(got, "\n") != strings.Join(tc.want, "\n") {
@@ -147,4 +128,34 @@ func TestRecountCalls(t *testing.T) {
 			}
 		})
 	}
+}
+
+// streamed returns a Claude whose session holds stream as its stream.
+func streamed(t *testing.T, session, stream string) Claude {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, session), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, session, streamFile), []byte(stream), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return New(Config{Sessions: dir})
+}
+
+// describe is one line for a, as a row of TestRecountCalls states it.
+func describe(a Action) string {
+	said := fmt.Sprintf("%s %s %s", cmp.Or(a.Tool, "said"), a.Input, a.Took)
+	switch {
+	case a.Refused:
+		return said + " refused: " + a.Cause
+	case a.Failed:
+		return said + " failed: " + a.Cause
+	case a.Open:
+		return said + " open"
+	}
+
+	return said
 }

@@ -247,43 +247,60 @@ func (t *tally) line(line []byte) {
 		return
 	}
 
-	at, _ := time.Parse(time.RFC3339Nano, e.Timestamp)
 	switch e.Type {
 	case "assistant", "user":
-		var m message
-		// A user's prompt is a string, not blocks, and holds nothing a tally counts.
-		if json.Unmarshal(e.Message, &m) != nil {
-			return
-		}
-
-		top := e.Parent == nil
-		if e.Type == "assistant" && top && m.ID != "" {
-			t.context(m)
-		}
-
-		for _, b := range m.Content {
-			t.block(b, top, at)
-		}
+		t.message(e)
 	case "result":
-		t.results++
-		t.turns += e.Turns
-		if e.SinceLast != nil {
-			t.priced++
-			for _, usage := range e.SinceLast {
-				t.cost += usage.Cost
-			}
-		}
+		t.result(e)
 	case "rate_limit_event":
-		if w := e.Limit.Windows.SevenDay; w != nil {
-			if t.sevenDay == nil {
-				t.sevenDay = &Use{First: w.Utilization}
-			}
-
-			t.sevenDay.Last = w.Utilization
-		}
+		t.rateLimit(e)
 	case "system":
 		t.system(e)
 	}
+}
+
+func (t *tally) message(e event) {
+	var m message
+	// A user's prompt is a string, not blocks, and holds nothing a tally counts.
+	if json.Unmarshal(e.Message, &m) != nil {
+		return
+	}
+
+	top := e.Parent == nil
+	if top && e.Type == "assistant" {
+		t.context(m)
+	}
+
+	at, _ := time.Parse(time.RFC3339Nano, e.Timestamp)
+	for _, b := range m.Content {
+		t.block(b, top, at)
+	}
+}
+
+func (t *tally) result(e event) {
+	t.results++
+	t.turns += e.Turns
+	if e.SinceLast == nil {
+		return
+	}
+
+	t.priced++
+	for _, usage := range e.SinceLast {
+		t.cost += usage.Cost
+	}
+}
+
+func (t *tally) rateLimit(e event) {
+	w := e.Limit.Windows.SevenDay
+	if w == nil {
+		return
+	}
+
+	if t.sevenDay == nil {
+		t.sevenDay = &Use{First: w.Utilization}
+	}
+
+	t.sevenDay.Last = w.Utilization
 }
 
 func (t *tally) system(e event) {
@@ -317,6 +334,10 @@ func (t *tally) system(e event) {
 }
 
 func (t *tally) context(m message) {
+	if m.ID == "" {
+		return
+	}
+
 	if t.contexts == nil {
 		t.contexts = map[string]int{}
 	}
@@ -331,44 +352,59 @@ func (t *tally) context(m message) {
 func (t *tally) block(b block, top bool, at time.Time) {
 	switch b.Type {
 	case "tool_use":
-		if t.calls == nil {
-			t.calls, t.tools = map[string]*pending{}, map[string]int{}
-		}
-
-		if _, seen := t.calls[b.ID]; seen {
-			return
-		}
-
-		t.calls[b.ID] = &pending{tool: b.Name, input: firstLine(b.Input), top: top, at: at}
-		t.tools[b.Name]++
-		if top {
-			t.act(b.ID, Action{At: at, Tool: b.Name, Input: t.calls[b.ID].input, Open: true})
-		}
+		t.use(b, top, at)
 	case "text":
 		if said, _, _ := strings.Cut(strings.TrimSpace(b.Text), "\n"); top && said != "" {
 			t.actions = append(t.actions, Action{At: at, Input: clip(said)})
 		}
 	case "tool_result":
-		c := t.calls[b.ToolUseID]
-		if b.IsError {
-			t.fail(b, c)
-		}
-
-		t.returned(b, at)
-
-		if c == nil || !c.top || c.at.IsZero() || at.Before(c.at) {
-			return
-		}
-
-		s := span{c.at, at}
-		if c.tool == "Agent" {
-			t.subs = append(t.subs, s)
-			return
-		}
-
-		t.waits = append(t.waits, s)
-		t.slowest = append(t.slowest, Call{Tool: c.tool, Input: c.input, Took: at.Sub(c.at)})
+		t.toolResult(b, at)
 	}
+}
+
+func (t *tally) use(b block, top bool, at time.Time) {
+	if t.calls == nil {
+		t.calls, t.tools = map[string]*pending{}, map[string]int{}
+	}
+
+	if _, seen := t.calls[b.ID]; seen {
+		return
+	}
+
+	t.calls[b.ID] = &pending{tool: b.Name, input: firstLine(b.Input), top: top, at: at}
+	t.tools[b.Name]++
+	if top {
+		t.act(b.ID, Action{At: at, Tool: b.Name, Input: t.calls[b.ID].input, Open: true})
+	}
+}
+
+func (t *tally) toolResult(b block, at time.Time) {
+	c := t.calls[b.ToolUseID]
+	if b.IsError {
+		t.fail(b, c)
+	}
+
+	t.returned(b, at)
+	if c.timed(at) {
+		t.took(c, at)
+	}
+}
+
+// timed says whether c is a top-level call whose wait, from its start to at, can be measured.
+func (c *pending) timed(at time.Time) bool {
+	return c != nil && c.top && !c.at.IsZero() && !at.Before(c.at)
+}
+
+// took keeps how long the call c waited, returning at.
+func (t *tally) took(c *pending, at time.Time) {
+	s := span{c.at, at}
+	if c.tool == "Agent" {
+		t.subs = append(t.subs, s)
+		return
+	}
+
+	t.waits = append(t.waits, s)
+	t.slowest = append(t.slowest, Call{Tool: c.tool, Input: c.input, Took: at.Sub(c.at)})
 }
 
 func (t *tally) act(id string, a Action) {
@@ -550,14 +586,17 @@ var (
 func cause(output string) string {
 	for line := range strings.Lines(output) {
 		line = strings.TrimSpace(line)
-		if line == "" || exitStatus.MatchString(line) || packageHeader.MatchString(line) {
-			continue
+		if says(line) {
+			return clip(position.ReplaceAllString(line, ""))
 		}
-
-		return clip(position.ReplaceAllString(line, ""))
 	}
 
 	return ""
+}
+
+// says is false of a blank line, an exit status and a Go package's header.
+func says(line string) bool {
+	return line != "" && !exitStatus.MatchString(line) && !packageHeader.MatchString(line)
 }
 
 func clip(s string) string {
