@@ -799,7 +799,7 @@ func (b *build) landing() string {
 // onto main.
 func (b *build) gate(ctx context.Context, landing bool, allowed ...string) (verdict, error) {
 	start := time.Now()
-	v, err := b.r.gate(ctx, b.tree, b.rec.Name, allowed...)
+	v, err := b.r.gate(ctx, guard{spec: b.rec.Name, place: b.tree, allowed: allowed})
 	b.record(entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed, Landing: landing})
 	if err == nil {
 		b.set(func(r *record) { r.Limit = &v.rounds })

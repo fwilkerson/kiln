@@ -17,6 +17,9 @@ import (
 type guard struct {
 	spec  Spec
 	place git.Worktree
+	// allowed are paths the build may change, though guarded names them. A landing of accepted amendments changes
+	// its spec.
+	allowed []string
 }
 
 // guarded says why the build may not change rel, a path within the repository. It says "" if the build may. It reads
@@ -26,6 +29,8 @@ func (g guard) guarded(rel string) string {
 	names := strings.Split(folded, "/")
 	settings, _ := path.Match(fold(".claude/settings*.json"), folded)
 	switch {
+	case slices.Contains(g.allowed, rel):
+		return ""
 	case slices.Contains(names, fold(".git")):
 		return rel + " is in a git directory, which only git and kiln write"
 	case names[0] == fold("specs") && folded != fold(g.spec.amendPath()):

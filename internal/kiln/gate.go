@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"os/exec"
@@ -74,11 +75,11 @@ type check struct {
 // outputKept is how much of a command's output a check keeps, from its end.
 const outputKept = 16 << 10
 
-func runChecks(ctx context.Context, dir string, commands, env []string) ([]check, error) {
+func runChecks(ctx context.Context, dir git.Worktree, commands, env []string) ([]check, error) {
 	var checks []check
 	for _, command := range commands {
 		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-		cmd.Dir, cmd.Env = dir, proc.Shell.Env(env)
+		cmd.Dir, cmd.Env = string(dir), proc.Shell.Env(env)
 		proc.OwnGroup(cmd)
 		out, err := cmd.CombinedOutput()
 		c := check{Command: command}
@@ -99,24 +100,44 @@ func runChecks(ctx context.Context, dir string, commands, env []string) ([]check
 // failedTests reads go test's output for the top-level tests that failed, each named with its package. broken is true
 // when a package failed with no test named.
 func failedTests(output string) (failed []string, broken bool) {
-	var pending []string
+	var f failures
 	for line := range strings.Lines(output) {
-		line = strings.TrimRight(line, "\r\n")
-		if name, ok := strings.CutPrefix(line, "--- FAIL: "); ok {
-			name, _, _ = strings.Cut(name, " ")
-			pending = append(pending, name)
-		} else if rest, ok := strings.CutPrefix(line, "FAIL\t"); ok {
-			pkg, _, _ := strings.Cut(rest, "\t")
-			for _, name := range pending {
-				failed = append(failed, name+" ("+pkg+")")
-			}
-
-			broken = broken || len(pending) == 0
-			pending = nil
-		}
+		f.read(strings.TrimRight(line, "\r\n"))
 	}
 
-	return append(failed, pending...), broken
+	return append(f.failed, f.pending...), f.broken
+}
+
+// failures is what go test's output says failed, so far. pending names the tests that failed in a package whose
+// FAIL line is still to come.
+type failures struct {
+	failed, pending []string
+	broken          bool
+}
+
+// read reads one line of go test's output.
+func (f *failures) read(line string) {
+	if name, ok := strings.CutPrefix(line, "--- FAIL: "); ok {
+		name, _, _ = strings.Cut(name, " ")
+		f.pending = append(f.pending, name)
+		return
+	}
+
+	rest, ok := strings.CutPrefix(line, "FAIL\t")
+	if !ok {
+		return
+	}
+
+	pkg, _, _ := strings.Cut(rest, "\t")
+	for _, name := range f.pending {
+		f.failed = append(f.failed, name+" ("+pkg+")")
+	}
+
+	if len(f.pending) == 0 {
+		f.broken = true
+	}
+
+	f.pending = nil
 }
 
 // verdict is what a gate found.
@@ -137,28 +158,13 @@ type verdict struct {
 // failed with no test named is a failure nothing at main excuses. refused says, by path, why the build may not change
 // each path it holds.
 func judge(tip, main []check, refused map[string]string) verdict {
-	var v verdict
-	atMain := map[string]bool{}
-	for _, c := range main {
-		for _, t := range c.Failed {
-			atMain[c.Command+"\x00"+t] = true
-			v.atMain = append(v.atMain, t)
-		}
-	}
-
+	atMain, names := failedAt(main)
+	v := verdict{atMain: names}
 	var failures []string
 	for _, c := range tip {
-		failedAtMain := func(t string) bool { return atMain[c.Command+"\x00"+t] }
-		excused := !c.Broken && len(c.Failed) > 0 && !slices.ContainsFunc(c.Failed, not(failedAtMain))
-		if c.Exit == 0 || excused {
-			continue
-		}
-
-		failures = append(failures, fmt.Sprintf("`%s` exited %d:\n%s", c.Command, c.Exit, strings.TrimSpace(c.Output)))
-		fresh := slices.DeleteFunc(slices.Clone(c.Failed), failedAtMain)
-		v.failing = append(v.failing, fresh...)
-		if c.Broken || len(fresh) == 0 {
-			v.failing = append(v.failing, "`"+c.Command+"`")
+		if report, failing := c.judged(atMain); report != "" {
+			failures = append(failures, report)
+			v.failing = append(v.failing, failing...)
 		}
 	}
 
@@ -167,21 +173,61 @@ func judge(tip, main []check, refused map[string]string) verdict {
 		v.failing = append(v.failing, p)
 	}
 
-	slices.Sort(v.atMain)
-	v.atMain = slices.Compact(v.atMain)
 	v.passed = len(failures) == 0
 	v.report = strings.Join(failures, "\n\n")
 	return v
+}
+
+// failedAt reads the checks at main for the Go tests that failed there. It answers them by command, and their names,
+// sorted, each once.
+func failedAt(main []check) (byCommand map[string]bool, names []string) {
+	byCommand = map[string]bool{}
+	for _, c := range main {
+		for _, t := range c.Failed {
+			byCommand[c.Command+"\x00"+t] = true
+			names = append(names, t)
+		}
+	}
+
+	slices.Sort(names)
+	return byCommand, slices.Compact(names)
 }
 
 func not[T any](f func(T) bool) func(T) bool {
 	return func(t T) bool { return !f(t) }
 }
 
-// gate runs the gate on the commit checked out at tree, a worktree of a build of spec. It runs kiln.json's commands
-// there, and at main's tip, and checks the paths the work changed since it left main. A path in allowed may change,
-// though guarded names it.
-func (r *Repo) gate(ctx context.Context, tree git.Worktree, spec Spec, allowed ...string) (verdict, error) {
+// judged says what failed in c, at the tip, given atMain, the tests that failed at main by command. It answers "" when
+// c passed, or failed only on tests failing at main. failing names what failed, as verdict.failing does.
+func (c check) judged(atMain map[string]bool) (report string, failing []string) {
+	failedAtMain := func(t string) bool { return atMain[c.Command+"\x00"+t] }
+	if c.Exit == 0 || c.excused(failedAtMain) {
+		return "", nil
+	}
+
+	report = fmt.Sprintf("`%s` exited %d:\n%s", c.Command, c.Exit, strings.TrimSpace(c.Output))
+	failing = slices.DeleteFunc(slices.Clone(c.Failed), failedAtMain)
+	if c.Broken || len(failing) == 0 {
+		failing = append(failing, "`"+c.Command+"`")
+	}
+
+	return report, failing
+}
+
+// excused is whether c failed only on Go tests that failedAtMain. A package that failed with no test named is never
+// excused.
+func (c check) excused(failedAtMain func(test string) bool) bool {
+	switch {
+	case c.Broken, len(c.Failed) == 0:
+		return false
+	}
+
+	return !slices.ContainsFunc(c.Failed, not(failedAtMain))
+}
+
+// gate runs the gate on the commit checked out at g's worktree, a worktree of a build of g's spec. It runs kiln.json's
+// commands there, and at main's tip. It checks the paths the work changed since it left main, as g says.
+func (r *Repo) gate(ctx context.Context, g guard) (verdict, error) {
 	main, err := r.git.Tip(ctx, mainBranch)
 	if err != nil {
 		return verdict{}, err
@@ -192,29 +238,12 @@ func (r *Repo) gate(ctx context.Context, tree git.Worktree, spec Spec, allowed .
 		return verdict{}, err
 	}
 
-	head, err := r.git.Head(ctx, tree)
+	refused, err := r.refused(ctx, g, main)
 	if err != nil {
 		return verdict{}, err
 	}
 
-	base, err := r.git.MergeBase(ctx, main, head)
-	if err != nil {
-		return verdict{}, err
-	}
-
-	changed, err := r.git.Changed(ctx, base, head)
-	if err != nil {
-		return verdict{}, err
-	}
-
-	refused := map[string]string{}
-	for _, p := range changed {
-		if why := (guard{spec: spec, place: tree}).guarded(p); why != "" && !slices.Contains(allowed, p) {
-			refused[p] = why
-		}
-	}
-
-	tip, err := runChecks(ctx, string(tree), c.Gate, r.env)
+	tip, err := runChecks(ctx, g.place, c.Gate, r.env)
 	if err != nil {
 		return verdict{}, err
 	}
@@ -227,6 +256,33 @@ func (r *Repo) gate(ctx context.Context, tree git.Worktree, spec Spec, allowed .
 	v := judge(tip, atMain, refused)
 	v.rounds = c.Rounds
 	return v, nil
+}
+
+// refused says, by path, why the build may not change each path its work changed since it left main.
+func (r *Repo) refused(ctx context.Context, g guard, main git.Rev) (map[string]string, error) {
+	head, err := r.git.Head(ctx, g.place)
+	if err != nil {
+		return nil, err
+	}
+
+	base, err := r.git.MergeBase(ctx, main, head)
+	if err != nil {
+		return nil, err
+	}
+
+	changed, err := r.git.Changed(ctx, base, head)
+	if err != nil {
+		return nil, err
+	}
+
+	refused := map[string]string{}
+	for _, p := range changed {
+		if why := g.guarded(p); why != "" {
+			refused[p] = why
+		}
+	}
+
+	return refused, nil
 }
 
 // atMain runs commands at main's tip, in a worktree of its own. It keeps the checks, and runs them again only once main
@@ -249,8 +305,8 @@ func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string) ([]c
 		return checks, nil
 	}
 
-	tree := filepath.Join(r.trees, mainTree)
-	if err := r.git.Detached(ctx, git.Worktree(tree), main); err != nil {
+	tree := git.Worktree(filepath.Join(r.trees, mainTree))
+	if err := r.git.Detached(ctx, tree, main); err != nil {
 		return nil, err
 	}
 
@@ -283,11 +339,16 @@ func Precommit(ctx context.Context, dir string, env []string, out *os.File) erro
 		return err
 	}
 
-	checks, err := runChecks(ctx, dir, c.Gate, env)
+	checks, err := runChecks(ctx, git.Worktree(dir), c.Gate, env)
 	if err != nil {
 		return err
 	}
 
+	return refuseCommit(checks, out)
+}
+
+// refuseCommit refuses the commit the gate's checks fail, and says why on out.
+func refuseCommit(checks []check, out io.Writer) error {
 	v := judge(checks, nil, nil)
 	if v.passed {
 		return nil
