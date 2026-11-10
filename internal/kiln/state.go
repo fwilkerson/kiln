@@ -267,6 +267,25 @@ func (r *record) runsFor(only Spec) bool {
 	return false
 }
 
+// requeue queues again each spec a kiln run that stopped left building. A build that was building goes on first.
+func (b *book) requeue() {
+	for _, s := range b.Specs {
+		if s.State == building {
+			s.State = queued
+		}
+	}
+
+	slices.SortStableFunc(b.Specs, func(x, y *record) int { return goesOn(y) - goesOn(x) })
+}
+
+func goesOn(r *record) int {
+	if r.State == queued && r.Session != "" {
+		return 1
+	}
+
+	return 0
+}
+
 // store keeps the book in a file under the git common directory, so every worktree of the repository shares it.
 type store struct {
 	dir string
