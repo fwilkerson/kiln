@@ -25,13 +25,16 @@ Score the whole package after each commit. A split can lower a file you did not 
 | Large Method              | lines of code in one function                           | more than 80  |
 | Excess Function Arguments | parameters of one function, `ctx` included              | more than 4   |
 | Overall Code Complexity   | mean cyclomatic complexity of the file's functions      | more than 5   |
-| Primitive Obsession       | share of all arguments that are built-in types          | more than 40% |
+| Primitive Obsession       | share of all arguments that are built-in types          | see below     |
 | String Heavy Arguments    | share of all arguments that are `string` or `[]string`  | more than 39% |
 | Low Cohesion              | groups of functions that share no data and no calls     | 3 or more     |
 
 - `ctx context.Context`, an `error`, a struct and a named type such as `git.Rev` count as non-primitive arguments.
 - `int` and `bool` count as primitive. `...string` and `[]string` count as strings.
-- The two argument-share smells apply only once a file has about a dozen arguments.
+- The two argument-share smells apply only once a file has about a dozen arguments. Scratch files with 11 string
+  arguments were not flagged, and files with 24 were.
+- Primitive Obsession's limit is not pinned down. The safeguard names 40%, and it flagged a kiln file at 42.5%. Yet
+  scratch files at 50% passed, and files at 67% were flagged. Aim below 40%.
 - A method's receiver is not an argument.
 - A `switch` whose `case` lists several conditions, as `case a, b, c:`, is not a complex conditional.
 - A boolean chain in a `return` or in a `case` expression is not a complex conditional either.
