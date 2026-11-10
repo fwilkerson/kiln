@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -130,123 +131,197 @@ func TestGate(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			for _, checks := range [][]check{tc.tip, tc.main} {
-				for i := range checks {
-					checks[i].Failed, checks[i].Broken = failedTests(checks[i].Output)
-				}
-			}
-
+			readOutputs(tc.tip, tc.main)
 			v := judge(tc.tip, tc.main, tc.refused)
-			if v.passed != tc.passed || !slices.Equal(v.atMain, tc.atMain) || v.passed != (v.report == "") ||
-				!slices.Equal(v.failing, tc.failing) {
-				t.Errorf("passed %v, at main %q, failing %q, report %q; want passed %v, at main %q, failing %q",
-					v.passed, v.atMain, v.failing, v.report, tc.passed, tc.atMain, tc.failing)
+			got := judgment{v.passed, fmt.Sprint(v.atMain), fmt.Sprint(v.failing), v.report != ""}
+			want := judgment{tc.passed, fmt.Sprint(tc.atMain), fmt.Sprint(tc.failing), !tc.passed}
+			if got != want {
+				t.Errorf("got %+v, report %q; want %+v", got, v.report, want)
 			}
 		})
 	}
 }
 
+// judgment is what TestGate compares of a verdict. reported is whether it has a report.
+type judgment struct {
+	passed          bool
+	atMain, failing string
+	reported        bool
+}
+
+// readOutputs reads each check's output for the Go tests that failed, as runChecks does.
+func readOutputs(checks ...[]check) {
+	for _, cs := range checks {
+		for i := range cs {
+			cs[i].Failed, cs[i].Broken = failedTests(cs[i].Output)
+		}
+	}
+}
+
 func TestSpecStates(t *testing.T) {
-	// given is a spec's state, with " landing" for one landing accepted amendments, or "" for no record. then is "" for
-	// a refusal, and "no record" once the record is gone. drop is a branch to drop, and dropped a build ended unended.
-	type row struct {
-		given, command, then string
-		changed, drop        bool
-		dropped              bool
-	}
-
-	const none = "no record"
-	rows := map[string]row{
-		"queue a spec with no record":              {given: "", command: "queue", then: "queued"},
-		"queue a queued spec again":                {given: "queued", command: "queue", then: "queued", dropped: true},
-		"queue a building spec":                    {given: "building", command: "queue"},
-		"queue a stopped spec":                     {given: "stopped", command: "queue", then: "queued", drop: true},
-		"queue a spec waiting for UAT, unchanged":  {given: "waiting for UAT", command: "queue"},
-		"queue a spec waiting for UAT, changed":    {given: "waiting for UAT", command: "queue", changed: true, then: "queued", drop: true},
-		"queue a spec with amendments":             {given: "waiting on its branch with amendments", command: "queue"},
-		"queue a queued landing":                   {given: "queued landing", command: "queue"},
-		"queue a building landing":                 {given: "building landing", command: "queue"},
-		"queue a stopped landing":                  {given: "stopped landing", command: "queue"},
-		"accept a spec with no record":             {given: "", command: "accept"},
-		"accept a queued spec":                     {given: "queued", command: "accept"},
-		"accept a building spec":                   {given: "building", command: "accept"},
-		"accept a stopped spec":                    {given: "stopped", command: "accept"},
-		"accept a spec waiting for UAT":            {given: "waiting for UAT", command: "accept", then: "waiting for UAT"},
-		"accept a spec with amendments":            {given: "waiting on its branch with amendments", command: "accept", then: "waiting on its branch with amendments"},
-		"accept a queued landing":                  {given: "queued landing", command: "accept"},
-		"accept a building landing":                {given: "building landing", command: "accept"},
-		"accept a stopped landing lands it afresh": {given: "stopped landing", command: "accept", then: "queued landing"},
-		"reject a spec with no record":             {given: "", command: "reject"},
-		"reject a queued spec":                     {given: "queued", command: "reject"},
-		"reject a building spec":                   {given: "building", command: "reject"},
-		"reject a stopped spec":                    {given: "stopped", command: "reject"},
-		"reject a spec waiting for UAT":            {given: "waiting for UAT", command: "reject"},
-		"reject a spec with amendments":            {given: "waiting on its branch with amendments", command: "reject", then: none},
-		"reject a queued landing":                  {given: "queued landing", command: "reject"},
-		"reject a building landing":                {given: "building landing", command: "reject"},
-		"reject a stopped landing":                 {given: "stopped landing", command: "reject", then: none},
-	}
-
-	for name, tc := range rows {
+	for name, tc := range specStates {
 		t.Run(name, func(t *testing.T) {
-			var b book
-			if tc.given != "" {
-				given, landing := strings.CutSuffix(tc.given, " landing")
-				b.Specs = []*record{{Name: "x", State: state(given), Accepted: landing, Approved: "old", Session: "s",
-					Build: "b", Rounds: 2, Audited: true, Why: "w", FailingAtMain: []string{"TestF"}}}
+			b := givenBook(tc.given)
+			got, r := tc.apply(t, &b)
+			if want := tc.want(); got != want {
+				t.Errorf("got %+v; want %+v", got, want)
 			}
 
-			changed := func(since git.Rev) (bool, error) {
-				if since != "old" {
-					t.Errorf("changed since %q, want since the queue", since)
-				}
-
-				return tc.changed, nil
-			}
-
-			var drop bool
-			var dropped string
-			var err error
-			switch tc.command {
-			case "queue":
-				drop, dropped, err = b.queue("x", "new", changed)
-			case "accept":
-				_, err = b.accept("x")
-			case "reject":
-				_, err = b.reject("x")
-			}
-
-			then := none
-			if r := b.find("x"); r != nil {
-				then = string(r.State)
-				if r.Accepted {
-					then += " landing"
-				}
-			}
-
-			if tc.then == "" {
-				if !errors.Is(err, errRefused) || then != cmp.Or(tc.given, none) {
-					t.Errorf("got %q, %v; want it refused, and %q as it was", then, err, tc.given)
-				}
-
-				return
-			}
-
-			if err != nil || then != tc.then || drop != tc.drop || (dropped == "b") != tc.dropped {
-				t.Errorf("got %q, %v, drop %v, dropped %q; want %q, drop %v, the build dropped %v", then, err, drop,
-					dropped, tc.then, tc.drop, tc.dropped)
-			}
-
-			r := b.find("x")
-			switch {
-			case tc.command == "queue" && (r.Approved != "new" || r.Session != "" || r.Build == "b" || r.Build == ""):
-				t.Errorf("a new queue keeps %+v of the old", r)
-			case tc.then == "queued landing" && (r.Build != "b" || r.Session != "s" || !r.Audited || r.Rounds != 0 ||
-				r.Why != "" || r.FailingAtMain != nil):
-				t.Errorf("a landing accepted again keeps %+v", r)
+			if want, ok := tc.carries(); ok && carriedOf(r) != want {
+				t.Errorf("the record carries %+v of the build before, want %+v", carriedOf(r), want)
 			}
 		})
 	}
+}
+
+// specState is a row of TestSpecStates. given is a spec's state, with " landing" for one landing accepted amendments,
+// or "" for no record. then is "" for a refusal, and "no record" once the record is gone. drop is a branch to drop,
+// and dropped a build ended unended.
+type specState struct {
+	given, command, then string
+	changed, drop        bool
+	dropped              bool
+}
+
+const none = "no record"
+
+var specStates = map[string]specState{
+	"queue a spec with no record":              {given: "", command: "queue", then: "queued"},
+	"queue a queued spec again":                {given: "queued", command: "queue", then: "queued", dropped: true},
+	"queue a building spec":                    {given: "building", command: "queue"},
+	"queue a stopped spec":                     {given: "stopped", command: "queue", then: "queued", drop: true},
+	"queue a spec waiting for UAT, unchanged":  {given: "waiting for UAT", command: "queue"},
+	"queue a spec waiting for UAT, changed":    {given: "waiting for UAT", command: "queue", changed: true, then: "queued", drop: true},
+	"queue a spec with amendments":             {given: "waiting on its branch with amendments", command: "queue"},
+	"queue a queued landing":                   {given: "queued landing", command: "queue"},
+	"queue a building landing":                 {given: "building landing", command: "queue"},
+	"queue a stopped landing":                  {given: "stopped landing", command: "queue"},
+	"accept a spec with no record":             {given: "", command: "accept"},
+	"accept a queued spec":                     {given: "queued", command: "accept"},
+	"accept a building spec":                   {given: "building", command: "accept"},
+	"accept a stopped spec":                    {given: "stopped", command: "accept"},
+	"accept a spec waiting for UAT":            {given: "waiting for UAT", command: "accept", then: "waiting for UAT"},
+	"accept a spec with amendments":            {given: "waiting on its branch with amendments", command: "accept", then: "waiting on its branch with amendments"},
+	"accept a queued landing":                  {given: "queued landing", command: "accept"},
+	"accept a building landing":                {given: "building landing", command: "accept"},
+	"accept a stopped landing lands it afresh": {given: "stopped landing", command: "accept", then: "queued landing"},
+	"reject a spec with no record":             {given: "", command: "reject"},
+	"reject a queued spec":                     {given: "queued", command: "reject"},
+	"reject a building spec":                   {given: "building", command: "reject"},
+	"reject a stopped spec":                    {given: "stopped", command: "reject"},
+	"reject a spec waiting for UAT":            {given: "waiting for UAT", command: "reject"},
+	"reject a spec with amendments":            {given: "waiting on its branch with amendments", command: "reject", then: none},
+	"reject a queued landing":                  {given: "queued landing", command: "reject"},
+	"reject a building landing":                {given: "building landing", command: "reject"},
+	"reject a stopped landing":                 {given: "stopped landing", command: "reject", then: none},
+}
+
+// givenBook is a book that holds the spec x in the state given words, as a row's given does.
+func givenBook(given string) book {
+	if given == "" {
+		return book{}
+	}
+
+	given, landing := strings.CutSuffix(given, " landing")
+	return book{Specs: []*record{{Name: "x", State: state(given), Accepted: landing, Approved: "old", Session: "s",
+		Build: "b", Rounds: 2, Audited: true, Why: "w", FailingAtMain: []string{"TestF"}}}}
+}
+
+// commanded is what a command left of the spec x. It holds x's state, as a row's then words it, its error and
+// its drops.
+type commanded struct {
+	then, err     string
+	drop, dropped bool
+}
+
+// apply runs the row's command on x in b. It answers what the command left, and x's record after it.
+func (tc specState) apply(t *testing.T, b *book) (commanded, *record) {
+	changed := func(since git.Rev) (bool, error) {
+		if since != "old" {
+			t.Errorf("changed since %q, want since the queue", since)
+		}
+
+		return tc.changed, nil
+	}
+
+	var got commanded
+	var dropped string
+	var err error
+	switch tc.command {
+	case "queue":
+		got.drop, dropped, err = b.queue("x", "new", changed)
+	case "accept":
+		_, err = b.accept("x")
+	case "reject":
+		_, err = b.reject("x")
+	}
+
+	r := b.find("x")
+	got.then, got.err, got.dropped = thenOf(r), errKind(err), dropped == "b"
+	return got, r
+}
+
+// want is what the row's command should leave. A refusal leaves the spec as it was.
+func (tc specState) want() commanded {
+	if tc.then == "" {
+		return commanded{then: cmp.Or(tc.given, none), err: "refused"}
+	}
+
+	return commanded{then: tc.then, drop: tc.drop, dropped: tc.dropped}
+}
+
+// carries is what x's record should carry of the build before, if the row checks it. A new queue carries nothing.
+// A landing accepted again keeps its build, session and audit.
+func (tc specState) carries() (carried, bool) {
+	switch {
+	case tc.then == "":
+		return carried{}, false
+	case tc.command == "queue":
+		return carried{approved: "new"}, true
+	case tc.then == "queued landing":
+		return carried{approved: "old", session: "s", oldBuild: true, audited: true}, true
+	}
+
+	return carried{}, false
+}
+
+// carried is what a record carries of the build before, as givenBook made it.
+type carried struct {
+	approved                   git.Rev
+	session, why               string
+	oldBuild, noBuild, audited bool
+	rounds                     int
+	failingAtMain              bool
+}
+
+func carriedOf(r *record) carried {
+	return carried{approved: r.Approved, session: r.Session, why: r.Why, oldBuild: r.Build == "b",
+		noBuild: r.Build == "", audited: r.Audited, rounds: r.Rounds, failingAtMain: r.FailingAtMain != nil}
+}
+
+// thenOf words the state of r as a row's then does.
+func thenOf(r *record) string {
+	if r == nil {
+		return none
+	}
+
+	if r.Accepted {
+		return string(r.State) + " landing"
+	}
+
+	return string(r.State)
+}
+
+// errKind is "" for no error, "refused" for a refusal, and the error's text for any other.
+func errKind(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, errRefused):
+		return "refused"
+	}
+
+	return err.Error()
 }
 
 func TestFoldAmendments(t *testing.T) {
@@ -439,52 +514,66 @@ func TestLandChanges(t *testing.T) {
 		"an empty commit changes nothing":    {work: "git commit --quiet --allow-empty -m nothing"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Setenv("HOME", t.TempDir())
-			t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
-			repo := t.TempDir()
-			run := func(dir, script string) string {
-				cmd := exec.Command("/bin/sh", "-c", script)
-				cmd.Dir = dir
-				out, err := cmd.CombinedOutput()
-				if err != nil {
-					t.Fatalf("%s: %v\n%s", script, err, out)
-				}
-
-				return strings.TrimSpace(string(out))
-			}
-
-			run(repo, `git init --quiet -b main && git config user.name t && git config user.email t@t && `+
-				`echo '{"gate": ["true"], "rounds": 1}' >kiln.json && git add . && git commit --quiet -m start`)
-			main := run(repo, "git rev-parse HEAD")
-			r, err := Open(t.Context(), repo, os.Environ())
+			b, repo, main := landingBuild(t)
+			shell(t, string(b.tree), tc.work)
+			head := git.Rev(shell(t, string(b.tree), "git rev-parse HEAD"))
+			landed, back, err := b.land(t.Context(), head, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			rec := record{Name: "x", State: building}
-			if err := r.store.update(func(k *book) error { k.Specs = []*record{&rec}; return nil }); err != nil {
-				t.Fatal(err)
-			}
-
-			b := &build{r: r, rec: rec, tree: r.tree("x"), out: io.Discard}
-			if err := r.git.Checkout(t.Context(), b.tree, Spec("x").branch(), git.Rev(main)); err != nil {
-				t.Fatal(err)
-			}
-
-			run(string(b.tree), tc.work)
-			head := git.Rev(run(string(b.tree), "git rev-parse HEAD"))
-			landed, back, err := b.land(t.Context(), head, nil)
-			tip := git.Rev(run(repo, "git rev-parse main"))
-			switch {
-			case err != nil:
-				t.Fatal(err)
-			case tc.landed && (landed == "" || tip != landed):
-				t.Errorf("landed %q, main at %s, setback %+v; want main moved to the work", landed, tip, back)
-			case !tc.landed && (landed != "" || tip != git.Rev(main) || back.why != whyUnchanged):
-				t.Errorf("landed %q, main at %s, setback %+v; want main unmoved, and the work sent back", landed, tip,
-					back)
+			tip := git.Rev(shell(t, repo, "git rev-parse main"))
+			got := landing{landed: landed != "", atLanded: tip == landed, atMain: tip == main,
+				unchanged: back.why == whyUnchanged}
+			want := landing{landed: tc.landed, atLanded: tc.landed, atMain: !tc.landed, unchanged: !tc.landed}
+			if got != want {
+				t.Errorf("landed %q, main at %s, setback %+v: %+v; want %+v", landed, tip, back, got, want)
 			}
 		})
 	}
+}
+
+// landing is what TestLandChanges compares of a landing. It holds whether it landed, where main is, and whether the
+// work went back unchanged.
+type landing struct {
+	landed, atLanded, atMain, unchanged bool
+}
+
+// landingBuild is a build of x in a new repository, on its branch from main. It answers the repository, and main.
+func landingBuild(t *testing.T) (*build, string, git.Rev) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	repo := t.TempDir()
+	shell(t, repo, `git init --quiet -b main && git config user.name t && git config user.email t@t && `+
+		`echo '{"gate": ["true"], "rounds": 1}' >kiln.json && git add . && git commit --quiet -m start`)
+	main := git.Rev(shell(t, repo, "git rev-parse HEAD"))
+	r, err := Open(t.Context(), repo, os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := record{Name: "x", State: building}
+	if err := r.store.update(func(k *book) error { k.Specs = []*record{&rec}; return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	b := &build{r: r, rec: rec, tree: r.tree("x"), out: io.Discard}
+	if err := r.git.Checkout(t.Context(), b.tree, Spec("x").branch(), main); err != nil {
+		t.Fatal(err)
+	}
+
+	return b, repo, main
+}
+
+// shell runs script with sh in dir, and answers what it printed.
+func shell(t *testing.T, dir, script string) string {
+	cmd := exec.Command("/bin/sh", "-c", script)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s: %v\n%s", script, err, out)
+	}
+
+	return strings.TrimSpace(string(out))
 }

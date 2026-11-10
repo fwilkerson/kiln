@@ -77,18 +77,7 @@ func TestView(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var got []string
-	for _, s := range specs {
-		var steps []string
-		for _, b := range s.Builds {
-			for _, step := range b.Steps {
-				steps = append(steps, shownStep(step))
-			}
-		}
-
-		got = append(got, fmt.Sprintf("%s %s: %s", s.Name, s.State, strings.Join(steps, ", ")))
-	}
-
+	got := shownSpecs(specs)
 	want := []string{
 		"next queued: ",
 		"live running: first run ended, gate failed, round 1 of 3 running",
@@ -102,6 +91,23 @@ func TestView(t *testing.T) {
 	if g, w := strings.Join(got, "\n"), strings.Join(want, "\n"); g != w {
 		t.Errorf("the view reads\n%s\nwant\n%s", g, w)
 	}
+}
+
+// shownSpecs words each spec as a line: its name, its state, and each step of its builds.
+func shownSpecs(specs []tui.Spec) []string {
+	var shown []string
+	for _, s := range specs {
+		var steps []string
+		for _, b := range s.Builds {
+			for _, step := range b.Steps {
+				steps = append(steps, shownStep(step))
+			}
+		}
+
+		shown = append(shown, fmt.Sprintf("%s %s: %s", s.Name, s.State, strings.Join(steps, ", ")))
+	}
+
+	return shown
 }
 
 func shownStep(step tui.Step) string {

@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -34,15 +33,7 @@ func TestRecount(t *testing.T) {
 	audited := `{"type":"assistant","message":{"id":"m3","content":[{"type":"tool_use","id":"t3","name":"Read",` +
 		`"input":{"file_path":"x.go"}}],"usage":{}}}` + "\n" + `{"type":"result","num_turns":1,` +
 		`"model_usage_since_last_result":{"m":{"costUSD":0.25}}}` + "\n"
-	for session, stream := range map[string]string{buildSession: ended + lost, auditSession: audited} {
-		if err := os.MkdirAll(filepath.Join(sessions, session), 0o700); err != nil {
-			t.Fatal(err)
-		}
-
-		if err := os.WriteFile(filepath.Join(sessions, session, "stream.jsonl"), []byte(stream), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeStreams(t, sessions, map[string]string{buildSession: ended + lost, auditSession: audited})
 
 	b.record(entry{Kind: builtKind, Spec: "x"})
 	b.record(entry{Kind: startKind, Role: "build", Session: buildSession})
@@ -69,14 +60,8 @@ func TestRecount(t *testing.T) {
 		2: "result, 1 turns, map[Read:1]",
 	} {
 		run := runs[i]
-		turns := "<nil>"
-		if run.totals.Turns != nil {
-			turns = fmt.Sprint(*run.totals.Turns)
-		}
-
-		got := fmt.Sprintf("%s, %s turns, %v", run.ended, turns, run.totals.Tools)
-		if got != want || run.end.IsZero() {
-			t.Errorf("the lost %s run: %s, ended at %v; want %s, with an end", run.role, got, run.end, want)
+		if got := endOf(run); got != want {
+			t.Errorf("the lost %s run: %s; want %s, with an end", run.role, got, want)
 		}
 	}
 
@@ -85,9 +70,62 @@ func TestRecount(t *testing.T) {
 	}
 }
 
+// writeStreams writes each session's stream under sessions, as Claude Code does.
+func writeStreams(t *testing.T, sessions string, streams map[string]string) {
+	for session, stream := range streams {
+		if err := os.MkdirAll(filepath.Join(sessions, session), 0o700); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(filepath.Join(sessions, session, "stream.jsonl"), []byte(stream), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// endOf says how run ended, its turns and its tools, or that it has no end.
+func endOf(run run) string {
+	if run.end.IsZero() {
+		return "no end"
+	}
+
+	turns := "<nil>"
+	if run.totals.Turns != nil {
+		turns = fmt.Sprint(*run.totals.Turns)
+	}
+
+	return fmt.Sprintf("%s, %s turns, %v", run.ended, turns, run.totals.Tools)
+}
+
 // TestRecountAudit holds that an audit run lost when kiln died still shows what it changed. recount names each path
 // in its end line, as talk would. Then it puts the audit's worktree back at the commit the audit read.
 func TestRecountAudit(t *testing.T) {
+	r, read := auditedRepo(t)
+	b := &build{r: r, rec: record{Name: "x", Build: "b1"}, out: io.Discard}
+	b.record(entry{Kind: builtKind, Spec: "x"})
+	b.record(entry{Kind: startKind, Role: auditRole, Session: "a", Read: read})
+	shot := filepath.Join(string(r.auditTree("x")), "shot.png")
+	if err := os.WriteFile(shot, []byte("a screen"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r.recount(t.Context(), io.Discard)
+	entries, err := r.store.entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if runs := collect(entries)[0].runs; fmt.Sprint(changedBy(runs)) != "[[shot.png]]" {
+		t.Errorf("the lost audit run changed %+v, want [shot.png]", runs)
+	}
+
+	if _, err := os.Stat(shot); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the audit's worktree still holds shot.png: %v", err)
+	}
+}
+
+// auditedRepo is a repository with one commit, and the audit of x's worktree detached at it. It answers the commit.
+func auditedRepo(t *testing.T) (*Repo, git.Rev) {
 	repo := t.TempDir()
 	start := exec.Command("sh", "-c", "git init --quiet -b main && git -c user.name=t -c user.email=t@t commit "+
 		"--quiet --allow-empty -m first && git rev-parse HEAD")
@@ -110,25 +148,15 @@ func TestRecountAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	b := &build{r: r, rec: record{Name: "x", Build: "b1"}, out: io.Discard}
-	b.record(entry{Kind: builtKind, Spec: "x"})
-	b.record(entry{Kind: startKind, Role: auditRole, Session: "a", Read: read})
-	shot := filepath.Join(string(r.auditTree("x")), "shot.png")
-	if err := os.WriteFile(shot, []byte("a screen"), 0o600); err != nil {
-		t.Fatal(err)
+	return r, read
+}
+
+// changedBy names the paths each run changed.
+func changedBy(runs []run) [][]string {
+	changed := make([][]string, len(runs))
+	for i, r := range runs {
+		changed[i] = r.changed
 	}
 
-	r.recount(t.Context(), io.Discard)
-	entries, err := r.store.entries()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if runs := collect(entries)[0].runs; len(runs) != 1 || !slices.Equal(runs[0].changed, []string{"shot.png"}) {
-		t.Errorf("the lost audit run changed %+v, want [shot.png]", runs)
-	}
-
-	if _, err := os.Stat(shot); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("the audit's worktree still holds shot.png: %v", err)
-	}
+	return changed
 }
