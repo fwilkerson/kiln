@@ -1,9 +1,9 @@
 package scenariotest
 
 import (
+	"errors"
 	"fmt"
 	"image/color"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/vt"
 	"github.com/rogpeppe/go-internal/testscript"
 
+	"github.com/fwilkerson/kiln/internal/proc"
 	"github.com/fwilkerson/kiln/internal/termtest"
 )
 
@@ -59,13 +60,14 @@ type terminal struct {
 
 func startTerm(ts *testscript.TestScript, neg bool, args []string) {
 	t := ts.Value(terminalKey{}).(*terminal)
-	if neg || len(args) < 3 || t.term != nil {
+	switch {
+	case neg, len(args) < 3, t.term != nil:
 		ts.Fatalf("usage: term <cols> <rows> <program> [args...], once per script")
 	}
 
 	w, errW := strconv.Atoi(args[0])
 	h, errH := strconv.Atoi(args[1])
-	if errW != nil || errH != nil {
+	if errors.Join(errW, errH) != nil {
 		ts.Fatalf("term: %q by %q is not a size", args[0], args[1])
 	}
 
@@ -75,7 +77,7 @@ func startTerm(ts *testscript.TestScript, neg bool, args []string) {
 		cmd.Env = append(cmd.Env, name+"="+ts.Getenv(name))
 	}
 
-	term, err := termtest.Start(cmd, w, h)
+	term, err := termtest.Start(cmd, termtest.Size{W: w, H: h})
 	ts.Check(err)
 	t.term = term
 	ts.Defer(func() { _ = term.Close() })
@@ -84,8 +86,7 @@ func startTerm(ts *testscript.TestScript, neg bool, args []string) {
 // lookPath finds program on the script's PATH.
 func lookPath(ts *testscript.TestScript, program string) string {
 	for _, dir := range filepath.SplitList(ts.Getenv("PATH")) {
-		p := filepath.Join(dir, program)
-		if info, err := os.Stat(p); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+		if p := filepath.Join(dir, program); proc.Executable(p) {
 			return p
 		}
 	}
@@ -124,25 +125,29 @@ func clickText(ts *testscript.TestScript, neg bool, args []string) {
 	}
 
 	term := termOf(ts)
-	var x, y int
+	var at termtest.Pos
 	ts.Check(term.Wait(func() (err error) {
-		x, y, err = term.Find(args[0])
+		at, err = term.Find(args[0])
 		return err
 	}))
 
-	term.Click(x, y)
+	term.Click(at)
 }
 
+var wheelButtons = map[string]vt.MouseButton{"up": vt.MouseWheelUp, "down": vt.MouseWheelDown}
+
 func turnWheel(ts *testscript.TestScript, neg bool, args []string) {
+	button, known := wheelButtons[strings.Join(args[:min(1, len(args))], "")]
 	turns, err := strconv.Atoi(strings.Join(args[1:], ""))
-	if neg || len(args) != 2 || args[0] != "up" && args[0] != "down" || err != nil {
+	switch {
+	case neg, len(args) != 2, !known, err != nil:
 		ts.Fatalf("usage: wheel up|down <turns>")
 	}
 
 	term := termOf(ts)
-	w, h := term.Size()
+	size := term.Size()
 	for range turns {
-		term.Wheel(w/2, h/2, args[0] == "down")
+		term.Wheel(termtest.Pos{X: size.W / 2, Y: size.H / 2}, button)
 	}
 }
 
@@ -167,35 +172,55 @@ func waitScreen(ts *testscript.TestScript, neg bool, args []string) {
 }
 
 func waitColor(ts *testscript.TestScript, neg bool, args []string) {
-	background := len(args) == 3 && args[0] == "background"
-	if background {
+	check, ok := parseColorCheck(neg, args)
+	if !ok {
+		ts.Fatalf("usage: color [background] red|yellow|green|none <text>")
+	}
+
+	term := termOf(ts)
+	ts.Check(term.Wait(func() error { return check.holds(term) }))
+}
+
+// colorCheck is what a color command waits for: text's first cell drawn in want. With neg, it waits for another color.
+type colorCheck struct {
+	background, neg bool
+	name            string
+	want            color.Color
+	text            string
+}
+
+func parseColorCheck(neg bool, args []string) (colorCheck, bool) {
+	check := colorCheck{neg: neg, background: len(args) == 3 && args[0] == "background"}
+	if check.background {
 		args = args[1:]
 	}
 
 	want, ok := colors[strings.Join(args[:min(1, len(args))], "")]
 	if len(args) != 2 || !ok {
-		ts.Fatalf("usage: color [background] red|yellow|green|none <text>")
+		return check, false
 	}
 
-	term := termOf(ts)
-	ts.Check(term.Wait(func() error {
-		x, y, err := term.Find(args[1])
-		if err != nil {
-			return err
-		}
+	check.name, check.want, check.text = args[0], want, args[1]
+	return check, true
+}
 
-		got := term.Foreground(x, y)
-		if background {
-			got = term.Background(x, y)
-		}
+func (c colorCheck) holds(term *termtest.Term) error {
+	at, err := term.Find(c.text)
+	if err != nil {
+		return err
+	}
 
-		switch same := termtest.Same(got, want); {
-		case same && neg:
-			return fmt.Errorf("%q is drawn in %s", args[1], args[0])
-		case !same && !neg:
-			return fmt.Errorf("%q is drawn in %v, not %s", args[1], got, args[0])
-		}
+	got := term.Foreground(at)
+	if c.background {
+		got = term.Background(at)
+	}
 
-		return nil
-	}))
+	switch same := termtest.Same(got, c.want); {
+	case same && c.neg:
+		return fmt.Errorf("%q is drawn in %s", c.text, c.name)
+	case !same && !c.neg:
+		return fmt.Errorf("%q is drawn in %v, not %s", c.text, got, c.name)
+	}
+
+	return nil
 }

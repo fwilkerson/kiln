@@ -40,7 +40,7 @@ func (term *Term) PNG(w io.Writer) error {
 	for y := 0; y < term.emu.Height(); y++ {
 		for x := 0; x < term.emu.Width(); x++ {
 			if c := term.emu.CellAt(x, y); c != nil {
-				term.drawCell(img, face, x, y, c)
+				term.drawCell(img, face, Pos{X: x, Y: y}, c)
 			}
 		}
 	}
@@ -48,7 +48,8 @@ func (term *Term) PNG(w io.Writer) error {
 	return png.Encode(w, img)
 }
 
-func (term *Term) drawCell(img *image.RGBA, face font.Face, x, y int, c *uv.Cell) {
+func (term *Term) drawCell(img *image.RGBA, face font.Face, at Pos, c *uv.Cell) {
+	x, y := at.X, at.Y
 	fg, bg := color.Color(term.emu.ForegroundColor()), color.Color(term.emu.BackgroundColor())
 	if c.Style.Fg != nil {
 		fg = c.Style.Fg

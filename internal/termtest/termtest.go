@@ -1,10 +1,10 @@
 // Package termtest runs a program in a pseudo-terminal, and reads its screen as a terminal would draw it.
 //
-//	term, err := termtest.Start(exec.Command("kiln", "tui"), 100, 30)
+//	term, err := termtest.Start(exec.Command("kiln", "tui"), termtest.Size{W: 100, H: 30})
 //	defer term.Close()
-//	err = term.Wait(func() error { _, _, err := term.Find("build-stats"); return err })
-//	x, y, err := term.Find("build-stats")
-//	term.Click(x, y)
+//	err = term.Wait(func() error { _, err := term.Find("build-stats"); return err })
+//	at, err := term.Find("build-stats")
+//	term.Click(at)
 //	term.Press(vt.KeyEnter)
 //
 // The program's output feeds an emulator from charmbracelet/x/vt. The emulator encodes each key and mouse event in
@@ -42,9 +42,15 @@ type Term struct {
 	exited chan struct{}
 }
 
-// Start runs cmd in a terminal of w columns and h rows. The terminal claims 256 colors and true color, whatever
-// cmd's environment says, and drops NO_COLOR.
-func Start(cmd *exec.Cmd, w, h int) (*Term, error) {
+// Size is a terminal's size: W columns and H rows.
+type Size struct{ W, H int }
+
+// Pos is a cell's place on screen: column X and row Y, each counted from 0.
+type Pos struct{ X, Y int }
+
+// Start runs cmd in a terminal of the given size. The terminal claims 256 colors and true color, whatever cmd's
+// environment says, and drops NO_COLOR.
+func Start(cmd *exec.Cmd, size Size) (*Term, error) {
 	env := cmd.Env
 	if env == nil {
 		env = os.Environ()
@@ -55,12 +61,12 @@ func Start(cmd *exec.Cmd, w, h int) (*Term, error) {
 	}
 
 	cmd.Env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor")
-	tty, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(w), Rows: uint16(h)})
+	tty, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(size.W), Rows: uint16(size.H)})
 	if err != nil {
 		return nil, err
 	}
 
-	term := &Term{emu: vt.NewSafeEmulator(w, h), tty: tty, cmd: cmd, exited: make(chan struct{})}
+	term := &Term{emu: vt.NewSafeEmulator(size.W, size.H), tty: tty, cmd: cmd, exited: make(chan struct{})}
 	// Each copy ends with an error once the program exits, and no caller needs that error.
 	go func() { _, _ = io.Copy(term.emu, tty) }()
 	go func() { _, _ = io.Copy(tty, term.emu) }()
@@ -106,24 +112,19 @@ const keyPause = 100 * time.Millisecond
 // Type sends text as typed keys.
 func (term *Term) Type(text string) { term.emu.SendText(text) }
 
-// Click presses and releases the left button on the cell at column x, row y, counted from 0.
-func (term *Term) Click(x, y int) {
-	term.emu.SendMouse(vt.MouseClick{X: x, Y: y, Button: vt.MouseLeft})
-	term.emu.SendMouse(vt.MouseRelease{X: x, Y: y, Button: vt.MouseLeft})
+// Click presses and releases the left button on the cell at.
+func (term *Term) Click(at Pos) {
+	term.emu.SendMouse(vt.MouseClick{X: at.X, Y: at.Y, Button: vt.MouseLeft})
+	term.emu.SendMouse(vt.MouseRelease{X: at.X, Y: at.Y, Button: vt.MouseLeft})
 }
 
-// Wheel turns the wheel once over the cell at column x, row y, down when down is true.
-func (term *Term) Wheel(x, y int, down bool) {
-	button := vt.MouseWheelUp
-	if down {
-		button = vt.MouseWheelDown
-	}
-
-	term.emu.SendMouse(vt.MouseWheel{X: x, Y: y, Button: button})
+// Wheel turns the wheel once over the cell at, the way button says, such as vt.MouseWheelDown.
+func (term *Term) Wheel(at Pos, button vt.MouseButton) {
+	term.emu.SendMouse(vt.MouseWheel{X: at.X, Y: at.Y, Button: button})
 }
 
-// Size answers the terminal's columns and rows.
-func (term *Term) Size() (w, h int) { return term.emu.Width(), term.emu.Height() }
+// Size answers the terminal's size.
+func (term *Term) Size() Size { return Size{W: term.emu.Width(), H: term.emu.Height()} }
 
 // Exited reports whether the program has exited.
 func (term *Term) Exited() bool {
@@ -154,37 +155,38 @@ func (term *Term) Screen() string {
 	return strings.Join(rows, "\n")
 }
 
-// Find answers the column and row of text's first cell. It fails unless the screen holds text exactly once. A check
-// then never reads the wrong one of two.
-func (term *Term) Find(text string) (x, y int, err error) {
+// Find answers where text's first cell is. It fails unless the screen holds text exactly once. A check then never
+// reads the wrong one of two.
+func (term *Term) Find(text string) (Pos, error) {
+	var at Pos
 	found := 0
 	for row, line := range strings.Split(term.Screen(), "\n") {
 		if i := strings.Index(line, text); i >= 0 && found == 0 {
-			x, y = len([]rune(line[:i])), row
+			at = Pos{X: len([]rune(line[:i])), Y: row}
 		}
 
 		found += strings.Count(line, text)
 	}
 
 	if found != 1 {
-		return 0, 0, fmt.Errorf("the screen holds %q %d times, not once", text, found)
+		return Pos{}, fmt.Errorf("the screen holds %q %d times, not once", text, found)
 	}
 
-	return x, y, nil
+	return at, nil
 }
 
-// Foreground answers the color the cell at column x, row y is drawn in, or nil for the terminal's own.
-func (term *Term) Foreground(x, y int) color.Color {
-	if c := term.emu.CellAt(x, y); c != nil {
+// Foreground answers the color the cell at is drawn in, or nil for the terminal's own.
+func (term *Term) Foreground(at Pos) color.Color {
+	if c := term.emu.CellAt(at.X, at.Y); c != nil {
 		return c.Style.Fg
 	}
 
 	return nil
 }
 
-// Background answers the color behind the cell at column x, row y, or nil for the terminal's own.
-func (term *Term) Background(x, y int) color.Color {
-	if c := term.emu.CellAt(x, y); c != nil {
+// Background answers the color behind the cell at, or nil for the terminal's own.
+func (term *Term) Background(at Pos) color.Color {
+	if c := term.emu.CellAt(at.X, at.Y); c != nil {
 		return c.Style.Bg
 	}
 
