@@ -30,7 +30,7 @@ Spec 1's acceptance test 4 lets a build land past a test that already fails on m
 - A test stable on main that fails on the build fails the gate, even if it passes on a rerun. Today's `suite_again`
   passes the gate on a rerun; that hides a race the build added.
 - A quarantine list holds tests known to flake, and a session is started to fix each.
-- **Build it when:** a flaky test blocks a build, or the flaky-test gauge in `specs/gauges.md` rises.
+- **Build it when:** a flaky test blocks a build, or the flaky-test gauge in `.kiln/specs/gauges.md` rises.
 
 ## Several builds per spec
 
