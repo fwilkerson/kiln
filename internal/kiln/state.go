@@ -112,45 +112,69 @@ const (
 // changed answers whether the spec on main differs from the spec at the commit since. Only queue calls it, on a spec
 // waiting for UAT.
 func (b *book) may(command string, name Spec, changed func(since git.Rev) (bool, error)) error {
-	r := b.find(name)
-	var why string
-	switch {
-	case r == nil && command == queueCommand:
-		return nil
-	case r == nil:
-		why = "kiln holds no record of it"
-	case r.Accepted && r.State != stopped:
-		why = fmt.Sprintf("its landing is %s", r.State)
-	case command == queueCommand && (r.State == amended || r.Accepted):
-		why = fmt.Sprintf("it is %s: accept or reject them first, with kiln accept %s or kiln reject %s",
-			shownState(r), name, name)
-	case command == queueCommand && r.State == building:
-		why = "it is building: queue it again once its build ends"
-	case command == queueCommand && r.State == landed:
-		revised, err := changed(r.Approved)
-		if err != nil || revised {
-			return err
-		}
-
-		why = fmt.Sprintf("it is %s, and %s on main is as it was when its build was queued, so it would build the "+
-			"same work: change the spec, commit it, and queue it", landed, name.path())
-	case command == queueCommand:
-		return nil
-	case r.State == amended || r.Accepted && r.State == stopped:
-		return nil
-	case command == acceptCommand && r.State == landed:
-		return nil
-	case command == rejectCommand && r.State == landed:
-		why = fmt.Sprintf("it is %s, and its work is on main: change the spec, commit it, and queue it", landed)
-	default:
-		why = fmt.Sprintf("it is %s, and kiln %s takes a spec waiting on its branch with amendments", shownState(r),
-			command)
-		if command == acceptCommand {
-			why += ", or one waiting for UAT"
-		}
+	why, err := b.refusal(command, name, changed)
+	if why == "" {
+		return err
 	}
 
 	return fmt.Errorf("%w: %s: %s", errRefused, name, why)
+}
+
+// refusal says why the book refuses command on the spec name, or "" if it takes it.
+func (b *book) refusal(command string, name Spec, changed func(since git.Rev) (bool, error)) (string, error) {
+	r := b.find(name)
+	switch {
+	case r == nil && command == queueCommand:
+		return "", nil
+	case r == nil:
+		return "kiln holds no record of it", nil
+	case r.Accepted && r.State != stopped:
+		return fmt.Sprintf("its landing is %s", r.State), nil
+	case command == queueCommand:
+		return r.queueRefusal(changed)
+	}
+
+	return r.takeRefusal(command), nil
+}
+
+// queueRefusal says why kiln queue refuses the spec of r, or "" if it takes it.
+func (r *record) queueRefusal(changed func(since git.Rev) (bool, error)) (string, error) {
+	switch {
+	case r.State == amended, r.Accepted:
+		return fmt.Sprintf("it is %s: accept or reject them first, with kiln accept %s or kiln reject %s",
+			shownState(r), r.Name, r.Name), nil
+	case r.State == building:
+		return "it is building: queue it again once its build ends", nil
+	case r.State != landed:
+		return "", nil
+	}
+
+	revised, err := changed(r.Approved)
+	if err != nil || revised {
+		return "", err
+	}
+
+	return fmt.Sprintf("it is %s, and %s on main is as it was when its build was queued, so it would build the "+
+		"same work: change the spec, commit it, and queue it", landed, r.Name.path()), nil
+}
+
+// takeRefusal says why command, kiln accept or kiln reject, refuses the spec of r. It says "" if command takes it.
+// A landing of accepted amendments has reached it only once stopped.
+func (r *record) takeRefusal(command string) string {
+	switch {
+	case r.State == amended, r.Accepted, r.State == landed && command == acceptCommand:
+		return ""
+	case r.State == landed:
+		return fmt.Sprintf("it is %s, and its work is on main: change the spec, commit it, and queue it", landed)
+	}
+
+	why := fmt.Sprintf("it is %s, and kiln %s takes a spec waiting on its branch with amendments", shownState(r),
+		command)
+	if command == acceptCommand {
+		why += ", or one waiting for UAT"
+	}
+
+	return why
 }
 
 // shownState is where the spec of r stands, in the words kiln status shows.
@@ -223,13 +247,24 @@ func (b *book) retire(name Spec) {
 // or a landing of accepted amendments. A kiln accept leaves such a landing for the kiln run that holds the lock.
 func (b *book) next(only Spec, pid int) (record, bool) {
 	for _, r := range b.Specs {
-		if r.State == queued && (only == "" || r.Name == only || r.Accepted) {
+		if r.State == queued && r.runsFor(only) {
 			r.State, r.runner = building, runner{PID: pid}
 			return *r, true
 		}
 	}
 
 	return record{}, false
+}
+
+// runsFor is whether a kiln run started for only builds the spec of r. Every run builds a landing of accepted
+// amendments, and a run started for no spec builds every spec.
+func (r *record) runsFor(only Spec) bool {
+	switch {
+	case only == "", r.Name == only, r.Accepted:
+		return true
+	}
+
+	return false
 }
 
 // store keeps the book in a file under the git common directory, so every worktree of the repository shares it.
