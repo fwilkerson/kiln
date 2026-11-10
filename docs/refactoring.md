@@ -92,7 +92,7 @@ comparable struct, and compare it with `got != want`. The loop body then holds n
   argument, so use it only for cheap checks.
 - **A switch that maps a value to words:** index a map literal, as `reason.shown` in `internal/kiln` does.
 - **Flags:** map each flag's name to a pointer to its field, and set them all in one function.
-- **Allowed words:** `button, known := wheelButtons[arg]` checks the word and yields its value at once.
+- **Allowed words:** `turn, known := wheelTurns[arg]` checks the word and yields what it means at once.
 - **A step that must say "try again":** return a sentinel error, such as `errMainMoved`, and loop on `errors.Is`.
 - **A command's many parts:** hand over a built `*exec.Cmd` instead of its program, arguments, directory and
   environment.
@@ -101,6 +101,8 @@ comparable struct, and compare it with `got != want`. The loop body then holds n
 - **A stray helper:** move it into the file of its only caller. That cleared Low Cohesion in `build.go` with no split.
 - **Prove no change:** for code no test pins, run the old and the new on the same inputs, and diff the output. A
   style checker gets a corpus that breaks each rule. A view gets snapshots of `View()` at each screen size.
+- **A guard or a refusal:** scores and tests can pass while it loosens. Run the old code beside the new on many
+  inputs with `go test -overlay`, as the audit did for the hook guard at `4a8380e`.
 - **Go 1.27's `go fix`:** a literal must name an embedded struct's promoted fields, or the root's `TestModern` fails.
   Run `go test ./...` from the root, not only the package's tests.
 
