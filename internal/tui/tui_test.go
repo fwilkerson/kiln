@@ -342,7 +342,7 @@ func TestLiveRun(t *testing.T) {
 	tops("call 17 ")
 	late := calls(21)
 	m = send(m, func() tea.Msg {
-		return loaded{at: now, specs: src.specs, opened: runRef{"x", 0, 0}, open: &late}
+		return loaded{at: now, specs: src.specs, opened: runRef{buildRef{"x", 0}, 0}, open: &late}
 	})
 
 	tops("call 17 ")

@@ -61,10 +61,8 @@ const (
 
 // screen is one screen the developer opened. Its spec, build and run say what it shows, as far as its kind needs.
 type screen struct {
-	kind  kind
-	spec  string
-	build int
-	run   int
+	kind kind
+	runRef
 	// sel is the selected build, on a spec's screen, or run, on a build's.
 	sel int
 	// reveal brings the selection into view at the next refresh.
@@ -101,16 +99,21 @@ type loaded struct {
 
 // texted is a build's spec as approved, read.
 type texted struct {
-	spec  string
-	build int
-	text  string
-	err   error
+	ref  buildRef
+	text string
+	err  error
 }
 
-// runRef names a run by its spec, its build's index, and its index among the build's runs.
+// buildRef names a build by its spec, and its index among the spec's builds.
+type buildRef struct {
+	spec  string
+	build int
+}
+
+// runRef names a run by its build, and its index among the build's runs.
 type runRef struct {
-	spec       string
-	build, run int
+	buildRef
+	run int
 }
 
 func (m model) Init() tea.Cmd { return tea.Batch(m.load(), m.tick()) }
@@ -127,28 +130,40 @@ func (m model) tick() tea.Cmd {
 func (m model) load() tea.Cmd {
 	src, opened, open := m.src, runRef{}, false
 	if s := m.top(); s.kind == runScreen {
-		// An ended run's stream no longer grows, so it is read once.
-		r := find(m.specs, runRef{s.spec, s.build, s.run})
-		opened, open = runRef{s.spec, s.build, s.run}, s.calls == nil || r == nil || r.running()
+		opened, open = s.runRef, m.rereads(s)
 	}
 
 	return func() tea.Msg {
 		specs, err := src.Specs(context.Background())
-		msg := loaded{at: time.Now(), specs: specs, err: err, opened: opened}
-		if _, r, ok := running(specs); ok {
-			if counted, err := src.Recount(r); err == nil {
-				msg.live = &counted
-			}
-		}
-
-		if r := find(specs, opened); open && r != nil {
-			if counted, err := src.Recount(r); err == nil {
-				msg.open = &counted
-			}
+		_, live, _ := running(specs)
+		msg := loaded{at: time.Now(), specs: specs, err: err, live: recount(src, live), opened: opened}
+		if open {
+			msg.open = recount(src, find(specs, opened))
 		}
 
 		return msg
 	}
+}
+
+// rereads reports whether a load reads the stream of the run s shows. An ended run's stream no longer grows, so it
+// is read once.
+func (m model) rereads(s *screen) bool {
+	r := find(m.specs, s.runRef)
+	return s.calls == nil || r == nil || r.running()
+}
+
+// recount reads the run's stretch of its session's stream. It is nil for no run, or for a read that failed.
+func recount(src Source, r *Run) *claude.Recounted {
+	if r == nil {
+		return nil
+	}
+
+	counted, err := src.Recount(r)
+	if err != nil {
+		return nil
+	}
+
+	return &counted
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -161,28 +176,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case loaded:
 		m.loaded(msg)
 	case texted:
-		if s := m.top(); s.kind == textScreen && s.spec == msg.spec && s.build == msg.build {
-			s.text = msg.text
-			if msg.err != nil {
-				s.text = "kiln could not read the spec: " + msg.err.Error()
-			}
-		}
+		m.texted(msg)
 	case tea.KeyPressMsg:
 		cmd = m.key(msg)
 		m.top().pin()
 	case tea.MouseClickMsg:
-		switch {
-		case m.keysShown:
-			m.keysShown = false
-		case msg.Button == tea.MouseLeft:
-			t, _ := parseTarget(m.layout().Hit(msg.X, msg.Y).ID())
-			cmd = m.openTarget(t)
-		}
+		cmd = m.click(msg)
 	case tea.MouseWheelMsg:
-		if !m.keysShown {
-			m.wheel(msg.X, msg.Y, msg.Button == tea.MouseWheelDown)
-			m.top().pin()
-		}
+		m.wheel(msg)
 	}
 
 	m.refresh()
@@ -195,18 +196,56 @@ func (m *model) loaded(msg loaded) {
 		m.specs = msg.specs
 	}
 
-	if s := m.top(); s.kind == runScreen && msg.open != nil && msg.opened == (runRef{s.spec, s.build, s.run}) {
-		s.calls = msg.open
-		if msg.open.Answer != s.text {
-			s.text, s.drawn = msg.open.Answer, nil
-		}
+	if s := m.top(); s.kind == runScreen && s.runRef == msg.opened {
+		s.recounted(msg.open)
 	}
 
 	if m.open != "" {
-		m.push(&screen{kind: specScreen, spec: m.open, sel: max(0, len(m.builds(m.open))-1), reveal: true})
+		m.openSpec(m.open)
 		m.open = ""
 	}
 }
+
+// recounted gives a run's screen its stream as read, if one was. An answer that changed is drawn again.
+func (s *screen) recounted(c *claude.Recounted) {
+	if c == nil {
+		return
+	}
+
+	s.calls = c
+	if c.Answer != s.text {
+		s.text, s.drawn = c.Answer, nil
+	}
+}
+
+// texted gives the spec text read to the top screen, if that is the text screen that asked for it.
+func (m *model) texted(msg texted) {
+	s := m.top()
+	if s.kind != textScreen || s.buildRef != msg.ref {
+		return
+	}
+
+	s.text = msg.text
+	if msg.err != nil {
+		s.text = "kiln could not read the spec: " + msg.err.Error()
+	}
+}
+
+// click opens the row a left click hits. While the key list shows, a click only closes it.
+func (m *model) click(msg tea.MouseClickMsg) tea.Cmd {
+	switch {
+	case m.keysShown:
+		m.keysShown = false
+	case msg.Button == tea.MouseLeft:
+		t, _ := m.hit(msg.Mouse())
+		return m.openTarget(t)
+	}
+
+	return nil
+}
+
+// hit is the target of the row drawn under the pointer, if one is.
+func (m model) hit(at tea.Mouse) (target, bool) { return parseTarget(m.layout().Hit(at.X, at.Y).ID()) }
 
 func (m model) top() *screen { return m.stack[len(m.stack)-1] }
 
@@ -235,9 +274,9 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 
 var paneTargets = [panes]string{specsPane: toSpec, nowPane: toNow, recentPane: toRecent}
 
-// paneAt is the home screen's pane drawn at column x, row y, if one is.
-func (m model) paneAt(x, y int) (pane, bool) {
-	t, ok := parseTarget(m.layout().Hit(x, y).ID())
+// paneAt is the home screen's pane drawn under the pointer, if one is.
+func (m model) paneAt(at tea.Mouse) (pane, bool) {
+	t, ok := m.hit(at)
 	switch {
 	case !ok:
 		return 0, false
@@ -303,7 +342,7 @@ func (m model) rows(s *screen) int {
 		return len(m.builds(s.spec))
 	}
 
-	return len(m.runs(s.spec, s.build))
+	return len(m.runs(s.buildRef))
 }
 
 // row is the selection's row, from the top. A spec's screen lists its builds newest first, and a build's its runs
@@ -326,83 +365,119 @@ func (m model) selectRow(s *screen, i int) {
 	s.sel, s.reveal = max(0, i), true
 }
 
-// wheel scrolls what is under the pointer, at column x and row y. On home, that is the pane it is over, which takes
-// the keys too.
-func (m *model) wheel(x, y int, down bool) {
-	s := m.top()
-	by := map[bool]int{true: 1, false: -1}[down]
-	if s.kind == homeScreen {
-		if p, ok := m.paneAt(x, y); ok {
-			m.focus = p
-			m.move(by)
-		}
-
+// wheel scrolls what is under the pointer. On home, that is the pane it is over, which takes the keys too. While the
+// key list shows, the wheel does nothing.
+func (m *model) wheel(msg tea.MouseWheelMsg) {
+	if m.keysShown {
 		return
 	}
 
-	if down {
+	s := m.top()
+	switch {
+	case s.kind == homeScreen:
+		m.wheelPane(msg)
+	case msg.Button == tea.MouseWheelDown:
 		s.body.ScrollDown(wheelLines)
-	} else {
+	default:
 		s.body.ScrollUp(wheelLines)
 	}
+
+	s.pin()
 }
 
 // wheelLines is how far one turn of the wheel scrolls.
 const wheelLines = 3
 
+// wheelPane moves the selection of the home screen's pane under the pointer, and gives that pane the keys.
+func (m *model) wheelPane(msg tea.MouseWheelMsg) {
+	p, ok := m.paneAt(msg.Mouse())
+	if !ok {
+		return
+	}
+
+	m.focus = p
+	m.move(map[bool]int{true: 1, false: -1}[msg.Button == tea.MouseWheelDown])
+}
+
 // openTarget opens what a row names, as a click or Enter on it does.
 func (m *model) openTarget(t target) tea.Cmd {
-	s := m.top()
 	switch t.to {
 	case toSpec:
-		specs := m.filtered()
-		if t.i >= len(specs) {
-			return nil
-		}
-
-		m.focus, m.sel[specsPane], m.typing = specsPane, t.i, false
-		name := specs[t.i].Name
-		m.push(&screen{kind: specScreen, spec: name, sel: max(0, len(m.builds(name))-1), reveal: true})
+		m.openFiltered(t)
 	case toNow:
 		if ref, _, ok := running(m.specs); ok {
 			return m.openRun(ref)
 		}
 	case toRecent:
-		if all := m.recent(); t.i < len(all) {
-			m.focus, m.sel[recentPane] = recentPane, t.i
-			m.push(&screen{kind: buildScreen, spec: all[t.i].spec, build: all[t.i].build})
-		}
+		m.openRecent(t)
 	case toBuild:
-		if t.i < len(m.builds(s.spec)) {
-			s.sel = t.i
-			m.push(&screen{kind: buildScreen, spec: s.spec, build: t.i})
-		}
+		m.openBuildRow(t)
 	case toRun:
-		if t.i < len(m.runs(s.spec, s.build)) {
-			s.sel = t.i
-			return m.openRun(runRef{s.spec, s.build, t.i})
-		}
+		return m.openRunRow(t)
 	}
 
 	return nil
 }
 
-func (m *model) openRun(ref runRef) tea.Cmd {
-	m.push(&screen{kind: runScreen, spec: ref.spec, build: ref.build, run: ref.run})
-	return m.load()
+// openFiltered opens the spec at a row of the home screen's specs.
+func (m *model) openFiltered(t target) {
+	specs := m.filtered()
+	if t.i >= len(specs) {
+		return
+	}
+
+	m.focus, m.sel[specsPane], m.typing = specsPane, t.i, false
+	m.openSpec(specs[t.i].Name)
 }
 
-func (m *model) openText(spec string, build int) tea.Cmd {
-	builds := m.builds(spec)
-	if build >= len(builds) {
+// openSpec opens the spec's screen, with its newest build selected.
+func (m *model) openSpec(name string) {
+	m.push(&screen{kind: specScreen, spec: name, sel: max(0, len(m.builds(name))-1), reveal: true})
+}
+
+// openRecent opens the build at a row of the home screen's recent builds.
+func (m *model) openRecent(t target) {
+	if all := m.recent(); t.i < len(all) {
+		m.focus, m.sel[recentPane] = recentPane, t.i
+		m.push(&screen{kind: buildScreen, buildRef: all[t.i].buildRef})
+	}
+}
+
+// openBuildRow opens the build at a row of a spec's screen.
+func (m *model) openBuildRow(t target) {
+	if s := m.top(); t.i < len(m.builds(s.spec)) {
+		s.sel = t.i
+		m.push(&screen{kind: buildScreen, buildRef: buildRef{s.spec, t.i}})
+	}
+}
+
+// openRunRow opens the run at a row of a build's screen.
+func (m *model) openRunRow(t target) tea.Cmd {
+	s := m.top()
+	if t.i >= len(m.runs(s.buildRef)) {
 		return nil
 	}
 
-	m.push(&screen{kind: textScreen, spec: spec, build: build})
-	src, b := m.src, builds[build]
+	s.sel = t.i
+	return m.openRun(runRef{s.buildRef, t.i})
+}
+
+func (m *model) openRun(ref runRef) tea.Cmd {
+	m.push(&screen{kind: runScreen, runRef: ref})
+	return m.load()
+}
+
+func (m *model) openText(ref buildRef) tea.Cmd {
+	b := m.build(ref)
+	if b == nil {
+		return nil
+	}
+
+	m.push(&screen{kind: textScreen, buildRef: ref})
+	src := m.src
 	return func() tea.Msg {
 		text, err := src.Text(context.Background(), b)
-		return texted{spec: spec, build: build, text: text, err: err}
+		return texted{ref: ref, text: text, err: err}
 	}
 }
 
@@ -413,10 +488,7 @@ func (m *model) refresh() {
 		return
 	}
 
-	if s.text != "" && (s.drawn == nil || s.drawnW != m.w) {
-		s.drawn, s.drawnW = markdown(s.text, m.w), m.w
-	}
-
+	m.drawText(s)
 	head, body, sel := m.page(s)
 	lines := make([]string, len(body))
 	for i, r := range body {
@@ -437,6 +509,15 @@ func (m *model) refresh() {
 	}
 
 	s.reveal = false
+}
+
+// drawText draws the screen's text for the terminal's width, unless it is drawn for that width already.
+func (m model) drawText(s *screen) {
+	switch {
+	case s.text == "":
+	case s.drawn == nil, s.drawnW != m.w:
+		s.drawn, s.drawnW = markdown(s.text, m.w), m.w
+	}
 }
 
 // callsFrom is the line of a run's body its newest call is on, below its answer.
@@ -476,16 +557,16 @@ func (m model) builds(name string) []*Build {
 	return nil
 }
 
-func (m model) build(name string, i int) *Build {
-	if builds := m.builds(name); i < len(builds) {
-		return builds[i]
+func (m model) build(ref buildRef) *Build {
+	if builds := m.builds(ref.spec); ref.build < len(builds) {
+		return builds[ref.build]
 	}
 
 	return nil
 }
 
-func (m model) runs(name string, build int) []*Run {
-	if b := m.build(name, build); b != nil {
+func (m model) runs(ref buildRef) []*Run {
+	if b := m.build(ref); b != nil {
 		return b.runs()
 	}
 
@@ -499,23 +580,22 @@ func (m model) filtered() []Spec {
 	})
 }
 
-// buildRef is a build, with the spec and index that name it.
-type buildRef struct {
-	spec  string
-	build int
-	b     *Build
+// listed is a build, with the ref that names it.
+type listed struct {
+	buildRef
+	b *Build
 }
 
 // recent is every build, newest first.
-func (m model) recent() []buildRef {
-	var all []buildRef
+func (m model) recent() []listed {
+	var all []listed
 	for _, s := range m.specs {
 		for i, b := range s.Builds {
-			all = append(all, buildRef{s.Name, i, b})
+			all = append(all, listed{buildRef{s.Name, i}, b})
 		}
 	}
 
-	slices.SortStableFunc(all, func(a, b buildRef) int { return b.b.Started.Compare(a.b.Started) })
+	slices.SortStableFunc(all, func(a, b listed) int { return b.b.Started.Compare(a.b.Started) })
 	return all
 }
 
@@ -523,10 +603,9 @@ func (m model) recent() []buildRef {
 func running(specs []Spec) (runRef, *Run, bool) {
 	for _, s := range specs {
 		for bi, b := range s.Builds {
-			for ri, r := range b.runs() {
-				if r.running() {
-					return runRef{s.Name, bi, ri}, r, true
-				}
+			runs := b.runs()
+			if ri := slices.IndexFunc(runs, (*Run).running); ri >= 0 {
+				return runRef{buildRef{s.Name, bi}, ri}, runs[ri], true
 			}
 		}
 	}

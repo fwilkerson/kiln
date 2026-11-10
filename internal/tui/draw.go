@@ -463,7 +463,7 @@ func (m model) page(s *screen) (head, body []row, sel int) {
 		return m.runPage(s)
 	}
 
-	b := m.build(s.spec, s.build)
+	b := m.build(s.buildRef)
 	if b == nil {
 		return []row{{text: s.spec}}, nil, -1
 	}
@@ -541,7 +541,7 @@ func times(n int) string {
 }
 
 func (m model) buildPage(s *screen) (head, body []row, sel int) {
-	b := m.build(s.spec, s.build)
+	b := m.build(s.buildRef)
 	if b == nil {
 		return []row{{text: s.spec}}, nil, -1
 	}
@@ -680,8 +680,8 @@ func causes(b *Build) []row {
 }
 
 func (m model) runPage(s *screen) (head, body []row, sel int) {
-	b := m.build(s.spec, s.build)
-	runs := m.runs(s.spec, s.build)
+	b := m.build(s.buildRef)
+	runs := m.runs(s.buildRef)
 	if b == nil || s.run >= len(runs) {
 		return []row{{text: s.spec}}, nil, -1
 	}

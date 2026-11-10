@@ -99,10 +99,10 @@ func listKeys(opens string) keyMap {
 			}},
 			{spec, func(m *model, s *screen) tea.Cmd {
 				if s.kind == specScreen {
-					return m.openText(s.spec, s.sel)
+					return m.openText(buildRef{s.spec, s.sel})
 				}
 
-				return m.openText(s.spec, s.build)
+				return m.openText(s.buildRef)
 			}},
 			goesBack, showKeys, quits,
 		},
@@ -141,7 +141,7 @@ func textKeys(run bool) keyMap {
 		pair(top, end, "top/end")}
 	if run {
 		commands = append(commands, command{spec, func(m *model, s *screen) tea.Cmd {
-			return m.openText(s.spec, s.build)
+			return m.openText(s.buildRef)
 		}})
 
 		foot = append(foot, spec)
