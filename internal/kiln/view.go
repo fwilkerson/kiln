@@ -186,26 +186,15 @@ func (w reason) shown() string {
 		round = fmt.Sprintf("round %d", w.Round)
 	}
 
-	switch w.Why {
-	case whyFirst:
-		return "first run"
-	case whyGate:
-		return round
-	case whyAudit:
-		return fmt.Sprintf("audit, try %d", w.Try)
-	case whyFindings:
-		return "audit's findings"
-	case whyConflict:
-		return "conflict with main, " + round
-	case whyLanding:
-		return "landing gate failed, " + round
-	case whyUnchanged:
-		return "work changed nothing on main, " + round
-	case whyLimit:
-		return "after a usage limit"
-	case whyInterrupted:
-		return "after kiln stopped"
-	}
-
-	return ""
+	return map[string]string{
+		whyFirst:       "first run",
+		whyGate:        round,
+		whyAudit:       fmt.Sprintf("audit, try %d", w.Try),
+		whyFindings:    "audit's findings",
+		whyConflict:    "conflict with main, " + round,
+		whyLanding:     "landing gate failed, " + round,
+		whyUnchanged:   "work changed nothing on main, " + round,
+		whyLimit:       "after a usage limit",
+		whyInterrupted: "after kiln stopped",
+	}[w.Why]
 }
