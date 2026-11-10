@@ -5,14 +5,14 @@
 # Both specs are longer than the terminal is tall, so their ends show only once scrolled to. Once a is approved, the
 # developer edits it on main, so only the text it was approved at lacks the edit.
 exec kiln queue a
-exec sh -c 'echo "This line came after the approval." >>specs/a.md && git commit --quiet -am "docs(a): edit"'
+exec sh -c 'echo "This line came after the approval." >>.kiln/specs/a.md && git commit --quiet -am "docs(a): edit"'
 exec kiln queue b
 exec kiln run
 stdout '^a: landed on main'
 stdout '^b: waits on kiln/b'
 exec kiln accept a
 stdout '^a: accepted'
-! exec git cat-file -e main:specs/a.md
+! exec git cat-file -e main:.kiln/specs/a.md
 
 # When: the developer opens each one's spec text, and scrolls to its end.
 term 120 24 kiln tui a
@@ -43,9 +43,9 @@ screen 'This line ends the amendment of spec b\.'
 module example.com/scratch
 
 go 1.27
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
--- specs/a.md --
+-- .kiln/specs/a.md --
 # Spec 1: a
 
 Status: Approved, 2026-11-09
@@ -67,6 +67,12 @@ This line opens spec a.
 - Line 11 of the overview.
 - Line 12 of the overview.
 
+## Goals
+
+## Non-goals
+
+## Open Questions
+
 ## Acceptance tests
 
 ### 1. A answers
@@ -76,7 +82,11 @@ This line opens spec a.
 - **Then**: it answers 1.
 
 This line ends spec a.
--- specs/b.md --
+
+## Technical Plan
+
+## Alternatives Considered
+-- .kiln/specs/b.md --
 # Spec 2: b
 
 Status: Approved, 2026-11-09
@@ -98,6 +108,12 @@ This line opens spec b.
 - Line 11 of the overview.
 - Line 12 of the overview.
 
+## Goals
+
+## Non-goals
+
+## Open Questions
+
 ## Acceptance tests
 
 ### 1. B answers
@@ -105,6 +121,10 @@ This line opens spec b.
 - **Given**: nothing.
 - **When**: B is called.
 - **Then**: it answers 2.
+
+## Technical Plan
+
+## Alternatives Considered
 -- claude.json --
 {
   "build": {
@@ -133,8 +153,8 @@ package scratch
 
 // B answers 3.
 func B() int { return 3 }
--- _given/b/specs/b.amend.md --
-# Amendments to specs/b.md
+-- _given/b/.kiln/specs/b.amend.md --
+# Amendments to .kiln/specs/b.md
 
 ## Acceptance test 1: B answers
 

@@ -23,7 +23,7 @@ type guard struct {
 }
 
 // guarded says why the build may not change rel, a path within the repository. It says "" if the build may. It reads
-// each name as APFS does, folding case, so SPECS/x.md is specs/x.md.
+// each name as APFS does, folding case, so .KILN/x.md is .kiln/x.md.
 func (g guard) guarded(rel string) string {
 	folded := fold(path.Clean(strings.TrimPrefix(rel, "/")))
 	names := strings.Split(folded, "/")
@@ -33,9 +33,9 @@ func (g guard) guarded(rel string) string {
 		return ""
 	case slices.Contains(names, fold(".git")):
 		return rel + " is in a git directory, which only git and kiln write"
-	case names[0] == fold("specs") && (len(names) != 2 || names[1] != fold(string(g.spec)+amendSuffix)):
-		return fmt.Sprintf("%s is under specs/, which holds what the developer approved: a build writes there only %s",
-			rel, g.spec.amendPath())
+	case names[0] == fold(kilnDir) && folded != fold(g.spec.amendPath()):
+		return fmt.Sprintf("%s is under .kiln/, which holds what the developer approved, the agents and the gate: a "+
+			"build writes there only %s", rel, g.spec.amendPath())
 	case settings:
 		return rel + " is a Claude Code settings file, which stays the developer's"
 	}

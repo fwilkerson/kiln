@@ -1,8 +1,8 @@
 // Package kiln builds the specs a developer approved, and lands them on main.
 //
 //	r, err := kiln.Open(ctx, ".", os.Environ())
-//	err = r.Init(ctx, os.Stdout)          // kiln.json, and the pre-commit hook
-//	err = r.Queue(ctx, "x", os.Stdout)    // queues specs/x.md, as main holds it
+//	err = r.Init(ctx, os.Stdout)          // .kiln/, and the pre-commit hook
+//	err = r.Queue(ctx, "x", os.Stdout)    // queues .kiln/specs/x.md, as main holds it
 //	err = r.Run(ctx, os.Stdout)           // builds each queued spec, one at a time
 //	err = r.Status(ctx, os.Stdout)
 //	err = r.TUI(ctx, "", os.Stdin, os.Stdout)  // every build, live and past, in a full-screen view
@@ -27,7 +27,24 @@
 //	                                                                           └─ accept ──▶ landing again
 //
 // A spec landing accepted amendments is queued, building or stopped, as the build that lands it stands. Every other
-// command refuses. kiln queue takes only a spec whose Status, at main's tip, is Approved.
+// command refuses. kiln queue takes only a spec whose Status, at main's tip, is Approved. Its form follows /shape's
+// template, as kiln embeds it. Its ## sections all appear, in the template's order, with any of the spec's
+// own between them. Each ### N. Title under Acceptance tests holds a Given, a When and a Then, numbered from 1.
+//
+// A project tells kiln how its builds run in .kiln/, on main, which kiln init starts from kiln's defaults:
+//
+//	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths
+//	.kiln/agents/build.md       the build agent
+//	.kiln/agents/audit.md       the audit
+//	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
+//
+// kiln queue reads the build and audit agents' files at the commit it queues, and refuses one it can't use. Every
+// session of the build runs with them as they stood there. An agent's file names the session's tools, model, effort
+// and advisor in its frontmatter. Without tools, it has every tool. Without model or effort, it runs Opus at medium
+// effort. Without advisor, Fable advises it. Its body comes first in the session's system prompt, then kiln's
+// contract with the agent. No file changes that contract, the denied commands, the forbidden actions, or the guard on
+// .kiln/. The hosts and writable paths are kiln.json's at main's tip, and none without its keys. kiln runs each
+// command that prints paths once per kiln command. One that fails stops the build.
 //
 // A build runs one build session of Claude Code, on its own branch, kiln/<name>, in a worktree kiln makes. kiln commits
 // what the session leaves, then gates it. A failing gate goes back to the same session, at most kiln.json's rounds
@@ -40,8 +57,9 @@
 // goes back to the session, as a failed gate does.
 //
 // The gate runs kiln.json's commands, read from main's tip, at the build's commit and at main. It passes when every
-// command exits 0, but for Go tests that fail at main too. It fails on any path the work changed under specs/ but
-// specs/<name>.amend.md, however it was written. A session's hook refuses an Edit or a Write there before it happens.
+// command exits 0, but for Go tests that fail at main too. It fails on any path the work changed under .kiln/ but
+// .kiln/specs/<name>.amend.md, however it was written. A session's hook refuses an Edit or a Write there before it
+// happens.
 //
 // A usage limit pauses the build until the limit resets, and then resumes the same session. A limit with no reset
 // pauses it for 5 minutes.
@@ -77,13 +95,10 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -99,6 +114,8 @@ const (
 	mainBranch = "main"
 	mainTree   = ".main"
 	product    = "PRODUCT.md"
+	// kilnDir holds what a project tells kiln: its settings, its agents and its specs.
+	kilnDir = ".kiln"
 )
 
 // Repo is one repository kiln builds, opened from any of its checkouts.
@@ -112,8 +129,10 @@ type Repo struct {
 	exe    string
 	claude claude.Claude
 
-	cachesOnce sync.Once
-	caches     []string
+	// writable holds the paths each command printed, by the command, once it ran. It is read and written only while
+	// holding writableMu.
+	writableMu sync.Mutex
+	writable   map[string][]string
 }
 
 // Open opens the repository that holds dir. env is the environment of every process kiln starts, less what each
@@ -205,36 +224,6 @@ func lockBuilds(how int) (release func(), err error) {
 // hookMark marks a pre-commit hook as kiln's own, which kiln init may write over.
 const hookMark = "# kiln's pre-commit hook"
 
-// Init writes a starting kiln.json at the top of the checkout, unless one is there. It installs the pre-commit hook,
-// which refuses a commit to main that fails kiln.json's commands. It refuses to write over another pre-commit hook.
-func (r *Repo) Init(ctx context.Context, out io.Writer) error {
-	if err := r.writeConfig(out); err != nil {
-		return err
-	}
-
-	return r.installHook(ctx, out)
-}
-
-// writeConfig writes the starting kiln.json, unless the checkout holds one.
-func (r *Repo) writeConfig(out io.Writer) error {
-	configPath := filepath.Join(r.top, configFile)
-	if _, err := os.Stat(configPath); !errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-
-	raw, err := json.MarshalIndent(initial, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(configPath, append(raw, '\n'), 0o644); err != nil {
-		return err
-	}
-
-	fmt.Fprintf(out, "wrote %s: commit it, since kiln reads it from main\n", configFile)
-	return nil
-}
-
 // installHook installs the pre-commit hook, unless another pre-commit hook is there.
 func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
 	args := []string{"rev-parse", "--path-format=absolute", "--git-path", "hooks"}
@@ -261,11 +250,16 @@ func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
-// Spec is a spec's name, such as checkout-flow: specs/checkout-flow.md holds the spec.
+// Spec is a spec's name, such as checkout-flow: .kiln/specs/checkout-flow.md holds the spec.
 type Spec string
 
-func (s Spec) file() string      { return "specs/" + string(s) + ".md" }
-func (s Spec) amendPath() string { return "specs/" + string(s) + amendSuffix }
+const specsDir = kilnDir + "/specs"
+
+func (s Spec) file() string      { return specsDir + "/" + string(s) + ".md" }
+func (s Spec) amendPath() string { return specsDir + "/" + string(s) + amendSuffix }
+
+// oldFile is where a commit from before .kiln/ held the spec.
+func (s Spec) oldFile() string { return "specs/" + string(s) + ".md" }
 
 // branch is the branch the spec's build works on.
 func (s Spec) branch() git.Branch { return git.Branch("kiln/" + s) }
@@ -275,16 +269,18 @@ var (
 	approved = regexp.MustCompile(`(?m)^Status: Approved\b`)
 )
 
-// Queue records main's tip as the commit of specs/<name>.md, and queues a new build of it. It refuses a name that is
-// not a spec's, and a spec main does not hold. It refuses one whose Status is not Approved. It refuses by the state
-// the spec is in, as the package doc shows. A stopped build, or one waiting for UAT, is dropped for the new one.
+// Queue records main's tip as the commit of .kiln/specs/<name>.md, and queues a new build of it. It refuses a name
+// that is not a spec's, and a spec main does not hold. It refuses one whose Status is not Approved, or whose form
+// leaves the template. It refuses while main holds no kiln.json, build agent or audit agent it can use. It refuses by
+// the state the spec is in, as the package doc shows. A stopped build, or one waiting for UAT, is dropped for the new
+// one.
 func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
 	main, err := r.git.Tip(ctx, mainBranch)
 	if err != nil {
 		return err
 	}
 
-	spec, err := r.approvedSpec(ctx, main, name)
+	spec, err := r.queueable(ctx, main, name)
 	if err != nil {
 		return err
 	}
@@ -313,7 +309,41 @@ func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
 	return nil
 }
 
-// approvedSpec reads specs/<name>.md at main, a spec whose Status is Approved.
+// queueable reads .kiln/specs/<name>.md at main, a spec kiln queue may take. Its Status is Approved, and its form
+// follows the template. Main must hold a kiln.json, a build agent and an audit agent that kiln can use.
+func (r *Repo) queueable(ctx context.Context, main git.Rev, name Spec) ([]byte, error) {
+	if err := r.ready(ctx, main); err != nil {
+		return nil, err
+	}
+
+	spec, err := r.approvedSpec(ctx, main, name)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := formOf(string(spec)); err != nil {
+		return nil, fmt.Errorf("%w: %s leaves /shape's template: %w", errRefused, name.file(), err)
+	}
+
+	return spec, nil
+}
+
+// ready refuses while main, at main, holds no kiln.json, build agent or audit agent that kiln can use.
+func (r *Repo) ready(ctx context.Context, main git.Rev) error {
+	if _, err := r.config(ctx, main); err != nil {
+		return fmt.Errorf("%w: %w", errRefused, err)
+	}
+
+	for _, role := range []string{buildRole, auditRole} {
+		if _, err := r.agent(ctx, main, role, "run kiln init, and commit what it writes"); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// approvedSpec reads .kiln/specs/<name>.md at main, a spec whose Status is Approved.
 func (r *Repo) approvedSpec(ctx context.Context, main git.Rev, name Spec) ([]byte, error) {
 	if !specName.MatchString(string(name)) {
 		return nil, fmt.Errorf("%w: %q is not a spec's name, such as checkout-flow", errRefused, name)
@@ -326,19 +356,30 @@ func (r *Repo) approvedSpec(ctx context.Context, main git.Rev, name Spec) ([]byt
 	case !found:
 		return nil, fmt.Errorf("%w: main holds no %s: commit it there first", errRefused, name.file())
 	case !approved.Match(spec):
-		return nil, fmt.Errorf("%w: %s is not Approved: finish it with /slice, and commit it, first", errRefused,
+		return nil, fmt.Errorf("%w: %s is not Approved: finish it with /shape, and commit it, first", errRefused,
 			name.file())
 	}
 
 	return spec, nil
 }
 
-// changed answers whether specs/<name>.md at a commit differs from spec.
+// changed answers whether the spec of name at a commit differs from spec.
 func (r *Repo) changed(ctx context.Context, name Spec, spec []byte) func(since git.Rev) (bool, error) {
 	return func(since git.Rev) (bool, error) {
-		old, _, err := r.git.Show(ctx, since, name.file())
+		old, _, err := r.specAt(ctx, since, name)
 		return !bytes.Equal(old, spec), err
 	}
+}
+
+// specAt reads the spec of name as the commit at held it. That is .kiln/specs/<name>.md, or specs/<name>.md where
+// at holds no spec under .kiln/. A commit from before .kiln/ held its specs there.
+func (r *Repo) specAt(ctx context.Context, at git.Rev, name Spec) (spec []byte, found bool, err error) {
+	spec, found, err = r.git.Show(ctx, at, name.file())
+	if err != nil || found {
+		return spec, found, err
+	}
+
+	return r.git.Show(ctx, at, name.oldFile())
 }
 
 // dropped writes to the ledger that the build of name ended, dropped.
@@ -378,7 +419,7 @@ func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	case acceptCommand, rejectCommand:
 		return r.taking(command)
 	case queueCommand:
-		return r.queueable(ctx)
+		return r.queueNames(ctx)
 	}
 
 	return nil, nil
@@ -408,8 +449,8 @@ func (r *Repo) taking(command string) ([]string, error) {
 	return names, err
 }
 
-// queueable answers the specs on main that kiln queue would not refuse.
-func (r *Repo) queueable(ctx context.Context) ([]string, error) {
+// queueNames answers the specs on main that kiln queue would not refuse.
+func (r *Repo) queueNames(ctx context.Context) ([]string, error) {
 	b, err := r.store.read()
 	if err != nil {
 		return nil, err
@@ -420,7 +461,7 @@ func (r *Repo) queueable(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	files, err := r.git.Files(ctx, main, "specs")
+	files, err := r.git.Files(ctx, main, specsDir)
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +485,7 @@ func (r *Repo) queueable(ctx context.Context) ([]string, error) {
 
 // mayQueue answers nil when kiln queue would take name, with main's tip at main, or why it refuses.
 func (r *Repo) mayQueue(ctx context.Context, b book, main git.Rev, name Spec) error {
-	spec, err := r.approvedSpec(ctx, main, name)
+	spec, err := r.queueable(ctx, main, name)
 	if err != nil {
 		return err
 	}
@@ -617,19 +658,6 @@ func short(commit git.Rev) string { return string(commit[:min(12, len(commit))])
 
 func indent(text string) string {
 	return "  " + strings.ReplaceAll(strings.TrimRight(text, "\n"), "\n", "\n  ")
-}
-
-// goCaches are Go's build and module caches, which a session's commands write.
-func (r *Repo) goCaches(ctx context.Context) []string {
-	r.cachesOnce.Do(func() {
-		cmd := exec.CommandContext(ctx, "go", "env", "GOCACHE", "GOMODCACHE")
-		cmd.Env = r.env
-		if out, err := cmd.Output(); err == nil {
-			r.caches = strings.Fields(string(out))
-		}
-	})
-
-	return r.caches
 }
 
 // newSession returns a new session ID, a random UUID.

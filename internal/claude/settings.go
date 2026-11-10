@@ -22,8 +22,6 @@ func settings(l Launch) ([]byte, error) {
 				"Remotes: nothing is pushed to any remote, by this session or any other."},
 			"hard_deny": slices.Concat([]string{"$defaults"}, l.Forbidden),
 		},
-		// Claude Code has no flag for the advisor, and the user's settings, where it would be set, are never read.
-		"advisorModel":    "fable",
 		"disableAllHooks": false,
 		"sandbox": map[string]any{
 			"enabled":                  true,
@@ -32,6 +30,11 @@ func settings(l Launch) ([]byte, error) {
 			"filesystem":               map[string]any{"allowWrite": nonNil(l.Writable)},
 		},
 	}
+	// Claude Code has no flag for the advisor, and the user's settings, where it would be set, are never read.
+	if l.Advisor != "" {
+		own["advisorModel"] = l.Advisor
+	}
+
 	if l.Hook != "" {
 		own["hooks"] = map[string]any{"PreToolUse": []any{map[string]any{
 			"matcher": writeTools,

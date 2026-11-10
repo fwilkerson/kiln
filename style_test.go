@@ -40,9 +40,14 @@ func TestNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	docs, _ := filepath.Glob("guidance/*/*.md")
-	skills, _ := filepath.Glob("guidance/skills/*/*.md")
-	for _, doc := range append(append(docs, skills...), "README.md") {
+	var docs []string
+	for _, pattern := range []string{"guidance/*/*.md", "guidance/skills/*/*.md", ".kiln/agents/*.md",
+		".kiln/skills/*/*.md"} {
+		found, _ := filepath.Glob(pattern)
+		docs = append(docs, found...)
+	}
+
+	for _, doc := range append(docs, "README.md") {
 		b, err := os.ReadFile(doc)
 		if err != nil {
 			t.Fatal(err)

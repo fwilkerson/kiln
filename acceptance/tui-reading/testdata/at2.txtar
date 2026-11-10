@@ -5,7 +5,7 @@
 exec kiln queue x
 exec kiln run
 stdout '^x: landed on main'
-exec sh -c 'echo "Revision 2." >>specs/x.md && git commit --quiet -am "docs(x): revise"'
+exec sh -c 'echo "Revision 2." >>.kiln/specs/x.md && git commit --quiet -am "docs(x): revise"'
 exec kiln queue x
 exec kiln run
 stdout '^x: landed on main'
@@ -28,12 +28,20 @@ screen '^1 +build +first run +\S+ +1 +\$0\.20 '
 module example.com/scratch
 
 go 1.27
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 0}
--- specs/x.md --
+-- .kiln/specs/x.md --
 # Spec 1: x
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -42,6 +50,10 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
+
+## Technical Plan
+
+## Alternatives Considered
 -- claude.json --
 {
   "build": {

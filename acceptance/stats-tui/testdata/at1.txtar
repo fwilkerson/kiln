@@ -18,7 +18,7 @@ screen '^x · build 1 · run 2: round 1 of 3 · build role · session '
 screen '^▶ running \S+ · idle \d+:\d\d · '
 screen ' · cost \?'
 screen '^▶ \d\d:\d\d:\d\d Bash +touch .* \d+:\d\d running$'
-screen '^✗ \d\d:\d\d:\d\d Write +.*specs/x\.md +— refused: '
+screen '^✗ \d\d:\d\d:\d\d Write +.*.kiln/specs/x\.md +— refused: '
 screen ' · 1 refused · '
 ! screen 'echo the next call'
 
@@ -36,12 +36,20 @@ stdout '^x: landed on main'
 module example.com/scratch
 
 go 1.27
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 3}
--- specs/x.md --
+-- .kiln/specs/x.md --
 # Spec 1: x
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -50,6 +58,10 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
+
+## Technical Plan
+
+## Alternatives Considered
 -- claude.json --
 {
   "build": {"1": {
@@ -58,7 +70,7 @@ Status: Approved, 2026-11-09
       {"result": {"result": "Built x.", "cost_usd": 0.50}}
     ],
     "2": [
-      {"tool": {"name": "Write", "input": {"file_path": "specs/x.md", "content": "changed"}}},
+      {"tool": {"name": "Write", "input": {"file_path": ".kiln/specs/x.md", "content": "changed"}}},
       {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/waiting\" && while [ ! -e \"$WORK/go-on\" ]; do sleep 0.1; done"}}},
       {"tool": {"name": "Bash", "input": {"command": "echo the next call && cp -R \"$WORK/_given/right/.\" . && while [ ! -e \"$WORK/done\" ]; do sleep 0.1; done"}}},
       {"result": {"result": "Fixed x.", "cost_usd": 0.25}}

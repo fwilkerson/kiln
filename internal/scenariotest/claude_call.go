@@ -255,8 +255,8 @@ func (s *claudeSession) keepRecord() error {
 	return nil
 }
 
-// recordFiles holds the call's arguments, one a line, its prompt, and the file --settings names. A missing file is
-// recorded empty.
+// recordFiles holds the call's arguments, one a line, its prompt, and the files --append-system-prompt-file and
+// --settings name. A missing file is recorded empty.
 func (s *claudeSession) recordFiles() (map[string][]byte, error) {
 	args := make([]string, len(s.call.Args))
 	for i, a := range s.call.Args {
@@ -264,15 +264,19 @@ func (s *claudeSession) recordFiles() (map[string][]byte, error) {
 	}
 
 	files := map[string][]byte{ClaudeArgsFile: []byte(strings.Join(args, "\n") + "\n"), ClaudePromptFile: s.prompt}
-	if s.flags.settings == "" {
-		return files, nil
+	named := map[string]string{ClaudeSystemFile: s.flags.roleFile, ClaudeSettingsFile: s.flags.settings}
+	for name, path := range named {
+		if path == "" {
+			continue
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+
+		files[name] = content
 	}
 
-	settings, err := os.ReadFile(s.flags.settings)
-	if errors.Is(err, fs.ErrNotExist) {
-		err = nil
-	}
-
-	files[ClaudeSettingsFile] = settings
-	return files, err
+	return files, nil
 }

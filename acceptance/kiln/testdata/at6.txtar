@@ -9,11 +9,6 @@ exec kiln status
 stdout '^x: waiting for UAT$'
 stdout '^y: waiting on its branch with amendments'
 
-# The developer adds an agent on main before accepting x, which landing links in from .claude/agents.
-cp _given/agent.md guidance/agents/agent.md
-exec git add guidance/agents/agent.md
-exec git commit --quiet -m 'docs(guidance): add an agent'
-
 # When: the developer runs kiln accept.
 exec kiln accept x
 stdout '^x: accepted'
@@ -27,19 +22,17 @@ exec go test ./...
 exec sh -c '$(sed -n "s/^- Spec 2: y: .\(git show .*\).$/\1/p" PRODUCT.md)'
 stdout '^- \*\*Then\*\*: it answers 8.$'
 ! stdout 'answers 7'
-exec sh -c 'git merge-base --is-ancestor "$(sed -n "s/.*git show \([0-9a-f]*\):specs\/y.md.*/\1/p" PRODUCT.md)" main'
-exec test -L .claude/agents
-cmp .claude/agents/agent.md _given/agent.md
+exec sh -c 'git merge-base --is-ancestor "$(sed -n "s/.*git show \([0-9a-f]*\):.kiln\/specs\/y.md.*/\1/p" PRODUCT.md)" main'
 
 # specs/ no longer holds it,
-! exists specs/x.md specs/y.md specs/y.amend.md
+! exists .kiln/specs/x.md .kiln/specs/y.md .kiln/specs/y.amend.md
 
 # and PRODUCT.md names it with its commit.
-grep '^- Spec 1: x: `git show [0-9a-f]{12}:specs/x.md`$' PRODUCT.md
-grep '^- Spec 2: y: `git show [0-9a-f]{12}:specs/y.md`$' PRODUCT.md
+grep '^- Spec 1: x: `git show [0-9a-f]{12}:.kiln/specs/x.md`$' PRODUCT.md
+grep '^- Spec 2: y: `git show [0-9a-f]{12}:.kiln/specs/y.md`$' PRODUCT.md
 exec sh -c '$(sed -n "s/^- Spec 1: x: .\(git show .*\).$/\1/p" PRODUCT.md)'
 stdout '^- \*\*Then\*\*: it answers 42.$'
-exec sh -c 'git merge-base --is-ancestor "$(sed -n "s/.*git show \([0-9a-f]*\):specs\/x.md.*/\1/p" PRODUCT.md)" main'
+exec sh -c 'git merge-base --is-ancestor "$(sed -n "s/.*git show \([0-9a-f]*\):.kiln\/specs\/x.md.*/\1/p" PRODUCT.md)" main'
 exec kiln status
 stdout '^kiln holds no approved spec$'
 
@@ -47,12 +40,20 @@ stdout '^kiln holds no approved spec$'
 module example.com/scratch
 
 go 1.27
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
--- specs/x.md --
+-- .kiln/specs/x.md --
 # Spec 1: x
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -61,10 +62,22 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
--- specs/y.md --
+
+## Technical Plan
+
+## Alternatives Considered
+-- .kiln/specs/y.md --
 # Spec 2: y
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -73,6 +86,10 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: Y is called.
 - **Then**: it answers 7.
+
+## Technical Plan
+
+## Alternatives Considered
 -- claude.json --
 {
   "build": {
@@ -90,13 +107,6 @@ Status: Approved, 2026-11-09
     "2": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}
   }
 }
--- guidance/agents/.keep --
--- _given/agent.md --
----
-name: agent
----
-
-An agent the developer added.
 -- _given/x/x.go --
 // Package scratch is where kiln's builds land.
 package scratch
@@ -137,8 +147,8 @@ func TestAT1(t *testing.T) {
 		t.Fatalf("Y answers %d, want 8", got)
 	}
 }
--- _given/y/specs/y.amend.md --
-# Amendments to specs/y.md
+-- _given/y/.kiln/specs/y.amend.md --
+# Amendments to .kiln/specs/y.md
 
 ## Acceptance test 1: Y answers
 

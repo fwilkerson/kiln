@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -17,9 +18,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fwilkerson/kiln/guidance"
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/kiln/internal/proc"
 )
 
 // unknownReset is how long a usage limit that names no reset pauses a build.
@@ -168,7 +169,12 @@ func (b *build) run(ctx context.Context) error {
 			return err
 		}
 
-		if _, err := b.talk(ctx, b.launch(true, next), why); err != nil {
+		l, err := b.launch(ctx, true, next)
+		if err != nil {
+			return err
+		}
+
+		if _, err := b.talk(ctx, l, why); err != nil {
 			return err
 		}
 	}
@@ -186,8 +192,12 @@ func (b *build) goOn(ctx context.Context) error {
 	case b.rec.Session == "":
 		return b.start(ctx)
 	case !b.rec.Accepted:
-		why := reason{Why: whyInterrupted, Round: b.rec.Rounds}
-		_, err := b.talk(ctx, b.launch(true, interrupted), why)
+		l, err := b.launch(ctx, true, interrupted)
+		if err != nil {
+			return err
+		}
+
+		_, err = b.talk(ctx, l, reason{Why: whyInterrupted, Round: b.rec.Rounds})
 		return err
 	}
 
@@ -326,7 +336,7 @@ func (b *build) onMain(at git.Rev) error {
 	return nil
 }
 
-// allowed are the paths under specs/ that an accepted spec's landing changes: it folds the amendments, and retires
+// allowed are the paths under .kiln/ that an accepted spec's landing changes: it folds the amendments, and retires
 // the spec.
 func (b *build) allowed() []string {
 	if b.rec.Accepted {
@@ -382,38 +392,93 @@ func (b *build) start(ctx context.Context) error {
 	b.set(func(r *record) { r.Session = session })
 	b.say("building on %s, in %s", b.rec.Name.branch(), b.tree)
 	prompt := fmt.Sprintf(starting, b.rec.Name.file(), short(b.rec.Approved), b.rec.Name.branch())
-	_, err = b.talk(ctx, b.launch(false, prompt), reason{Why: whyFirst})
+	l, err := b.launch(ctx, false, prompt)
+	if err != nil {
+		return err
+	}
+
+	_, err = b.talk(ctx, l, reason{Why: whyFirst})
 	return err
 }
 
-func (b *build) launch(resume bool, prompt string) claude.Launch {
+// launch is a run of the build agent's session, which resume says resumes it.
+func (b *build) launch(ctx context.Context, resume bool, prompt string) (claude.Launch, error) {
 	name := b.rec.Name
 	hook := fmt.Sprintf("%s hook --spec %s --place %s", shellQuote(b.r.exe), name, shellQuote(string(b.tree)))
-	return b.sandboxed(claude.Launch{
+	return b.agentLaunch(ctx, buildRole, claude.Launch{
 		Session: b.rec.Session,
 		Resume:  resume,
-		Role:    "build",
-		System:  fmt.Sprintf(buildRole, name),
 		Prompt:  prompt,
 		Dir:     string(b.tree),
 		Hook:    hook,
 	})
 }
 
-// sandboxed adds to l what every session of a build holds to.
-func (b *build) sandboxed(l claude.Launch) claude.Launch {
+// sandboxed adds to l what every session of a build holds to. No agent's file changes the denied commands and
+// forbidden actions. The hosts and writable paths are kiln.json's, at main's tip.
+func (b *build) sandboxed(ctx context.Context, l claude.Launch) (claude.Launch, error) {
 	l.Deny = []string{"Bash(git push)", "Bash(git push *)", "Bash(git update-ref *)", "Bash(git branch -f *)",
 		"Bash(git branch -D *)", "Bash(git checkout main)", "Bash(git switch main)", "Bash(git reset * main)"}
 	l.Forbidden = []string{
 		"Pushing to any remote, in any form.",
 		"Writing, moving, resetting or deleting any ref but the branch checked out in the working directory, " +
 			"and above all main.",
-		fmt.Sprintf("Changing anything under specs/ but %s, by a file tool or a shell command.", b.rec.Name.amendPath()),
+		fmt.Sprintf("Changing anything under .kiln/ but %s, by a file tool or a shell command.",
+			b.rec.Name.amendPath()),
 		"Changing .claude/settings.json or .claude/settings.local.json.",
 	}
-	l.Writable = b.r.goCaches(context.Background())
-	l.Domains = []string{"proxy.golang.org", "sum.golang.org", "storage.googleapis.com"}
-	return l
+	var err error
+	l.Domains, l.Writable, err = b.r.reach(ctx)
+	return l, err
+}
+
+// reach answers the hosts a session's commands reach, and the paths beside its worktree they write. kiln.json at
+// main's tip names them.
+func (r *Repo) reach(ctx context.Context) (hosts, writable []string, err error) {
+	main, err := r.git.Tip(ctx, mainBranch)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	c, err := r.config(ctx, main)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, command := range c.Writable {
+		paths, err := r.printed(ctx, command)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		writable = append(writable, paths...)
+	}
+
+	return c.Hosts, writable, nil
+}
+
+// printed answers the paths command prints, a field each. It runs command once per kiln command, in the checkout
+// kiln runs in, with sh -c. A command that fails is an error.
+func (r *Repo) printed(ctx context.Context, command string) ([]string, error) {
+	r.writableMu.Lock()
+	defer r.writableMu.Unlock()
+	if paths, ok := r.writable[command]; ok {
+		return paths, nil
+	}
+
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	cmd.Dir, cmd.Env = r.top, proc.Shell.Env(r.env)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("%s's writable command %q: %w", configFile, command, err)
+	}
+
+	if r.writable == nil {
+		r.writable = map[string][]string{}
+	}
+
+	r.writable[command] = strings.Fields(string(out))
+	return r.writable[command], nil
 }
 
 // talk runs the session l launches, and answers how it ended. A usage limit pauses the build until it resets, and the
@@ -495,8 +560,6 @@ func (b *build) pause(ctx context.Context, until time.Time) error {
 	return nil
 }
 
-const auditRole = "audit"
-
 // undo answers each path an audit run changed in its worktree at dir, committed or not, since the commit read. Then
 // it puts the worktree back at read, so the next run of the audit sees only the build's work.
 func (r *Repo) undo(ctx context.Context, dir git.Worktree, read git.Rev) ([]string, error) {
@@ -536,13 +599,14 @@ func (b *build) audit(ctx context.Context) (string, error) {
 
 	b.say("the audit reads %s", strings.Join(packages, " "))
 	// The audit's own worktree keeps what it writes out of the build's, even when kiln stops mid-audit.
-	l := b.sandboxed(claude.Launch{
-		Role:   auditRole,
-		System: guidance.Audit(),
-		Prompt: fmt.Sprintf(auditing, strings.Join(packages, " "), b.rec.Name.file(), b.rec.Name),
+	l, err := b.agentLaunch(ctx, auditRole, claude.Launch{
+		Prompt: fmt.Sprintf(auditing, "`"+strings.Join(packages, "`, `")+"`", b.rec.Name.file(), b.rec.Name),
 		Dir:    string(b.r.auditTree(b.rec.Name)),
-		Tools:  []string{"Read", "Grep", "Glob", "Bash"},
 	})
+	if err != nil {
+		return "", err
+	}
+
 	for try := 1; ; try++ {
 		findings, err := b.auditTry(ctx, l, head, try)
 		if !errors.Is(err, errNoResult) {
@@ -606,24 +670,45 @@ func (b *build) changedPackages(ctx context.Context) (git.Rev, []string, error) 
 	}
 
 	changed, err := b.r.git.Changed(ctx, base, head)
-	return head, goPackages(changed), err
+	if err != nil {
+		return "", nil, err
+	}
+
+	packages, err := b.goPackages(ctx, head, changed)
+	return head, packages, err
 }
 
-// goPackages are the packages that hold the Go files of paths, each once, as ./ patterns.
-func goPackages(paths []string) []string {
+// goPackages are the packages at head that hold the Go files of paths, each once, as patterns: . for the top, or
+// ./ and the directory. A directory whose last Go file the work deleted holds no package.
+func (b *build) goPackages(ctx context.Context, head git.Rev, paths []string) ([]string, error) {
 	var packages []string
 	for _, p := range paths {
-		if strings.HasSuffix(p, ".go") && !slices.Contains(packages, "./"+path.Dir(p)) {
-			packages = append(packages, "./"+path.Dir(p))
+		dir := path.Dir(p)
+		pattern := "./" + dir
+		if dir == "." {
+			pattern = "."
+		}
+
+		if !strings.HasSuffix(p, ".go") || slices.Contains(packages, pattern) {
+			continue
+		}
+
+		files, err := b.r.git.Files(ctx, head, dir)
+		if err != nil {
+			return nil, err
+		}
+
+		if slices.ContainsFunc(files, func(f string) bool { return strings.HasSuffix(f, ".go") }) {
+			packages = append(packages, pattern)
 		}
 	}
 
-	return packages
+	return packages, nil
 }
 
 const auditTries = 3
 
-// land rebases the build's work onto main as one commit, links its guidance in, and gates it. Then it moves main
+// land rebases the build's work onto main as one commit, and gates it. Then it moves main
 // there, only if main has not moved since the rebase; if it has, land starts again. from is the commit to rebase,
 // or "" to start from main's tip. Before the gate, retire may add a commit. A path in allowed may change, though
 // guarded names it.
@@ -682,7 +767,7 @@ func (b *build) landOnce(ctx context.Context, from git.Rev, retire func(ctx cont
 	return b.move(ctx, head, onto)
 }
 
-// prepare puts the work from from onto onto, with its guidance linked, and retires the spec if retire is set. It
+// prepare puts the work from from onto onto, and retires the spec if retire is set. It
 // answers the commit that would land. Or it answers what kept the work from landing: a conflict, or no change.
 func (b *build) prepare(ctx context.Context, from, onto git.Rev, retire func(ctx context.Context, held git.Rev) error,
 ) (git.Rev, setback, error) {
@@ -695,14 +780,13 @@ func (b *build) prepare(ctx context.Context, from, onto git.Rev, retire func(ctx
 		return "", back, err
 	}
 
-	// Main already holds start when no rebase ran, so the links need a commit of their own.
-	held, err := b.linkGuidance(ctx, start != onto)
-	if err != nil {
-		return "", setback{}, err
-	}
-
 	if retire == nil {
 		return b.changes(ctx, onto)
+	}
+
+	held, err := b.r.git.Head(ctx, b.tree)
+	if err != nil {
+		return "", setback{}, err
 	}
 
 	if err := retire(ctx, held); err != nil {
@@ -774,46 +858,6 @@ func (b *build) unland(ctx context.Context) error {
 
 	b.set(func(r *record) { r.Before = "" })
 	return nil
-}
-
-// linkGuidance links .claude/agents to guidance/agents/, and .claude/skills to guidance/skills/, for each that
-// guidance/ holds and .claude/ does not. A .claude/ directory the developer made stays theirs. With amend, the links go
-// into the commit at HEAD; without it, into a new commit, if they changed anything. It answers the commit at HEAD.
-func (b *build) linkGuidance(ctx context.Context, amend bool) (git.Rev, error) {
-	for _, dir := range []string{"agents", "skills"} {
-		held, err := isDir(b.path("guidance", dir))
-		if err != nil {
-			return "", err
-		}
-
-		link := ".claude/" + dir
-		_, err = os.Lstat(b.path(link))
-		switch {
-		case !held || err == nil:
-			continue
-		case !errors.Is(err, fs.ErrNotExist):
-			return "", err
-		}
-
-		if err := b.r.git.Link(ctx, b.tree, link, "../guidance/"+dir); err != nil {
-			return "", err
-		}
-	}
-
-	if amend {
-		return b.r.git.Amend(ctx, b.tree)
-	}
-
-	return b.r.git.Commit(ctx, b.tree, "chore: link guidance into .claude\n")
-}
-
-func isDir(p string) (bool, error) {
-	info, err := os.Stat(p)
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	}
-
-	return err == nil && info.IsDir(), err
 }
 
 // foldAmendments commits, on the spec's branch, the spec with its amendments folded in, and the amendment file
@@ -984,9 +1028,6 @@ func cmpOr[T comparable](a, b T) T {
 
 	return b
 }
-
-//go:embed build.md
-var buildRole string
 
 const (
 	starting = "Build %s, approved at %s. Your worktree is on its branch, %s, made from main. When the build " +

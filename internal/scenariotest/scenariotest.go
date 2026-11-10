@@ -6,7 +6,9 @@
 //	func TestAT1(t *testing.T) { scenariotest.Run(t, "testdata/at1.txtar") }
 //
 // A script's $WORK is the scratch repository's main checkout, on main. Its first commit holds every file the script
-// brings, but claude.json and what is under _given/. A session copies in the work it builds from _given/, which Go's
+// brings, but claude.json and what is under _given/. A script may bring .kiln/kiln.json but no agent's file. It then
+// gets a build agent and an audit, each a line of prompt, so kiln queue takes its specs. The audit has the tools Read,
+// Grep, Glob and Bash. A session copies in the work it builds from _given/, which Go's
 // ./... leaves out too. HOME is a directory of the script's own, so kiln's worktrees are the script's own too.
 // $KILN_REPO is the checkout of kiln the test runs in, for a script that works on kiln's own repository.
 //
@@ -171,6 +173,10 @@ func setUp(env *testscript.Env) error {
 	env.Setenv("GOPROXY", "off")
 	env.Setenv("GOFLAGS", "-buildvcs=false")
 	env.Setenv("KILN_REPO", kilnRepo)
+	if err := seedAgents(env.WorkDir); err != nil {
+		return err
+	}
+
 	excluded := strings.Join([]string{"/" + ClaudeScriptFile, "/" + ClaudeCallsDir + "/", "/" + givenDir + "/"}, `\n`)
 	script := "git init --quiet -b main && git config user.name kiln-test && " +
 		"git config user.email kiln-test@example.com && printf '" + excluded + `\n' >>.git/info/exclude && ` +
@@ -188,5 +194,36 @@ func setUp(env *testscript.Env) error {
 	}
 
 	env.Values[terminalKey{}] = t
+	return nil
+}
+
+// seededAgents are the agents' files a script gets, by path, when it brings .kiln/kiln.json and neither of them.
+var seededAgents = map[string]string{
+	".kiln/agents/build.md": "Build the spec.\n",
+	".kiln/agents/audit.md": "---\ntools: Read, Grep, Glob, Bash\n---\n\nAudit the packages.\n",
+}
+
+// seedAgents writes seededAgents into the scratch repository at work, if it holds .kiln/kiln.json and neither of them.
+func seedAgents(work string) error {
+	if _, err := os.Stat(filepath.Join(work, ".kiln", "kiln.json")); err != nil {
+		return nil
+	}
+
+	for p := range seededAgents {
+		if _, err := os.Stat(filepath.Join(work, p)); err == nil {
+			return nil
+		}
+	}
+
+	for p, content := range seededAgents {
+		if err := os.MkdirAll(filepath.Join(work, filepath.Dir(p)), 0o755); err != nil {
+			return err
+		}
+
+		if err := os.WriteFile(filepath.Join(work, p), []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

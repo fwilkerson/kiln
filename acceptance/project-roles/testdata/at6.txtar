@@ -1,0 +1,78 @@
+# 6. A new project starts from kiln's files.
+
+# Given: a repository with no .kiln/.
+! exists .kiln
+
+# When: the developer runs kiln init.
+exec kiln init
+
+# Then: .kiln/ holds kiln's settings,
+exists .kiln/kiln.json
+grep '"go vet \./\.\.\."' .kiln/kiln.json
+grep '"proxy\.golang\.org"' .kiln/kiln.json
+grep '"go env GOCACHE GOMODCACHE"' .kiln/kiln.json
+
+# the build and audit agents,
+exists .kiln/agents/build.md .kiln/agents/audit.md
+
+# and /shape with its three reviewer agents,
+exists .kiln/skills/shape/SKILL.md .kiln/skills/shape/template.md
+exists .kiln/agents/zoom-out.md .kiln/agents/comprehension.md .kiln/agents/critic.md
+exec test -L .claude/skills/shape
+exists .claude/skills/shape/SKILL.md
+exec test -L .claude/agents/critic.md
+! exists .claude/agents/build.md .claude/agents/audit.md
+
+# and a build runs with them.
+# The developer commits them on main, then writes a spec from /shape's template, approves it, and queues it.
+exec git add -A
+exec git commit --quiet -m 'chore: start kiln'
+mkdir .kiln/specs
+exec sh -c 'sed -e "s/^Status: Proposed/Status: Approved, 2026-11-10/" -e "s/<Title>/X answers/" .kiln/skills/shape/template.md >.kiln/specs/x.md'
+exec git add .kiln/specs/x.md
+exec git commit --quiet -m 'docs(x): approve spec 1'
+exec kiln queue x
+exec kiln run
+stdout '^x: landed on main'
+
+# The build agent ran with its file's prompt, then kiln's contract; the audit with its tools and its effort.
+grep '\AYou build one spec: ' .claude-calls/build/1/1/system
+grep '\n## kiln''s contract\n' .claude-calls/build/1/1/system
+grep '^--tools\nRead,Grep,Glob,Bash$' .claude-calls/audit/1/1/args
+grep '^--effort\nhigh$' .claude-calls/audit/1/1/args
+grep '"proxy\.golang\.org"' .claude-calls/build/1/1/settings.json
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- scratch.go --
+// Package scratch is where kiln's builds land.
+package scratch
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+    {"result": {"result": "Built x."}}
+  ]}},
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+}
+-- _given/x/x.go --
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

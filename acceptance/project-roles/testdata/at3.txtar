@@ -1,0 +1,85 @@
+# 3. kiln's contract follows the agent's own prompt.
+
+# Given: a project whose main holds a build agent's file with instructions of its own.
+# When: the developer queues a spec and runs kiln.
+exec kiln queue x
+exec kiln run
+stdout '^x: landed on main'
+
+# Then: the build agent is told the file's instructions, then kiln's contract.
+# The contract names the spec, the one file under .kiln/ the build may write, and that kiln lands the work.
+grep '\AWrite every comment in American English\.\n\n## kiln''s contract\n' .claude-calls/build/1/1/system
+grep 'You are building `\.kiln/specs/x\.md`, a spec the developer approved' .claude-calls/build/1/1/system
+grep '^`\.kiln/specs/x\.amend\.md`\.' .claude-calls/build/1/1/system
+grep 'Never push, and never move or reset main: kiln lands your work\.' .claude-calls/build/1/1/system
+
+# The audit is told its file's body, then its own contract, whose last line findingsOf reads.
+grep '\AAudit the packages\.\n\n## kiln''s contract\n' .claude-calls/audit/1/1/system
+grep 'End your reply with one line: `read N packages, found M`' .claude-calls/audit/1/1/system
+
+-- .kiln/kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- .kiln/agents/build.md --
+---
+model: opus
+---
+
+Write every comment in American English.
+-- .kiln/agents/audit.md --
+Audit the packages.
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+    {"result": {"result": "Built x."}}
+  ]}},
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+}
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- .kiln/specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-10
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+
+## Technical Plan
+
+## Alternatives Considered
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

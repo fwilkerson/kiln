@@ -1,7 +1,7 @@
 // Command kiln builds the specs a developer approved, with headless Claude Code sessions, and lands them on main.
 //
-//	kiln init                write a starting kiln.json, and install the pre-commit hook
-//	kiln queue <name>        queue a build of specs/<name>.md, as main holds it
+//	kiln init                write kiln's defaults into .kiln/, and install the pre-commit hook
+//	kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 //	kiln run                 build each queued spec, one at a time, until none is queued
 //	kiln status              show where each spec stands
 //	kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
@@ -37,8 +37,8 @@ import (
 )
 
 const usage = `usage:
-  kiln init                write a starting kiln.json, and install the pre-commit hook
-  kiln queue <name>        queue a build of specs/<name>.md, as main holds it
+  kiln init                write kiln's defaults into .kiln/, and install the pre-commit hook
+  kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
   kiln run                 build each queued spec, one at a time, until none is queued
   kiln status              show where each spec stands
   kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec

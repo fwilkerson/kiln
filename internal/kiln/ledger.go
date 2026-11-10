@@ -183,7 +183,7 @@ func (b *build) record(e entry) {
 
 // begin writes the build's first line, with its size.
 func (b *build) begin(ctx context.Context) {
-	spec, _, err := b.r.git.Show(ctx, b.rec.Approved, b.rec.Name.file())
+	spec, _, err := b.r.specAt(ctx, b.rec.Approved, b.rec.Name)
 	if err != nil {
 		b.say("kiln could not read the spec's size: %v", err)
 	}

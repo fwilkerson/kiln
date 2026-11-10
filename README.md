@@ -5,14 +5,14 @@ it on main. The developer comes back to the spec met, asked nothing but about th
 
 `PRODUCT.md` holds, for each accepted spec, the `git show` command that prints it from the commit that last held it.
 
-What spec 1 left for later is in `docs/later.md`. A plan the developer means to build waits in `specs/` as a starter
-spec, with Status Proposed, until `/slice` takes it up.
+What spec 1 left for later is in `docs/later.md`. A plan the developer means to build waits in `.kiln/specs/` as a
+starter spec, with Status Proposed, until `/shape` takes it up.
 
 ## Use
 
 ```text
-kiln init                write a starting kiln.json, and install the pre-commit hook
-kiln queue <name>        queue a build of specs/<name>.md, as main holds it
+kiln init                write kiln's defaults into .kiln/, and install the pre-commit hook
+kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 kiln run                 build each queued spec, one at a time, until none is queued
 kiln status              show where each spec stands
 kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
@@ -20,8 +20,10 @@ kiln accept <name>       take the work: retire the spec, or land its amendments 
 kiln reject <name>       turn the amendments away: drop the build, and its branch
 ```
 
-1. Write `specs/<name>.md` with the `/slice` skill, in an interactive Claude Code session, and commit it on main.
-2. Run `kiln queue <name>`, then `kiln run`. kiln queues only a spec whose Status is Approved.
+1. Write `.kiln/specs/<name>.md` with the `/shape` skill, in an interactive Claude Code session, and commit it on
+   main.
+2. Run `kiln queue <name>`, then `kiln run`. kiln queues only a spec whose Status is Approved, and whose form follows
+   `/shape`'s template, as kiln embeds it.
    Queue only once the spec reads as you want it, diagrams included. `kiln tui` shows each build's spec as the
    commit it was queued at held it, so a later fix on main shows only in a build queued after the fix.
 3. When a build waits on you, `kiln run` prints a terminal notification that names the spec and its state. Ghostty
@@ -32,7 +34,7 @@ kiln reject <name>       turn the amendments away: drop the build, and its branc
    Read `kiln status`. A spec waiting for UAT is on main. A spec waiting on its branch with amendments shows them.
 4. Run `kiln accept <name>`. A spec waiting on its branch lands with its amendments folded in. The spec is deleted,
    and `PRODUCT.md` gains the command that shows it. If that landing stops, `kiln accept <name>` lands it again.
-   - When UAT finds a problem, change the spec with `/slice`, commit it, and run `kiln queue <name>`. The new build
+   - When UAT finds a problem, change the spec with `/shape`, commit it, and run `kiln queue <name>`. The new build
      starts from main, which holds the landed work. kiln refuses to queue a landed spec whose spec is unchanged.
    - To turn amendments away, run `kiln reject <name>`. To change an amendment's wording, commit your own wording to
      the spec, then run `kiln reject <name>` and `kiln queue <name>`.
@@ -46,8 +48,35 @@ builds main, never the working tree, and refuses while any kiln drives a build s
 `GOBIN`, and `_kiln` goes to `$XDG_DATA_HOME/zsh/completions`, which `fpath` must hold. The completion asks
 `kiln complete` for kiln's commands, and the spec names each would not refuse.
 
-`kiln.json` holds the gate's commands and the rounds a failing gate goes back to the session. kiln reads it from
-main's tip, so a build cannot weaken its own gate. The pre-commit hook runs the same commands on a commit to main.
+## `.kiln/`
+
+A project tells kiln how its builds run in `.kiln/`, on main. `kiln init` writes kiln's defaults there, each where
+`.kiln/` holds no file of its name, and the project owns them from then on. It links `/shape` and its reviewers into
+`.claude/`. A build writes nothing in `.kiln/` but its spec's amendment file: the hook and the gate refuse the rest.
+
+```text
+.kiln/
+  kiln.json                    the gate, its rounds, reachable hosts, commands that print writable paths
+  agents/build.md              the build agent: frontmatter for its tools, model, effort and advisor, then its prompt
+  agents/audit.md              the audit, which reads the work once the gate passes
+  agents/zoom-out.md           the reviewers /shape runs
+  agents/comprehension.md
+  agents/critic.md
+  skills/shape/SKILL.md        /shape, which writes a spec
+  skills/shape/template.md
+  specs/<name>.md              a spec, and <name>.amend.md, its amendments
+```
+
+- `kiln.json` holds the gate's commands, the rounds a failing gate goes back to the session, the hosts a session's
+  commands reach, and commands that print the paths beside its worktree they write. kiln reads it from main's tip,
+  so a build cannot weaken its own gate. The pre-commit hook runs the gate's commands on a commit to main.
+- An agent's file is frontmatter between lines of `---`, then its body. kiln reads `tools:`, `model:`, `effort:` and
+  `advisor:`, and ignores any other key. Without them, a session has every tool, and runs Opus at medium effort,
+  with Fable as its advisor. `kiln queue` reads the build and audit agents at the commit it queues, and each session
+  of that build runs with them. Its system prompt is the file's body, then kiln's contract with the agent, compiled
+  into kiln. No file changes the contract, the denied commands and forbidden actions, or the guard on `.kiln/`.
+- A file such as an agent or a skill, meant for `.kiln/` or `.claude/`, is the developer's. A build names it in its
+  last reply instead of writing it.
 
 ## Where things are
 
@@ -59,9 +88,10 @@ main's tip, so a build cannot weaken its own gate. The pre-commit hook runs the 
 - `internal/termtest`: a pseudo-terminal that runs a program and reads its screen, for the acceptance tests of
   `kiln tui`. No sandboxed session can open one, so those tests run only in kiln's gate.
 - `acceptance/<spec>/`: the code of each acceptance test, `TestAT<N>` for test N.
-- `guidance/`: the `/slice` skill and the `zoom-out`, `comprehension`, `critic` and `audit` agents, for `.claude/`.
-  `.claude/agents` and `.claude/skills` link to `guidance/agents/` and `guidance/skills/`, and a landing makes the
-  links where `.claude/` has neither. kiln's worktrees hold the links as plain files, since Claude Code's sandbox
+- `internal/kiln/defaults/`: what `kiln init` writes into `.kiln/`, for any project. `internal/kiln/contract/`:
+  kiln's contract with each agent.
+- `.kiln/`: kiln's own, as `kiln init` wrote it, tailored to kiln. `.claude/skills` and `.claude/agents` link to
+  `/shape` and its reviewers there. kiln's worktrees hold the links as plain files, since Claude Code's sandbox
   refuses a shell's write through a link under `.claude/`.
 - `cmd/kiln/_kiln`: the zsh completion, which `tools/install` copies.
 - `tools/install`: reinstalls kiln and its completion from main's tip.

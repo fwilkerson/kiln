@@ -315,7 +315,7 @@ func (g *Git) Detached(ctx context.Context, path Worktree, commit Rev) error {
 
 // addWorktree runs git worktree add with args. It checks the worktree out with each symbolic link as a plain file
 // that holds its target. Claude Code's sandbox refuses a shell's write to where a link under .claude/ points. With
-// links, a session could not change guidance/ behind .claude/agents. The main checkout keeps its links.
+// links, a session could not change what .claude/agents links to. The main checkout keeps its links.
 func (g *Git) addWorktree(ctx context.Context, path Worktree, args ...string) error {
 	if _, err := g.in(ctx, g.repo, "config", "set", "extensions.worktreeConfig", "true"); err != nil {
 		return err
@@ -331,23 +331,6 @@ func (g *Git) addWorktree(ctx context.Context, path Worktree, args ...string) er
 	}
 
 	_, err := g.in(ctx, path, "reset", "--quiet", "--hard")
-	return err
-}
-
-// Link stages, at checkout, a symbolic link at path to target, and writes it as checkout keeps links. A commit takes
-// it as a link, though checkout holds a plain file.
-func (g *Git) Link(ctx context.Context, checkout Worktree, path, target string) error {
-	blob, err := g.run(ctx, call{dir: string(g.at(checkout)), stdin: target}, "hash-object", "-w", "--stdin")
-	if err != nil {
-		return err
-	}
-
-	info := "120000," + strings.TrimSpace(blob) + "," + path
-	if _, err := g.in(ctx, checkout, "update-index", "--add", "--cacheinfo", info); err != nil {
-		return err
-	}
-
-	_, err = g.in(ctx, checkout, "checkout-index", "--force", "--", path)
 	return err
 }
 
@@ -374,29 +357,6 @@ func (g *Git) Commit(ctx context.Context, checkout Worktree, message string) (Re
 		if _, err := g.run(ctx, c, "commit", "--quiet", "--no-verify", "--cleanup=verbatim", "-F", "-"); err != nil {
 			return "", err
 		}
-	}
-
-	return g.Head(ctx, checkout)
-}
-
-// Amend folds every change at checkout into the commit at HEAD, and answers the commit at HEAD. With no change it
-// amends nothing.
-func (g *Git) Amend(ctx context.Context, checkout Worktree) (Rev, error) {
-	out, err := g.in(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all")
-	if err != nil {
-		return "", err
-	}
-
-	if out == "" {
-		return g.Head(ctx, checkout)
-	}
-
-	if _, err := g.in(ctx, checkout, "add", "--all"); err != nil {
-		return "", err
-	}
-
-	if _, err := g.in(ctx, checkout, "commit", "--quiet", "--amend", "--no-edit", "--no-verify"); err != nil {
-		return "", err
 	}
 
 	return g.Head(ctx, checkout)

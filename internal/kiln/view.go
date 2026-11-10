@@ -100,7 +100,7 @@ func (v view) Recount(r *tui.Run) (claude.Recounted, error) {
 // Text reads the spec as the build's approval held it. A spec main no longer holds shows as the build saw it. Its
 // amendments follow it.
 func (v view) Text(ctx context.Context, b *tui.Build) (string, error) {
-	spec, found, err := v.r.git.Show(ctx, git.Rev(b.Approved), Spec(b.Spec).file())
+	spec, found, err := v.r.specAt(ctx, git.Rev(b.Approved), Spec(b.Spec))
 	switch {
 	case err != nil:
 		return "", err

@@ -30,12 +30,20 @@ exec go test ./...
 module example.com/scratch
 
 go 1.27
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./...", "git rev-parse HEAD >>\"$WORK/.tmp/gated\""], "rounds": 1}
--- specs/a.md --
+-- .kiln/specs/a.md --
 # Spec 1: a
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -44,10 +52,22 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: A is called.
 - **Then**: it answers 1.
--- specs/b.md --
+
+## Technical Plan
+
+## Alternatives Considered
+-- .kiln/specs/b.md --
 # Spec 2: b
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -56,6 +76,10 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: B is called.
 - **Then**: it answers 3.
+
+## Technical Plan
+
+## Alternatives Considered
 -- claude.json --
 {
   "build": {
@@ -103,8 +127,8 @@ func TestAT1(t *testing.T) {
 		t.Fatalf("A answers %d, want 2", got)
 	}
 }
--- _given/a/specs/a.amend.md --
-# Amendments to specs/a.md
+-- _given/a/.kiln/specs/a.amend.md --
+# Amendments to .kiln/specs/a.md
 
 ## Acceptance test 1: A answers
 

@@ -14,7 +14,7 @@ exec kiln status
 stdout '^x: waiting for UAT$'
 
 # When: then commits a change to the spec and runs kiln queue again.
-cp _given/changed.md specs/x.md
+cp _given/changed.md .kiln/specs/x.md
 exec git commit --quiet -am 'docs(x): change the spec'
 exec kiln queue x
 stdout '^x: queued'
@@ -33,12 +33,20 @@ stdout '^ok'
 module example.com/scratch
 
 go 1.27
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
--- specs/x.md --
+-- .kiln/specs/x.md --
 # Spec 1: x
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -47,10 +55,22 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: First is called.
 - **Then**: it answers 1.
+
+## Technical Plan
+
+## Alternatives Considered
 -- _given/changed.md --
 # Spec 1: x
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -65,6 +85,10 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: Second is called.
 - **Then**: it answers 2.
+
+## Technical Plan
+
+## Alternatives Considered
 -- claude.json --
 {
   "build": {
@@ -73,7 +97,7 @@ Status: Approved, 2026-11-09
       {"result": {"result": "Built x."}}
     ]},
     "2": {"1": [
-      {"tool": {"name": "Bash", "input": {"command": "cp specs/x.md \"$WORK/.tmp/seen.md\" && cp first.go \"$WORK/.tmp/seen.go\" && cp -R \"$WORK/_given/second/.\" ."}}},
+      {"tool": {"name": "Bash", "input": {"command": "cp .kiln/specs/x.md \"$WORK/.tmp/seen.md\" && cp first.go \"$WORK/.tmp/seen.go\" && cp -R \"$WORK/_given/second/.\" ."}}},
       {"result": {"result": "Built x, as changed."}}
     ]}
   },

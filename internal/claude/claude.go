@@ -7,7 +7,7 @@
 //		ended, err = c.Run(ctx, claude.Launch{Session: id, Resume: true, Prompt: "Go on.", ...})
 //	}
 //
-// Each session runs Opus at medium effort, with Fable as its advisor. It runs in auto permission mode, with only the
+// Each session runs the model, effort and advisor its Launch names. It runs in auto permission mode, with only the
 // project's settings and those Run writes. A question it would ask is refused instead, since no one answers it. Its
 // commands run in Claude Code's sandbox, which writes only in Dir and Writable, and reaches only Domains. When it
 // exits, Run kills every process it left behind. It finds them by their process tree, their group, and their working
@@ -71,6 +71,9 @@ type Launch struct {
 	Dir string
 	// Tools are the only tools the session has, or nil for all of them.
 	Tools []string
+	// Model, Effort and Advisor are the session's model, its effort, such as "high", and its advisor's model. Each
+	// is Claude Code's own default when "".
+	Model, Effort, Advisor string
 	// Hook is a shell command run before each Edit, Write, MultiEdit and NotebookEdit, or "" for none. It refuses the
 	// call as a PreToolUse hook does.
 	Hook string
@@ -192,8 +195,13 @@ func arguments(l Launch, dir string) []string {
 		args = append(args, "--tools", strings.Join(l.Tools, ","))
 	}
 
-	return append(args, "--model", "opus", "--effort", "medium",
-		"--permission-mode", "auto",
+	for _, f := range [][2]string{{"--model", l.Model}, {"--effort", l.Effort}} {
+		if f[1] != "" {
+			args = append(args, f[0], f[1])
+		}
+	}
+
+	return append(args, "--permission-mode", "auto",
 		"--setting-sources", "project",
 		"--settings", filepath.Join(dir, settingsFile),
 		"--output-format", "stream-json", "--verbose")

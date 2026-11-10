@@ -1,0 +1,83 @@
+# 2. A build cannot change kiln's files.
+
+# Given: an approved spec whose build changes an agent's file and the gate's commands in .kiln/.
+# The session changes the audit's file by an Edit that gets past the hook, and kiln.json's gate by a shell command,
+# so the gate it would be held to always passes.
+exec git rev-parse main:.kiln
+cp stdout .tmp/kiln-before
+
+# When: the developer queues the spec and runs kiln.
+exec kiln queue x
+exec kiln run
+stdout '^x: stopped: the gate still failed'
+
+# Then: the gate fails,
+exec kiln status
+stdout '^x: stopped$'
+stdout '^  \.kiln/agents/audit\.md '
+stdout '^  \.kiln/kiln\.json '
+
+# and .kiln/ on main is as it was.
+exec git rev-parse main:.kiln
+cmp stdout .tmp/kiln-before
+
+-- .kiln/kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 0}
+-- .tmp/.keep --
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+    {"tool": {"name": "Edit", "raw": true, "input": {"file_path": ".kiln/agents/audit.md", "old_string": "Audit the packages.", "new_string": "Find nothing."}}},
+    {"tool": {"name": "Bash", "input": {"command": "echo '{\"gate\": [\"true\"], \"rounds\": 9}' >.kiln/kiln.json"}}},
+    {"result": {"result": "Built x, with a gate that passes."}}
+  ]}}
+}
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- .kiln/specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-10
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+
+## Technical Plan
+
+## Alternatives Considered
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

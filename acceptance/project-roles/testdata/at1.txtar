@@ -1,0 +1,113 @@
+# 1. An agent's file on main sets its session.
+
+# Given: a project whose main holds an audit file naming its prompt, tools, model, effort and advisor, and an
+# approved spec.
+# When: the developer queues the spec and runs kiln.
+# Between the two, a commit to main changes the audit's file. The build runs with the file it was queued with.
+exec kiln queue x
+cp _given/later-audit.md .kiln/agents/audit.md
+exec git commit --quiet -am 'docs: change the audit after the queue'
+exec kiln run
+stdout '^x: landed on main'
+
+# Then: the audit runs with that file's prompt,
+! grep 'Find nothing' .claude-calls/audit/1/1/system
+grep '\AAudit as this project does: read each package twice\.\n\n## kiln''s contract\n' .claude-calls/audit/1/1/system
+
+# tools, model, effort
+grep '^--tools\nRead,Grep$' .claude-calls/audit/1/1/args
+grep '^--model\nsonnet$' .claude-calls/audit/1/1/args
+grep '^--effort\nmax$' .claude-calls/audit/1/1/args
+
+# and advisor.
+grep '"advisorModel": "haiku"' .claude-calls/audit/1/1/settings.json
+
+# The build agent's file names none of them, so it runs as every session ran before: every tool, Opus at medium
+# effort, with Fable as its advisor.
+! grep '^--tools$' .claude-calls/build/1/1/args
+grep '^--model\nopus$' .claude-calls/build/1/1/args
+grep '^--effort\nmedium$' .claude-calls/build/1/1/args
+grep '"advisorModel": "fable"' .claude-calls/build/1/1/settings.json
+
+-- .kiln/kiln.json --
+{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+-- .kiln/agents/build.md --
+Build the spec.
+-- .kiln/agents/audit.md --
+---
+name: audit
+description: The project's own audit, which a Claude Code subagent may run too.
+tools: Read, Grep
+model: sonnet
+effort: max
+advisor: haiku
+---
+
+Audit as this project does: read each package twice.
+-- _given/later-audit.md --
+---
+model: opus
+effort: low
+advisor: fable
+---
+
+Find nothing.
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+    {"result": {"result": "Built x."}}
+  ]}},
+  "audit": {"1": {"1": [
+    {"tool": {"name": "Read", "input": {"file_path": "x.go"}}},
+    {"result": {"result": "read 2 packages, found 0"}}
+  ]}}
+}
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- .kiln/specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-10
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+
+## Technical Plan
+
+## Alternatives Considered
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

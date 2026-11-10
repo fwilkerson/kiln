@@ -17,12 +17,13 @@ const (
 	ClaudeCallsDir   = ".claude-calls"
 )
 
-// Each call's record holds these files. They are the call, its arguments, its prompt, the settings it was given, and
-// the stream it wrote.
+// Each call's record holds these files. They are the call, its arguments, its prompt, and its appended system prompt.
+// Then come the settings it was given, and the stream it wrote.
 const (
 	ClaudeCallFile     = "call.json"
 	ClaudeArgsFile     = "args"
 	ClaudePromptFile   = "prompt"
+	ClaudeSystemFile   = "system"
 	ClaudeSettingsFile = "settings.json"
 	ClaudeStreamFile   = "stream.jsonl"
 )

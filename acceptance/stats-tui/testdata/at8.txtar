@@ -25,12 +25,20 @@ color green '✓ passed · landing'
 module example.com/scratch
 
 go 1.27
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
--- specs/x.md --
+-- .kiln/specs/x.md --
 # Spec 1: x
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -39,11 +47,15 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
+
+## Technical Plan
+
+## Alternatives Considered
 -- claude.json --
 {
   "build": {"1": {
     "1": [
-      {"tool": {"name": "Write", "input": {"file_path": "specs/x.md", "content": "changed"}}},
+      {"tool": {"name": "Write", "input": {"file_path": ".kiln/specs/x.md", "content": "changed"}}},
       {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/wrong/.\" ."}}},
       {"result": {"result": "Built x."}}
     ],

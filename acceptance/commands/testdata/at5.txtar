@@ -33,12 +33,20 @@ c
 module example.com/scratch
 
 go 1.27
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
--- specs/a.md --
+-- .kiln/specs/a.md --
 # Spec 1: a
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -47,10 +55,22 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: A is called.
 - **Then**: it answers 1.
--- specs/b.md --
+
+## Technical Plan
+
+## Alternatives Considered
+-- .kiln/specs/b.md --
 # Spec 2: b
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -59,10 +79,22 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: B is called.
 - **Then**: it answers 2.
--- specs/c.md --
+
+## Technical Plan
+
+## Alternatives Considered
+-- .kiln/specs/c.md --
 # Spec 3: c
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -71,7 +103,11 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: C is called.
 - **Then**: it answers 3.
--- specs/d.md --
+
+## Technical Plan
+
+## Alternatives Considered
+-- .kiln/specs/d.md --
 # Spec 4: d
 
 Status: Proposed

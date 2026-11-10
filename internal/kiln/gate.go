@@ -19,18 +19,19 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// config is kiln.json, read from main's tip, so a build cannot weaken the gate it is held to.
+// config is .kiln/kiln.json, read from main's tip, so a build cannot weaken the gate it is held to.
 type config struct {
 	// Gate holds the commands the gate runs, each with sh -c, at the top of a worktree.
 	Gate []string `json:"gate"`
 	// Rounds is how many times a failing gate goes back to the session before the build stops.
 	Rounds int `json:"rounds"`
+	// Hosts are the only hosts a session's commands reach.
+	Hosts []string `json:"hosts,omitempty"`
+	// Writable holds commands, each run with sh -c. Each field one prints is a path a session's commands may write.
+	Writable []string `json:"writable,omitempty"`
 }
 
-const configFile = "kiln.json"
-
-// initial is the kiln.json that kiln init writes.
-var initial = config{Gate: []string{"go vet ./...", "go test ./..."}, Rounds: 3}
+const configFile = kilnDir + "/kiln.json"
 
 func parseConfig(raw []byte) (config, error) {
 	var c config
@@ -54,7 +55,7 @@ func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {
 	}
 
 	if !found {
-		return config{}, fmt.Errorf("main holds no %s: run kiln init, and commit it", configFile)
+		return config{}, fmt.Errorf("main holds no %s: run kiln init, and commit what it writes", configFile)
 	}
 
 	return parseConfig(raw)
@@ -321,8 +322,8 @@ func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string) ([]c
 	})
 }
 
-// Precommit refuses a commit to main when one of kiln.json's commands fails. It runs them in dir, the working tree,
-// unstaged edits included, and names each Go test that failed. A pre-commit hook in dir calls it, with git's env.
+// Precommit refuses a commit to main when one of .kiln/kiln.json's commands fails. It runs them in dir, the working
+// tree, unstaged edits included, and names each Go test that failed. A pre-commit hook in dir calls it, with git's env.
 func Precommit(ctx context.Context, dir string, env []string, out *os.File) error {
 	branch, err := plainGit(ctx, dir, env, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil || branch != mainBranch {

@@ -27,18 +27,20 @@ func TestGuard(t *testing.T) {
 		refused         bool
 	}{
 		"a build writes its code":                    {tool: "Write", file: place + "/x.go"},
-		"a build writes its spec's amendments":       {tool: "Write", file: place + "/specs/x.amend.md"},
-		"a build may not edit its spec":              {tool: "Edit", file: place + "/specs/x.md", refused: true},
-		"nor another spec's amendments":              {tool: "Write", file: place + "/specs/y.amend.md", refused: true},
-		"nor anything deeper under specs":            {tool: "Write", file: place + "/specs/x/x.amend.md", refused: true},
-		"nor a spec spelled in other letters":        {tool: "Edit", file: place + "/SPECS/x.md", refused: true},
-		"nor a spec by a path relative to its cwd":   {tool: "Edit", cwd: place + "/specs", file: "x.md", refused: true},
+		"a build writes its spec's amendments":       {tool: "Write", file: place + "/.kiln/specs/x.amend.md"},
+		"a build may not edit its spec":              {tool: "Edit", file: place + "/.kiln/specs/x.md", refused: true},
+		"nor another spec's amendments":              {tool: "Write", file: place + "/.kiln/specs/y.amend.md", refused: true},
+		"nor anything deeper under specs":            {tool: "Write", file: place + "/.kiln/specs/x/x.amend.md", refused: true},
+		"nor an agent's file":                        {tool: "Edit", file: place + "/.kiln/agents/audit.md", refused: true},
+		"nor the gate's commands":                    {tool: "Write", file: place + "/.kiln/kiln.json", refused: true},
+		"nor a spec spelled in other letters":        {tool: "Edit", file: place + "/.KILN/Specs/x.md", refused: true},
+		"nor a spec by a path relative to its cwd":   {tool: "Edit", cwd: place + "/.kiln/specs", file: "x.md", refused: true},
 		"nor a path that climbs out of its worktree": {tool: "Write", file: place + "/../y/x.go", refused: true},
 		"nor the developer's Claude Code settings":   {tool: "Write", file: place + "/.claude/settings.json", refused: true},
 		"nor a git directory":                        {tool: "Write", file: place + "/sub/.git/config", refused: true},
-		"nor a notebook under specs":                 {tool: "NotebookEdit", file: place + "/specs/n.ipynb", refused: true},
+		"nor a notebook under .kiln":                 {tool: "NotebookEdit", file: place + "/.kiln/n.ipynb", refused: true},
 		"a write that names no file is refused":      {tool: "Write", refused: true},
-		"a path through /private is the same path":   {tool: "Write", file: "/private/tmp/w/specs/x.md", refused: true},
+		"a path through /private is the same path":   {tool: "Write", file: "/private/tmp/w/.kiln/specs/x.md", refused: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			input := map[string]string{"file_path": tc.file}
@@ -126,8 +128,8 @@ func TestGate(t *testing.T) {
 		},
 		"a guarded path changed": {
 			tip:     []check{{Command: "go test ./...", Exit: 0}},
-			refused: map[string]string{"specs/x.md": "specs/x.md is under specs/"},
-			failing: []string{"specs/x.md"},
+			refused: map[string]string{".kiln/specs/x.md": ".kiln/specs/x.md is under .kiln/"},
+			failing: []string{".kiln/specs/x.md"},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -546,7 +548,8 @@ func landingBuild(t *testing.T) (*build, string, git.Rev) {
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	repo := t.TempDir()
 	shell(t, repo, `git init --quiet -b main && git config user.name t && git config user.email t@t && `+
-		`echo '{"gate": ["true"], "rounds": 1}' >kiln.json && git add . && git commit --quiet -m start`)
+		`mkdir .kiln && echo '{"gate": ["true"], "rounds": 1}' >.kiln/kiln.json && git add . && `+
+		`git commit --quiet -m start`)
 	main := git.Rev(shell(t, repo, "git rev-parse HEAD"))
 	r, err := Open(t.Context(), repo, os.Environ())
 	if err != nil {

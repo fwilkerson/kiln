@@ -5,12 +5,14 @@ for macOS.
 
 ## Where things are
 
-- `specs/<name>.md`: a spec. With Status Proposed it is a plan, a starter `/slice` takes up later; build only the
-  approved spec kiln names. Its Given, When, Then text is the developer's: never change it. Where one can't
-  hold, write `specs/<name>.amend.md` with the old wording, the new wording and the reason, and finish the work under
-  the amendment.
+- `.kiln/specs/<name>.md`: a spec. With Status Proposed it is a plan, a starter `/shape` takes up later; build only
+  the approved spec kiln names. Its Given, When, Then text is the developer's: never change it. Where one can't
+  hold, write `.kiln/specs/<name>.amend.md` with the old wording, the new wording and the reason, and finish the work
+  under the amendment.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.
-- `guidance/`: the agents and skills that `.claude/agents` and `.claude/skills` link to. Edit them here.
+- `.kiln/`: kiln's own settings, agents and specs, as `kiln init` wrote them, tailored to kiln. `.claude/agents` and
+  `.claude/skills` link to `/shape` and its reviewers there. A build changes nothing here but its amendment file.
+- `internal/kiln/defaults/`: what `kiln init` writes, for any project. No line there names kiln's own repository.
 - `docs/practices.md`: how Go code is written and judged here. Read it before adding a package or an exported name.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
 - `acceptance/<spec>/`: the test code for each acceptance test of a spec, one Go test named `TestAT<N>` for test N.

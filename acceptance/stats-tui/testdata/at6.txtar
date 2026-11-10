@@ -18,13 +18,21 @@ screen 'gate-flakes'
 ! screen 'notifications'
 ! screen 'status-line'
 
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["true"], "rounds": 1}
--- specs/gate-flakes.md --
+-- .kiln/specs/gate-flakes.md --
 # Spec 1: gate-flakes
 
 Status: Approved, 2026-11-09
 
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
 ## Acceptance tests
 
 ### 1. It answers
@@ -32,11 +40,23 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: it is called.
 - **Then**: it answers.
--- specs/notifications.md --
+
+## Technical Plan
+
+## Alternatives Considered
+-- .kiln/specs/notifications.md --
 # Spec 2: notifications
 
 Status: Approved, 2026-11-09
 
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
 ## Acceptance tests
 
 ### 1. It answers
@@ -44,11 +64,23 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: it is called.
 - **Then**: it answers.
--- specs/status-line.md --
+
+## Technical Plan
+
+## Alternatives Considered
+-- .kiln/specs/status-line.md --
 # Spec 3: status-line
 
 Status: Approved, 2026-11-09
 
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
 ## Acceptance tests
 
 ### 1. It answers
@@ -56,3 +88,7 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: it is called.
 - **Then**: it answers.
+
+## Technical Plan
+
+## Alternatives Considered

@@ -6,47 +6,47 @@
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec sh -c 'echo "Revision 2." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec sh -c 'echo "Revision 2." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec sh -c 'echo "Revision 3." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec sh -c 'echo "Revision 3." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec sh -c 'echo "Revision 4." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec sh -c 'echo "Revision 4." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec sh -c 'echo "Revision 5." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec sh -c 'echo "Revision 5." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec sh -c 'echo "Revision 6." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec sh -c 'echo "Revision 6." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec sh -c 'echo "Revision 7." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec sh -c 'echo "Revision 7." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec sh -c 'echo "Revision 8." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec sh -c 'echo "Revision 8." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec sh -c 'echo "Revision 9." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec sh -c 'echo "Revision 9." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec sh -c 'echo "Revision 10." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec sh -c 'echo "Revision 10." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec sh -c 'echo "Revision 11." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec sh -c 'echo "Revision 11." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
-exec sh -c 'echo "Revision 12." >>specs/t.md && git commit --quiet -am "docs(t): revise"'
+exec sh -c 'echo "Revision 12." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
 exec kiln run
 stdout '^t: landed on main'
@@ -63,12 +63,20 @@ screen 'failed calls per build +✓ +0 .*previous 2: 1 '
 screen 'rounds per build +✓ +0 .*previous 2: 1 '
 screen 'size, in tests +1 .*previous 2: 1 '
 
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["test -e ready"], "rounds": 1}
--- specs/t.md --
+-- .kiln/specs/t.md --
 # Spec 1: t
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -77,6 +85,10 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: the gate runs.
 - **Then**: ready is there.
+
+## Technical Plan
+
+## Alternatives Considered
 -- claude.json --
 {
  "build": {

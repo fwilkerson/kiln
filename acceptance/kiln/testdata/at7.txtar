@@ -7,7 +7,7 @@ exec kiln status
 stdout '^x: waiting on its branch with amendments'
 
 # When: the developer edits the spec and approves it again.
-cp _given/edited.md specs/x.md
+cp _given/edited.md .kiln/specs/x.md
 exec git commit --quiet -am 'docs(x): revise the spec'
 # Spec 4 turned the second approval into a reject of the amendments, then a queue.
 exec kiln reject x
@@ -22,19 +22,27 @@ exists new.go
 
 # and the amended work never reaches main.
 ! exists old.go
-exec git log --format=%H main -- old.go specs/x.amend.md
+exec git log --format=%H main -- old.go .kiln/specs/x.amend.md
 ! stdout .
 
 -- go.mod --
 module example.com/scratch
 
 go 1.27
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
--- specs/x.md --
+-- .kiln/specs/x.md --
 # Spec 1: x
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -43,6 +51,10 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
+
+## Technical Plan
+
+## Alternatives Considered
 -- claude.json --
 {
   "build": {
@@ -51,7 +63,7 @@ Status: Approved, 2026-11-09
       {"result": {"result": "Built x, under an amendment."}}
     ]},
     "2": {"1": [
-      {"tool": {"name": "Bash", "input": {"command": "cp specs/x.md \"$WORK/.tmp/seen.md\" && cp -R \"$WORK/_given/new/.\" ."}}},
+      {"tool": {"name": "Bash", "input": {"command": "cp .kiln/specs/x.md \"$WORK/.tmp/seen.md\" && cp -R \"$WORK/_given/new/.\" ."}}},
       {"result": {"result": "Built x, as revised."}}
     ]}
   },
@@ -65,6 +77,14 @@ Status: Approved, 2026-11-09
 
 Status: Approved, 2026-11-09
 
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
 ## Acceptance tests
 
 ### 1. X answers
@@ -72,6 +92,10 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 43.
+
+## Technical Plan
+
+## Alternatives Considered
 -- _given/old/old.go --
 // Package scratch is where kiln's builds land.
 package scratch
@@ -92,8 +116,8 @@ func TestAT1(t *testing.T) {
 		t.Fatalf("X answers %d, want 41", got)
 	}
 }
--- _given/old/specs/x.amend.md --
-# Amendments to specs/x.md
+-- _given/old/.kiln/specs/x.amend.md --
+# Amendments to .kiln/specs/x.md
 
 ## Acceptance test 1: X answers
 

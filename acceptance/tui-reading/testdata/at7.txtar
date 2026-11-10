@@ -24,9 +24,9 @@ color background none '`kiln run`'
 module example.com/scratch
 
 go 1.27
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 0}
--- specs/x.md --
+-- .kiln/specs/x.md --
 # Spec 1: x
 
 Status: Approved, 2026-11-09
@@ -51,6 +51,12 @@ The view shows `kiln tui` and `kiln run` as written.
 
   The text after the table.
 
+## Goals
+
+## Non-goals
+
+## Open Questions
+
 ## Acceptance tests
 
 ### 1. X answers
@@ -58,6 +64,10 @@ The view shows `kiln tui` and `kiln run` as written.
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
+
+## Technical Plan
+
+## Alternatives Considered
 -- claude.json --
 {
   "build": {"1": {

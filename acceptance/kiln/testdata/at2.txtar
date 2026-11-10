@@ -14,29 +14,37 @@ stdout '^y: the gate failed'
 # Then: the gate fails,
 exec kiln status
 stdout '^x: stopped$'
-stdout '^  specs/x.md is under specs/'
+stdout '^  .kiln/specs/x.md is under .kiln/'
 stdout '^y: stopped$'
-stdout '^  specs/y.md is under specs/'
+stdout '^  .kiln/specs/y.md is under .kiln/'
 
 # and specs/<name>.md on main is as approved.
-exec git show main:specs/x.md
+exec git show main:.kiln/specs/x.md
 cmp stdout _given/approved/x.md
-exec git show main:specs/y.md
+exec git show main:.kiln/specs/y.md
 cmp stdout _given/approved/y.md
 
 # The hook refused x's Edit before the shell command changed the spec.
-grep 'PreToolUse:Edit hook error: specs/x.md is under specs/' .claude-calls/build/1/1/stream.jsonl
+grep 'PreToolUse:Edit hook error: .kiln/specs/x.md is under .kiln/' .claude-calls/build/1/1/stream.jsonl
 
 -- go.mod --
 module example.com/scratch
 
 go 1.27
--- kiln.json --
+-- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
--- specs/x.md --
+-- .kiln/specs/x.md --
 # Spec 1: x
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -45,10 +53,22 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
--- specs/y.md --
+
+## Technical Plan
+
+## Alternatives Considered
+-- .kiln/specs/y.md --
 # Spec 2: y
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -57,13 +77,17 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: Y is called.
 - **Then**: it answers 7.
+
+## Technical Plan
+
+## Alternatives Considered
 -- claude.json --
 {
   "build": {
     "1": {
       "1": [
-        {"tool": {"name": "Edit", "input": {"file_path": "specs/x.md", "old_string": "answers 42", "new_string": "answers 41"}}},
-        {"tool": {"name": "Bash", "input": {"command": "sed -i '' 's/answers 42/answers 41/' specs/x.md"}}},
+        {"tool": {"name": "Edit", "input": {"file_path": ".kiln/specs/x.md", "old_string": "answers 42", "new_string": "answers 41"}}},
+        {"tool": {"name": "Bash", "input": {"command": "sed -i '' 's/answers 42/answers 41/' .kiln/specs/x.md"}}},
         {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
         {"result": {"result": "Built x, to the spec as I changed it."}}
       ],
@@ -71,7 +95,7 @@ Status: Approved, 2026-11-09
     },
     "2": {
       "1": [
-        {"tool": {"name": "Edit", "raw": true, "input": {"file_path": "specs/y.md", "old_string": "answers 7", "new_string": "answers 8"}}},
+        {"tool": {"name": "Edit", "raw": true, "input": {"file_path": ".kiln/specs/y.md", "old_string": "answers 7", "new_string": "answers 8"}}},
         {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y/.\" ."}}},
         {"result": {"result": "Built y, to the spec as I changed it."}}
       ],
@@ -84,6 +108,14 @@ Status: Approved, 2026-11-09
 
 Status: Approved, 2026-11-09
 
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
 ## Acceptance tests
 
 ### 1. X answers
@@ -91,10 +123,22 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
+
+## Technical Plan
+
+## Alternatives Considered
 -- _given/approved/y.md --
 # Spec 2: y
 
 Status: Approved, 2026-11-09
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
 
 ## Acceptance tests
 
@@ -103,6 +147,10 @@ Status: Approved, 2026-11-09
 - **Given**: nothing.
 - **When**: Y is called.
 - **Then**: it answers 7.
+
+## Technical Plan
+
+## Alternatives Considered
 -- _given/x/x.go --
 // Package scratch is where kiln's builds land.
 package scratch
