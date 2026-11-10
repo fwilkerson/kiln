@@ -116,15 +116,8 @@ var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-
 // Run starts the session l names and waits for it to end. Its error is one that kept the session from starting, or
 // from being read. A session that failed is an Ended, not an error.
 func (c Claude) Run(ctx context.Context, l Launch) (Ended, error) {
-	switch {
-	case !uuid.MatchString(l.Session):
-		return Ended{}, fmt.Errorf("%q is not a session's ID: claude takes a UUID", l.Session)
-	case strings.TrimSpace(l.Prompt) == "":
-		return Ended{}, errors.New("a session starts with a prompt")
-	case !filepath.IsAbs(l.Dir) || !filepath.IsAbs(c.c.Sessions):
-		return Ended{}, fmt.Errorf("the directories %q and %q are not both absolute", l.Dir, c.c.Sessions)
-	case l.Role == "" || strings.ContainsAny(l.Role, `/\`):
-		return Ended{}, fmt.Errorf("%q is not a role's name", l.Role)
+	if err := c.check(l); err != nil {
+		return Ended{}, err
 	}
 
 	program, err := proc.Look(c.c.Env, c.c.Program)
@@ -144,8 +137,27 @@ func (c Claude) Run(ctx context.Context, l Launch) (Ended, error) {
 
 	defer stream.Close()
 
-	ended, stderr, err := run(ctx, program, arguments(l, dir), l.Dir, sessionEnv(c.c.Env), l.Prompt, stream)
+	cmd := exec.CommandContext(ctx, program, arguments(l, dir)...)
+	cmd.Dir, cmd.Env = l.Dir, sessionEnv(c.c.Env)
+	cmd.Stdin = strings.NewReader(l.Prompt)
+	ended, stderr, err := run(cmd, stream)
 	return ended, errors.Join(err, os.WriteFile(filepath.Join(dir, stderrFile), []byte(stderr), 0o600))
+}
+
+// check refuses a Launch that Run could not start.
+func (c Claude) check(l Launch) error {
+	switch {
+	case !uuid.MatchString(l.Session):
+		return fmt.Errorf("%q is not a session's ID: claude takes a UUID", l.Session)
+	case strings.TrimSpace(l.Prompt) == "":
+		return errors.New("a session starts with a prompt")
+	case !filepath.IsAbs(l.Dir), !filepath.IsAbs(c.c.Sessions):
+		return fmt.Errorf("the directories %q and %q are not both absolute", l.Dir, c.c.Sessions)
+	case l.Role == "", strings.ContainsAny(l.Role, `/\`):
+		return fmt.Errorf("%q is not a role's name", l.Role)
+	}
+
+	return nil
 }
 
 func write(dir string, l Launch) error {
@@ -192,11 +204,8 @@ func sessionEnv(env []string) []string {
 	return append(proc.Session.Env(env), own...)
 }
 
-func run(ctx context.Context, program string, args []string, dir string, env []string, prompt string,
-	stream io.Writer) (ended Ended, stderr string, err error) {
-	cmd := exec.CommandContext(ctx, program, args...)
-	cmd.Dir, cmd.Env = dir, env
-	cmd.Stdin = strings.NewReader(prompt)
+// run runs cmd, a session ready to start, and copies each line it prints to stream.
+func run(cmd *exec.Cmd, stream io.Writer) (ended Ended, stderr string, err error) {
 	tail := proc.NewTail(stderrKept)
 	cmd.Stderr = tail
 	proc.OwnGroup(cmd)
@@ -210,7 +219,7 @@ func run(ctx context.Context, program string, args []string, dir string, env []s
 		return Ended{}, "", err
 	}
 
-	tree := watch(cmd.Process.Pid, dir)
+	tree := watch(cmd.Process.Pid, cmd.Dir)
 	var read reading
 	lines := bufio.NewScanner(out)
 	lines.Buffer(nil, 64<<20)
@@ -249,12 +258,8 @@ const apiRateLimited = 429
 func (r *reading) line(line []byte) {
 	r.count.line(line)
 	var head struct {
-		Type string `json:"type"`
-		Info struct {
-			Status       string `json:"status"`
-			Resets       int64  `json:"resetsAt"`
-			UsingOverage bool   `json:"isUsingOverage"`
-		} `json:"rate_limit_info"`
+		Type string    `json:"type"`
+		Info limitInfo `json:"rate_limit_info"`
 	}
 	if json.Unmarshal(line, &head) != nil {
 		return
@@ -262,18 +267,31 @@ func (r *reading) line(line []byte) {
 
 	switch head.Type {
 	case "rate_limit_event":
-		// Overage bills beyond the plan, which the developer never chose for an unattended build.
-		if i := head.Info; i.Status == "rejected" || i.UsingOverage {
-			r.limited = true
-			if resets := time.Unix(i.Resets, 0); i.Resets != 0 && resets.After(r.resets) {
-				r.resets = resets
-			}
-		}
+		r.limit(head.Info)
 	case "result":
 		var res result
 		if json.Unmarshal(line, &res) == nil {
 			r.result = &res
 		}
+	}
+}
+
+// limitInfo is the part of a rate_limit_event that says whether a usage limit ends the session.
+type limitInfo struct {
+	Status       string `json:"status"`
+	Resets       int64  `json:"resetsAt"`
+	UsingOverage bool   `json:"isUsingOverage"`
+}
+
+func (r *reading) limit(i limitInfo) {
+	// Overage bills beyond the plan, which the developer never chose for an unattended build.
+	if i.Status != "rejected" && !i.UsingOverage {
+		return
+	}
+
+	r.limited = true
+	if resets := time.Unix(i.Resets, 0); i.Resets != 0 && resets.After(r.resets) {
+		r.resets = resets
 	}
 }
 
