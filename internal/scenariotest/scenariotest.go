@@ -58,23 +58,38 @@ func (t tests) Run() int {
 
 	defer os.RemoveAll(bin)
 
-	build := exec.Command("go", "build", "-o", filepath.Join(bin, "kiln"), kilnCommand)
-	if out, err := build.CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "scenariotest: building kiln: %v\n%s", err, out)
-		return 2
-	}
-
-	if kilnSource, err = sourceOf(kilnCommand); err != nil {
+	if err := buildKiln(bin); err != nil {
 		fmt.Fprintln(os.Stderr, "scenariotest:", err)
 		return 2
 	}
 
 	os.Setenv("PATH", bin+string(filepath.ListSeparator)+os.Getenv("PATH"))
+	if err := readGoEnv(); err != nil {
+		fmt.Fprintln(os.Stderr, "scenariotest:", err)
+		return 2
+	}
+
+	return t.m.Run()
+}
+
+// buildKiln builds kiln into bin, and lists the files it is built from in kilnSource.
+func buildKiln(bin string) error {
+	build := exec.Command("go", "build", "-o", filepath.Join(bin, "kiln"), kilnCommand)
+	if out, err := build.CombinedOutput(); err != nil {
+		return fmt.Errorf("building kiln: %w\n%s", err, out)
+	}
+
+	var err error
+	kilnSource, err = sourceOf(kilnCommand)
+	return err
+}
+
+// readGoEnv sets goEnv to Go's caches, and kilnRepo to the module's directory.
+func readGoEnv() error {
 	names := []string{"GOCACHE", "GOMODCACHE", "GOPATH"}
 	out, err := exec.Command("go", append([]string{"env"}, names...)...).Output()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "scenariotest: go env:", err)
-		return 2
+		return fmt.Errorf("go env: %w", err)
 	}
 
 	for i, value := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -83,13 +98,11 @@ func (t tests) Run() int {
 
 	mod, err := exec.Command("go", "env", "GOMOD").Output()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "scenariotest: go env GOMOD:", err)
-		return 2
+		return fmt.Errorf("go env GOMOD: %w", err)
 	}
 
 	kilnRepo = filepath.Dir(strings.TrimSpace(string(mod)))
-
-	return t.m.Run()
+	return nil
 }
 
 const kilnCommand = "github.com/fwilkerson/kiln/cmd/kiln"
