@@ -131,7 +131,8 @@ func (s ClaudeStep) check() error {
 	return nil
 }
 
-func loadClaudeScript(work, role string, attempt, call int) ([]ClaudeStep, error) {
+func loadClaudeScript(work string, c ClaudeCall) ([]ClaudeStep, error) {
+	role, attempt, call := c.Role, c.Attempt, c.Call
 	raw, err := readFile(filepath.Join(work, ClaudeScriptFile))
 	if err != nil {
 		return nil, err

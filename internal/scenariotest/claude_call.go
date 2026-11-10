@@ -17,14 +17,18 @@ type claudeFlags struct {
 	sessionID      string
 	resume         string
 	roleFile       string
-	tools          []string
-	toolsGiven     bool
+	tools          claudeList
 	effort         string
 	permissionMode string
-	settingSources []string
-	sourcesGiven   bool
+	settingSources claudeList
 	settings       string
 	outputFormat   string
+}
+
+// claudeList is a flag's list of names. Given tells an empty list from a flag the call left out.
+type claudeList struct {
+	names []string
+	given bool
 }
 
 var claudeValueFlags = map[string]bool{
@@ -40,83 +44,60 @@ var claudeValueFlags = map[string]bool{
 func parseClaudeFlags(args []string) (claudeFlags, error) {
 	f := claudeFlags{effort: "medium", permissionMode: "default", outputFormat: "text"}
 	for i := 0; i < len(args); i++ {
-		name, value, inline := strings.Cut(args[i], "=")
-		if !strings.HasPrefix(name, "--") {
-			name, inline = args[i], false
-		}
-
-		if !claudeValueFlags[name] {
-			f = f.withSwitch(name)
-			continue
-		}
-
-		if !inline {
-			if i+1 == len(args) {
+		name, value, inline := cutFlag(args[i])
+		if claudeValueFlags[name] && !inline {
+			if i++; i == len(args) {
 				return f, fmt.Errorf("error: option '%s' argument missing", name)
 			}
 
-			i++
 			value = args[i]
 		}
 
-		f = f.withValue(name, value)
+		f.set(name, value)
 	}
 
 	return f, nil
 }
 
-func (f claudeFlags) withSwitch(name string) claudeFlags {
-	switch name {
-	case "-p", "--print":
-		f.print = true
-	case "--verbose":
-		f.verbose = true
+// cutFlag splits an argument such as --name=value. Only a flag with two hyphens takes its value inline.
+func cutFlag(arg string) (name, value string, inline bool) {
+	name, value, inline = strings.Cut(arg, "=")
+	if !inline || !strings.HasPrefix(name, "--") {
+		return arg, "", false
 	}
 
-	return f
+	return name, value, true
 }
 
-func (f claudeFlags) withValue(name, value string) claudeFlags {
-	switch name {
-	case "--session-id":
-		f.sessionID = value
-	case "--resume", "-r":
-		f.resume = value
-	case "--append-system-prompt-file":
-		f.roleFile = value
-	case "--tools":
-		f.tools, f.toolsGiven = splitList(value), true
-	case "--effort":
-		f.effort = value
-	case "--permission-mode":
-		f.permissionMode = value
-	case "--setting-sources":
-		f.settingSources, f.sourcesGiven = splitList(value), true
-	case "--settings":
-		f.settings = value
-	case "--output-format":
-		f.outputFormat = value
+// set keeps the flag name, if the scripted claude reads it. A switch ignores value.
+func (f *claudeFlags) set(name, value string) {
+	switches := map[string]*bool{"-p": &f.print, "--print": &f.print, "--verbose": &f.verbose}
+	values := map[string]*string{"--session-id": &f.sessionID, "--resume": &f.resume, "-r": &f.resume,
+		"--append-system-prompt-file": &f.roleFile, "--effort": &f.effort, "--permission-mode": &f.permissionMode,
+		"--settings": &f.settings, "--output-format": &f.outputFormat}
+	lists := map[string]*claudeList{"--tools": &f.tools, "--setting-sources": &f.settingSources}
+	if p, ok := switches[name]; ok {
+		*p = true
 	}
 
-	return f
-}
-
-func splitList(s string) []string {
-	var out []string
-	for item := range strings.FieldsFuncSeq(s, func(r rune) bool { return r == ',' || r == ' ' }) {
-		out = append(out, item)
+	if p, ok := values[name]; ok {
+		*p = value
 	}
 
-	return out
+	if p, ok := lists[name]; ok {
+		*p = claudeList{names: strings.FieldsFunc(value, listSeparator), given: true}
+	}
 }
 
-// claudeRole names a call's role by the file its system prompt was appended from. kiln names the file for the role.
-func claudeRole(roleFile string) string {
-	if roleFile == "" {
+func listSeparator(r rune) bool { return r == ',' || r == ' ' }
+
+// role names a call's role by the file its system prompt was appended from. kiln names the file for the role.
+func (f claudeFlags) role() string {
+	if f.roleFile == "" {
 		return "none"
 	}
 
-	return strings.TrimSuffix(filepath.Base(roleFile), filepath.Ext(roleFile))
+	return strings.TrimSuffix(filepath.Base(f.roleFile), filepath.Ext(f.roleFile))
 }
 
 type claudeCalls struct {
@@ -128,12 +109,15 @@ func (c claudeCalls) locked(do func() error) error {
 		return err
 	}
 
-	lock, err := lockFile(filepath.Join(c.dir, ".lock"))
+	lock, err := os.OpenFile(filepath.Join(c.dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return err
 	}
 
 	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
 
 	return do()
 }
@@ -143,33 +127,25 @@ type claudeSessionOwner struct {
 	Attempt int    `json:"attempt"`
 }
 
-func (c claudeCalls) owner(sessionID string) (claudeSessionOwner, bool) {
+// owner answers the role and attempt that opened call's session, if one did.
+func (c claudeCalls) owner(call ClaudeCall) (claudeSessionOwner, bool) {
 	var owner claudeSessionOwner
-	if sessionID == "" || sessionID != filepath.Base(sessionID) || strings.HasPrefix(sessionID, ".") {
+	id := call.SessionID
+	switch {
+	case id == "", id != filepath.Base(id), strings.HasPrefix(id, "."):
 		return owner, false
 	}
 
-	raw, err := os.ReadFile(filepath.Join(c.dir, ".sessions", sessionID))
+	raw, err := os.ReadFile(filepath.Join(c.dir, ".sessions", id))
 	return owner, err == nil && json.Unmarshal(raw, &owner) == nil
 }
 
-// add numbers a call. A resume of a known session is that session's next call. Any other call is a new attempt.
+// add numbers a call, and answers the directory of its record. It also answers what Claude Code says to the call's
+// session ID, when it refuses it.
 func (c claudeCalls) add(call *ClaudeCall) (dir, refused string, err error) {
 	err = c.locked(func() error {
-		owner, known := c.owner(call.SessionID)
-		switch {
-		case call.Resume && known:
-			call.Role, call.Attempt = owner.Role, owner.Attempt
-			call.Call = numbered(filepath.Join(c.dir, call.Role, strconv.Itoa(call.Attempt))) + 1
-		case call.Resume:
-			refused = "No conversation found with session ID: " + call.SessionID
-		}
-
-		if call.Attempt == 0 {
-			call.Attempt, call.Call = numbered(filepath.Join(c.dir, call.Role))+1, 1
-		}
-
-		dir = filepath.Join(c.dir, call.Role, strconv.Itoa(call.Attempt), strconv.Itoa(call.Call))
+		refused = c.number(call)
+		dir = c.path(*call)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
@@ -185,10 +161,56 @@ func (c claudeCalls) add(call *ClaudeCall) (dir, refused string, err error) {
 	return dir, refused, err
 }
 
+// number sets call's attempt and call. A resume of a known session is that session's next call. Any other call is a
+// new attempt. It answers what Claude Code says to a resume of an unknown session, or to a session ID in use.
+func (c claudeCalls) number(call *ClaudeCall) (refused string) {
+	owner, known := c.owner(*call)
+	switch {
+	case call.Resume && known:
+		call.Role, call.Attempt = owner.Role, owner.Attempt
+		call.Call = c.next(*call)
+		return ""
+	case call.Resume:
+		refused = "No conversation found with session ID: " + call.SessionID
+	case known:
+		refused = "Error: Session ID " + call.SessionID + " is already in use."
+	}
+
+	call.Attempt, call.Call = c.next(*call), 1
+	return refused
+}
+
+// path is the directory of call's record. While call has no attempt, or no call, it is the directory above.
+func (c claudeCalls) path(call ClaudeCall) string {
+	parts := []string{c.dir, call.Role}
+	for _, n := range []int{call.Attempt, call.Call} {
+		if n == 0 {
+			break
+		}
+
+		parts = append(parts, strconv.Itoa(n))
+	}
+
+	return filepath.Join(parts...)
+}
+
+// next answers the number after the highest one numbering a directory in c.path(call).
+func (c claudeCalls) next(call ClaudeCall) int {
+	entries, _ := os.ReadDir(c.path(call))
+	n := 0
+	for _, e := range entries {
+		if i, err := strconv.Atoi(e.Name()); err == nil && e.IsDir() {
+			n = max(n, i)
+		}
+	}
+
+	return n + 1
+}
+
 // open records a new session as its role's, and refuses an ID already in use.
 func (c claudeCalls) open(call ClaudeCall) (refused string, err error) {
 	err = c.locked(func() error {
-		if _, known := c.owner(call.SessionID); known {
+		if _, known := c.owner(call); known {
 			refused = "Error: Session ID " + call.SessionID + " is already in use."
 			return nil
 		}
@@ -208,53 +230,45 @@ func (c claudeCalls) open(call ClaudeCall) (refused string, err error) {
 	return refused, err
 }
 
-func recordCall(dir string, call ClaudeCall, flags claudeFlags, prompt []byte) error {
-	args := make([]string, len(call.Args))
-	for i, a := range call.Args {
-		args[i] = strings.ReplaceAll(a, "\n", `\n`)
+// keepRecord numbers the call and writes its record. It answers what Claude Code says to a session ID it refuses.
+func (s *claudeSession) keepRecord() (refused string, err error) {
+	s.record, refused, err = s.calls.add(&s.call)
+	if err != nil {
+		return "", err
 	}
 
-	files := map[string][]byte{ClaudeArgsFile: []byte(strings.Join(args, "\n") + "\n"), ClaudePromptFile: prompt}
-	if flags.settings != "" {
-		settings, err := os.ReadFile(flags.settings)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-
-		files[ClaudeSettingsFile] = settings
+	files, err := s.recordFiles()
+	if err != nil {
+		return "", err
 	}
 
 	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), content, 0o644); err != nil {
-			return err
+		if err := os.WriteFile(filepath.Join(s.record, name), content, 0o644); err != nil {
+			return "", err
 		}
 	}
 
-	return nil
+	return refused, nil
 }
 
-func lockFile(path string) (*os.File, error) {
-	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
-		return nil, err
+// recordFiles holds the call's arguments, one a line, its prompt, and the file --settings names. A missing file is
+// recorded empty.
+func (s *claudeSession) recordFiles() (map[string][]byte, error) {
+	args := make([]string, len(s.call.Args))
+	for i, a := range s.call.Args {
+		args[i] = strings.ReplaceAll(a, "\n", `\n`)
 	}
 
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		lock.Close()
-		return nil, err
+	files := map[string][]byte{ClaudeArgsFile: []byte(strings.Join(args, "\n") + "\n"), ClaudePromptFile: s.prompt}
+	if s.flags.settings == "" {
+		return files, nil
 	}
 
-	return lock, nil
-}
-
-func numbered(dir string) int {
-	entries, _ := os.ReadDir(dir)
-	n := 0
-	for _, e := range entries {
-		if i, err := strconv.Atoi(e.Name()); err == nil && e.IsDir() {
-			n = max(n, i)
-		}
+	settings, err := os.ReadFile(s.flags.settings)
+	if errors.Is(err, fs.ErrNotExist) {
+		err = nil
 	}
 
-	return n
+	files[ClaudeSettingsFile] = settings
+	return files, err
 }

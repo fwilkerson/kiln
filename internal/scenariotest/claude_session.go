@@ -1,6 +1,8 @@
 package scenariotest
 
 import (
+	"cmp"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -19,8 +21,11 @@ const (
 )
 
 type claudeSession struct {
+	work       string
 	flags      claudeFlags
 	call       ClaudeCall
+	calls      claudeCalls
+	prompt     []byte
 	record     string
 	transcript string
 	promptID   string
@@ -54,64 +59,12 @@ func runClaude(args []string) (int, error) {
 		return 0, nil
 	}
 
-	work := os.Getenv("WORK")
-	if work == "" {
-		return 1, errNoWork
-	}
-
-	s := &claudeSession{promptID: newUUID()}
-	flags, flagErr := parseClaudeFlags(args)
-	dir, err := os.Getwd()
+	s, err := admitClaude(args)
 	if err != nil {
-		return 1, fmt.Errorf("scripted claude: %w", err)
+		return 1, err
 	}
 
-	s.flags = flags
-	s.call = ClaudeCall{SessionID: flags.sessionID, Resume: flags.resume != "", Dir: dir, Args: args,
-		Role: claudeRole(flags.roleFile)}
-	if s.call.Resume {
-		s.call.SessionID, s.call.Role = flags.resume, "unknown"
-	}
-
-	if s.call.SessionID == "" {
-		s.call.SessionID = newUUID()
-	}
-
-	prompt, err := io.ReadAll(os.Stdin)
-	if err != nil {
-		return 1, fmt.Errorf("scripted claude: reading the prompt: %w", err)
-	}
-
-	calls := claudeCalls{filepath.Join(work, ClaudeCallsDir)}
-	_, taken := calls.owner(s.call.SessionID)
-	record, refused, err := calls.add(&s.call)
-	if err != nil {
-		return 1, fmt.Errorf("scripted claude: recording the call: %w", err)
-	}
-
-	s.record = record
-	if err := recordCall(record, s.call, flags, prompt); err != nil {
-		return 1, fmt.Errorf("scripted claude: recording the call: %w", err)
-	}
-
-	if msg := refusal(flags, flagErr, refused, taken && !s.call.Resume, prompt); msg != "" {
-		return 1, fmt.Errorf("%s", msg)
-	}
-
-	if s.call.Resume {
-		s.transcript = findTranscript(s.call.SessionID)
-		if s.transcript == "" {
-			return 1, fmt.Errorf("%s", "No conversation found with session ID: "+s.call.SessionID)
-		}
-	} else {
-		if refused, err := calls.open(s.call); err != nil || refused != "" {
-			return 1, fmt.Errorf("scripted claude: %s%v", refused, err)
-		}
-
-		s.transcript = newTranscript(s.call.Dir, s.call.SessionID)
-	}
-
-	steps, err := loadClaudeScript(work, s.call.Role, s.call.Attempt, s.call.Call)
+	steps, err := loadClaudeScript(s.work, s.call)
 	if err != nil {
 		return 1, fmt.Errorf("scripted claude: %w", err)
 	}
@@ -120,41 +73,96 @@ func runClaude(args []string) (int, error) {
 		return 1, fmt.Errorf("scripted claude: %w", err)
 	}
 
-	if err := s.keepTranscript(prompt); err != nil {
-		return 1, fmt.Errorf("scripted claude: keeping the transcript: %w", err)
+	return s.run(steps)
+}
+
+// admitClaude records the call args make, and answers its session. It refuses the call as Claude Code would.
+func admitClaude(args []string) (*claudeSession, error) {
+	work := os.Getenv("WORK")
+	if work == "" {
+		return nil, errNoWork
 	}
 
-	return s.run(steps)
+	flags, flagErr := parseClaudeFlags(args)
+	call, err := flags.newCall(args)
+	if err != nil {
+		return nil, fmt.Errorf("scripted claude: %w", err)
+	}
+
+	prompt, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, fmt.Errorf("scripted claude: reading the prompt: %w", err)
+	}
+
+	s := &claudeSession{work: work, flags: flags, call: call, calls: claudeCalls{filepath.Join(work, ClaudeCallsDir)},
+		prompt: prompt, promptID: newUUID()}
+	refused, err := s.keepRecord()
+	if err != nil {
+		return nil, fmt.Errorf("scripted claude: recording the call: %w", err)
+	}
+
+	if msg := s.refusal(flagErr, refused); msg != "" {
+		return nil, errors.New(msg)
+	}
+
+	return s, s.openTranscript()
+}
+
+// newCall is the call that flags and args make, from the working directory, before the call is numbered.
+func (f claudeFlags) newCall(args []string) (ClaudeCall, error) {
+	dir, err := os.Getwd()
+	call := ClaudeCall{SessionID: cmp.Or(f.sessionID, newUUID()), Dir: dir, Args: args, Role: f.role()}
+	if f.resume != "" {
+		call.SessionID, call.Role, call.Resume = f.resume, "unknown", true
+	}
+
+	return call, err
 }
 
 var claudeUUID = regexp.MustCompile(`^(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-// refusal is what Claude Code says to a call it refuses, or "" for one it takes.
-func refusal(flags claudeFlags, flagErr error, refused string, taken bool, prompt []byte) string {
-	switch {
-	case flagErr != nil:
+// refusal is what Claude Code says to a call it refuses, or "" for one it takes. refused is what s.calls said.
+func (s *claudeSession) refusal(flagErr error, refused string) string {
+	if flagErr != nil {
 		return flagErr.Error()
-	case flags.sessionID != "" && flags.resume != "":
+	}
+
+	prompt := ""
+	if len(strings.TrimSpace(string(s.prompt))) == 0 {
+		prompt = "Error: Input must be provided either through stdin or as a prompt argument when using --print"
+	}
+
+	return cmp.Or(s.flags.sessionRefusal(), refused, s.flags.formatRefusal(), prompt)
+}
+
+// sessionRefusal is what Claude Code says to a session ID it refuses, or "".
+func (f claudeFlags) sessionRefusal() string {
+	switch {
+	case f.sessionID == "":
+		return ""
+	case f.resume != "":
 		return "Error: --session-id can only be used with --continue or --resume if --fork-session is also specified."
-	case flags.sessionID != "" && !claudeUUID.MatchString(flags.sessionID):
+	case !claudeUUID.MatchString(f.sessionID):
 		return "Error: Invalid session ID. Must be a valid UUID."
-	case refused != "":
-		return refused
-	case taken:
-		return "Error: Session ID " + flags.sessionID + " is already in use."
-	case flags.outputFormat == "stream-json" && !flags.verbose:
+	}
+
+	return ""
+}
+
+// formatRefusal is what the scripted claude says to an output format it does not write, or "".
+func (f claudeFlags) formatRefusal() string {
+	switch {
+	case f.outputFormat == "stream-json" && !f.verbose:
 		return "Error: When using --print, --output-format=stream-json requires --verbose"
-	case !flags.print || flags.outputFormat != "stream-json":
+	case !f.print || f.outputFormat != "stream-json":
 		return "scripted claude: it speaks only as claude -p --output-format stream-json --verbose"
-	case len(strings.TrimSpace(string(prompt))) == 0:
-		return "Error: Input must be provided either through stdin or as a prompt argument when using --print"
 	}
 
 	return ""
 }
 
 func (s *claudeSession) prepare() error {
-	settings, err := loadClaudeSettings(s.flags, s.call.Dir, os.Getenv("HOME"))
+	settings, err := s.loadSettings()
 	if err != nil {
 		return err
 	}
@@ -162,37 +170,46 @@ func (s *claudeSession) prepare() error {
 	s.hooks = settings.hooks
 	s.env = s.toolEnv(settings.env)
 	s.stream, err = os.OpenFile(filepath.Join(s.record, ClaudeStreamFile), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	return err
-}
-
-func (s *claudeSession) toolEnv(settingsEnv map[string]string) []string {
-	env := os.Environ()
-	for name, value := range settingsEnv {
-		env = setEnv(env, name, value)
+	if err != nil {
+		return err
 	}
 
-	for _, kv := range [][2]string{
-		{"CLAUDECODE", "1"},
-		{"CLAUDE_CODE_ENTRYPOINT", "sdk-cli"},
-		{"CLAUDE_CODE_SESSION_ID", s.call.SessionID},
-		{"CLAUDE_PROJECT_DIR", s.call.Dir},
-	} {
-		env = setEnv(env, kv[0], kv[1])
+	if err := s.keepTranscript(); err != nil {
+		return fmt.Errorf("keeping the transcript: %w", err)
+	}
+
+	return nil
+}
+
+// toolEnv is the environment a tool or hook runs in: claude's own, the settings' env, then Claude Code's variables.
+func (s *claudeSession) toolEnv(settingsEnv map[string]string) []string {
+	set := map[string]string{}
+	maps.Copy(set, settingsEnv)
+	maps.Copy(set, map[string]string{
+		"CLAUDECODE":             "1",
+		"CLAUDE_CODE_ENTRYPOINT": "sdk-cli",
+		"CLAUDE_CODE_SESSION_ID": s.call.SessionID,
+		"CLAUDE_PROJECT_DIR":     s.call.Dir,
+	})
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool {
+		name, _, _ := strings.Cut(kv, "=")
+		_, overridden := set[name]
+		return overridden
+	})
+
+	for name, value := range set {
+		env = append(env, name+"="+value)
 	}
 
 	return env
 }
 
-func setEnv(env []string, name, value string) []string {
-	env = slices.DeleteFunc(env, func(kv string) bool { return strings.HasPrefix(kv, name+"=") })
-	return append(env, name+"="+value)
-}
-
 func (s *claudeSession) run(steps []ClaudeStep) (int, error) {
-	tools := slices.Clone(s.flags.tools)
+	// The init line lists no tools as [], never as null.
+	tools := append([]string{}, s.flags.tools.names...)
 	slices.Sort(tools)
 	s.emit(jsonObject{{"type", "system"}, {"subtype", "init"}, {"cwd", s.call.Dir}, {"session_id", s.call.SessionID},
-		{"tools", nonNil(tools)}, {"model", claudeModel}, {"permissionMode", s.flags.permissionMode},
+		{"tools", tools}, {"model", claudeModel}, {"permissionMode", s.flags.permissionMode},
 		{"claude_code_version", claudeVersion}, {"uuid", newUUID()}})
 	for i, step := range steps {
 		code, done, err := s.do(step)
@@ -241,14 +258,6 @@ func (s *claudeSession) emit(line jsonObject) {
 	b = append(b, '\n')
 	_, _ = os.Stdout.Write(b)
 	_, _ = s.stream.Write(b)
-}
-
-func nonNil(items []string) []string {
-	if items == nil {
-		return []string{}
-	}
-
-	return items
 }
 
 func (s *claudeSession) write(files map[string]string) error {

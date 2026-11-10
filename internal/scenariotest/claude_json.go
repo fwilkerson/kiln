@@ -66,6 +66,12 @@ func (o jsonObject) set(key string, value any) jsonObject {
 	return append(out, jsonField{key, value})
 }
 
+// text reads the value of key as a string, or "" when it is none.
+func (o jsonObject) text(key string) string {
+	v, _ := o.get(key)
+	return rawString(v)
+}
+
 // rawString reads v as a JSON string, or "" if it is none.
 func rawString(v any) string {
 	switch v := v.(type) {

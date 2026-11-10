@@ -2,6 +2,7 @@ package scenariotest
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -32,13 +33,32 @@ func findTranscript(sessionID string) string {
 	return ""
 }
 
-func (s *claudeSession) keepTranscript(prompt []byte) error {
+// openTranscript finds a resumed session's transcript, or opens a new session's.
+func (s *claudeSession) openTranscript() error {
+	if s.call.Resume {
+		s.transcript = findTranscript(s.call.SessionID)
+		if s.transcript == "" {
+			return errors.New("No conversation found with session ID: " + s.call.SessionID)
+		}
+
+		return nil
+	}
+
+	if refused, err := s.calls.open(s.call); err != nil || refused != "" {
+		return fmt.Errorf("scripted claude: %s%v", refused, err)
+	}
+
+	s.transcript = newTranscript(s.call.Dir, s.call.SessionID)
+	return nil
+}
+
+func (s *claudeSession) keepTranscript() error {
 	if err := os.MkdirAll(filepath.Dir(s.transcript), 0o755); err != nil {
 		return err
 	}
 
 	line, err := marshalJSON(jsonObject{
-		{"type", "user"}, {"message", jsonObject{{"role", "user"}, {"content", string(prompt)}}},
+		{"type", "user"}, {"message", jsonObject{{"role", "user"}, {"content", string(s.prompt)}}},
 		{"sessionId", s.call.SessionID}, {"cwd", s.call.Dir}, {"uuid", newUUID()},
 		{"timestamp", time.Now().UTC().Format(time.RFC3339Nano)},
 	})

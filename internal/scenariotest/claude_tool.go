@@ -2,6 +2,7 @@ package scenariotest
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,81 +34,113 @@ type claudeSettings struct {
 	hooks []claudeHookGroup
 }
 
-func loadClaudeSettings(flags claudeFlags, dir, home string) (claudeSettings, error) {
-	sources := flags.settingSources
-	if !flags.sourcesGiven {
-		sources = []string{"user", "project", "local"}
-	}
+// claudeSettingsFile is the part of a settings file the scripted claude reads.
+type claudeSettingsFile struct {
+	Env   map[string]string            `json:"env"`
+	Hooks map[string][]claudeHookGroup `json:"hooks"`
+}
 
+// loadSettings reads the settings the call's flags name, and merges them in the order Claude Code does.
+func (s *claudeSession) loadSettings() (claudeSettings, error) {
 	var texts [][]byte
-	for _, source := range sources {
-		path := map[string]string{
-			"user":    filepath.Join(home, ".claude", "settings.json"),
-			"project": filepath.Join(dir, ".claude", "settings.json"),
-			"local":   filepath.Join(dir, ".claude", "settings.local.json"),
-		}[source]
+	for _, path := range s.settingsPaths() {
 		text, err := os.ReadFile(path)
-		if errors.Is(err, fs.ErrNotExist) || path == "" {
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
 			continue
-		}
-
-		if err != nil {
+		case err != nil:
 			return claudeSettings{}, err
 		}
 
 		texts = append(texts, text)
 	}
 
-	if given := flags.settings; given != "" {
-		text := []byte(given)
-		if !strings.HasPrefix(strings.TrimSpace(given), "{") {
-			var err error
-			if text, err = readFile(given); err != nil {
-				return claudeSettings{}, err
-			}
-		}
-
-		texts = append(texts, text)
+	given, err := s.flags.givenSettings()
+	if err != nil {
+		return claudeSettings{}, err
 	}
 
-	return mergeClaudeSettings(texts)
+	return mergeClaudeSettings(append(texts, given...))
+}
+
+// settingsPaths lists the settings file of each source the flags name. Without --setting-sources, it lists all three.
+func (s *claudeSession) settingsPaths() []string {
+	home := os.Getenv("HOME")
+	bySource := map[string]string{
+		"user":    filepath.Join(home, ".claude", "settings.json"),
+		"project": filepath.Join(s.call.Dir, ".claude", "settings.json"),
+		"local":   filepath.Join(s.call.Dir, ".claude", "settings.local.json"),
+	}
+	sources := s.flags.settingSources.names
+	if !s.flags.settingSources.given {
+		sources = []string{"user", "project", "local"}
+	}
+
+	var paths []string
+	for _, source := range sources {
+		if path, ok := bySource[source]; ok {
+			paths = append(paths, path)
+		}
+	}
+
+	return paths
+}
+
+// givenSettings reads the settings --settings gives, as JSON or as a file's path.
+func (f claudeFlags) givenSettings() ([][]byte, error) {
+	switch {
+	case f.settings == "":
+		return nil, nil
+	case strings.HasPrefix(strings.TrimSpace(f.settings), "{"):
+		return [][]byte{[]byte(f.settings)}, nil
+	}
+
+	text, err := readFile(f.settings)
+	return [][]byte{text}, err
 }
 
 func mergeClaudeSettings(texts [][]byte) (claudeSettings, error) {
 	merged := claudeSettings{env: map[string]string{}}
 	for _, text := range texts {
-		var file struct {
-			Env   map[string]string            `json:"env"`
-			Hooks map[string][]claudeHookGroup `json:"hooks"`
-		}
-		if err := json.Unmarshal(text, &file); err != nil {
-			return claudeSettings{}, fmt.Errorf("a settings file: %w", err)
+		file, err := parseClaudeSettings(text)
+		if err != nil {
+			return claudeSettings{}, err
 		}
 
 		maps.Copy(merged.env, file.Env)
-		for _, group := range file.Hooks["PreToolUse"] {
-			for _, hook := range group.Hooks {
-				if hook.Type != "command" {
-					return claudeSettings{}, fmt.Errorf("a PreToolUse hook of type %q: the scripted claude runs only "+
-						"command hooks", hook.Type)
-				}
-			}
-
-			merged.hooks = append(merged.hooks, group)
-		}
+		merged.hooks = append(merged.hooks, file.Hooks["PreToolUse"]...)
 	}
 
 	return merged, nil
 }
 
+// parseClaudeSettings parses a settings file, and refuses a PreToolUse hook the scripted claude cannot run.
+func parseClaudeSettings(text []byte) (claudeSettingsFile, error) {
+	var file claudeSettingsFile
+	if err := json.Unmarshal(text, &file); err != nil {
+		return file, fmt.Errorf("a settings file: %w", err)
+	}
+
+	for _, group := range file.Hooks["PreToolUse"] {
+		if i := slices.IndexFunc(group.Hooks, notCommand); i >= 0 {
+			return file, fmt.Errorf("a PreToolUse hook of type %q: the scripted claude runs only command hooks",
+				group.Hooks[i].Type)
+		}
+	}
+
+	return file, nil
+}
+
+func notCommand(hook claudeHookCommand) bool { return hook.Type != "command" }
+
 var plainMatcher = regexp.MustCompile(`^[A-Za-z0-9_\- ,|]+$`)
 
-func hookMatches(matcher, tool string) bool {
+func (g claudeHookGroup) matches(tool string) bool {
 	switch {
-	case matcher == "" || matcher == "*":
+	case g.Matcher == "" || g.Matcher == "*":
 		return true
-	case plainMatcher.MatchString(matcher):
-		for name := range strings.FieldsFuncSeq(matcher, func(r rune) bool { return r == '|' || r == ',' }) {
+	case plainMatcher.MatchString(g.Matcher):
+		for name := range strings.FieldsFuncSeq(g.Matcher, func(r rune) bool { return r == '|' || r == ',' }) {
 			if strings.TrimSpace(name) == tool {
 				return true
 			}
@@ -116,15 +149,79 @@ func hookMatches(matcher, tool string) bool {
 		return false
 	}
 
-	re, err := regexp.Compile(matcher)
+	re, err := regexp.Compile(g.Matcher)
 	return err == nil && re.MatchString(tool)
 }
 
-type hookDecision struct {
-	refusal string
+// toolUse is one call of a tool, as the model asks for it.
+type toolUse struct {
+	id, name string
+	input    jsonObject
 }
 
-func (s *claudeSession) preToolUse(tool string, input jsonObject, id string) (hookDecision, error) {
+// toolOutcome is what a tool answers. A nil useResult makes the tool_use_result the content.
+type toolOutcome struct {
+	content   string
+	isError   bool
+	useResult any
+}
+
+func failed(err error) toolOutcome { return toolOutcome{content: err.Error(), isError: true} }
+
+// result is the outcome's tool_use_result.
+func (o toolOutcome) result() any {
+	switch {
+	case o.useResult != nil:
+		return o.useResult
+	case o.isError:
+		return "Error: " + o.content
+	}
+
+	return o.content
+}
+
+func (s *claudeSession) tool(t *ClaudeTool) error {
+	use := toolUse{id: newID("toolu_"), name: t.Name}
+	use.input, _ = parseObject(t.Input)
+	if v, ok := use.input.get("file_path"); ok {
+		use.input = use.input.set("file_path", s.path(rawString(v)))
+	}
+
+	usage := json.RawMessage(`{"input_tokens":2,"cache_read_input_tokens":0,"output_tokens":16}`)
+	if t.Usage != nil {
+		usage = t.Usage
+	}
+
+	s.assistant(jsonObject{{"type", "tool_use"}, {"id", use.id}, {"name", use.name}, {"input", use.input}}, usage)
+	if !t.Raw {
+		if refused, err := s.vet(use); err != nil || refused {
+			return err
+		}
+	}
+
+	s.toolResult(use, s.execute(use), jsonObject{{"id", use.id}, {"permission_decision", jsonObject{
+		{"decision", "accept"}, {"source", "config"}, {"reason_type", "classifier"}}}})
+	return nil
+}
+
+// vet answers whether the session's tools or its PreToolUse hooks refused the call. It writes the refusal.
+func (s *claudeSession) vet(use toolUse) (refused bool, err error) {
+	if s.flags.tools.given && !slices.Contains(s.flags.tools.names, use.name) {
+		s.toolResult(use, toolOutcome{content: "No such tool available: " + use.name, isError: true})
+		return true, nil
+	}
+
+	refusal, err := s.preToolUse(use)
+	if err != nil || refusal == "" {
+		return false, err
+	}
+
+	s.hookRefusal(use, refusal)
+	return true, nil
+}
+
+// preToolUse runs each PreToolUse hook that matches the call, and answers the first refusal, or "".
+func (s *claudeSession) preToolUse(use toolUse) (string, error) {
 	stdin, err := marshalJSON(jsonObject{
 		{"session_id", s.call.SessionID},
 		{"transcript_path", s.transcript},
@@ -133,36 +230,40 @@ func (s *claudeSession) preToolUse(tool string, input jsonObject, id string) (ho
 		{"permission_mode", s.flags.permissionMode},
 		{"effort", jsonObject{{"level", s.flags.effort}}},
 		{"hook_event_name", "PreToolUse"},
-		{"tool_name", tool},
-		{"tool_input", input},
-		{"tool_use_id", id},
+		{"tool_name", use.name},
+		{"tool_input", use.input},
+		{"tool_use_id", use.id},
 	})
 	if err != nil {
-		return hookDecision{}, err
+		return "", err
 	}
 
-	var decision hookDecision
-	for _, group := range s.hooks {
-		if !hookMatches(group.Matcher, tool) {
-			continue
+	refusal := ""
+	for _, hook := range s.hooksFor(use.name) {
+		said, err := s.runHook(hook, use, stdin)
+		if err != nil {
+			return "", err
 		}
 
-		for _, hook := range group.Hooks {
-			d, err := s.runHook(hook, tool, stdin)
-			if err != nil {
-				return hookDecision{}, err
-			}
-
-			if decision.refusal == "" {
-				decision.refusal = d.refusal
-			}
-		}
+		refusal = cmp.Or(refusal, said)
 	}
 
-	return decision, nil
+	return refusal, nil
 }
 
-func (s *claudeSession) runHook(hook claudeHookCommand, tool string, stdin []byte) (hookDecision, error) {
+func (s *claudeSession) hooksFor(tool string) []claudeHookCommand {
+	var hooks []claudeHookCommand
+	for _, group := range s.hooks {
+		if group.matches(tool) {
+			hooks = append(hooks, group.Hooks...)
+		}
+	}
+
+	return hooks
+}
+
+// runHook runs a hook, and answers its refusal of the call, or "".
+func (s *claudeSession) runHook(hook claudeHookCommand, use toolUse, stdin []byte) (string, error) {
 	limit := 600 * time.Second
 	if hook.Timeout > 0 {
 		limit = time.Duration(hook.Timeout * float64(time.Second))
@@ -178,16 +279,16 @@ func (s *claudeSession) runHook(hook claudeHookCommand, tool string, stdin []byt
 	exit, exited := errors.AsType[*exec.ExitError](err)
 	switch {
 	case err == nil:
-		return hookAnswer(stdout.Bytes(), tool)
+		return hookAnswer(stdout.Bytes(), use)
 	case exited && exit.ExitCode() == 2:
-		why := "PreToolUse:" + tool + " hook error: [" + hook.Command + "]: " + stderr.String()
-		return hookDecision{refusal: why}, nil
+		return "PreToolUse:" + use.name + " hook error: [" + hook.Command + "]: " + stderr.String(), nil
 	}
 
-	return hookDecision{}, nil
+	return "", nil
 }
 
-func hookAnswer(stdout []byte, tool string) (hookDecision, error) {
+// hookAnswer reads a hook's JSON answer, and answers its refusal of the call, or "".
+func hookAnswer(stdout []byte, use toolUse) (string, error) {
 	var answer struct {
 		HookSpecificOutput struct {
 			PermissionDecision       string `json:"permissionDecision"`
@@ -196,59 +297,23 @@ func hookAnswer(stdout []byte, tool string) (hookDecision, error) {
 	}
 	trimmed := bytes.TrimSpace(stdout)
 	if !bytes.HasPrefix(trimmed, []byte("{")) || !json.Valid(trimmed) {
-		return hookDecision{}, nil
+		return "", nil
 	}
 
 	if err := json.Unmarshal(trimmed, &answer); err != nil {
-		return hookDecision{}, fmt.Errorf("a hook answered %s: %w", trimmed, err)
+		return "", fmt.Errorf("a hook answered %s: %w", trimmed, err)
 	}
 
 	out := answer.HookSpecificOutput
 	switch out.PermissionDecision {
 	case "", "allow":
-		return hookDecision{}, nil
+		return "", nil
 	case "deny":
-		return hookDecision{refusal: "PreToolUse:" + tool + " hook error: " + out.PermissionDecisionReason}, nil
+		return "PreToolUse:" + use.name + " hook error: " + out.PermissionDecisionReason, nil
 	}
 
-	return hookDecision{}, fmt.Errorf("a hook answered permissionDecision %q, which the scripted claude does not "+
-		"carry out", out.PermissionDecision)
-}
-
-func (s *claudeSession) tool(t *ClaudeTool) error {
-	input, _ := parseObject(t.Input)
-	if v, ok := input.get("file_path"); ok {
-		input = input.set("file_path", s.path(rawString(v)))
-	}
-
-	id := newID("toolu_")
-	usage := json.RawMessage(`{"input_tokens":2,"cache_read_input_tokens":0,"output_tokens":16}`)
-	if t.Usage != nil {
-		usage = t.Usage
-	}
-
-	s.assistant(jsonObject{{"type", "tool_use"}, {"id", id}, {"name", t.Name}, {"input", input}}, usage)
-	if !t.Raw && s.flags.toolsGiven && !slices.Contains(s.flags.tools, t.Name) {
-		s.toolResult(id, "No such tool available: "+t.Name, true, nil)
-		return nil
-	}
-
-	if !t.Raw {
-		decision, err := s.preToolUse(t.Name, input, id)
-		if err != nil {
-			return err
-		}
-
-		if decision.refusal != "" {
-			s.hookRefusal(t.Name, id, input, decision.refusal)
-			return nil
-		}
-	}
-
-	content, isError, useResult := s.execute(t.Name, input)
-	s.toolResult(id, content, isError, useResult, jsonObject{{"id", id}, {"permission_decision", jsonObject{
-		{"decision", "accept"}, {"source", "config"}, {"reason_type", "classifier"}}}})
-	return nil
+	return "", fmt.Errorf("a hook answered permissionDecision %q, which the scripted claude does not carry out",
+		out.PermissionDecision)
 }
 
 func (s *claudeSession) assistant(content jsonObject, usage json.RawMessage) {
@@ -266,21 +331,14 @@ func timestamp() string {
 	return time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 }
 
-func (s *claudeSession) toolResult(id, content string, isError bool, useResult any, meta ...jsonObject) {
-	if useResult == nil {
-		useResult = content
-		if isError {
-			useResult = "Error: " + content
-		}
-	}
-
+func (s *claudeSession) toolResult(use toolUse, out toolOutcome, meta ...jsonObject) {
 	line := jsonObject{
 		{"type", "user"},
 		{"message", jsonObject{{"role", "user"}, {"content", []jsonObject{{
-			{"tool_use_id", id}, {"type", "tool_result"}, {"content", content}, {"is_error", isError},
+			{"tool_use_id", use.id}, {"type", "tool_result"}, {"content", out.content}, {"is_error", out.isError},
 		}}}}},
 		{"parent_tool_use_id", nil}, {"session_id", s.call.SessionID}, {"uuid", newUUID()}, {"timestamp", timestamp()},
-		{"tool_use_result", useResult},
+		{"tool_use_result", out.result()},
 	}
 	if len(meta) > 0 {
 		line = line.set("tool_result_meta", meta)
@@ -289,83 +347,91 @@ func (s *claudeSession) toolResult(id, content string, isError bool, useResult a
 	s.emit(line)
 }
 
-func rejected(id, source, reason string) jsonObject {
-	return jsonObject{{"id", id}, {"non_execution_kind", "permission-rule"}, {"permission_decision", jsonObject{
-		{"decision", "reject"}, {"source", source}, {"reason_type", reason}}}}
+func (s *claudeSession) hookRefusal(use toolUse, text string) {
+	s.emit(jsonObject{{"type", "system"}, {"subtype", "permission_denied"}, {"tool_name", use.name},
+		{"tool_use_id", use.id}, {"decision_reason_type", "hook"}, {"decision_reason", text}, {"message", text},
+		{"uuid", newUUID()}, {"session_id", s.call.SessionID}})
+	s.toolResult(use, toolOutcome{content: text, isError: true}, jsonObject{{"id", use.id},
+		{"non_execution_kind", "permission-rule"}, {"permission_decision", jsonObject{
+			{"decision", "reject"}, {"source", "hook"}, {"reason_type", "hook"}}}})
+	s.deny(use)
 }
 
-func (s *claudeSession) hookRefusal(tool, id string, input jsonObject, text string) {
-	s.emit(jsonObject{{"type", "system"}, {"subtype", "permission_denied"}, {"tool_name", tool}, {"tool_use_id", id},
-		{"decision_reason_type", "hook"}, {"decision_reason", text}, {"message", text}, {"uuid", newUUID()},
-		{"session_id", s.call.SessionID}})
-	s.toolResult(id, text, true, nil, rejected(id, "hook", "hook"))
-	s.deny(tool, id, input)
-}
-
-func (s *claudeSession) deny(tool, id string, input jsonObject) {
+func (s *claudeSession) deny(use toolUse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.denials = append(s.denials, jsonObject{{"tool_name", tool}, {"tool_use_id", id}, {"tool_input", input}})
+	s.denials = append(s.denials, jsonObject{{"tool_name", use.name}, {"tool_use_id", use.id},
+		{"tool_input", use.input}})
 }
 
-func (s *claudeSession) execute(tool string, input jsonObject) (content string, isError bool, useResult any) {
-	str := func(key string) string { v, _ := input.get(key); return rawString(v) }
-	switch tool {
+func (s *claudeSession) execute(use toolUse) toolOutcome {
+	switch use.name {
 	case "Bash":
-		return s.bash(str("command"))
+		return s.bash(use.input)
 	case "Write":
-		path := str("file_path")
-		_, statErr := os.Stat(path)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return err.Error(), true, nil
-		}
-
-		if err := os.WriteFile(path, []byte(str("content")), 0o644); err != nil {
-			return err.Error(), true, nil
-		}
-
-		if statErr == nil {
-			return "The file " + path + " has been updated successfully.", false, nil
-		}
-
-		return "File created successfully at: " + path, false, nil
+		return writeTool(use.input)
 	case "Edit":
-		replaceAll, _ := input.get("replace_all")
-		return edit(str("file_path"), str("old_string"), str("new_string"), rawBool(replaceAll))
+		return editTool(use.input)
 	}
 
-	text, err := os.ReadFile(str("file_path"))
-	if err != nil {
-		return err.Error(), true, nil
-	}
-
-	return string(text), false, nil
+	return readTool(use.input)
 }
 
-func edit(path, old, replacement string, all bool) (content string, isError bool, useResult any) {
+func writeTool(input jsonObject) toolOutcome {
+	path := input.text("file_path")
+	_, statErr := os.Stat(path)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return failed(err)
+	}
+
+	if err := os.WriteFile(path, []byte(input.text("content")), 0o644); err != nil {
+		return failed(err)
+	}
+
+	if statErr == nil {
+		return toolOutcome{content: "The file " + path + " has been updated successfully."}
+	}
+
+	return toolOutcome{content: "File created successfully at: " + path}
+}
+
+func editTool(input jsonObject) toolOutcome {
+	path, old := input.text("file_path"), input.text("old_string")
 	text, err := os.ReadFile(path)
 	if err != nil {
-		return err.Error(), true, nil
+		return failed(err)
 	}
 
+	replaceAll, _ := input.get("replace_all")
 	switch n := strings.Count(string(text), old); {
-	case old == "" || n == 0:
-		return "String to replace not found in file.\nString: " + old, true, nil
-	case n > 1 && !all:
-		return fmt.Sprintf("Found %d matches of the string to replace, but replace_all is false.", n), true, nil
+	case old == "", n == 0:
+		return toolOutcome{content: "String to replace not found in file.\nString: " + old, isError: true}
+	case n > 1 && !rawBool(replaceAll):
+		return toolOutcome{content: fmt.Sprintf("Found %d matches of the string to replace, but replace_all is false.",
+			n), isError: true}
 	}
 
-	if err := os.WriteFile(path, []byte(strings.ReplaceAll(string(text), old, replacement)), 0o644); err != nil {
-		return err.Error(), true, nil
+	edited := strings.ReplaceAll(string(text), old, input.text("new_string"))
+	if err := os.WriteFile(path, []byte(edited), 0o644); err != nil {
+		return failed(err)
 	}
 
-	return "The file " + path + " has been updated successfully.", false, nil
+	return toolOutcome{content: "The file " + path + " has been updated successfully."}
 }
 
-func (s *claudeSession) bash(command string) (content string, isError bool, useResult any) {
+func readTool(input jsonObject) toolOutcome {
+	text, err := os.ReadFile(input.text("file_path"))
+	if err != nil {
+		return failed(err)
+	}
+
+	return toolOutcome{content: string(text)}
+}
+
+func (s *claudeSession) bash(input jsonObject) toolOutcome {
 	ctx, cancel := context.WithTimeout(context.Background(), claudeCallLimit)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", input.text("command"))
 	cmd.Dir, cmd.Env = s.call.Dir, s.env
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -378,16 +444,13 @@ func (s *claudeSession) bash(command string) (content string, isError bool, useR
 			code = exit.ExitCode()
 		}
 
-		return fmt.Sprintf("Exit code %d\n%s", code, output), true, nil
+		return toolOutcome{content: fmt.Sprintf("Exit code %d\n%s", code, output), isError: true}
 	}
 
-	if output == "" {
-		output = "(Bash completed with no output)"
-	}
-
-	return output, false, jsonObject{
-		{"stdout", stdout.String()}, {"stderr", stderr.String()}, {"interrupted", false}, {"isImage", false}, {"noOutputExpected", false},
-	}
+	return toolOutcome{content: cmp.Or(output, "(Bash completed with no output)"), useResult: jsonObject{
+		{"stdout", stdout.String()}, {"stderr", stderr.String()}, {"interrupted", false}, {"isImage", false},
+		{"noOutputExpected", false},
+	}}
 }
 
 func rawBool(v any) bool {
