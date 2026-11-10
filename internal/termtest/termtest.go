@@ -118,9 +118,14 @@ func (term *Term) Click(at Pos) {
 	term.emu.SendMouse(vt.MouseRelease{X: at.X, Y: at.Y, Button: vt.MouseLeft})
 }
 
-// Wheel turns the wheel once over the cell at, the way button says, such as vt.MouseWheelDown.
-func (term *Term) Wheel(at Pos, button vt.MouseButton) {
-	term.emu.SendMouse(vt.MouseWheel{X: at.X, Y: at.Y, Button: button})
+// WheelUp turns the wheel up once over the cell at.
+func (term *Term) WheelUp(at Pos) {
+	term.emu.SendMouse(vt.MouseWheel{X: at.X, Y: at.Y, Button: vt.MouseWheelUp})
+}
+
+// WheelDown turns the wheel down once over the cell at.
+func (term *Term) WheelDown(at Pos) {
+	term.emu.SendMouse(vt.MouseWheel{X: at.X, Y: at.Y, Button: vt.MouseWheelDown})
 }
 
 // Size answers the terminal's size.

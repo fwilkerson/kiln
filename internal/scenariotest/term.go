@@ -134,10 +134,13 @@ func clickText(ts *testscript.TestScript, neg bool, args []string) {
 	term.Click(at)
 }
 
-var wheelButtons = map[string]vt.MouseButton{"up": vt.MouseWheelUp, "down": vt.MouseWheelDown}
+var wheelTurns = map[string]func(*termtest.Term, termtest.Pos){
+	"up":   (*termtest.Term).WheelUp,
+	"down": (*termtest.Term).WheelDown,
+}
 
 func turnWheel(ts *testscript.TestScript, neg bool, args []string) {
-	button, known := wheelButtons[strings.Join(args[:min(1, len(args))], "")]
+	turn, known := wheelTurns[strings.Join(args[:min(1, len(args))], "")]
 	turns, err := strconv.Atoi(strings.Join(args[1:], ""))
 	switch {
 	case neg, len(args) != 2, !known, err != nil:
@@ -147,7 +150,7 @@ func turnWheel(ts *testscript.TestScript, neg bool, args []string) {
 	term := termOf(ts)
 	size := term.Size()
 	for range turns {
-		term.Wheel(termtest.Pos{X: size.W / 2, Y: size.H / 2}, button)
+		turn(term, termtest.Pos{X: size.W / 2, Y: size.H / 2})
 	}
 }
 
