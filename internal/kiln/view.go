@@ -16,8 +16,8 @@ import (
 // TUI shows kiln's builds in a full-screen view, live and past, until the developer quits. It opens on the spec
 // name, or on home when name is "". It reads what kiln run writes, takes no lock, and writes nothing. It refuses an
 // out that is not a terminal.
-func (r *Repo) TUI(ctx context.Context, name string, in, out *os.File) error {
-	return tui.Show(ctx, view{r}, name, tui.Terminal{In: in, Out: out})
+func (r *Repo) TUI(ctx context.Context, name Spec, in, out *os.File) error {
+	return tui.Show(ctx, view{r}, string(name), tui.Terminal{In: in, Out: out})
 }
 
 // view reads the book, the ledger and the sessions' streams for the TUI.
@@ -38,45 +38,58 @@ func (v view) Specs(context.Context) ([]tui.Spec, error) {
 		return nil, err
 	}
 
-	var specs []*tui.Spec
-	named := map[string]*tui.Spec{}
+	var l lineup
 	for _, rec := range b.Specs {
-		named[rec.Name] = &tui.Spec{Name: rec.Name, State: stateOf(rec)}
-		specs = append(specs, named[rec.Name])
+		l.spec(rec.Name).State = stateOf(rec)
 	}
 
 	for _, s := range collect(entries) {
-		spec := named[s.Spec]
-		if spec == nil {
-			named[s.Spec] = &tui.Spec{Name: s.Spec}
-			spec = named[s.Spec]
-			specs = append(specs, spec)
-		}
-
+		spec := l.spec(s.Spec)
 		if b.find(s.Spec) == nil {
-			spec.State = tui.Rejected
-			if s.outcome == outAccepted {
-				spec.State = tui.Accepted
-			}
+			spec.State = s.gone()
 		}
 
 		spec.Builds = append(spec.Builds, s.shown())
 	}
 
-	shown := make([]tui.Spec, len(specs))
-	for i, s := range specs {
+	shown := make([]tui.Spec, len(l.specs))
+	for i, s := range l.specs {
 		shown[i] = *s
 	}
 
-	slices.SortStableFunc(shown, func(a, b tui.Spec) int {
-		if len(a.Builds) == 0 || len(b.Builds) == 0 {
-			return len(a.Builds) - len(b.Builds)
-		}
-
-		return b.Builds[len(b.Builds)-1].Started.Compare(a.Builds[len(a.Builds)-1].Started)
-	})
-
+	slices.SortStableFunc(shown, newestFirst)
 	return shown, nil
+}
+
+// lineup is the specs the view shows, in the order Specs met them.
+type lineup struct {
+	specs []*tui.Spec
+	named map[Spec]*tui.Spec
+}
+
+// spec is the lineup's spec named name. It adds one, with no state and no build, if the lineup holds none.
+func (l *lineup) spec(name Spec) *tui.Spec {
+	if s := l.named[name]; s != nil {
+		return s
+	}
+
+	s := &tui.Spec{Name: string(name)}
+	if l.named == nil {
+		l.named = map[Spec]*tui.Spec{}
+	}
+
+	l.named[name] = s
+	l.specs = append(l.specs, s)
+	return s
+}
+
+// newestFirst orders a spec with no build before every other, then the spec whose last build started last.
+func newestFirst(a, b tui.Spec) int {
+	if len(a.Builds) == 0 || len(b.Builds) == 0 {
+		return len(a.Builds) - len(b.Builds)
+	}
+
+	return b.Builds[len(b.Builds)-1].Started.Compare(a.Builds[len(a.Builds)-1].Started)
 }
 
 // Recount reads the run's bytes of its session's stream.
@@ -87,12 +100,12 @@ func (v view) Recount(r *tui.Run) (claude.Recounted, error) {
 // Text reads the spec as the build's approval held it. A spec main no longer holds shows as the build saw it. Its
 // amendments follow it.
 func (v view) Text(ctx context.Context, b *tui.Build) (string, error) {
-	spec, found, err := v.r.git.Show(ctx, git.Rev(b.Approved), specPath(b.Spec))
+	spec, found, err := v.r.git.Show(ctx, git.Rev(b.Approved), Spec(b.Spec).path())
 	switch {
 	case err != nil:
 		return "", err
 	case !found:
-		return "", fmt.Errorf("the commit %s holds no %s", short(git.Rev(b.Approved)), specPath(b.Spec))
+		return "", fmt.Errorf("the commit %s holds no %s", short(git.Rev(b.Approved)), Spec(b.Spec).path())
 	case b.Amendments == "":
 		return string(spec), nil
 	}
@@ -115,35 +128,49 @@ func stateOf(rec *record) tui.State {
 		amended: tui.Waits}[rec.State]
 }
 
+// gone is the state of a spec the book no longer holds. Its last build's outcome says whether it was accepted.
+func (s *buildStats) gone() tui.State {
+	if s.outcome == outAccepted {
+		return tui.Accepted
+	}
+
+	return tui.Rejected
+}
+
 // shown is the build as the TUI shows it: its runs and gates in the order they ran.
 func (s *buildStats) shown() *tui.Build {
-	b := &tui.Build{Spec: s.Spec, Approved: string(s.Approved), Started: s.At, Size: s.Size, Outcome: s.outcome,
-		Amendments: s.amendments}
+	b := &tui.Build{Spec: string(s.Spec), Approved: string(s.Approved), Started: s.At, Size: s.Size,
+		Outcome: s.outcome, Amendments: s.amendments}
 	gates := 0
 	for _, r := range s.runs {
-		for ; gates < r.gates && gates < len(s.gates); gates++ {
-			b.Steps = append(b.Steps, gateOf(s.gates[gates]))
-		}
-
-		run := &tui.Run{Role: r.role, Session: r.session, Why: r.why.shown(), Round: r.why.Round,
-			Rounds: r.why.Rounds, Start: r.start, End: r.end, Totals: r.totals, Changed: r.changed, From: r.from,
-			To: r.to}
-		if r.end.IsZero() {
-			run.To, run.Lost = -1, !alive(r.pid)
-		}
-
-		b.Steps = append(b.Steps, run)
+		before := max(gates, min(r.gates, len(s.gates)))
+		b.Steps = append(append(b.Steps, gateSteps(s.gates[gates:before])...), r.shown())
+		gates = before
 	}
 
-	for _, g := range s.gates[gates:] {
-		b.Steps = append(b.Steps, gateOf(g))
-	}
-
+	b.Steps = append(b.Steps, gateSteps(s.gates[gates:])...)
 	return b
 }
 
-func gateOf(e entry) *tui.Gate {
-	return &tui.Gate{Start: e.At, End: e.End, Passed: e.Passed, Landing: e.Landing}
+// shown is the run as the TUI shows it. A run with no end line reads to its stream's end.
+func (r run) shown() *tui.Run {
+	shown := &tui.Run{Role: r.role, Session: r.session, Why: r.why.shown(), Round: r.why.Round,
+		Rounds: r.why.Rounds, Start: r.start, End: r.end, Totals: r.totals, Changed: r.changed, From: r.from,
+		To: r.to}
+	if r.end.IsZero() {
+		shown.To, shown.Lost = -1, !alive(r.pid)
+	}
+
+	return shown
+}
+
+func gateSteps(gates []entry) []tui.Step {
+	steps := make([]tui.Step, len(gates))
+	for i, e := range gates {
+		steps[i] = &tui.Gate{Start: e.At, End: e.End, Passed: e.Passed, Landing: e.Landing}
+	}
+
+	return steps
 }
 
 // alive reports whether the process pid lives. A run's start line names the kiln run that started it.

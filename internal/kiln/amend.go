@@ -8,9 +8,6 @@ import (
 
 const amendSuffix = ".amend.md"
 
-func specPath(spec string) string  { return "specs/" + spec + ".md" }
-func amendPath(spec string) string { return "specs/" + spec + amendSuffix }
-
 // An amendment file holds a section for each Given, When, Then a build changed, as the build role tells it:
 //
 //	## Acceptance test 3: Main moves only to work gated on it
@@ -41,23 +38,40 @@ func foldAmendments(spec, amendments string) (string, error) {
 	}
 
 	for _, section := range sections {
-		title, body, _ := strings.Cut(section, "\n")
-		old, rest, okOld := strings.Cut(after(body, oldHeading), newHeading)
-		replacement, reason, okNew := strings.Cut(rest, reasonHeading)
-		old, replacement = strings.TrimSpace(old), strings.TrimSpace(replacement)
-		switch {
-		case !okOld || !okNew || old == "" || replacement == "" || strings.TrimSpace(reason) == "":
-			return "", fmt.Errorf("the amendment of %q lacks its %s, %s or %s", title, oldHeading, newHeading,
-				reasonHeading)
-		case strings.Count(spec, old) != 1:
-			return "", fmt.Errorf("the spec holds the old wording of %q %d times, not once", title,
-				strings.Count(spec, old))
+		a, err := parseAmendment(section)
+		if err != nil {
+			return "", err
 		}
 
-		spec = strings.Replace(spec, old, replacement, 1)
+		if n := strings.Count(spec, a.old); n != 1 {
+			return "", fmt.Errorf("the spec holds the old wording of %q %d times, not once", a.title, n)
+		}
+
+		spec = strings.Replace(spec, a.old, a.replacement, 1)
 	}
 
 	return spec, nil
+}
+
+// amendment is one section of an amendment file: the acceptance test it names, its old wording and its new.
+type amendment struct {
+	title, old, replacement string
+}
+
+// parseAmendment reads one section of an amendment file. It refuses one that lacks its old wording, its new or its
+// reason.
+func parseAmendment(section string) (amendment, error) {
+	title, body, _ := strings.Cut(section, "\n")
+	old, rest, okOld := strings.Cut(after(body, oldHeading), newHeading)
+	replacement, reason, okNew := strings.Cut(rest, reasonHeading)
+	a := amendment{title: title, old: strings.TrimSpace(old), replacement: strings.TrimSpace(replacement)}
+	switch {
+	case !okOld, !okNew, a.old == "", a.replacement == "", strings.TrimSpace(reason) == "":
+		return a, fmt.Errorf("the amendment of %q lacks its %s, %s or %s", title, oldHeading, newHeading,
+			reasonHeading)
+	}
+
+	return a, nil
 }
 
 // after returns what follows the first line of s that is heading, or "" if none is.

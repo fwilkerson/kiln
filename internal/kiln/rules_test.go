@@ -49,7 +49,7 @@ func TestGuard(t *testing.T) {
 
 			in, _ := json.Marshal(call)
 			var out bytes.Buffer
-			worktree := place
+			worktree := git.Worktree(place)
 			if strings.HasPrefix(tc.file, "/private") {
 				worktree = "/tmp/w"
 			}
@@ -306,7 +306,7 @@ func TestBuildLock(t *testing.T) {
 func TestNext(t *testing.T) {
 	b := book{Specs: []*record{{Name: "y", State: queued}, {Name: "x", State: queued, Accepted: true},
 		{Name: "z", State: queued, Accepted: true}}}
-	var took []string
+	var took []Spec
 	for {
 		r, found := b.next("z", 1)
 		if !found {
@@ -316,7 +316,7 @@ func TestNext(t *testing.T) {
 		took = append(took, r.Name)
 	}
 
-	if !slices.Equal(took, []string{"x", "z"}) {
+	if !slices.Equal(took, []Spec{"x", "z"}) {
 		t.Errorf("a kiln run for z took %q, want the accepted landings x and z", took)
 	}
 }
@@ -468,7 +468,7 @@ func TestLandChanges(t *testing.T) {
 			}
 
 			b := &build{r: r, rec: rec, tree: r.tree("x"), out: io.Discard}
-			if err := r.git.Checkout(t.Context(), b.tree, branchOf("x"), git.Rev(main)); err != nil {
+			if err := r.git.Checkout(t.Context(), b.tree, Spec("x").branch(), git.Rev(main)); err != nil {
 				t.Fatal(err)
 			}
 

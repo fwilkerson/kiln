@@ -67,7 +67,7 @@ type entry struct {
 	Build string    `json:"build"`
 	At    time.Time `json:"at"`
 	// A build line's.
-	Spec     string  `json:"spec,omitempty"`
+	Spec     Spec    `json:"spec,omitempty"`
 	Approved git.Rev `json:"approved,omitempty"`
 	Size     int     `json:"size,omitempty"`
 	// A start line's, and Session an end line's.
@@ -184,7 +184,7 @@ func (b *build) record(e entry) {
 
 // begin writes the build's first line, with its size.
 func (b *build) begin(ctx context.Context) {
-	spec, _, err := b.r.git.Show(ctx, b.rec.Approved, specPath(b.rec.Name))
+	spec, _, err := b.r.git.Show(ctx, b.rec.Approved, b.rec.Name.path())
 	if err != nil {
 		b.say("kiln could not read the spec's size: %v", err)
 	}
@@ -215,7 +215,7 @@ func (r *Repo) recount(ctx context.Context, out io.Writer) {
 
 	open := map[string]entry{}
 	var order []string
-	specs := map[string]string{}
+	specs := map[string]Spec{}
 	for _, e := range entries {
 		switch e.Kind {
 		case builtKind:

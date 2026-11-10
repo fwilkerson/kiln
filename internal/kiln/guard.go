@@ -5,35 +5,37 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// guarded says why a build of spec may not change rel, a path within the repository. It says "" if the build may. The
-// hook and the gate both ask it. It reads each name as APFS does, folding case, so SPECS/x.md is specs/x.md.
-func guarded(rel, spec string) string {
-	names := strings.Split(path.Clean(strings.TrimPrefix(rel, "/")), "/")
-	for _, name := range names {
-		if fold(name) == fold(".git") {
-			return rel + " is in a git directory, which only git and kiln write"
-		}
-	}
+// guard is what a build of spec, in the worktree at place, may not change. The hook and the gate both ask it.
+type guard struct {
+	spec  Spec
+	place git.Worktree
+}
 
+// guarded says why the build may not change rel, a path within the repository. It says "" if the build may. It reads
+// each name as APFS does, folding case, so SPECS/x.md is specs/x.md.
+func (g guard) guarded(rel string) string {
+	folded := fold(path.Clean(strings.TrimPrefix(rel, "/")))
+	names := strings.Split(folded, "/")
+	settings, _ := path.Match(fold(".claude/settings*.json"), folded)
 	switch {
-	case fold(names[0]) == fold("specs") && (len(names) != 2 || fold(names[1]) != fold(spec+amendSuffix)):
+	case slices.Contains(names, fold(".git")):
+		return rel + " is in a git directory, which only git and kiln write"
+	case names[0] == fold("specs") && folded != fold(g.spec.amendPath()):
 		return fmt.Sprintf("%s is under specs/, which holds what the developer approved: a build writes there only %s",
-			rel, amendPath(spec))
-	case fold(names[0]) == fold(".claude") && len(names) == 2 && settingsFile(names[1]):
+			rel, g.spec.amendPath())
+	case settings:
 		return rel + " is a Claude Code settings file, which stays the developer's"
 	}
 
 	return ""
-}
-
-func settingsFile(name string) bool {
-	matched, err := path.Match(fold("settings*.json"), fold(name))
-	return err == nil && matched
 }
 
 // hookCall is what Claude Code gives a PreToolUse hook on its standard input.
@@ -49,13 +51,13 @@ type hookCall struct {
 // Hook answers the PreToolUse call on in, for a session building spec in the worktree at place. It refuses a write
 // outside place, and one to a path [guarded] names. It writes its refusal to out, as Claude Code reads it. It reads no
 // shell command: the gate's own check finds a guarded path a command changed.
-func Hook(in io.Reader, out io.Writer, spec, place string) error {
+func Hook(in io.Reader, out io.Writer, spec Spec, place git.Worktree) error {
 	var c hookCall
 	if err := json.NewDecoder(in).Decode(&c); err != nil {
 		return fmt.Errorf("the hook's input: %w", err)
 	}
 
-	why := refusal(c, spec, place)
+	why := guard{spec: spec, place: place}.refusal(c)
 	if why == "" {
 		return nil
 	}
@@ -67,35 +69,26 @@ func Hook(in io.Reader, out io.Writer, spec, place string) error {
 	}})
 }
 
-func refusal(c hookCall, spec, place string) string {
-	target := c.Input.File
-	if target == "" {
-		target = c.Input.Notebook
-	}
-
+func (g guard) refusal(c hookCall) string {
+	target := cmpOr(c.Input.File, c.Input.Notebook)
 	if target == "" {
 		return c.Tool + " names no file, so the hook cannot tell where it writes"
 	}
 
-	cwd := place
-	if c.Cwd != "" {
-		cwd = resolve(place, c.Cwd)
-	}
-
-	rest, ok := inside(resolve(cwd, target), canonical(place))
+	rest, ok := g.inside(resolve(resolve(string(g.place), c.Cwd), target))
 	if !ok {
-		return fmt.Sprintf("%s is outside this build's worktree, %s: a build writes only there", target, place)
+		return fmt.Sprintf("%s is outside this build's worktree, %s: a build writes only there", target, g.place)
 	}
 
-	return guarded(rest, spec)
+	return g.guarded(rest)
 }
 
 func canonical(p string) string {
 	p = path.Clean(p)
 	// macOS links /var, /tmp and /etc to /private/...: kiln and Claude Code may spell a directory either way.
 	for _, linked := range []string{"/var", "/tmp", "/etc"} {
-		if rest, ok := strings.CutPrefix(p, "/private"+linked); ok && (rest == "" || rest[0] == '/') {
-			return linked + rest
+		if p == "/private"+linked || strings.HasPrefix(p, "/private"+linked+"/") {
+			return strings.TrimPrefix(p, "/private")
 		}
 	}
 
@@ -122,8 +115,10 @@ func fold(s string) string {
 	}, s)
 }
 
-// inside is whether p is d or under it, as the volume reads names. rest keeps p's own spelling of what follows d.
-func inside(p, d string) (rest string, ok bool) {
+// inside is whether p is the build's worktree or under it, as the volume reads names. rest keeps p's own spelling
+// of what follows the worktree.
+func (g guard) inside(p string) (rest string, ok bool) {
+	d := canonical(string(g.place))
 	if d == "/" {
 		return strings.TrimPrefix(p, "/"), true
 	}
@@ -138,9 +133,10 @@ func inside(p, d string) (rest string, ok bool) {
 		i += size
 	}
 
-	if fold(p[:i]) != fold(d) || (i < len(p) && p[i] != '/') {
+	if fold(p[:i]) != fold(d) {
 		return "", false
 	}
 
-	return strings.TrimPrefix(p[i:], "/"), true
+	rest, ok = strings.CutPrefix(p[i:], "/")
+	return rest, ok || i == len(p)
 }

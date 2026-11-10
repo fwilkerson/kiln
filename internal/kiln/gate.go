@@ -181,7 +181,7 @@ func not[T any](f func(T) bool) func(T) bool {
 // gate runs the gate on the commit checked out at tree, a worktree of a build of spec. It runs kiln.json's commands
 // there, and at main's tip, and checks the paths the work changed since it left main. A path in allowed may change,
 // though guarded names it.
-func (r *Repo) gate(ctx context.Context, tree git.Worktree, spec string, allowed ...string) (verdict, error) {
+func (r *Repo) gate(ctx context.Context, tree git.Worktree, spec Spec, allowed ...string) (verdict, error) {
 	main, err := r.git.Tip(ctx, mainBranch)
 	if err != nil {
 		return verdict{}, err
@@ -209,7 +209,7 @@ func (r *Repo) gate(ctx context.Context, tree git.Worktree, spec string, allowed
 
 	refused := map[string]string{}
 	for _, p := range changed {
-		if why := guarded(p, spec); why != "" && !slices.Contains(allowed, p) {
+		if why := (guard{spec: spec, place: tree}).guarded(p); why != "" && !slices.Contains(allowed, p) {
 			refused[p] = why
 		}
 	}

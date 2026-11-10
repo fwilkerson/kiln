@@ -209,10 +209,10 @@ func (r *Repo) sumUp(ctx context.Context, rec record, tree git.Worktree, landedA
 	case rec.State == landed:
 		lines = append(lines, r.filesChanged(ctx, landedAt+"^", landedAt))
 	case rec.State == amended:
-		base, err := r.git.MergeBase(ctx, mainBranch, git.Rev(branchOf(rec.Name)))
+		base, err := r.git.MergeBase(ctx, mainBranch, git.Rev(rec.Name.branch()))
 		changed := fmt.Sprintf("files changed unknown: %v", err)
 		if err == nil {
-			changed = r.filesChanged(ctx, base, git.Rev(branchOf(rec.Name)))
+			changed = r.filesChanged(ctx, base, git.Rev(rec.Name.branch()))
 		}
 
 		lines = append(lines, changed, strings.TrimRight(rec.Amendments, "\n"))
@@ -226,7 +226,7 @@ func (r *Repo) sumUp(ctx context.Context, rec record, tree git.Worktree, landedA
 			what = "the accepted spec"
 		}
 
-		lines = append(lines, fmt.Sprintf("%s is on %s, in %s", what, branchOf(rec.Name), tree))
+		lines = append(lines, fmt.Sprintf("%s is on %s, in %s", what, rec.Name.branch(), tree))
 	}
 
 	return append(lines, "next: "+nextStep(rec, tree, landedAt))

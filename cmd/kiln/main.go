@@ -32,6 +32,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/kiln/internal/kiln"
 )
 
@@ -133,13 +134,13 @@ func noArgs(do func(*kiln.Repo, context.Context, io.Writer) error) repoCommand {
 }
 
 // oneName is a command that takes one spec's name.
-func oneName(do func(*kiln.Repo, context.Context, string, io.Writer) error) repoCommand {
+func oneName(do func(*kiln.Repo, context.Context, kiln.Spec, io.Writer) error) repoCommand {
 	return func(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
 		if len(args) != 1 {
 			return errUsage
 		}
 
-		return do(r, ctx, args[0], out)
+		return do(r, ctx, kiln.Spec(args[0]), out)
 	}
 }
 
@@ -149,9 +150,9 @@ func tui(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
 		return errUsage
 	}
 
-	name := ""
+	var name kiln.Spec
 	if len(args) == 1 {
-		name = args[0]
+		name = kiln.Spec(args[0])
 	}
 
 	return r.TUI(ctx, name, os.Stdin, out)
@@ -200,7 +201,7 @@ func hook(args []string, stdin io.Reader, stdout io.Writer) error {
 		return errUsage
 	}
 
-	if err := kiln.Hook(stdin, stdout, *spec, *place); err != nil {
+	if err := kiln.Hook(stdin, stdout, kiln.Spec(*spec), git.Worktree(*place)); err != nil {
 		fmt.Fprintf(os.Stderr, "kiln hook: %v\n", err)
 		os.Exit(2)
 	}

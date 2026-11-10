@@ -245,6 +245,15 @@ func (r *Repo) Init(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
+// Spec is a spec's name, such as checkout-flow: specs/checkout-flow.md holds the spec.
+type Spec string
+
+func (s Spec) path() string      { return "specs/" + string(s) + ".md" }
+func (s Spec) amendPath() string { return "specs/" + string(s) + amendSuffix }
+
+// branch is the branch the spec's build works on.
+func (s Spec) branch() git.Branch { return git.Branch("kiln/" + s) }
+
 var (
 	specName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	approved = regexp.MustCompile(`(?m)^Status: Approved\b`)
@@ -253,7 +262,7 @@ var (
 // Queue records main's tip as the commit of specs/<name>.md, and queues a new build of it. It refuses a name that is
 // not a spec's, and a spec main does not hold. It refuses one whose Status is not Approved. It refuses by the state
 // the spec is in, as the package doc shows. A stopped build, or one waiting for UAT, is dropped for the new one.
-func (r *Repo) Queue(ctx context.Context, name string, out io.Writer) error {
+func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
 	main, err := r.git.Tip(ctx, mainBranch)
 	if err != nil {
 		return err
@@ -279,7 +288,7 @@ func (r *Repo) Queue(ctx context.Context, name string, out io.Writer) error {
 	}
 
 	if drop {
-		if err := r.git.Remove(ctx, r.tree(name), branchOf(name)); err != nil {
+		if err := r.git.Remove(ctx, r.tree(name), name.branch()); err != nil {
 			return err
 		}
 	}
@@ -289,35 +298,35 @@ func (r *Repo) Queue(ctx context.Context, name string, out io.Writer) error {
 }
 
 // approvedSpec reads specs/<name>.md at main, a spec whose Status is Approved.
-func (r *Repo) approvedSpec(ctx context.Context, main git.Rev, name string) ([]byte, error) {
-	if !specName.MatchString(name) {
+func (r *Repo) approvedSpec(ctx context.Context, main git.Rev, name Spec) ([]byte, error) {
+	if !specName.MatchString(string(name)) {
 		return nil, fmt.Errorf("%w: %q is not a spec's name, such as checkout-flow", errRefused, name)
 	}
 
-	spec, found, err := r.git.Show(ctx, main, specPath(name))
+	spec, found, err := r.git.Show(ctx, main, name.path())
 	switch {
 	case err != nil:
 		return nil, err
 	case !found:
-		return nil, fmt.Errorf("%w: main holds no %s: commit it there first", errRefused, specPath(name))
+		return nil, fmt.Errorf("%w: main holds no %s: commit it there first", errRefused, name.path())
 	case !approved.Match(spec):
 		return nil, fmt.Errorf("%w: %s is not Approved: finish it with /slice, and commit it, first", errRefused,
-			specPath(name))
+			name.path())
 	}
 
 	return spec, nil
 }
 
 // changed answers whether specs/<name>.md at a commit differs from spec.
-func (r *Repo) changed(ctx context.Context, name string, spec []byte) func(since git.Rev) (bool, error) {
+func (r *Repo) changed(ctx context.Context, name Spec, spec []byte) func(since git.Rev) (bool, error) {
 	return func(since git.Rev) (bool, error) {
-		old, _, err := r.git.Show(ctx, since, specPath(name))
+		old, _, err := r.git.Show(ctx, since, name.path())
 		return !bytes.Equal(old, spec), err
 	}
 }
 
 // dropped writes to the ledger that the build of name ended, dropped.
-func (r *Repo) dropped(name, build string, out io.Writer) {
+func (r *Repo) dropped(name Spec, build string, out io.Writer) {
 	if err := r.store.write(entry{Kind: outcomeKind, Build: build, Outcome: outDropped}); err != nil {
 		fmt.Fprintf(out, "%s: kiln could not write its ledger: %v\n", name, err)
 	}
@@ -325,7 +334,7 @@ func (r *Repo) dropped(name, build string, out io.Writer) {
 
 // Reject turns away the amendments of a spec waiting on its branch, or of its stopped landing. It drops the build, its
 // worktree and its branch, and kiln holds no record of the spec. Main is as it was.
-func (r *Repo) Reject(ctx context.Context, name string, out io.Writer) error {
+func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 	var rec record
 	err := r.store.update(func(b *book) (err error) {
 		rec, err = b.reject(name)
@@ -336,11 +345,11 @@ func (r *Repo) Reject(ctx context.Context, name string, out io.Writer) error {
 	}
 
 	r.dropped(name, rec.Build, out)
-	if err := r.git.Remove(ctx, r.tree(name), branchOf(name)); err != nil {
+	if err := r.git.Remove(ctx, r.tree(name), name.branch()); err != nil {
 		return err
 	}
 
-	fmt.Fprintf(out, "%s: rejected, and %s is gone\n", name, branchOf(name))
+	fmt.Fprintf(out, "%s: rejected, and %s is gone\n", name, name.branch())
 	return nil
 }
 
@@ -352,7 +361,7 @@ func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	case "tui":
 		specs, err := view{r}.Specs(ctx)
 		for _, s := range specs {
-			names = append(names, s.Name)
+			names = append(names, string(s.Name))
 		}
 
 		return names, err
@@ -360,7 +369,7 @@ func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 		b, err := r.store.read()
 		for _, s := range b.Specs {
 			if b.may(command, s.Name, nil) == nil {
-				names = append(names, s.Name)
+				names = append(names, string(s.Name))
 			}
 		}
 
@@ -392,24 +401,28 @@ func (r *Repo) queueable(ctx context.Context) ([]string, error) {
 	var names []string
 	for _, f := range files {
 		name, ok := strings.CutSuffix(f, ".md")
-		if !ok || !specName.MatchString(name) {
-			continue
-		}
-
-		spec, err := r.approvedSpec(ctx, main, name)
-		if err == nil {
-			err = b.may(queueCommand, name, r.changed(ctx, name, spec))
-		}
-
+		err := r.mayQueue(ctx, b, main, Spec(name))
 		switch {
-		case err == nil:
-			names = append(names, name)
-		case !errors.Is(err, errRefused):
+		case !ok, errors.Is(err, errRefused):
+			continue
+		case err != nil:
 			return nil, err
 		}
+
+		names = append(names, name)
 	}
 
 	return names, nil
+}
+
+// mayQueue answers nil when kiln queue would take name, with main's tip at main, or why it refuses.
+func (r *Repo) mayQueue(ctx context.Context, b book, main git.Rev, name Spec) error {
+	spec, err := r.approvedSpec(ctx, main, name)
+	if err != nil {
+		return err
+	}
+
+	return b.may(queueCommand, name, r.changed(ctx, name, spec))
 }
 
 // Status shows each spec kiln holds, and where it stands.
@@ -429,7 +442,7 @@ func (r *Repo) Status(_ context.Context, out io.Writer) error {
 		case s.State == building && !s.Paused.IsZero():
 			fmt.Fprintf(out, ", paused for a usage limit until %s", s.Paused.Local().Format("15:04:05 on Jan 2"))
 		case s.State == amended:
-			fmt.Fprintf(out, ", %s", branchOf(s.Name))
+			fmt.Fprintf(out, ", %s", s.Name.branch())
 		}
 
 		fmt.Fprintln(out)
@@ -453,7 +466,7 @@ func (r *Repo) Status(_ context.Context, out io.Writer) error {
 // A spec waiting on its branch first folds its amendments into the spec, and lands as a build does. A conflict or a
 // failing gate goes back to its build's session. While another kiln run builds, that run lands it instead. A stopped
 // landing lands again afresh, its rounds at 0, with no second fold. An accepted landing that stops fails Accept.
-func (r *Repo) Accept(ctx context.Context, name string, out io.Writer) error {
+func (r *Repo) Accept(ctx context.Context, name Spec, out io.Writer) error {
 	// Accept takes the lock before it changes anything, so a reinstall that refuses it leaves the spec as it was.
 	unshare, err := shareBuilds()
 	if err != nil {
@@ -482,7 +495,7 @@ func (r *Repo) Accept(ctx context.Context, name string, out io.Writer) error {
 		return err
 	}
 
-	landed, back, err := b.land(ctx, "", b.retire, specPath(name), amendPath(name))
+	landed, back, err := b.land(ctx, "", b.retire, name.path(), name.amendPath())
 	if err == nil && back.report != "" {
 		err = fmt.Errorf("%w: the gate failed on main as it stands, so %s is not accepted:\n%s", errRefused, name,
 			back.report)
@@ -490,10 +503,10 @@ func (r *Repo) Accept(ctx context.Context, name string, out io.Writer) error {
 
 	// Before the landing, the spec had no branch: its build's was gone once it landed.
 	if err != nil {
-		return errors.Join(err, r.git.Remove(context.WithoutCancel(ctx), b.tree, branchOf(name)))
+		return errors.Join(err, r.git.Remove(context.WithoutCancel(ctx), b.tree, name.branch()))
 	}
 
-	if err := r.git.Remove(ctx, b.tree, branchOf(name)); err != nil {
+	if err := r.git.Remove(ctx, b.tree, name.branch()); err != nil {
 		return err
 	}
 
@@ -548,15 +561,15 @@ func (r *Repo) landAccepted(ctx context.Context, b *build) error {
 	return err
 }
 
-func (r *Repo) tree(name string) git.Worktree { return git.Worktree(filepath.Join(r.trees, name)) }
+func (r *Repo) tree(name Spec) git.Worktree {
+	return git.Worktree(filepath.Join(r.trees, string(name)))
+}
 
 // auditTree is the worktree the audit of name's build reads, detached at the build's commit. A spec's name never
 // starts with a dot, so it is no build's tree.
-func (r *Repo) auditTree(name string) git.Worktree {
-	return git.Worktree(filepath.Join(r.trees, ".audit-"+name))
+func (r *Repo) auditTree(name Spec) git.Worktree {
+	return git.Worktree(filepath.Join(r.trees, ".audit-"+string(name)))
 }
-
-func branchOf(name string) git.Branch { return git.Branch("kiln/" + name) }
 
 func short(commit git.Rev) string { return string(commit[:min(12, len(commit))]) }
 

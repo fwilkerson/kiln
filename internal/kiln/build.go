@@ -36,7 +36,7 @@ func (r *Repo) Run(ctx context.Context, out io.Writer) error {
 var errRunning = fmt.Errorf("%w: another kiln run is building in this repository", errRefused)
 
 // run builds the queued specs, or only the one named only, if it is not "".
-func (r *Repo) run(ctx context.Context, out io.Writer, only string) error {
+func (r *Repo) run(ctx context.Context, out io.Writer, only Spec) error {
 	unlock, err := r.store.lock(runLock, syscall.LOCK_EX|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
 		return errRunning
@@ -233,13 +233,13 @@ func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 	var retire func(context.Context, git.Rev) error
 	if b.rec.Accepted {
 		retire = b.retire
-	} else if amendments, found, err := b.r.git.Show(ctx, head, amendPath(b.rec.Name)); err != nil || found {
+	} else if amendments, found, err := b.r.git.Show(ctx, head, b.rec.Name.amendPath()); err != nil || found {
 		b.set(func(r *record) { r.State, r.Amendments = amended, string(amendments) })
 		if err == nil {
 			b.record(entry{Kind: outcomeKind, Outcome: outWaits, Amendments: string(amendments)})
 		}
 
-		b.say("waits on %s, with amendments for UAT", branchOf(b.rec.Name))
+		b.say("waits on %s, with amendments for UAT", b.rec.Name.branch())
 		return "", reason{}, err
 	}
 
@@ -252,7 +252,7 @@ func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 		return "", reason{}, err
 	}
 
-	if err := b.r.git.Remove(ctx, b.tree, branchOf(b.rec.Name)); err != nil {
+	if err := b.r.git.Remove(ctx, b.tree, b.rec.Name.branch()); err != nil {
 		return "", reason{}, err
 	}
 
@@ -273,7 +273,7 @@ func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 // the spec.
 func (b *build) allowed() []string {
 	if b.rec.Accepted {
-		return []string{specPath(b.rec.Name), amendPath(b.rec.Name)}
+		return []string{b.rec.Name.path(), b.rec.Name.amendPath()}
 	}
 
 	return nil
@@ -313,18 +313,18 @@ func (b *build) start(ctx context.Context) error {
 	}
 
 	// A branch an earlier build of the spec left would hold work from a spec as it was approved before.
-	if err := b.r.git.Remove(ctx, b.tree, branchOf(b.rec.Name)); err != nil {
+	if err := b.r.git.Remove(ctx, b.tree, b.rec.Name.branch()); err != nil {
 		return err
 	}
 
-	if err := b.r.git.Checkout(ctx, b.tree, branchOf(b.rec.Name), main); err != nil {
+	if err := b.r.git.Checkout(ctx, b.tree, b.rec.Name.branch(), main); err != nil {
 		return err
 	}
 
 	session := newSession()
 	b.set(func(r *record) { r.Session = session })
-	b.say("building on %s, in %s", branchOf(b.rec.Name), b.tree)
-	prompt := fmt.Sprintf(starting, specPath(b.rec.Name), short(b.rec.Approved), branchOf(b.rec.Name))
+	b.say("building on %s, in %s", b.rec.Name.branch(), b.tree)
+	prompt := fmt.Sprintf(starting, b.rec.Name.path(), short(b.rec.Approved), b.rec.Name.branch())
 	_, err = b.talk(ctx, b.launch(false, prompt), reason{Why: whyFirst})
 	return err
 }
@@ -351,7 +351,7 @@ func (b *build) sandboxed(l claude.Launch) claude.Launch {
 		"Pushing to any remote, in any form.",
 		"Writing, moving, resetting or deleting any ref but the branch checked out in the working directory, " +
 			"and above all main.",
-		fmt.Sprintf("Changing anything under specs/ but %s, by a file tool or a shell command.", amendPath(b.rec.Name)),
+		fmt.Sprintf("Changing anything under specs/ but %s, by a file tool or a shell command.", b.rec.Name.amendPath()),
 		"Changing .claude/settings.json or .claude/settings.local.json.",
 	}
 	l.Writable = b.r.goCaches(context.Background())
@@ -491,7 +491,7 @@ func (b *build) audit(ctx context.Context) (string, error) {
 	l := b.sandboxed(claude.Launch{
 		Role:   auditRole,
 		System: guidance.Audit(),
-		Prompt: fmt.Sprintf(auditing, strings.Join(packages, " "), specPath(b.rec.Name), b.rec.Name),
+		Prompt: fmt.Sprintf(auditing, strings.Join(packages, " "), b.rec.Name.path(), b.rec.Name),
 		Dir:    string(b.r.auditTree(b.rec.Name)),
 		Tools:  []string{"Read", "Grep", "Glob", "Bash"},
 	})
@@ -677,26 +677,26 @@ func (b *build) foldAmendments(ctx context.Context) (git.Rev, error) {
 		return "", err
 	}
 
-	spec, _, err := b.r.git.Show(ctx, head, specPath(name))
+	spec, _, err := b.r.git.Show(ctx, head, name.path())
 	if err != nil {
 		return "", err
 	}
 
-	amendments, _, err := b.r.git.Show(ctx, head, amendPath(name))
+	amendments, _, err := b.r.git.Show(ctx, head, name.amendPath())
 	if err != nil {
 		return "", err
 	}
 
 	folded, err := foldAmendments(string(spec), string(amendments))
 	if err != nil {
-		return "", fmt.Errorf("%w: %s cannot fold into %s: %w", errRefused, amendPath(name), specPath(name), err)
+		return "", fmt.Errorf("%w: %s cannot fold into %s: %w", errRefused, name.amendPath(), name.path(), err)
 	}
 
-	if err := os.WriteFile(b.path(specPath(name)), []byte(folded), 0o644); err != nil {
+	if err := os.WriteFile(b.path(name.path()), []byte(folded), 0o644); err != nil {
 		return "", err
 	}
 
-	if err := os.Remove(b.path(amendPath(name))); err != nil {
+	if err := os.Remove(b.path(name.amendPath())); err != nil {
 		return "", err
 	}
 
@@ -709,23 +709,23 @@ func (b *build) checkoutMain(ctx context.Context) error {
 		return err
 	}
 
-	if err := b.r.git.Remove(ctx, b.tree, branchOf(b.rec.Name)); err != nil {
+	if err := b.r.git.Remove(ctx, b.tree, b.rec.Name.branch()); err != nil {
 		return err
 	}
 
-	return b.r.git.Checkout(ctx, b.tree, branchOf(b.rec.Name), main)
+	return b.r.git.Checkout(ctx, b.tree, b.rec.Name.branch(), main)
 }
 
 // retire deletes the spec and its amendments, and adds its line to PRODUCT.md. The line holds the command that shows
 // the spec at held, the commit that last held it.
 func (b *build) retire(ctx context.Context, held git.Rev) error {
 	name := b.rec.Name
-	spec, err := os.ReadFile(b.path(specPath(name)))
+	spec, err := os.ReadFile(b.path(name.path()))
 	if err != nil {
 		return err
 	}
 
-	title := name
+	title := string(name)
 	if line, _, _ := strings.Cut(string(spec), "\n"); strings.HasPrefix(line, "# ") {
 		title = strings.TrimPrefix(line, "# ")
 	}
@@ -740,12 +740,12 @@ func (b *build) retire(ctx context.Context, held git.Rev) error {
 		return err
 	}
 
-	line := fmt.Sprintf("- %s: `git show %s:%s`\n", title, short(held), specPath(name))
+	line := fmt.Sprintf("- %s: `git show %s:%s`\n", title, short(held), name.path())
 	if err := os.WriteFile(productPath, append(text, line...), 0o644); err != nil {
 		return err
 	}
 
-	for _, p := range []string{specPath(name), amendPath(name)} {
+	for _, p := range []string{name.path(), name.amendPath()} {
 		if err := os.Remove(b.path(p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
@@ -787,7 +787,7 @@ func (b *build) say(format string, args ...any) {
 
 func (b *build) message(what string) string {
 	return fmt.Sprintf("feat(%s): %s\n\nkiln built %s, approved at %s, in session %s.\n", b.rec.Name, what,
-		specPath(b.rec.Name), short(b.rec.Approved), b.rec.Session)
+		b.rec.Name.path(), short(b.rec.Approved), b.rec.Session)
 }
 
 // landing is the message of the commit that lands the build. It holds the build's time, cost, turns and failed calls,

@@ -29,8 +29,8 @@ const (
 
 // record is what kiln keeps of one spec the developer queued.
 type record struct {
-	Name  string `json:"name"`
-	State state  `json:"state"`
+	Name  Spec  `json:"name"`
+	State state `json:"state"`
 	// Approved is main's tip when the developer queued the spec.
 	Approved git.Rev `json:"approved"`
 	// Build is the ID of this queue's build, which names it in the ledger.
@@ -80,7 +80,7 @@ type book struct {
 // errRefused is the kind of a command kiln refuses for the state a spec is in.
 var errRefused = errors.New("refused")
 
-func (b *book) find(name string) *record {
+func (b *book) find(name Spec) *record {
 	if i := slices.IndexFunc(b.Specs, func(r *record) bool { return r.Name == name }); i >= 0 {
 		return b.Specs[i]
 	}
@@ -111,7 +111,7 @@ const (
 //
 // changed answers whether the spec on main differs from the spec at the commit since. Only queue calls it, on a spec
 // waiting for UAT.
-func (b *book) may(command, name string, changed func(since git.Rev) (bool, error)) error {
+func (b *book) may(command string, name Spec, changed func(since git.Rev) (bool, error)) error {
 	r := b.find(name)
 	var why string
 	switch {
@@ -133,7 +133,7 @@ func (b *book) may(command, name string, changed func(since git.Rev) (bool, erro
 		}
 
 		why = fmt.Sprintf("it is %s, and %s on main is as it was when its build was queued, so it would build the "+
-			"same work: change the spec, commit it, and queue it", landed, specPath(name))
+			"same work: change the spec, commit it, and queue it", landed, name.path())
 	case command == queueCommand:
 		return nil
 	case r.State == amended || r.Accepted && r.State == stopped:
@@ -164,7 +164,7 @@ func shownState(r *record) string {
 
 // queue queues a new build of name from the spec at main's tip, main. It answers whether an earlier build left a
 // branch to drop. It answers the ID of an earlier build it drops before that build ended.
-func (b *book) queue(name string, main git.Rev, changed func(since git.Rev) (bool, error)) (drop bool, dropped string,
+func (b *book) queue(name Spec, main git.Rev, changed func(since git.Rev) (bool, error)) (drop bool, dropped string,
 	err error) {
 	if err := b.may(queueCommand, name, changed); err != nil {
 		return false, "", err
@@ -189,7 +189,7 @@ func (b *book) queue(name string, main git.Rev, changed func(since git.Rev) (boo
 // accept answers the record of a spec the developer accepts, as it stood. A stopped landing of accepted amendments is
 // queued again afresh. It keeps only its build, session and audit, and that it lands accepted amendments. It keeps a
 // branch a landing left to put back, too.
-func (b *book) accept(name string) (record, error) {
+func (b *book) accept(name Spec) (record, error) {
 	if err := b.may(acceptCommand, name, nil); err != nil {
 		return record{}, err
 	}
@@ -205,7 +205,7 @@ func (b *book) accept(name string) (record, error) {
 }
 
 // reject removes the record of a spec whose amendments the developer turns away, and answers it.
-func (b *book) reject(name string) (record, error) {
+func (b *book) reject(name Spec) (record, error) {
 	if err := b.may(rejectCommand, name, nil); err != nil {
 		return record{}, err
 	}
@@ -215,13 +215,13 @@ func (b *book) reject(name string) (record, error) {
 	return r, nil
 }
 
-func (b *book) retire(name string) {
+func (b *book) retire(name Spec) {
 	b.Specs = slices.DeleteFunc(b.Specs, func(r *record) bool { return r.Name == name })
 }
 
 // next takes the first queued spec, and marks it building by the kiln run pid. With only, it takes the spec named only,
 // or a landing of accepted amendments. A kiln accept leaves such a landing for the kiln run that holds the lock.
-func (b *book) next(only string, pid int) (record, bool) {
+func (b *book) next(only Spec, pid int) (record, bool) {
 	for _, r := range b.Specs {
 		if r.State == queued && (only == "" || r.Name == only || r.Accepted) {
 			r.State, r.runner = building, runner{PID: pid}
@@ -294,7 +294,7 @@ func (s store) read() (book, error) {
 }
 
 // set applies change to the record of name.
-func (s store) set(name string, change func(*record)) error {
+func (s store) set(name Spec, change func(*record)) error {
 	return s.update(func(b *book) error {
 		if r := b.find(name); r != nil {
 			change(r)
