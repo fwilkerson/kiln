@@ -48,6 +48,20 @@ const usage = `usage:
 // commands are the developer's commands, as kiln complete lists them.
 var commands = []string{"init", "queue", "run", "status", "tui", "accept", "reject"}
 
+// onRepo holds each of the developer's commands, which act on the repository in the working directory.
+var onRepo = map[string]repoCommand{
+	"init":   noArgs((*kiln.Repo).Init),
+	"run":    noArgs((*kiln.Repo).Run),
+	"status": noArgs((*kiln.Repo).Status),
+	"tui":    tui,
+	"queue":  oneName((*kiln.Repo).Queue),
+	"accept": oneName((*kiln.Repo).Accept),
+	"reject": oneName((*kiln.Repo).Reject),
+}
+
+// repoCommand runs one command on r, with the arguments that follow the command's name.
+type repoCommand func(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
@@ -67,55 +81,17 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 		err = hook(args, stdin, stdout)
 	case "precommit":
 		err = kiln.Precommit(ctx, ".", os.Environ(), stderr)
-	case "init", "run", "status":
-		err = onRepo(ctx, func(r *kiln.Repo) error {
-			if len(args) != 0 {
-				return errUsage
-			}
-
-			switch command {
-			case "init":
-				return r.Init(ctx, stdout)
-			case "run":
-				return r.Run(ctx, stdout)
-			}
-
-			return r.Status(ctx, stdout)
-		})
-	case "tui":
-		err = onRepo(ctx, func(r *kiln.Repo) error {
-			if len(args) > 1 {
-				return errUsage
-			}
-
-			name := ""
-			if len(args) == 1 {
-				name = args[0]
-			}
-
-			return r.TUI(ctx, name, os.Stdin, stdout)
-		})
-	case "queue", "accept", "reject":
-		err = onRepo(ctx, func(r *kiln.Repo) error {
-			if len(args) != 1 {
-				return errUsage
-			}
-
-			switch command {
-			case "queue":
-				return r.Queue(ctx, args[0], stdout)
-			case "accept":
-				return r.Accept(ctx, args[0], stdout)
-			}
-
-			return r.Reject(ctx, args[0], stdout)
-		})
 	case "complete":
 		err = complete(ctx, args, stdout)
 	default:
-		err = errUsage
+		err = repo(ctx, command, args, stdout)
 	}
 
+	return exit(command, err, stderr)
+}
+
+// exit reports err on stderr and returns the status kiln exits with.
+func exit(command string, err error, stderr io.Writer) int {
 	switch {
 	case err == errUsage:
 		fmt.Fprint(stderr, usage)
@@ -130,20 +106,66 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 
 var errUsage = errors.New("usage")
 
+// repo opens the repository in the working directory and runs command on it.
+func repo(ctx context.Context, command string, args []string, out *os.File) error {
+	do, ok := onRepo[command]
+	if !ok {
+		return errUsage
+	}
+
+	r, err := kiln.Open(ctx, ".", os.Environ())
+	if err != nil {
+		return err
+	}
+
+	return do(ctx, r, args, out)
+}
+
+// noArgs is a command that takes no arguments.
+func noArgs(do func(*kiln.Repo, context.Context, io.Writer) error) repoCommand {
+	return func(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
+		if len(args) != 0 {
+			return errUsage
+		}
+
+		return do(r, ctx, out)
+	}
+}
+
+// oneName is a command that takes one spec's name.
+func oneName(do func(*kiln.Repo, context.Context, string, io.Writer) error) repoCommand {
+	return func(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
+		if len(args) != 1 {
+			return errUsage
+		}
+
+		return do(r, ctx, args[0], out)
+	}
+}
+
+// tui is kiln tui, which takes a spec's name or none.
+func tui(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
+	if len(args) > 1 {
+		return errUsage
+	}
+
+	name := ""
+	if len(args) == 1 {
+		name = args[0]
+	}
+
+	return r.TUI(ctx, name, os.Stdin, out)
+}
+
 // complete lists kiln's commands, or with a command, the spec names it takes.
 func complete(ctx context.Context, args []string, out io.Writer) error {
-	names := commands
-	switch {
-	case len(args) > 1:
+	if len(args) > 1 {
 		return errUsage
-	case len(args) == 1:
-		err := onRepo(ctx, func(r *kiln.Repo) (err error) {
-			names, err = r.Takes(ctx, args[0])
-			return err
-		})
-		if err != nil {
-			return err
-		}
+	}
+
+	names, err := takes(ctx, args)
+	if err != nil {
+		return err
 	}
 
 	for _, name := range names {
@@ -153,13 +175,18 @@ func complete(ctx context.Context, args []string, out io.Writer) error {
 	return nil
 }
 
-func onRepo(ctx context.Context, do func(*kiln.Repo) error) error {
-	r, err := kiln.Open(ctx, ".", os.Environ())
-	if err != nil {
-		return err
+// takes is kiln's commands, or with a command, the spec names it takes.
+func takes(ctx context.Context, args []string) ([]string, error) {
+	if len(args) == 0 {
+		return commands, nil
 	}
 
-	return do(r)
+	r, err := kiln.Open(ctx, ".", os.Environ())
+	if err != nil {
+		return nil, err
+	}
+
+	return r.Takes(ctx, args[0])
 }
 
 // hook answers Claude Code's PreToolUse call. A hook that cannot read its call exits 2, which Claude Code reads as a
@@ -168,7 +195,8 @@ func hook(args []string, stdin io.Reader, stdout io.Writer) error {
 	flags := flag.NewFlagSet("hook", flag.ContinueOnError)
 	spec := flags.String("spec", "", "the spec the session builds")
 	place := flags.String("place", "", "the build's worktree")
-	if err := flags.Parse(args); err != nil || *spec == "" || *place == "" {
+	switch err := flags.Parse(args); {
+	case err != nil, *spec == "", *place == "":
 		return errUsage
 	}
 
