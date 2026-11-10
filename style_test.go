@@ -41,8 +41,7 @@ func TestNames(t *testing.T) {
 	}
 
 	var docs []string
-	for _, pattern := range []string{"guidance/*/*.md", "guidance/skills/*/*.md", ".kiln/agents/*.md",
-		".kiln/skills/*/*.md"} {
+	for _, pattern := range []string{".kiln/agents/*.md", ".kiln/skills/*/*.md"} {
 		found, _ := filepath.Glob(pattern)
 		docs = append(docs, found...)
 	}

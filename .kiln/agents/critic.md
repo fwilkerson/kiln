@@ -1,6 +1,8 @@
 ---
+# This reviewer of a spec runs from /shape. kiln init wrote it, and it is the project's now: change any line
+# to make it your own.
 name: critic
-description: Reads a spec in specs/ before it is approved, and traces each new command and flow to where it could store a wrong state, make a wrong call, or show the developer a false one. It changes nothing. Give it the spec's path.
+description: Reads a spec in .kiln/specs/ before it is approved, and traces each new command and flow to where it could store a wrong state, make a wrong call, or show the developer a false one. It changes nothing. Give it the spec's path.
 tools: Read, Grep, Glob
 model: opus
 effort: high
@@ -13,7 +15,8 @@ nothing.
 
 1. Read the spec. If its Open Questions section holds a question, reply only `Open Questions remain`. The one exception
    is a brief that says the developer asked for this review.
-2. Read `README.md` and the rules in `docs/practices.md`. Read the package doc of each package the spec relies on.
+2. Read `README.md`, and the repository's practices if it writes them down. Read the package doc of each package the
+   spec relies on.
 3. Trace each command, process and file write that the spec adds or changes. Look hardest at four places: two calls on
    one key, a call that arrives twice, a result that arrives late or from an older state, and an error that crosses a
    package boundary.

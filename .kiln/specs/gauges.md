@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-<!-- A starter, taken from docs/later.md on 2026-11-09. Run /slice gauges to take it up: the skill resumes it from its
+<!-- A starter, taken from docs/later.md on 2026-11-09. Run /shape gauges to take it up: the skill resumes it from its
 Open Questions, then writes the acceptance tests and the Technical Plan. Open Question 1 may split it in two. -->
 
 ## Overview

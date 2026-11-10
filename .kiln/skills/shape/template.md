@@ -13,7 +13,8 @@ it, and PRODUCT.md names the commit that last held it. -->
 
 ## Non-goals
 
-<!-- Each comes back only when a build shows the need. docs/later.md holds a brief on each. -->
+<!-- Each comes back only when a build shows the need. Keep a brief on each where the project records what it
+deferred. -->
 
 ## Open Questions
 
@@ -21,9 +22,10 @@ it, and PRODUCT.md names the commit that last held it. -->
 
 ## Acceptance tests
 
-<!-- Test N's code is a Go test in acceptance/<name>/ whose name starts TestAT<N>. A Then names a state the test can
-read through the program's command line or HTTP. Name only what the intent names: never a timeout, a length or a
-message's wording. -->
+<!-- A build writes test N's code, as .kiln/agents/build.md says. A Then names a state the test can read through
+the program, as its user reaches it. kiln refuses to queue a spec whose sections leave this file's order, or whose
+tests are not numbered from 1, each with a Given, a When and a Then. Name only what the intent names: never a
+timeout, a length or a message's wording. -->
 
 ### 1. <Title>
 

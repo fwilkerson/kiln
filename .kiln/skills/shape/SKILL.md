@@ -1,6 +1,9 @@
 ---
-name: slice
-description: Writes a spec with the developer, from a first draft to one they approve in specs/, and revises an approved one. The developer starts it with the spec's name or idea.
+# This skill writes the specs kiln builds. kiln init wrote it, and it is the project's now: change any line to
+# make it your own. kiln refuses to queue a spec that leaves the form of kiln's own template.md, so a change to
+# the form of this one does not reach kiln.
+name: shape
+description: Writes a spec with the developer, from a first draft to one they approve in .kiln/specs/, and revises an approved one. The developer starts it with the spec's name or idea.
 argument-hint: <spec name or idea>
 disable-model-invocation: true
 ---
@@ -19,10 +22,11 @@ yourself, wherever a file, the code or a measurement settles it.
 Write the spec before you discuss anything. A draft ranks the points, and discussing one point a reply once ran 2.5
 hours without reaching a design.
 
-1. If `specs/<name>.md` exists, resume it from its Open Questions. A spec with Status Approved is being revised: keep
-   its Status Approved, and edit it in place. Otherwise, copy [`template.md`](template.md) to that path.
-2. Read `README.md`, `docs/practices.md` and `docs/later.md`. Run `go doc` on each package the spec touches.
-3. A topic in `docs/later.md` that the spec takes up says what would show its need. Write in the spec what showed it.
+1. If `.kiln/specs/<name>.md` exists, resume it from its Open Questions. A spec with Status Approved is being
+   revised: keep its Status Approved, and edit it in place. Otherwise, copy [`template.md`](template.md) to that path.
+2. Read `README.md`, the repository's practices, and its record of what was deferred, if it writes them down. Run
+   `go doc` on each package the spec touches.
+3. A deferred topic that the spec takes up says what would show its need. Write in the spec what showed it.
 4. Fill every section you can. Where the spec could be cut smaller or grown, write the cut as an Open Question.
 
 Then show the developer the Overview and the Open Questions.
@@ -39,11 +43,11 @@ that decides it. The developer answers in any order. Move each answer into the s
 
 ## 3. Write the acceptance tests
 
-Number them. Test N's code will be a Go test in `acceptance/<name>/` whose name starts `TestAT<N>`, and a build writes
-it. Each has a Given, a When and a Then, and the developer owns their words. A build may change one only by an
-amendment, in `specs/<name>.amend.md`, which the developer reads at acceptance.
+Number them. A build writes test N's code, as the build agent's file, `.kiln/agents/build.md`, says. Each has a
+Given, a When and a Then, and the developer owns their words. A build may change one only by an amendment, in
+`.kiln/specs/<name>.amend.md`, which the developer reads at acceptance.
 
-- A Then names a state a test can read through the program's command line or HTTP.
+- A Then names a state a test can read through the program, as its user reaches it.
 - A Given, When, Then names only what the intent names: never a timeout, a length or a message's wording. A test that
   locks a detail the intent never asked for becomes an amendment later.
 - Renumbering an approved test breaks the tie to its code. Add a test at the end instead.

@@ -2,7 +2,7 @@
 
 Status: Proposed
 
-<!-- A starter, drafted on 2026-11-09 while slicing specs/notify.md. Run /slice talk to take it up: the skill resumes
+<!-- A starter, drafted on 2026-11-09 while slicing specs/notify.md. Run /shape talk to take it up: the skill resumes
 it from its Open Questions, then writes the acceptance tests and the Technical Plan. -->
 
 ## Overview

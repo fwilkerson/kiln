@@ -3,9 +3,9 @@
 Status: notes, not a spec. Each topic below was discussed while drafting spec 1 (`git show d54b9a0718f9:specs/kiln.md`),
 then left out. Each says what it is, why it came up, and what would show it is needed. A later spec starts from here.
 
-A topic the developer means to build leaves this file for a starter spec in `specs/`, with Status Proposed, which
-`/slice` takes up from its Open Questions. `specs/tui-reading.md`, `specs/notify.md`,
-`specs/project-roles.md`, `specs/gauges.md` and `specs/languages.md` began here.
+A topic the developer means to build leaves this file for a starter spec in `.kiln/specs/`, with Status Proposed,
+which `/shape` takes up from its Open Questions. The specs tui-reading, notify, project-roles, gauges and languages
+began here.
 
 ## The evidence behind spec 1
 

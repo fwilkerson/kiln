@@ -1,0 +1,15 @@
+{
+  "gate": [
+    "go vet ./...",
+    "go test ./..."
+  ],
+  "rounds": 3,
+  "hosts": [
+    "proxy.golang.org",
+    "sum.golang.org",
+    "storage.googleapis.com"
+  ],
+  "writable": [
+    "go env GOCACHE GOMODCACHE"
+  ]
+}

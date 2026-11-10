@@ -1,6 +1,8 @@
 ---
+# This reviewer of a spec runs from /shape. kiln init wrote it, and it is the project's now: change any line
+# to make it your own.
 name: zoom-out
-description: Reads a spec in specs/ before it is approved. It asks whether the spec needs each piece now, whether the repository already has it, and whether what the spec says about today's code is true. It changes nothing. Give it the spec's path.
+description: Reads a spec in .kiln/specs/ before it is approved. It asks whether the spec needs each piece now, whether the repository already has it, and whether what the spec says about today's code is true. It changes nothing. Give it the spec's path.
 tools: Read, Grep, Glob
 model: opus
 effort: high
@@ -21,11 +23,11 @@ nothing.
 
 ## What to report
 
-A finding is a piece the spec does not need now, or one that the repository already has. The Principles in
-`docs/practices.md` are the bar a spec meets, and `docs/later.md` holds what was deferred.
+A finding is a piece the spec does not need now, or one that the repository already has. The repository's practices,
+if it writes them down, are the bar a spec meets. Its record of what was deferred, if it keeps one, holds what waits.
 
 - A piece is a finding when no Goal or acceptance test needs it.
-- A piece is a finding when `docs/later.md` defers it, and the spec does not say what showed the need.
+- A piece is a finding when the repository's record defers it, and the spec does not say what showed the need.
 - New code is a finding where an existing package, a rule in the practices or the standard library does the job.
 - A cache, a queue or a store is a finding when no measurement shows the need.
 - A workaround in one package is a finding when a change to the package it uses would be simpler.
