@@ -23,15 +23,21 @@ func TestCheckout(t *testing.T) {
 	}
 
 	tree := filepath.Join(t.TempDir(), "tree")
-	if err := g.Checkout(t.Context(), tree, "kiln/x", "main"); err != nil {
+	if err := g.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main"); err != nil {
 		t.Fatal(err)
 	}
 
 	sh(t, tree, "echo b >guidance/agents/b.md")
-	if _, err := g.Commit(t.Context(), tree, "add b\n"); err != nil {
+	if _, err := g.Commit(t.Context(), git.Worktree(tree), "add b\n"); err != nil {
 		t.Fatal(err)
 	}
 
+	checkLinks(t, repo, tree)
+}
+
+// checkLinks checks that tree holds .claude/agents as a plain file. Its commit and repo's checkout hold a link.
+func checkLinks(t *testing.T, repo, tree string) {
+	t.Helper()
 	switch info, err := os.Lstat(filepath.Join(tree, ".claude", "agents")); {
 	case err != nil:
 		t.Fatal(err)

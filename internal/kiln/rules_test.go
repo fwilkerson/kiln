@@ -15,6 +15,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/fwilkerson/kiln/internal/git"
 )
 
 func TestGuard(t *testing.T) {
@@ -194,7 +196,7 @@ func TestSpecStates(t *testing.T) {
 					Build: "b", Rounds: 2, Audited: true, Why: "w", FailingAtMain: []string{"TestF"}}}
 			}
 
-			changed := func(since string) (bool, error) {
+			changed := func(since git.Rev) (bool, error) {
 				if since != "old" {
 					t.Errorf("changed since %q, want since the queue", since)
 				}
@@ -410,7 +412,7 @@ func TestNextStep(t *testing.T) {
 
 			b := book{Specs: []*record{&tc.rec}}
 			for _, c := range named {
-				if err := b.may(c, "x", func(string) (bool, error) { return true, nil }); err != nil {
+				if err := b.may(c, "x", func(git.Rev) (bool, error) { return true, nil }); err != nil {
 					t.Errorf("%q names kiln %s, which the book refuses: %v", next, c, err)
 				}
 			}
@@ -466,20 +468,20 @@ func TestLandChanges(t *testing.T) {
 			}
 
 			b := &build{r: r, rec: rec, tree: r.tree("x"), out: io.Discard}
-			if err := r.git.Checkout(t.Context(), b.tree, branchOf("x"), main); err != nil {
+			if err := r.git.Checkout(t.Context(), b.tree, branchOf("x"), git.Rev(main)); err != nil {
 				t.Fatal(err)
 			}
 
-			run(b.tree, tc.work)
-			head := run(b.tree, "git rev-parse HEAD")
+			run(string(b.tree), tc.work)
+			head := git.Rev(run(string(b.tree), "git rev-parse HEAD"))
 			landed, back, err := b.land(t.Context(), head, nil)
-			tip := run(repo, "git rev-parse main")
+			tip := git.Rev(run(repo, "git rev-parse main"))
 			switch {
 			case err != nil:
 				t.Fatal(err)
 			case tc.landed && (landed == "" || tip != landed):
 				t.Errorf("landed %q, main at %s, setback %+v; want main moved to the work", landed, tip, back)
-			case !tc.landed && (landed != "" || tip != main || back.why != whyUnchanged):
+			case !tc.landed && (landed != "" || tip != git.Rev(main) || back.why != whyUnchanged):
 				t.Errorf("landed %q, main at %s, setback %+v; want main unmoved, and the work sent back", landed, tip,
 					back)
 			}

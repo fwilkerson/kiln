@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/claude"
+	"github.com/fwilkerson/kiln/internal/git"
 )
 
 // The ledger is kiln's record of every build, session run and gate, one JSON line each, appended and never
@@ -66,16 +67,16 @@ type entry struct {
 	Build string    `json:"build"`
 	At    time.Time `json:"at"`
 	// A build line's.
-	Spec     string `json:"spec,omitempty"`
-	Approved string `json:"approved,omitempty"`
-	Size     int    `json:"size,omitempty"`
+	Spec     string  `json:"spec,omitempty"`
+	Approved git.Rev `json:"approved,omitempty"`
+	Size     int     `json:"size,omitempty"`
 	// A start line's, and Session an end line's.
 	Role    string `json:"role,omitempty"`
 	Session string `json:"session,omitempty"`
 	PID     int    `json:"pid,omitempty"`
 	reason
 	// Read is the commit an audit run read, in its start line.
-	Read string `json:"read,omitempty"`
+	Read git.Rev `json:"read,omitempty"`
 	// Streamed is the length of the session's stream. A start line holds it before the run, and an end line after.
 	Streamed int64 `json:"streamed,omitempty"`
 	// An end line's. Changed names the paths an audit run changed in the build's tree, which kiln then put back.

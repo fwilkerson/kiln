@@ -75,9 +75,28 @@ var configured = func() []string {
 	return append(env, fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(pairs)))
 }()
 
+// Rev names a commit by its hash, or by anything else git rev-parse takes, such as a branch.
+type Rev string
+
+// Worktree is the directory of one of the repository's checkouts: its main one, or a linked worktree. A relative one
+// is the main checkout's.
+type Worktree string
+
+// Branch is a branch's short name, as refs/heads/ holds it.
+type Branch string
+
+// commit names the commit itself, which a ref to a tag would not.
+func (r Rev) commit() string {
+	return string(r) + "^{commit}"
+}
+
+func (b Branch) ref() string {
+	return "refs/heads/" + string(b)
+}
+
 // Git runs git on one repository, from its main checkout.
 type Git struct {
-	repo      string
+	repo      Worktree
 	found     string
 	bin       string
 	resolve   sync.Once
@@ -93,7 +112,7 @@ func New(repo string, env []string) (*Git, error) {
 		return nil, &Unusable{Path: missing.Path}
 	}
 
-	return &Git{repo: repo, found: bin, env: environment(env)}, nil
+	return &Git{repo: Worktree(repo), found: bin, env: environment(env)}, nil
 }
 
 // Unusable is a git kiln cannot use: none on the PATH, or one before 2.55, which lacks hook.<event>.enabled.
@@ -160,7 +179,8 @@ func throughShim(ctx context.Context, bin string, env []string) string {
 	cmd.Env = env
 	out, err := cmd.Output()
 	found := strings.TrimSpace(string(out))
-	if err != nil || !filepath.IsAbs(found) || found == shim || !proc.Executable(found) {
+	switch {
+	case err != nil, !filepath.IsAbs(found), found == shim, !proc.Executable(found):
 		return bin
 	}
 
@@ -209,21 +229,21 @@ func (g *Git) run(ctx context.Context, c call, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-func (g *Git) in(ctx context.Context, dir string, args ...string) (string, error) {
-	return g.run(ctx, call{dir: g.at(dir)}, args...)
+func (g *Git) in(ctx context.Context, dir Worktree, args ...string) (string, error) {
+	return g.run(ctx, call{dir: string(g.at(dir))}, args...)
 }
 
-func (g *Git) line(ctx context.Context, dir string, args ...string) (string, error) {
+func (g *Git) line(ctx context.Context, dir Worktree, args ...string) (string, error) {
 	out, err := g.in(ctx, dir, args...)
 	return strings.TrimSpace(out), err
 }
 
-func (g *Git) at(path string) string {
-	if filepath.IsAbs(path) {
+func (g *Git) at(path Worktree) Worktree {
+	if filepath.IsAbs(string(path)) {
 		return path
 	}
 
-	return filepath.Join(g.repo, path)
+	return Worktree(filepath.Join(string(g.repo), string(path)))
 }
 
 // CommonDir is the repository's git directory that every worktree shares.
@@ -233,7 +253,7 @@ func (g *Git) CommonDir(ctx context.Context) (string, error) {
 
 // Checkout puts branch, made from the commit at, in a new worktree at path. If that fails part way, it removes what
 // it made.
-func (g *Git) Checkout(ctx context.Context, path, branch, at string) error {
+func (g *Git) Checkout(ctx context.Context, path Worktree, branch Branch, at Rev) error {
 	g.worktrees.Lock()
 	defer g.worktrees.Unlock()
 	path = g.at(path)
@@ -241,8 +261,8 @@ func (g *Git) Checkout(ctx context.Context, path, branch, at string) error {
 		return err
 	}
 
-	_, there := os.Lstat(path)
-	err := g.addWorktree(ctx, path, "-b", branch, path, at)
+	_, there := os.Lstat(string(path))
+	err := g.addWorktree(ctx, path, "-b", string(branch), string(path), string(at))
 	if err == nil {
 		return nil
 	}
@@ -251,10 +271,10 @@ func (g *Git) Checkout(ctx context.Context, path, branch, at string) error {
 }
 
 // worktree add makes the branch before the tree, and can fail between them.
-func (g *Git) unmade(ctx context.Context, path string, madePath bool, branch string) error {
+func (g *Git) unmade(ctx context.Context, path Worktree, madePath bool, branch Branch) error {
 	var err error
 	if madePath {
-		err = os.RemoveAll(path)
+		err = os.RemoveAll(string(path))
 	}
 
 	if _, pruned := g.in(ctx, g.repo, "worktree", "prune"); pruned != nil {
@@ -262,7 +282,7 @@ func (g *Git) unmade(ctx context.Context, path string, madePath bool, branch str
 	}
 
 	if tip, found := g.Tip(ctx, branch); found == nil && tip != "" {
-		_, deleted := g.in(ctx, g.repo, "branch", "--quiet", "-D", branch)
+		_, deleted := g.in(ctx, g.repo, "branch", "--quiet", "-D", string(branch))
 		err = errors.Join(err, deleted)
 	}
 
@@ -271,19 +291,20 @@ func (g *Git) unmade(ctx context.Context, path string, madePath bool, branch str
 
 // Detached puts commit in a worktree at path with no branch, making the worktree if it is not there yet. It removes
 // every file the commit does not hold, ignored ones included, so what runs there sees only the commit.
-func (g *Git) Detached(ctx context.Context, path, commit string) error {
+func (g *Git) Detached(ctx context.Context, path Worktree, commit Rev) error {
 	g.worktrees.Lock()
 	defer g.worktrees.Unlock()
 	path = g.at(path)
-	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
+	if _, err := os.Stat(filepath.Join(string(path), ".git")); err != nil {
 		if _, err := g.in(ctx, g.repo, "worktree", "prune"); err != nil {
 			return err
 		}
 
-		return g.addWorktree(ctx, path, "--detach", path, commit)
+		return g.addWorktree(ctx, path, "--detach", string(path), string(commit))
 	}
 
-	for _, args := range [][]string{{"checkout", "--quiet", "--force", "--detach", commit}, {"clean", "-qfdx"}} {
+	checkout := []string{"checkout", "--quiet", "--force", "--detach", string(commit)}
+	for _, args := range [][]string{checkout, {"clean", "-qfdx"}} {
 		if _, err := g.in(ctx, path, args...); err != nil {
 			return err
 		}
@@ -295,7 +316,7 @@ func (g *Git) Detached(ctx context.Context, path, commit string) error {
 // addWorktree runs git worktree add with args. It checks the worktree out with each symbolic link as a plain file
 // that holds its target. Claude Code's sandbox refuses a shell's write to where a link under .claude/ points. With
 // links, a session could not change guidance/ behind .claude/agents. The main checkout keeps its links.
-func (g *Git) addWorktree(ctx context.Context, path string, args ...string) error {
+func (g *Git) addWorktree(ctx context.Context, path Worktree, args ...string) error {
 	if _, err := g.in(ctx, g.repo, "config", "set", "extensions.worktreeConfig", "true"); err != nil {
 		return err
 	}
@@ -315,8 +336,8 @@ func (g *Git) addWorktree(ctx context.Context, path string, args ...string) erro
 
 // Link stages, at checkout, a symbolic link at path to target, and writes it as checkout keeps links. A commit takes
 // it as a link, though checkout holds a plain file.
-func (g *Git) Link(ctx context.Context, checkout, path, target string) error {
-	blob, err := g.run(ctx, call{dir: g.at(checkout), stdin: target}, "hash-object", "-w", "--stdin")
+func (g *Git) Link(ctx context.Context, checkout Worktree, path, target string) error {
+	blob, err := g.run(ctx, call{dir: string(g.at(checkout)), stdin: target}, "hash-object", "-w", "--stdin")
 	if err != nil {
 		return err
 	}
@@ -331,13 +352,14 @@ func (g *Git) Link(ctx context.Context, checkout, path, target string) error {
 }
 
 // Head is the commit checked out at checkout.
-func (g *Git) Head(ctx context.Context, checkout string) (string, error) {
-	return g.line(ctx, checkout, "rev-parse", "--verify", "HEAD^{commit}")
+func (g *Git) Head(ctx context.Context, checkout Worktree) (Rev, error) {
+	head, err := g.line(ctx, checkout, "rev-parse", "--verify", "HEAD^{commit}")
+	return Rev(head), err
 }
 
 // Commit commits every change at checkout, untracked files included, and answers the commit at HEAD. With no change it
 // commits nothing.
-func (g *Git) Commit(ctx context.Context, checkout, message string) (string, error) {
+func (g *Git) Commit(ctx context.Context, checkout Worktree, message string) (Rev, error) {
 	out, err := g.in(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil {
 		return "", err
@@ -348,7 +370,7 @@ func (g *Git) Commit(ctx context.Context, checkout, message string) (string, err
 			return "", err
 		}
 
-		c := call{dir: g.at(checkout), stdin: message}
+		c := call{dir: string(g.at(checkout)), stdin: message}
 		if _, err := g.run(ctx, c, "commit", "--quiet", "--no-verify", "--cleanup=verbatim", "-F", "-"); err != nil {
 			return "", err
 		}
@@ -359,7 +381,7 @@ func (g *Git) Commit(ctx context.Context, checkout, message string) (string, err
 
 // Amend folds every change at checkout into the commit at HEAD, and answers the commit at HEAD. With no change it
 // amends nothing.
-func (g *Git) Amend(ctx context.Context, checkout string) (string, error) {
+func (g *Git) Amend(ctx context.Context, checkout Worktree) (Rev, error) {
 	out, err := g.in(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil {
 		return "", err
@@ -381,7 +403,7 @@ func (g *Git) Amend(ctx context.Context, checkout string) (string, error) {
 }
 
 // Status lists each path at checkout that differs from the commit at HEAD, untracked files included.
-func (g *Git) Status(ctx context.Context, checkout string) ([]string, error) {
+func (g *Git) Status(ctx context.Context, checkout Worktree) ([]string, error) {
 	out, err := g.in(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
 	var found []string
 	for _, p := range paths(out) {
@@ -392,8 +414,8 @@ func (g *Git) Status(ctx context.Context, checkout string) ([]string, error) {
 }
 
 // Reset puts the branch at checkout, and its files, back at commit, and removes every untracked file.
-func (g *Git) Reset(ctx context.Context, checkout, commit string) error {
-	for _, args := range [][]string{{"reset", "--quiet", "--hard", commit}, {"clean", "-qfd"}} {
+func (g *Git) Reset(ctx context.Context, checkout Worktree, commit Rev) error {
+	for _, args := range [][]string{{"reset", "--quiet", "--hard", string(commit)}, {"clean", "-qfd"}} {
 		if _, err := g.in(ctx, checkout, args...); err != nil {
 			return err
 		}
@@ -411,40 +433,50 @@ type Conflict struct {
 // branch and its worktree there, and answers the commit. The commit takes its author from HEAD, and message.
 //
 // A merge that conflicts is answered as a [Conflict], and changes nothing.
-func (g *Git) Rebase(ctx context.Context, checkout, onto, message string) (string, *Conflict, error) {
+func (g *Git) Rebase(ctx context.Context, checkout Worktree, onto Rev, message string) (Rev, *Conflict, error) {
 	head, err := g.Head(ctx, checkout)
 	if err != nil {
 		return "", nil, err
 	}
 
-	base, err := g.line(ctx, checkout, "merge-base", onto, head)
+	base, err := g.line(ctx, checkout, "merge-base", string(onto), string(head))
 	if err != nil {
 		return "", nil, err
-	}
-
-	tree, conflict, err := g.mergeTree(ctx, checkout, base, onto, head)
-	if err != nil || conflict != nil {
-		return "", conflict, err
 	}
 
 	if !strings.HasSuffix(message, "\n") {
 		message += "\n"
 	}
 
-	rebased, err := g.commitTree(ctx, checkout, tree, onto, head, message)
+	r := &rebase{checkout: checkout, base: Rev(base), onto: onto, head: head, message: message}
+	tree, conflict, err := g.mergeTree(ctx, r)
+	if err != nil || conflict != nil {
+		return "", conflict, err
+	}
+
+	rebased, err := g.commitTree(ctx, r, tree)
 	if err != nil {
 		return "", nil, err
 	}
 
-	if _, err := g.in(ctx, checkout, "reset", "--quiet", "--keep", rebased); err != nil {
+	if _, err := g.in(ctx, checkout, "reset", "--quiet", "--keep", string(rebased)); err != nil {
 		return "", nil, err
 	}
 
 	return rebased, nil, nil
 }
 
-func (g *Git) commitTree(ctx context.Context, checkout, tree, parent, author, message string) (string, error) {
-	by, err := g.in(ctx, checkout, "show", "--no-patch", "--date=raw", "--format=%an%x00%ae%x00%ad", author+"^{commit}")
+// rebase is one Rebase: the commit it makes takes head's changes since base, on onto, with head's author.
+type rebase struct {
+	checkout Worktree
+	base     Rev
+	onto     Rev
+	head     Rev
+	message  string
+}
+
+func (g *Git) commitTree(ctx context.Context, r *rebase, tree string) (Rev, error) {
+	by, err := g.in(ctx, r.checkout, "show", "--no-patch", "--date=raw", "--format=%an%x00%ae%x00%ad", r.head.commit())
 	if err != nil {
 		return "", err
 	}
@@ -452,18 +484,18 @@ func (g *Git) commitTree(ctx context.Context, checkout, tree, parent, author, me
 	name, rest, _ := strings.Cut(strings.TrimSuffix(by, "\n"), "\x00")
 	email, date, _ := strings.Cut(rest, "\x00")
 	made, err := g.run(ctx, call{
-		dir:   g.at(checkout),
-		stdin: message,
+		dir:   string(g.at(r.checkout)),
+		stdin: r.message,
 		env:   []string{"GIT_AUTHOR_NAME=" + name, "GIT_AUTHOR_EMAIL=" + email, "GIT_AUTHOR_DATE=" + date},
-	}, "commit-tree", tree, "-p", parent, "-F", "-")
-	return strings.TrimSpace(made), err
+	}, "commit-tree", tree, "-p", string(r.onto), "-F", "-")
+	return Rev(strings.TrimSpace(made)), err
 }
 
-func (g *Git) mergeTree(ctx context.Context, checkout, base, onto, head string) (string, *Conflict, error) {
-	args := []string{"--attr-source=" + onto, "merge-tree", "--write-tree", "-z", "--name-only", "--merge-base", base}
-	out, err := g.in(ctx, checkout, append(args, onto, head)...)
-	refused, ok := errors.AsType[*failed](err)
-	if err != nil && (!ok || refused.Exit != 1) {
+func (g *Git) mergeTree(ctx context.Context, r *rebase) (string, *Conflict, error) {
+	onto := string(r.onto)
+	args := []string{"--attr-source=" + onto, "merge-tree", "--write-tree", "-z", "--name-only", "--merge-base"}
+	out, err := g.in(ctx, r.checkout, append(args, string(r.base), onto, string(r.head))...)
+	if err != nil && !conflicted(err) {
 		return "", nil, err
 	}
 
@@ -472,8 +504,19 @@ func (g *Git) mergeTree(ctx context.Context, checkout, base, onto, head string) 
 		return fields[0], nil, nil
 	}
 
+	return "", &Conflict{Files: conflicts(fields[1:])}, nil
+}
+
+// conflicted says whether git merge-tree failed only because the merge conflicts, which it says by its exit code 1.
+func conflicted(err error) bool {
+	refused, ok := errors.AsType[*failed](err)
+	return ok && refused.Exit == 1
+}
+
+// conflicts are the files merge-tree names after its tree, up to the empty field that ends them.
+func conflicts(fields []string) []string {
 	var files []string
-	for _, f := range fields[1:] {
+	for _, f := range fields {
 		if f == "" {
 			break
 		}
@@ -483,12 +526,13 @@ func (g *Git) mergeTree(ctx context.Context, checkout, base, onto, head string) 
 		}
 	}
 
-	return "", &Conflict{Files: files}, nil
+	return files
 }
 
 // Changed lists the paths that differ between the commits from and to.
-func (g *Git) Changed(ctx context.Context, from, to string) ([]string, error) {
-	out, err := g.in(ctx, g.repo, "diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", from, to, "--")
+func (g *Git) Changed(ctx context.Context, from, to Rev) ([]string, error) {
+	diff := []string{"diff", "--name-only", "-z", "--no-renames", "--no-ext-diff"}
+	out, err := g.in(ctx, g.repo, append(diff, string(from), string(to), "--")...)
 	return paths(out), err
 }
 
@@ -500,8 +544,9 @@ type Shortstat struct {
 var shortstat = regexp.MustCompile(`(\d+) (file|insertion|deletion)`)
 
 // Shortstat counts what changed between the commits from and to.
-func (g *Git) Shortstat(ctx context.Context, from, to string) (Shortstat, error) {
-	out, err := g.in(ctx, g.repo, "diff", "--shortstat", "--no-renames", "--no-ext-diff", from, to, "--")
+func (g *Git) Shortstat(ctx context.Context, from, to Rev) (Shortstat, error) {
+	diff := []string{"diff", "--shortstat", "--no-renames", "--no-ext-diff"}
+	out, err := g.in(ctx, g.repo, append(diff, string(from), string(to), "--")...)
 	var s Shortstat
 	for _, m := range shortstat.FindAllStringSubmatch(out, -1) {
 		n, _ := strconv.Atoi(m[1])
@@ -519,13 +564,14 @@ func (g *Git) Shortstat(ctx context.Context, from, to string) (Shortstat, error)
 }
 
 // MergeBase is the newest commit that both a and b descend from.
-func (g *Git) MergeBase(ctx context.Context, a, b string) (string, error) {
-	return g.line(ctx, g.repo, "merge-base", a, b)
+func (g *Git) MergeBase(ctx context.Context, a, b Rev) (Rev, error) {
+	base, err := g.line(ctx, g.repo, "merge-base", string(a), string(b))
+	return Rev(base), err
 }
 
 // Files lists the names of the entries directly in dir, in the commit at. A commit with no dir holds none.
-func (g *Git) Files(ctx context.Context, at, dir string) ([]string, error) {
-	out, err := g.in(ctx, g.repo, "--literal-pathspecs", "ls-tree", "-z", "--name-only", at+"^{commit}", "--", dir+"/")
+func (g *Git) Files(ctx context.Context, at Rev, dir string) ([]string, error) {
+	out, err := g.in(ctx, g.repo, "--literal-pathspecs", "ls-tree", "-z", "--name-only", at.commit(), "--", dir+"/")
 	found := paths(out)
 	for i, p := range found {
 		found[i] = strings.TrimPrefix(p, dir+"/")
@@ -535,8 +581,8 @@ func (g *Git) Files(ctx context.Context, at, dir string) ([]string, error) {
 }
 
 // Show reads the file at path in the commit at, and false when the commit holds no file there.
-func (g *Git) Show(ctx context.Context, at, path string) ([]byte, bool, error) {
-	listed, err := g.in(ctx, g.repo, "--literal-pathspecs", "ls-tree", "-z", "--full-tree", at+"^{commit}", "--", path)
+func (g *Git) Show(ctx context.Context, at Rev, path string) ([]byte, bool, error) {
+	listed, err := g.in(ctx, g.repo, "--literal-pathspecs", "ls-tree", "-z", "--full-tree", at.commit(), "--", path)
 	if err != nil || listed == "" {
 		return nil, false, err
 	}
@@ -546,7 +592,7 @@ func (g *Git) Show(ctx context.Context, at, path string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 
-	content, err := g.in(ctx, g.repo, "show", at+":"+path)
+	content, err := g.in(ctx, g.repo, "show", string(at)+":"+path)
 	return []byte(content), err == nil, err
 }
 

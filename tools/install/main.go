@@ -60,16 +60,16 @@ func install(ctx context.Context) error {
 
 	defer os.RemoveAll(tmp)
 	tree := filepath.Join(tmp, "kiln")
-	if err := g.Detached(ctx, tree, tip); err != nil {
+	if err := g.Detached(ctx, git.Worktree(tree), tip); err != nil {
 		return err
 	}
 
 	err = build(ctx, tree, tip)
-	return errors.Join(err, g.Remove(ctx, tree, ""))
+	return errors.Join(err, g.Remove(ctx, git.Worktree(tree), ""))
 }
 
 // build installs kiln and its completion from the checkout at tree, of the commit tip.
-func build(ctx context.Context, tree, tip string) error {
+func build(ctx context.Context, tree string, tip git.Rev) error {
 	cmd := exec.CommandContext(ctx, "go", "install", "./cmd/kiln")
 	cmd.Dir, cmd.Stdout, cmd.Stderr = tree, os.Stderr, os.Stderr
 	if err := cmd.Run(); err != nil {

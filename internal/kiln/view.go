@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/fwilkerson/kiln/internal/claude"
+	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/kiln/internal/tui"
 )
 
@@ -86,12 +87,12 @@ func (v view) Recount(r *tui.Run) (claude.Recounted, error) {
 // Text reads the spec as the build's approval held it. A spec main no longer holds shows as the build saw it. Its
 // amendments follow it.
 func (v view) Text(ctx context.Context, b *tui.Build) (string, error) {
-	spec, found, err := v.r.git.Show(ctx, b.Approved, specPath(b.Spec))
+	spec, found, err := v.r.git.Show(ctx, git.Rev(b.Approved), specPath(b.Spec))
 	switch {
 	case err != nil:
 		return "", err
 	case !found:
-		return "", fmt.Errorf("the commit %s holds no %s", short(b.Approved), specPath(b.Spec))
+		return "", fmt.Errorf("the commit %s holds no %s", short(git.Rev(b.Approved)), specPath(b.Spec))
 	case b.Amendments == "":
 		return string(spec), nil
 	}
@@ -116,7 +117,7 @@ func stateOf(rec *record) tui.State {
 
 // shown is the build as the TUI shows it: its runs and gates in the order they ran.
 func (s *buildStats) shown() *tui.Build {
-	b := &tui.Build{Spec: s.Spec, Approved: s.Approved, Started: s.At, Size: s.Size, Outcome: s.outcome,
+	b := &tui.Build{Spec: s.Spec, Approved: string(s.Approved), Started: s.At, Size: s.Size, Outcome: s.outcome,
 		Amendments: s.amendments}
 	gates := 0
 	for _, r := range s.runs {

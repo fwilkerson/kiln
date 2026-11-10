@@ -20,6 +20,7 @@ import (
 
 	"github.com/fwilkerson/kiln/guidance"
 	"github.com/fwilkerson/kiln/internal/claude"
+	"github.com/fwilkerson/kiln/internal/git"
 )
 
 // unknownReset is how long a usage limit that names no reset pauses a build.
@@ -136,10 +137,10 @@ func goesOn(r *record) int {
 type build struct {
 	r    *Repo
 	rec  record
-	tree string
+	tree git.Worktree
 	out  io.Writer
 	// landed is the commit the build moved main to, once it has.
-	landed string
+	landed git.Rev
 }
 
 // outOfRounds is a build that its gate failed past its last round. failing names what failed.
@@ -229,7 +230,7 @@ func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 		return "", reason{}, err
 	}
 
-	var retire func(context.Context, string) error
+	var retire func(context.Context, git.Rev) error
 	if b.rec.Accepted {
 		retire = b.retire
 	} else if amendments, found, err := b.r.git.Show(ctx, head, amendPath(b.rec.Name)); err != nil || found {
@@ -330,14 +331,14 @@ func (b *build) start(ctx context.Context) error {
 
 func (b *build) launch(resume bool, prompt string) claude.Launch {
 	name := b.rec.Name
-	hook := fmt.Sprintf("%s hook --spec %s --place %s", shellQuote(b.r.exe), name, shellQuote(b.tree))
+	hook := fmt.Sprintf("%s hook --spec %s --place %s", shellQuote(b.r.exe), name, shellQuote(string(b.tree)))
 	return b.sandboxed(claude.Launch{
 		Session: b.rec.Session,
 		Resume:  resume,
 		Role:    "build",
 		System:  fmt.Sprintf(buildRole, name),
 		Prompt:  prompt,
-		Dir:     b.tree,
+		Dir:     string(b.tree),
 		Hook:    hook,
 	})
 }
@@ -370,9 +371,9 @@ func (b *build) talk(ctx context.Context, l claude.Launch, why reason) (claude.E
 			b.say("kiln could not measure session %s's stream: %v", l.Session, err)
 		}
 
-		var read string
+		var read git.Rev
 		if l.Role == auditRole {
-			if read, err = b.r.git.Head(ctx, l.Dir); err != nil {
+			if read, err = b.r.git.Head(ctx, git.Worktree(l.Dir)); err != nil {
 				return claude.Ended{}, err
 			}
 		}
@@ -385,7 +386,7 @@ func (b *build) talk(ctx context.Context, l claude.Launch, why reason) (claude.E
 		var undone error
 		if l.Role == auditRole {
 			// An interrupted audit run may have changed its worktree too, and its end line names what it changed.
-			end.Changed, undone = b.r.undo(context.WithoutCancel(ctx), l.Dir, read)
+			end.Changed, undone = b.r.undo(context.WithoutCancel(ctx), git.Worktree(l.Dir), read)
 		}
 
 		b.record(end)
@@ -424,7 +425,7 @@ const auditRole = "audit"
 
 // undo answers each path an audit run changed in its worktree at dir, committed or not, since the commit read. Then
 // it puts the worktree back at read, so the next run of the audit sees only the build's work.
-func (r *Repo) undo(ctx context.Context, dir, read string) ([]string, error) {
+func (r *Repo) undo(ctx context.Context, dir git.Worktree, read git.Rev) ([]string, error) {
 	head, err := r.git.Head(ctx, dir)
 	if err != nil {
 		return nil, err
@@ -491,11 +492,11 @@ func (b *build) audit(ctx context.Context) (string, error) {
 		Role:   auditRole,
 		System: guidance.Audit(),
 		Prompt: fmt.Sprintf(auditing, strings.Join(packages, " "), specPath(b.rec.Name), b.rec.Name),
-		Dir:    b.r.auditTree(b.rec.Name),
+		Dir:    string(b.r.auditTree(b.rec.Name)),
 		Tools:  []string{"Read", "Grep", "Glob", "Bash"},
 	})
 	for try := 1; ; try++ {
-		if err := b.r.git.Detached(ctx, l.Dir, head); err != nil {
+		if err := b.r.git.Detached(ctx, git.Worktree(l.Dir), head); err != nil {
 			return "", err
 		}
 
@@ -531,8 +532,8 @@ const auditTries = 3
 // conflict, work that changes nothing on main, or the gate. A landing that doesn't move main puts the branch back
 // where it stood, even after an error or an interrupt. Should kiln die mid-landing, the record keeps that commit,
 // and the next kiln run puts the branch back.
-func (b *build) land(ctx context.Context, from string, retire func(ctx context.Context, held string) error,
-	allowed ...string) (landed string, back setback, err error) {
+func (b *build) land(ctx context.Context, from git.Rev, retire func(ctx context.Context, held git.Rev) error,
+	allowed ...string) (landed git.Rev, back setback, err error) {
 	before, err := b.r.git.Head(ctx, b.tree)
 	if err != nil {
 		return "", setback{}, err
@@ -630,15 +631,15 @@ func (b *build) unland(ctx context.Context) error {
 // linkGuidance links .claude/agents to guidance/agents/, and .claude/skills to guidance/skills/, for each that
 // guidance/ holds and .claude/ does not. A .claude/ directory the developer made stays theirs. With amend, the links go
 // into the commit at HEAD; without it, into a new commit, if they changed anything. It answers the commit at HEAD.
-func (b *build) linkGuidance(ctx context.Context, amend bool) (string, error) {
+func (b *build) linkGuidance(ctx context.Context, amend bool) (git.Rev, error) {
 	for _, dir := range []string{"agents", "skills"} {
-		held, err := isDir(filepath.Join(b.tree, "guidance", dir))
+		held, err := isDir(b.path("guidance", dir))
 		if err != nil {
 			return "", err
 		}
 
 		link := ".claude/" + dir
-		_, err = os.Lstat(filepath.Join(b.tree, link))
+		_, err = os.Lstat(b.path(link))
 		switch {
 		case !held || err == nil:
 			continue
@@ -669,7 +670,7 @@ func isDir(p string) (bool, error) {
 
 // foldAmendments commits, on the spec's branch, the spec with its amendments folded in, and the amendment file
 // removed. It answers that commit.
-func (b *build) foldAmendments(ctx context.Context) (string, error) {
+func (b *build) foldAmendments(ctx context.Context) (git.Rev, error) {
 	name := b.rec.Name
 	head, err := b.r.git.Head(ctx, b.tree)
 	if err != nil {
@@ -691,11 +692,11 @@ func (b *build) foldAmendments(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("%w: %s cannot fold into %s: %w", errRefused, amendPath(name), specPath(name), err)
 	}
 
-	if err := os.WriteFile(filepath.Join(b.tree, specPath(name)), []byte(folded), 0o644); err != nil {
+	if err := os.WriteFile(b.path(specPath(name)), []byte(folded), 0o644); err != nil {
 		return "", err
 	}
 
-	if err := os.Remove(filepath.Join(b.tree, amendPath(name))); err != nil {
+	if err := os.Remove(b.path(amendPath(name))); err != nil {
 		return "", err
 	}
 
@@ -717,9 +718,9 @@ func (b *build) checkoutMain(ctx context.Context) error {
 
 // retire deletes the spec and its amendments, and adds its line to PRODUCT.md. The line holds the command that shows
 // the spec at held, the commit that last held it.
-func (b *build) retire(ctx context.Context, held string) error {
+func (b *build) retire(ctx context.Context, held git.Rev) error {
 	name := b.rec.Name
-	spec, err := os.ReadFile(filepath.Join(b.tree, specPath(name)))
+	spec, err := os.ReadFile(b.path(specPath(name)))
 	if err != nil {
 		return err
 	}
@@ -729,7 +730,7 @@ func (b *build) retire(ctx context.Context, held string) error {
 		title = strings.TrimPrefix(line, "# ")
 	}
 
-	productPath := filepath.Join(b.tree, product)
+	productPath := b.path(product)
 	text, err := os.ReadFile(productPath)
 	if errors.Is(err, fs.ErrNotExist) {
 		text, err = []byte(productHead), nil
@@ -745,7 +746,7 @@ func (b *build) retire(ctx context.Context, held string) error {
 	}
 
 	for _, p := range []string{specPath(name), amendPath(name)} {
-		if err := os.Remove(filepath.Join(b.tree, p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err := os.Remove(b.path(p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	}
@@ -808,8 +809,14 @@ func (b *build) gate(ctx context.Context, landing bool, allowed ...string) (verd
 	return v, err
 }
 
-func cmpOr(a, b string) string {
-	if a != "" {
+// path is the path of elem in the build's worktree.
+func (b *build) path(elem ...string) string {
+	return filepath.Join(append([]string{string(b.tree)}, elem...)...)
+}
+
+func cmpOr[T comparable](a, b T) T {
+	var zero T
+	if a != zero {
 		return a
 	}
 

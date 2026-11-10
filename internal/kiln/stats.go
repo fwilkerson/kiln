@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/claude"
+	"github.com/fwilkerson/kiln/internal/git"
 )
 
 // buildStats is one build, as the ledger holds it.
@@ -196,7 +197,7 @@ func plural(n int, what string) string {
 // Each line comes from the record, the ledger and git, so the same build always sums up the same. A line kiln can't
 // read shows as unknown, and the others still show. tree is the build's worktree. landedAt is the commit the build
 // moved main to, if it landed.
-func (r *Repo) sumUp(ctx context.Context, rec record, tree, landedAt string) []string {
+func (r *Repo) sumUp(ctx context.Context, rec record, tree git.Worktree, landedAt git.Rev) []string {
 	s, err := r.stats(rec.Build)
 	var runs []run
 	if s != nil {
@@ -208,10 +209,10 @@ func (r *Repo) sumUp(ctx context.Context, rec record, tree, landedAt string) []s
 	case rec.State == landed:
 		lines = append(lines, r.filesChanged(ctx, landedAt+"^", landedAt))
 	case rec.State == amended:
-		base, err := r.git.MergeBase(ctx, mainBranch, branchOf(rec.Name))
+		base, err := r.git.MergeBase(ctx, mainBranch, git.Rev(branchOf(rec.Name)))
 		changed := fmt.Sprintf("files changed unknown: %v", err)
 		if err == nil {
-			changed = r.filesChanged(ctx, base, branchOf(rec.Name))
+			changed = r.filesChanged(ctx, base, git.Rev(branchOf(rec.Name)))
 		}
 
 		lines = append(lines, changed, strings.TrimRight(rec.Amendments, "\n"))
@@ -266,7 +267,7 @@ func auditDid(audited bool, runs []run, known bool) string {
 }
 
 // filesChanged counts the files, insertions and deletions from the commit from to the commit to.
-func (r *Repo) filesChanged(ctx context.Context, from, to string) string {
+func (r *Repo) filesChanged(ctx context.Context, from, to git.Rev) string {
 	s, err := r.git.Shortstat(ctx, from, to)
 	if err != nil {
 		return fmt.Sprintf("files changed unknown: %v", err)
@@ -279,7 +280,7 @@ func (r *Repo) filesChanged(ctx context.Context, from, to string) string {
 // nextStep is what the developer runs next on the build of rec, which waits on them. It never names a command spec
 // 4's table refuses in the state rec is in. A build stopped past its last round first resumes its session, in tree,
 // to ask it why.
-func nextStep(rec record, tree, landedAt string) string {
+func nextStep(rec record, tree git.Worktree, landedAt git.Rev) string {
 	name := rec.Name
 	var then string
 	switch {
@@ -306,7 +307,7 @@ func nextStep(rec record, tree, landedAt string) string {
 		return then
 	}
 
-	return fmt.Sprintf("cd %s && claude --resume %s, to ask the session why;\n      then %s", shellQuote(tree),
+	return fmt.Sprintf("cd %s && claude --resume %s, to ask the session why;\n      then %s", shellQuote(string(tree)),
 		rec.Session, then)
 }
 

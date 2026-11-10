@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
@@ -45,7 +46,7 @@ func parseConfig(raw []byte) (config, error) {
 	return c, nil
 }
 
-func (r *Repo) config(ctx context.Context, at string) (config, error) {
+func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {
 	raw, found, err := r.git.Show(ctx, at, configFile)
 	if err != nil {
 		return config{}, err
@@ -180,7 +181,7 @@ func not[T any](f func(T) bool) func(T) bool {
 // gate runs the gate on the commit checked out at tree, a worktree of a build of spec. It runs kiln.json's commands
 // there, and at main's tip, and checks the paths the work changed since it left main. A path in allowed may change,
 // though guarded names it.
-func (r *Repo) gate(ctx context.Context, tree, spec string, allowed ...string) (verdict, error) {
+func (r *Repo) gate(ctx context.Context, tree git.Worktree, spec string, allowed ...string) (verdict, error) {
 	main, err := r.git.Tip(ctx, mainBranch)
 	if err != nil {
 		return verdict{}, err
@@ -213,7 +214,7 @@ func (r *Repo) gate(ctx context.Context, tree, spec string, allowed ...string) (
 		}
 	}
 
-	tip, err := runChecks(ctx, tree, c.Gate, r.env)
+	tip, err := runChecks(ctx, string(tree), c.Gate, r.env)
 	if err != nil {
 		return verdict{}, err
 	}
@@ -230,7 +231,7 @@ func (r *Repo) gate(ctx context.Context, tree, spec string, allowed ...string) (
 
 // atMain runs commands at main's tip, in a worktree of its own. It keeps the checks, and runs them again only once main
 // or the commands change. kiln run and kiln accept share the worktree, one at a time.
-func (r *Repo) atMain(ctx context.Context, main string, commands []string) ([]check, error) {
+func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string) ([]check, error) {
 	unlock, err := r.store.lock(mainLock, syscall.LOCK_EX)
 	if err != nil {
 		return nil, err
@@ -238,7 +239,7 @@ func (r *Repo) atMain(ctx context.Context, main string, commands []string) ([]ch
 
 	defer unlock()
 
-	key := main + "\x00" + strings.Join(commands, "\x00")
+	key := string(main) + "\x00" + strings.Join(commands, "\x00")
 	b, err := r.store.read()
 	if err != nil {
 		return nil, err
@@ -249,7 +250,7 @@ func (r *Repo) atMain(ctx context.Context, main string, commands []string) ([]ch
 	}
 
 	tree := filepath.Join(r.trees, mainTree)
-	if err := r.git.Detached(ctx, tree, main); err != nil {
+	if err := r.git.Detached(ctx, git.Worktree(tree), main); err != nil {
 		return nil, err
 	}
 

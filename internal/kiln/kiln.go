@@ -289,7 +289,7 @@ func (r *Repo) Queue(ctx context.Context, name string, out io.Writer) error {
 }
 
 // approvedSpec reads specs/<name>.md at main, a spec whose Status is Approved.
-func (r *Repo) approvedSpec(ctx context.Context, main, name string) ([]byte, error) {
+func (r *Repo) approvedSpec(ctx context.Context, main git.Rev, name string) ([]byte, error) {
 	if !specName.MatchString(name) {
 		return nil, fmt.Errorf("%w: %q is not a spec's name, such as checkout-flow", errRefused, name)
 	}
@@ -309,8 +309,8 @@ func (r *Repo) approvedSpec(ctx context.Context, main, name string) ([]byte, err
 }
 
 // changed answers whether specs/<name>.md at a commit differs from spec.
-func (r *Repo) changed(ctx context.Context, name string, spec []byte) func(since string) (bool, error) {
-	return func(since string) (bool, error) {
+func (r *Repo) changed(ctx context.Context, name string, spec []byte) func(since git.Rev) (bool, error) {
+	return func(since git.Rev) (bool, error) {
 		old, _, err := r.git.Show(ctx, since, specPath(name))
 		return !bytes.Equal(old, spec), err
 	}
@@ -548,15 +548,17 @@ func (r *Repo) landAccepted(ctx context.Context, b *build) error {
 	return err
 }
 
-func (r *Repo) tree(name string) string { return filepath.Join(r.trees, name) }
+func (r *Repo) tree(name string) git.Worktree { return git.Worktree(filepath.Join(r.trees, name)) }
 
 // auditTree is the worktree the audit of name's build reads, detached at the build's commit. A spec's name never
 // starts with a dot, so it is no build's tree.
-func (r *Repo) auditTree(name string) string { return filepath.Join(r.trees, ".audit-"+name) }
+func (r *Repo) auditTree(name string) git.Worktree {
+	return git.Worktree(filepath.Join(r.trees, ".audit-"+name))
+}
 
-func branchOf(name string) string { return "kiln/" + name }
+func branchOf(name string) git.Branch { return git.Branch("kiln/" + name) }
 
-func short(commit string) string { return commit[:min(12, len(commit))] }
+func short(commit git.Rev) string { return string(commit[:min(12, len(commit))]) }
 
 func indent(text string) string {
 	return "  " + strings.ReplaceAll(strings.TrimRight(text, "\n"), "\n", "\n  ")

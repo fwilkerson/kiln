@@ -105,7 +105,7 @@ func TestRecountAudit(t *testing.T) {
 	dir := t.TempDir()
 	r := &Repo{git: g, store: store{dir: dir}, trees: t.TempDir(),
 		claude: claude.New(claude.Config{Sessions: filepath.Join(dir, "sessions")})}
-	read := strings.TrimSpace(string(head))
+	read := git.Rev(strings.TrimSpace(string(head)))
 	if err := g.Detached(t.Context(), r.auditTree("x"), read); err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestRecountAudit(t *testing.T) {
 	b := &build{r: r, rec: record{Name: "x", Build: "b1"}, out: io.Discard}
 	b.record(entry{Kind: builtKind, Spec: "x"})
 	b.record(entry{Kind: startKind, Role: auditRole, Session: "a", Read: read})
-	shot := filepath.Join(r.auditTree("x"), "shot.png")
+	shot := filepath.Join(string(r.auditTree("x")), "shot.png")
 	if err := os.WriteFile(shot, []byte("a screen"), 0o600); err != nil {
 		t.Fatal(err)
 	}

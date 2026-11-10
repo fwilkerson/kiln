@@ -10,6 +10,8 @@ import (
 	"slices"
 	"syscall"
 	"time"
+
+	"github.com/fwilkerson/kiln/internal/git"
 )
 
 // state is where a spec stands, in the words kiln status shows.
@@ -30,7 +32,7 @@ type record struct {
 	Name  string `json:"name"`
 	State state  `json:"state"`
 	// Approved is main's tip when the developer queued the spec.
-	Approved string `json:"approved"`
+	Approved git.Rev `json:"approved"`
 	// Build is the ID of this queue's build, which names it in the ledger.
 	Build string `json:"build,omitempty"`
 	// Session is the build's Claude Code session, once it has one.
@@ -46,7 +48,7 @@ type record struct {
 	Accepted bool `json:"accepted,omitempty"`
 	// Before is the commit kiln/<name> stood at when its landing began. It is set only while a landing runs. A
 	// landing that doesn't move main puts the branch back there.
-	Before string `json:"before,omitempty"`
+	Before git.Rev `json:"before,omitempty"`
 	// Why says why the build stopped, with the gate's output.
 	Why string `json:"why,omitempty"`
 	// Failing names what failed a build stopped past its last round. It names tests, commands and refused paths, or
@@ -109,7 +111,7 @@ const (
 //
 // changed answers whether the spec on main differs from the spec at the commit since. Only queue calls it, on a spec
 // waiting for UAT.
-func (b *book) may(command, name string, changed func(since string) (bool, error)) error {
+func (b *book) may(command, name string, changed func(since git.Rev) (bool, error)) error {
 	r := b.find(name)
 	var why string
 	switch {
@@ -162,7 +164,7 @@ func shownState(r *record) string {
 
 // queue queues a new build of name from the spec at main's tip, main. It answers whether an earlier build left a
 // branch to drop. It answers the ID of an earlier build it drops before that build ended.
-func (b *book) queue(name, main string, changed func(since string) (bool, error)) (drop bool, dropped string,
+func (b *book) queue(name string, main git.Rev, changed func(since git.Rev) (bool, error)) (drop bool, dropped string,
 	err error) {
 	if err := b.may(queueCommand, name, changed); err != nil {
 		return false, "", err
