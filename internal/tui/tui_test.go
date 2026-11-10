@@ -66,7 +66,7 @@ func TestTrend(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			src := source{specs: []Spec{{Name: "x", State: UAT, Builds: tc.builds}}}
-			m := drive(t, src, "", cmp.Or(tc.w, 140), 30)
+			m := drive(t, src, "", sized(cmp.Or(tc.w, 140), 30))
 			if !regexp.MustCompile("(?m)" + tc.row).MatchString(screenOf(m)) {
 				t.Errorf("no row matches\n%s\non the screen\n%s", tc.row, screenOf(m))
 			}
@@ -84,12 +84,13 @@ func TestRoundsUnknown(t *testing.T) {
 	now := time.Now()
 	b := &Build{Spec: "x", Started: now, Outcome: "landed", Steps: []Step{&Run{Role: "build", Start: now, End: now}}}
 	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}}
-	if m := drive(t, src, "", 140, 30); !regexp.MustCompile(`rounds per build +— .*  0 of 1 *│`).MatchString(
+	if m := drive(t, src, "", sized(140, 30)); !regexp.MustCompile(`rounds per build +— .*  0 of 1 *│`).MatchString(
 		screenOf(m)) {
 		t.Errorf("the trend counts the rounds:\n%s", screenOf(m))
 	}
 
-	if m := drive(t, src, "x", 140, 30); !regexp.MustCompile(`(?m)^1 .* landed .* \?$`).MatchString(screenOf(m)) {
+	if m := drive(t, src, "x", sized(140, 30)); !regexp.MustCompile(`(?m)^1 .* landed .* \?$`).MatchString(
+		screenOf(m)) {
 		t.Errorf("the spec's screen shows the rounds:\n%s", screenOf(m))
 	}
 }
@@ -106,7 +107,7 @@ func TestHomeWheel(t *testing.T) {
 	}
 
 	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: builds}, {Name: "y", State: Queued}}}
-	m := drive(t, src, "", 120, 24)
+	m := drive(t, src, "", sized(120, 24))
 	newest := builds[13].Started.Local().Format("Jan 02 15:04")
 	x, y := locate(t, m, newest)
 	for range 12 {
@@ -154,7 +155,7 @@ func TestRunScreen(t *testing.T) {
 			b := &Build{Spec: "x", Started: r.Start, Steps: []Step{&r}}
 			src := source{specs: []Spec{{Name: "x", State: Running, Builds: []*Build{b}}},
 				calls: map[string]claude.Recounted{"s": {Written: now.Add(-tc.written), Actions: tc.calls}}}
-			m := drive(t, src, "x", 100, 20, press(tea.KeyEnter), press(tea.KeyEnter))
+			m := drive(t, src, "x", sized(100, 20), press(tea.KeyEnter), press(tea.KeyEnter))
 			if got := colorOf(t, m, tc.shows); !sameColor(got, tc.color) {
 				t.Errorf("%q is drawn in %v, want %v:\n%s", tc.shows, got, tc.color, screenOf(m))
 			}
@@ -168,11 +169,11 @@ func TestSpecText(t *testing.T) {
 	b := &Build{Spec: "x", Started: now, Steps: []Step{&Run{Role: "build", Session: "s", Start: now, End: now}}}
 	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}, text: "# Spec\n\nThe approved text."}
 	for name, keys := range map[string][]tea.Msg{
-		"from a build": {press(tea.KeyEnter), press('s')},
-		"from a run":   {press(tea.KeyEnter), press(tea.KeyEnter), press('s')},
+		"from a build": {sized(100, 20), press(tea.KeyEnter), press('s')},
+		"from a run":   {sized(100, 20), press(tea.KeyEnter), press(tea.KeyEnter), press('s')},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if m := drive(t, src, "x", 100, 20, keys...); !strings.Contains(screenOf(m), "The approved text.") {
+			if m := drive(t, src, "x", keys...); !strings.Contains(screenOf(m), "The approved text.") {
 				t.Errorf("s did not open the spec:\n%s", screenOf(m))
 			}
 		})
@@ -210,13 +211,16 @@ func (s source) Specs(context.Context) ([]Spec, error)        { return s.specs, 
 func (s source) Recount(r *Run) (claude.Recounted, error)     { return s.calls[r.Session], nil }
 func (s source) Text(context.Context, *Build) (string, error) { return s.text, nil }
 
-// drive starts a model on src, at w by h cells, and sends it each message in turn. It carries out each command the
-// model answers.
-func drive(t *testing.T, src Source, name string, w, h int, msgs ...tea.Msg) model {
+// drive starts a model on src, opened on the spec name, and sends it each message in turn. It carries out each
+// command the model answers. Its first message is the terminal's size, from sized.
+func drive(t *testing.T, src Source, name string, msgs ...tea.Msg) model {
 	t.Helper()
 	m := newModel(src, name, 0)
-	return sendAll(send(m, m.Init()), append([]tea.Msg{tea.WindowSizeMsg{Width: w, Height: h}}, msgs...)...)
+	return sendAll(send(m, m.Init()), msgs...)
 }
+
+// sized is the size of a terminal of w by h cells.
+func sized(w, h int) tea.Msg { return tea.WindowSizeMsg{Width: w, Height: h} }
 
 func send(m model, cmd tea.Cmd) model {
 	if cmd == nil {
@@ -285,7 +289,7 @@ func TestMarkdown(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			b := &Build{Spec: "x", Steps: []Step{&Run{Role: "build", Session: "s"}}}
 			src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}, text: tc.text}
-			m := drive(t, src, "x", 35, 20, append([]tea.Msg{press('s')}, tc.keys...)...)
+			m := drive(t, src, "x", append([]tea.Msg{sized(35, 20), press('s')}, tc.keys...)...)
 			body := strings.Split(screenOf(m), "\n")[2:]
 			if got := strings.Join(body, "\n"); !strings.HasPrefix(got, tc.shows+"\n") {
 				t.Errorf("the body shows\n%s\nwant\n%s", got, tc.shows)
@@ -323,7 +327,7 @@ func TestLiveRun(t *testing.T) {
 	r := &Run{Role: "build", Session: "s", Why: "first run", Start: now, To: -1}
 	src := source{specs: []Spec{{Name: "x", State: Running, Builds: []*Build{{Spec: "x", Steps: []Step{r}}}}},
 		calls: map[string]claude.Recounted{"s": calls(20)}}
-	m := drive(t, src, "x", 80, 12, press(tea.KeyEnter), press(tea.KeyEnter))
+	m := drive(t, src, "x", sized(80, 12), press(tea.KeyEnter), press(tea.KeyEnter))
 	tops := func(want string) {
 		t.Helper()
 		if top := strings.Split(screenOf(m), "\n")[3]; !strings.Contains(top, want) {
@@ -364,7 +368,7 @@ func TestNewBuild(t *testing.T) {
 	}
 
 	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{build(-2 * time.Hour), build(-time.Hour)}}}}
-	m := drive(t, src, "x", 100, 20, press('j'))
+	m := drive(t, src, "x", sized(100, 20), press('j'))
 	src.specs[0].Builds = append(src.specs[0].Builds, build(0))
 	m = send(m, func() tea.Msg { return tick{} })
 	if !regexp.MustCompile(`(?m)^#.*\n3 .*\n2 .*\n1 `).MatchString(screenOf(m)) {
@@ -383,9 +387,10 @@ func TestKeyList(t *testing.T) {
 	b := &Build{Spec: "x", Started: now, Steps: []Step{&Run{Role: "build", Session: "s", Why: "first run", Start: now,
 		End: now}}}
 	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}}
-	m := drive(t, src, "", 100, 20, press('?'), press('j'), press(tea.KeyTab),
+	m := drive(t, src, "", sized(100, 20), press('?'), press('j'), press(tea.KeyTab),
 		tea.MouseWheelMsg{X: 50, Y: 10, Button: tea.MouseWheelDown})
-	if !strings.Contains(screenOf(m), "? or esc closes this") || m.focus != specsPane || m.sel[specsPane] != 0 {
+	switch {
+	case !strings.Contains(screenOf(m), "? or esc closes this"), m.focus != specsPane, m.sel[specsPane] != 0:
 		t.Errorf("a key reached the screen under the key list, or closed it:\n%s", screenOf(m))
 	}
 
@@ -415,16 +420,17 @@ func TestNarrow(t *testing.T) {
 		End: now}}}
 	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}}
 	for _, keys := range [][]tea.Msg{nil, {press(tea.KeyEnter)}, {press(tea.KeyEnter), press(tea.KeyEnter)}} {
-		rows := strings.Split(screenOf(drive(t, src, "x", 80, 24, keys...)), "\n")
-		if foot := rows[len(rows)-1]; !strings.Contains(foot, "? keys") || !strings.Contains(foot, "esc back") ||
-			strings.Contains(foot, "…") {
+		rows := strings.Split(screenOf(drive(t, src, "x", append([]tea.Msg{sized(80, 24)}, keys...)...)), "\n")
+		switch foot := rows[len(rows)-1]; {
+		case !strings.Contains(foot, "? keys"), !strings.Contains(foot, "esc back"), strings.Contains(foot, "…"):
 			t.Errorf("the footer is %q", foot)
 		}
 	}
 
-	m := drive(t, src, "x", 80, 12, press(tea.KeyEnter), press(tea.KeyEnter), press('?'))
-	if rows := strings.Split(screenOf(m), "\n"); len(rows) != 12 || !strings.Contains(screenOf(m), "? or esc closes") ||
-		!strings.Contains(screenOf(m), "q ctrl+c") {
-		t.Errorf("the key list does not fit 12 rows:\n%s", screenOf(m))
+	m := drive(t, src, "x", sized(80, 12), press(tea.KeyEnter), press(tea.KeyEnter), press('?'))
+	switch shown := screenOf(m); {
+	case len(strings.Split(shown, "\n")) != 12, !strings.Contains(shown, "? or esc closes"),
+		!strings.Contains(shown, "q ctrl+c"):
+		t.Errorf("the key list does not fit 12 rows:\n%s", shown)
 	}
 }
