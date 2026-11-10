@@ -77,6 +77,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -207,20 +208,35 @@ const hookMark = "# kiln's pre-commit hook"
 // Init writes a starting kiln.json at the top of the checkout, unless one is there. It installs the pre-commit hook,
 // which refuses a commit to main that fails kiln.json's commands. It refuses to write over another pre-commit hook.
 func (r *Repo) Init(ctx context.Context, out io.Writer) error {
-	configPath := filepath.Join(r.top, configFile)
-	if _, err := os.Stat(configPath); errors.Is(err, fs.ErrNotExist) {
-		raw, err := jsonIndent(initial)
-		if err != nil {
-			return err
-		}
-
-		if err := os.WriteFile(configPath, raw, 0o644); err != nil {
-			return err
-		}
-
-		fmt.Fprintf(out, "wrote %s: commit it, since kiln reads it from main\n", configFile)
+	if err := r.writeConfig(out); err != nil {
+		return err
 	}
 
+	return r.installHook(ctx, out)
+}
+
+// writeConfig writes the starting kiln.json, unless the checkout holds one.
+func (r *Repo) writeConfig(out io.Writer) error {
+	configPath := filepath.Join(r.top, configFile)
+	if _, err := os.Stat(configPath); !errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+
+	raw, err := json.MarshalIndent(initial, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(configPath, append(raw, '\n'), 0o644); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(out, "wrote %s: commit it, since kiln reads it from main\n", configFile)
+	return nil
+}
+
+// installHook installs the pre-commit hook, unless another pre-commit hook is there.
+func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
 	args := []string{"rev-parse", "--path-format=absolute", "--git-path", "hooks"}
 	hooks, err := plainGit(ctx, r.top, proc.Git.Env(r.env), args...)
 	if err != nil {
@@ -356,29 +372,40 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 // Takes answers the specs command would not refuse, for the shell to complete. For tui, they are the specs it opens
 // on: each kiln holds a record of, or its ledger holds. Other commands take none.
 func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
-	var names []string
 	switch command {
 	case "tui":
-		specs, err := view{r}.Specs(ctx)
-		for _, s := range specs {
-			names = append(names, string(s.Name))
-		}
-
-		return names, err
+		return r.viewed(ctx)
 	case acceptCommand, rejectCommand:
-		b, err := r.store.read()
-		for _, s := range b.Specs {
-			if b.may(command, s.Name, nil) == nil {
-				names = append(names, string(s.Name))
-			}
-		}
-
-		return names, err
+		return r.taking(command)
 	case queueCommand:
 		return r.queueable(ctx)
 	}
 
 	return nil, nil
+}
+
+// viewed answers the specs kiln tui opens on.
+func (r *Repo) viewed(ctx context.Context) ([]string, error) {
+	specs, err := view{r}.Specs(ctx)
+	names := make([]string, len(specs))
+	for i, s := range specs {
+		names[i] = s.Name
+	}
+
+	return names, err
+}
+
+// taking answers the specs in the book that command would not refuse.
+func (r *Repo) taking(command string) ([]string, error) {
+	b, err := r.store.read()
+	var names []string
+	for _, s := range b.Specs {
+		if b.may(command, s.Name, nil) == nil {
+			names = append(names, string(s.Name))
+		}
+	}
+
+	return names, err
 }
 
 // queueable answers the specs on main that kiln queue would not refuse.
@@ -437,27 +464,32 @@ func (r *Repo) Status(_ context.Context, out io.Writer) error {
 	}
 
 	for _, s := range b.Specs {
-		fmt.Fprintf(out, "%s: %s", s.Name, shownState(s))
-		switch {
-		case s.State == building && !s.Paused.IsZero():
-			fmt.Fprintf(out, ", paused for a usage limit until %s", s.Paused.Local().Format("15:04:05 on Jan 2"))
-		case s.State == amended:
-			fmt.Fprintf(out, ", %s", s.Name.branch())
-		}
-
-		fmt.Fprintln(out)
-		if len(s.FailingAtMain) > 0 {
-			fmt.Fprintf(out, "  failing at main before the build: %s\n", strings.Join(s.FailingAtMain, ", "))
-		}
-
-		for _, text := range []string{s.Why, s.Amendments} {
-			if text != "" {
-				fmt.Fprintln(out, indent(text))
-			}
-		}
+		s.status(out)
 	}
 
 	return nil
+}
+
+// status shows where the spec of s stands, as kiln status does.
+func (s *record) status(out io.Writer) {
+	fmt.Fprintf(out, "%s: %s", s.Name, shownState(s))
+	switch {
+	case s.State == building && !s.Paused.IsZero():
+		fmt.Fprintf(out, ", paused for a usage limit until %s", s.Paused.Local().Format("15:04:05 on Jan 2"))
+	case s.State == amended:
+		fmt.Fprintf(out, ", %s", s.Name.branch())
+	}
+
+	fmt.Fprintln(out)
+	if len(s.FailingAtMain) > 0 {
+		fmt.Fprintf(out, "  failing at main before the build: %s\n", strings.Join(s.FailingAtMain, ", "))
+	}
+
+	for _, text := range []string{s.Why, s.Amendments} {
+		if text != "" {
+			fmt.Fprintln(out, indent(text))
+		}
+	}
 }
 
 // Accept takes the developer's work on a spec. The spec is deleted from main, and PRODUCT.md gains a line that names
@@ -491,6 +523,12 @@ func (r *Repo) Accept(ctx context.Context, name Spec, out io.Writer) error {
 		return r.acceptAmended(ctx, b)
 	}
 
+	return r.acceptLanded(ctx, b)
+}
+
+// acceptLanded retires the spec of b, whose build landed, in a commit on main as it stands.
+func (r *Repo) acceptLanded(ctx context.Context, b *build) error {
+	name := b.rec.Name
 	if err := b.checkoutMain(ctx); err != nil {
 		return err
 	}
@@ -515,7 +553,7 @@ func (r *Repo) Accept(ctx context.Context, name Spec, out io.Writer) error {
 	}
 
 	b.record(entry{Kind: outcomeKind, Outcome: outAccepted})
-	fmt.Fprintf(out, "%s: accepted, and main is at %s\n", name, short(landed))
+	fmt.Fprintf(b.out, "%s: accepted, and main is at %s\n", name, short(landed))
 	return nil
 }
 
@@ -553,7 +591,11 @@ func (r *Repo) landAccepted(ctx context.Context, b *build) error {
 	}
 
 	k, err := r.store.read()
-	if s := k.find(name); err == nil && s != nil && s.State == stopped {
+	if err != nil {
+		return err
+	}
+
+	if s := k.find(name); s != nil && s.State == stopped {
 		err = fmt.Errorf("the landing of %s stopped: kiln accept %s lands it again, and kiln reject %s drops it", name,
 			name, name)
 	}

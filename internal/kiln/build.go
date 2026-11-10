@@ -3,7 +3,6 @@ package kiln
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -821,11 +820,6 @@ func cmpOr[T comparable](a, b T) T {
 	}
 
 	return b
-}
-
-func jsonIndent(v any) ([]byte, error) {
-	raw, err := json.MarshalIndent(v, "", "  ")
-	return append(raw, '\n'), err
 }
 
 //go:embed build.md
