@@ -301,7 +301,7 @@ func clause(s ast.Stmt) bool {
 	return false
 }
 
-// closesBlock reports whether s ends with a block's closing brace, as an if, a for or a func literal does. The brace
+// closesBlock reports whether st ends with a block's closing brace, as an if, a for or a func literal does. The brace
 // must start its line. A closing composite literal does not count.
 func (s source) closesBlock(st ast.Stmt) bool {
 	end := s.line(st.End())
