@@ -41,57 +41,80 @@ type run struct {
 // An end line kiln wrote before it kept the stream's length holds none. That run's bytes end where the session's
 // next run starts, or at the stream's end.
 func collect(entries []entry) []*buildStats {
-	var all []*buildStats
-	byID := map[string]*buildStats{}
-	unbounded := map[string]func(to int64){}
+	c := collector{byID: map[string]*buildStats{}, unbounded: map[string]func(to int64){}}
 	for _, e := range entries {
-		// kiln writes a build line again if it died before the build's session started.
-		if e.Kind == builtKind && byID[e.Build] == nil {
-			byID[e.Build] = &buildStats{entry: e}
-			all = append(all, byID[e.Build])
-		}
-
-		s := byID[e.Build]
-		if s == nil || e.Kind == builtKind {
-			continue
-		}
-
-		switch e.Kind {
-		case startKind:
-			if bound := unbounded[e.Session]; bound != nil {
-				bound(e.Streamed)
-				delete(unbounded, e.Session)
-			}
-
-			s.runs = append(s.runs, run{role: e.Role, session: e.Session, start: e.At, why: e.reason, pid: e.PID,
-				from: e.Streamed, gates: len(s.gates)})
-		case endKind:
-			i := slices.IndexFunc(s.runs, func(r run) bool { return r.session == e.Session && r.end.IsZero() })
-			if i < 0 {
-				continue
-			}
-
-			s.runs[i].end, s.runs[i].ended, s.runs[i].to, s.runs[i].changed = e.At, e.Ended, e.Streamed, e.Changed
-			if e.Totals != nil {
-				s.runs[i].totals = *e.Totals
-			}
-
-			if e.Streamed == 0 {
-				unbounded[e.Session] = func(to int64) { s.runs[i].to = to }
-			}
-		case gateKind:
-			s.gates = append(s.gates, e)
-		case outcomeKind:
-			s.outcome = e.Outcome
-			s.amendments = cmpOr(e.Amendments, s.amendments)
-		}
+		c.add(e)
 	}
 
-	for _, bound := range unbounded {
+	for _, bound := range c.unbounded {
 		bound(-1)
 	}
 
-	return all
+	return c.all
+}
+
+// collector groups the ledger's lines by build. unbounded ends, by session, a run whose end line holds no length.
+type collector struct {
+	all       []*buildStats
+	byID      map[string]*buildStats
+	unbounded map[string]func(to int64)
+}
+
+func (c *collector) add(e entry) {
+	s := c.byID[e.Build]
+	switch {
+	case e.Kind == builtKind:
+		c.built(e)
+	case s == nil:
+		// A line of a build the ledger holds no build line of counts for nothing.
+	case e.Kind == startKind:
+		c.start(s, e)
+	case e.Kind == endKind:
+		c.end(s, e)
+	case e.Kind == gateKind:
+		s.gates = append(s.gates, e)
+	case e.Kind == outcomeKind:
+		s.outcome = e.Outcome
+		s.amendments = cmpOr(e.Amendments, s.amendments)
+	}
+}
+
+// built adds the build that e starts. kiln writes a build line again if it died before the build's session started.
+func (c *collector) built(e entry) {
+	if c.byID[e.Build] != nil {
+		return
+	}
+
+	c.byID[e.Build] = &buildStats{entry: e}
+	c.all = append(c.all, c.byID[e.Build])
+}
+
+// start adds the run that e starts to s. The session's last run, if unbounded, ends where this one starts.
+func (c *collector) start(s *buildStats, e entry) {
+	if bound := c.unbounded[e.Session]; bound != nil {
+		bound(e.Streamed)
+		delete(c.unbounded, e.Session)
+	}
+
+	s.runs = append(s.runs, run{role: e.Role, session: e.Session, start: e.At, why: e.reason, pid: e.PID,
+		from: e.Streamed, gates: len(s.gates)})
+}
+
+// end ends the run of s that e ends.
+func (c *collector) end(s *buildStats, e entry) {
+	i := slices.IndexFunc(s.runs, func(r run) bool { return r.session == e.Session && r.end.IsZero() })
+	if i < 0 {
+		return
+	}
+
+	s.runs[i].end, s.runs[i].ended, s.runs[i].to, s.runs[i].changed = e.At, e.Ended, e.Streamed, e.Changed
+	if e.Totals != nil {
+		s.runs[i].totals = *e.Totals
+	}
+
+	if e.Streamed == 0 {
+		c.unbounded[e.Session] = func(to int64) { s.runs[i].to = to }
+	}
 }
 
 // brief is the build's time, cost, turns and failed calls, for its landing commit.
@@ -198,38 +221,60 @@ func plural(n int, what string) string {
 // read shows as unknown, and the others still show. tree is the build's worktree. landedAt is the commit the build
 // moved main to, if it landed.
 func (r *Repo) sumUp(ctx context.Context, rec record, tree git.Worktree, landedAt git.Rev) []string {
+	lines := []string{r.summary(rec.Build), roundsOf(rec) + " · " + r.auditOf(rec)}
+	lines = append(lines, r.ending(ctx, rec, landedAt)...)
+	if where := workPlace(rec, tree); where != "" {
+		lines = append(lines, where)
+	}
+
+	return append(lines, "next: "+nextStep(rec, tree, landedAt))
+}
+
+// auditOf says what the audit of rec's build did, as the ledger holds it.
+func (r *Repo) auditOf(rec record) string {
 	s, err := r.stats(rec.Build)
 	var runs []run
 	if s != nil {
 		runs = s.runs
 	}
 
-	lines := []string{r.summary(rec.Build), roundsOf(rec) + " · " + auditDid(rec.Audited, runs, s != nil && err == nil)}
+	return auditDid(rec.Audited, runs, s != nil && err == nil)
+}
+
+// ending says how the build of rec ended: the files it changed, its amendments, or what failed.
+func (r *Repo) ending(ctx context.Context, rec record, landedAt git.Rev) []string {
 	switch {
 	case rec.State == landed:
-		lines = append(lines, r.filesChanged(ctx, landedAt+"^", landedAt))
+		return []string{r.filesChanged(ctx, landedAt+"^", landedAt)}
 	case rec.State == amended:
-		base, err := r.git.MergeBase(ctx, mainBranch, git.Rev(rec.Name.branch()))
+		branch := git.Rev(rec.Name.branch())
+		base, err := r.git.MergeBase(ctx, mainBranch, branch)
 		changed := fmt.Sprintf("files changed unknown: %v", err)
 		if err == nil {
-			changed = r.filesChanged(ctx, base, git.Rev(rec.Name.branch()))
+			changed = r.filesChanged(ctx, base, branch)
 		}
 
-		lines = append(lines, changed, strings.TrimRight(rec.Amendments, "\n"))
+		return []string{changed, strings.TrimRight(rec.Amendments, "\n")}
 	case len(rec.Failing) > 0:
-		lines = append(lines, "failing: "+strings.Join(rec.Failing, ", "))
+		return []string{"failing: " + strings.Join(rec.Failing, ", ")}
 	}
 
-	if rec.State == stopped && !byKiln(rec) && rec.Session != "" {
-		what := "the work"
-		if rec.Accepted {
-			what = "the accepted spec"
-		}
+	return nil
+}
 
-		lines = append(lines, fmt.Sprintf("%s is on %s, in %s", what, rec.Name.branch(), tree))
+// workPlace says where the work of a build stopped by its gate is, in tree. It is "" for any other build.
+func workPlace(rec record, tree git.Worktree) string {
+	switch {
+	case rec.State != stopped, byKiln(rec), rec.Session == "":
+		return ""
 	}
 
-	return append(lines, "next: "+nextStep(rec, tree, landedAt))
+	what := "the work"
+	if rec.Accepted {
+		what = "the accepted spec"
+	}
+
+	return fmt.Sprintf("%s is on %s, in %s", what, rec.Name.branch(), tree)
 }
 
 // roundsOf is the rounds the build of rec used, of those kiln.json gave its last gate.
@@ -244,12 +289,8 @@ func roundsOf(rec record) string {
 // auditDid says what the audit did, from whether it answered and the build's runs. known is false when the ledger
 // could not be read, or holds no line of the build.
 func auditDid(audited bool, runs []run, known bool) string {
-	var audits, findings bool
-	for _, r := range runs {
-		audits = audits || r.role == auditRole
-		findings = findings || r.why.Why == whyFindings
-	}
-
+	audits := slices.ContainsFunc(runs, func(r run) bool { return r.role == auditRole })
+	findings := slices.ContainsFunc(runs, func(r run) bool { return r.why.Why == whyFindings })
 	switch {
 	case !known:
 		return "what the audit did is unknown"
@@ -282,33 +323,42 @@ func (r *Repo) filesChanged(ctx context.Context, from, to git.Rev) string {
 // to ask it why.
 func nextStep(rec record, tree git.Worktree, landedAt git.Rev) string {
 	name := rec.Name
-	var then string
 	switch {
 	case rec.State == landed:
 		return fmt.Sprintf("read it with git show %s, then run kiln accept %s, or change the spec and run "+
 			"kiln queue %s", short(landedAt), name, name)
 	case rec.State == amended:
 		return fmt.Sprintf("read the amendments, then run kiln accept %s, or kiln reject %s", name, name)
-	case rec.Accepted && byKiln(rec):
-		then = fmt.Sprintf("fix main, or what the error names, and run kiln accept %s to land it again, or "+
-			"kiln reject %s", name, name)
-	case rec.Accepted:
-		then = fmt.Sprintf("fix main, and run kiln accept %s to land it again, or kiln reject %s", name, name)
 	case byKiln(rec):
-		then = fmt.Sprintf("fix what the error names, then run kiln queue %s, which builds anew", name)
+		// The session never saw kiln's error, so it can't say why.
+		return kilnFix(rec)
 	case rec.Session != "":
-		then = fmt.Sprintf("fix main or the spec, and run kiln queue %s", name)
-	default:
-		return fmt.Sprintf("read kiln status, fix main or the spec, then run kiln queue %s", name)
+		return fmt.Sprintf("cd %s && claude --resume %s, to ask the session why;\n      then %s",
+			shellQuote(string(tree)), rec.Session, gateFix(rec))
+	case rec.Accepted:
+		return gateFix(rec)
 	}
 
-	// The session never saw kiln's error, so it can't say why.
-	if byKiln(rec) || rec.Session == "" {
-		return then
+	return fmt.Sprintf("read kiln status, fix main or the spec, then run kiln queue %s", name)
+}
+
+// kilnFix is what the developer runs on the build of rec, stopped for an error of kiln's.
+func kilnFix(rec record) string {
+	if rec.Accepted {
+		return fmt.Sprintf("fix main, or what the error names, and run kiln accept %s to land it again, or "+
+			"kiln reject %s", rec.Name, rec.Name)
 	}
 
-	return fmt.Sprintf("cd %s && claude --resume %s, to ask the session why;\n      then %s", shellQuote(string(tree)),
-		rec.Session, then)
+	return fmt.Sprintf("fix what the error names, then run kiln queue %s, which builds anew", rec.Name)
+}
+
+// gateFix is what the developer runs on the build of rec, stopped by its gate.
+func gateFix(rec record) string {
+	if rec.Accepted {
+		return fmt.Sprintf("fix main, and run kiln accept %s to land it again, or kiln reject %s", rec.Name, rec.Name)
+	}
+
+	return fmt.Sprintf("fix main or the spec, and run kiln queue %s", rec.Name)
 }
 
 // byKiln reports whether the build of rec stopped for an error of kiln's, not its gate's.
