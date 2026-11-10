@@ -1,7 +1,6 @@
 package kiln_test
 
 import (
-	"cmp"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -36,95 +35,168 @@ func TestModern(t *testing.T) {
 // TestNames fails on a code span in a doc that names nothing declared in kiln's Go code. It skips lower-case words
 // and names in capitals. It also skips Markdown file names and names from packages outside kiln.
 func TestNames(t *testing.T) {
-	declared, packages := map[string]bool{}, map[string]bool{}
-	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() && path != "." && (strings.HasPrefix(d.Name(), ".") || d.Name() == "testdata") {
-			return cmp.Or(err, filepath.SkipDir)
-		}
-
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-
-		f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return err
-		}
-
-		pkg := strings.TrimSuffix(f.Name.Name, "_test")
-		packages[pkg] = true
-		for _, name := range declarations(f) {
-			declared[name] = true
-			declared[pkg+"."+name] = true
-		}
-
-		return nil
-	})
+	k, err := kilnNames()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	docs, _ := filepath.Glob("guidance/*/*.md")
 	skills, _ := filepath.Glob("guidance/skills/*/*.md")
-	docs = append(append(docs, skills...), "README.md")
-	span := regexp.MustCompile("`([A-Za-z]\\w*(?:\\.[A-Za-z]\\w*)*)`")
-	for _, doc := range docs {
+	for _, doc := range append(append(docs, skills...), "README.md") {
 		b, err := os.ReadFile(doc)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		for i, line := range strings.Split(string(b), "\n") {
-			for _, m := range span.FindAllStringSubmatch(line, -1) {
-				name := m[1]
-				qualifier, _, qualified := strings.Cut(name, ".")
-				switch {
-				case name == strings.ToLower(name), name == strings.ToUpper(name), strings.HasSuffix(name, ".md"):
-				case qualified && qualifier == strings.ToLower(qualifier) && !packages[qualifier]:
-				case !declared[name]:
-					t.Errorf("%s:%d: `%s` names nothing in kiln. Fix it, or write it in words.", doc, i+1, name)
-				}
+		for _, s := range k.unknown(string(b)) {
+			t.Errorf("%s:%d: `%s` names nothing in kiln. Fix it, or write it in words.", doc, s.line, s.name)
+		}
+	}
+}
+
+// names is what kiln's Go code declares, and the packages it declares them in.
+type names struct {
+	declared, packages map[string]bool
+}
+
+// kilnNames reads the names kiln's Go files declare. It skips testdata and directories whose names start with a dot.
+func kilnNames() (names, error) {
+	k := names{declared: map[string]bool{}, packages: map[string]bool{}}
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return err
+		case skipped(path, d):
+			return filepath.SkipDir
+		case !strings.HasSuffix(path, ".go"):
+			return nil
+		}
+
+		return k.read(path)
+	})
+
+	return k, err
+}
+
+// skipped reports whether d, at path, is a directory below the root that kilnNames leaves out.
+func skipped(path string, d fs.DirEntry) bool {
+	return d.IsDir() && path != "." && (strings.HasPrefix(d.Name(), ".") || d.Name() == "testdata")
+}
+
+// read adds the names the Go file at path declares, alone and qualified by its package.
+func (k names) read(path string) error {
+	f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return err
+	}
+
+	pkg := strings.TrimSuffix(f.Name.Name, "_test")
+	k.packages[pkg] = true
+	for _, name := range declarations(f) {
+		k.declared[name] = true
+		k.declared[pkg+"."+name] = true
+	}
+
+	return nil
+}
+
+// codeSpan is a code span that holds a Go name, qualified or not.
+var codeSpan = regexp.MustCompile("`([A-Za-z]\\w*(?:\\.[A-Za-z]\\w*)*)`")
+
+// span is a code span's name, on a line of a doc.
+type span struct {
+	line int
+	name string
+}
+
+// unknown lists each code span of doc that names nothing k holds.
+func (k names) unknown(doc string) []span {
+	var unknown []span
+	for i, line := range strings.Split(doc, "\n") {
+		for _, m := range codeSpan.FindAllStringSubmatch(line, -1) {
+			if !k.allows(m[1]) {
+				unknown = append(unknown, span{i + 1, m[1]})
 			}
 		}
 	}
+
+	return unknown
+}
+
+// allows reports whether a doc may name name: kiln declares it, or TestNames skips it.
+func (k names) allows(name string) bool {
+	qualifier, _, qualified := strings.Cut(name, ".")
+	switch {
+	case name == strings.ToLower(name), name == strings.ToUpper(name), strings.HasSuffix(name, ".md"):
+		return true
+	case qualified && qualifier == strings.ToLower(qualifier) && !k.packages[qualifier]:
+		return true
+	}
+
+	return k.declared[name]
 }
 
 // declarations lists the names a file declares at its top level, with each method and field also as Type.Name.
 func declarations(f *ast.File) []string {
 	var names []string
-	members := func(typ string, fields *ast.FieldList) {
-		for _, field := range fields.List {
-			for _, n := range field.Names {
-				names = append(names, n.Name, typ+"."+n.Name)
+	for _, decl := range f.Decls {
+		switch d := decl.(type) {
+		case *ast.FuncDecl:
+			names = append(names, funcNames(d)...)
+		case *ast.GenDecl:
+			names = append(names, genNames(d)...)
+		}
+	}
+
+	return names
+}
+
+// funcNames lists a func's name, and a method's also as Type.Name.
+func funcNames(d *ast.FuncDecl) []string {
+	if d.Recv == nil {
+		return []string{d.Name.Name}
+	}
+
+	recv, _, _ := strings.Cut(strings.TrimPrefix(types.ExprString(d.Recv.List[0].Type), "*"), "[")
+	return []string{d.Name.Name, recv + "." + d.Name.Name}
+}
+
+// genNames lists the types, constants and variables d declares, with each type's fields and methods.
+func genNames(d *ast.GenDecl) []string {
+	var names []string
+	for _, spec := range d.Specs {
+		switch s := spec.(type) {
+		case *ast.TypeSpec:
+			names = append(names, typeNames(s)...)
+		case *ast.ValueSpec:
+			for _, n := range s.Names {
+				names = append(names, n.Name)
 			}
 		}
 	}
 
-	for _, decl := range f.Decls {
-		switch d := decl.(type) {
-		case *ast.FuncDecl:
-			names = append(names, d.Name.Name)
-			if d.Recv != nil {
-				recv, _, _ := strings.Cut(strings.TrimPrefix(types.ExprString(d.Recv.List[0].Type), "*"), "[")
-				names = append(names, recv+"."+d.Name.Name)
-			}
-		case *ast.GenDecl:
-			for _, spec := range d.Specs {
-				switch s := spec.(type) {
-				case *ast.TypeSpec:
-					names = append(names, s.Name.Name)
-					switch typ := s.Type.(type) {
-					case *ast.StructType:
-						members(s.Name.Name, typ.Fields)
-					case *ast.InterfaceType:
-						members(s.Name.Name, typ.Methods)
-					}
-				case *ast.ValueSpec:
-					for _, n := range s.Names {
-						names = append(names, n.Name)
-					}
-				}
-			}
+	return names
+}
+
+// typeNames lists a type's name, and each of its fields or methods as Type.Name.
+func typeNames(s *ast.TypeSpec) []string {
+	names := []string{s.Name.Name}
+	switch typ := s.Type.(type) {
+	case *ast.StructType:
+		return append(names, members(s.Name.Name, typ.Fields)...)
+	case *ast.InterfaceType:
+		return append(names, members(s.Name.Name, typ.Methods)...)
+	}
+
+	return names
+}
+
+// members lists each name of fields, alone and as typ.Name.
+func members(typ string, fields *ast.FieldList) []string {
+	var names []string
+	for _, field := range fields.List {
+		for _, n := range field.Names {
+			names = append(names, n.Name, typ+"."+n.Name)
 		}
 	}
 
