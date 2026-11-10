@@ -34,6 +34,12 @@ Score the whole package after each commit. A split can lower a file you did not 
 - The two argument-share smells apply only once a file has about a dozen arguments.
 - A method's receiver is not an argument.
 - A `switch` whose `case` lists several conditions, as `case a, b, c:`, is not a complex conditional.
+- A boolean chain in a `return` or in a `case` expression is not a complex conditional either.
+- A loop that holds an `if` or a `switch` counts as a bump. Two such loops in one function make a Bumpy Road.
+- The review text says Primitive Obsession counts "functions", but it counts arguments. A function with none adds
+  nothing.
+- One helper that nothing else in its file calls can raise Low Cohesion by itself.
+- A file near the dozen-argument floor can tip into a string smell when a split adds two helpers.
 
 ## Recipes
 
@@ -74,6 +80,26 @@ unrelated values only hides the smell.
 
 Put each row's setup in a helper that returns a struct, such as `makeHistory`. Have each row state its `want` as a
 comparable struct, and compare it with `got != want`. The loop body then holds no condition with two operators.
+
+### More recipes from the first pass
+
+- **A chain of comparisons:** put them in a struct literal, such as `landing{landed: x != "", atMain: tip == main}`,
+  and compare it with `!=`.
+- **The first answer that isn't empty:** `cmp.Or(a(), b, c())` replaces a chain of early returns. It runs every
+  argument, so use it only for cheap checks.
+- **A switch that maps a value to words:** index a map literal, as `reason.shown` in `internal/kiln` does.
+- **Flags:** map each flag's name to a pointer to its field, and set them all in one function.
+- **Allowed words:** `button, known := wheelButtons[arg]` checks the word and yields its value at once.
+- **A step that must say "try again":** return a sentinel error, such as `errMainMoved`, and loop on `errors.Is`.
+- **A command's many parts:** hand over a built `*exec.Cmd` instead of its program, arguments, directory and
+  environment.
+- **A value the framework already types:** pass it as that type, such as a `tea.WindowSizeMsg` for a size.
+- **Strings a split left behind:** make the new helpers methods on a named type, since a receiver is no argument.
+- **A stray helper:** move it into the file of its only caller. That cleared Low Cohesion in `build.go` with no split.
+- **Prove no change:** for code no test pins, run the old and the new on the same inputs, and diff the output. A
+  style checker gets a corpus that breaks each rule. A view gets snapshots of `View()` at each screen size.
+- **Go 1.27's `go fix`:** a literal must name an embedded struct's promoted fields, or the root's `TestModern` fails.
+  Run `go test ./...` from the root, not only the package's tests.
 
 ## Where Code Health and the practices disagree
 
