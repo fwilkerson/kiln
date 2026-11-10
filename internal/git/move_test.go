@@ -22,7 +22,7 @@ func TestMove(t *testing.T) {
 		},
 		"another landing moved main first": {
 			expected: func(h history) git.Rev { return h.second },
-			want:     func(h history) outcome { return outcome{refusedAt: h.first, main: h.first} },
+			want:     func(h history) outcome { return outcome{refused: true, refusedAt: h.first, main: h.first} },
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -39,15 +39,16 @@ func TestMove(t *testing.T) {
 	}
 }
 
-// outcome is what a move left. It holds the tip a refusal names, where main is, and whether landed is checked out.
+// outcome is what a move left. It holds any refusal and the tip it names, where main is, and whether landed is out.
 type outcome struct {
+	refused   bool
 	refusedAt git.Rev
 	main      git.Rev
 	file      bool
 }
 
 func (h history) outcome(t *testing.T, way *git.InTheWay) outcome {
-	var o outcome
+	o := outcome{refused: way != nil}
 	if way != nil {
 		o.refusedAt = way.Tip
 	}

@@ -96,7 +96,7 @@ func (r *Repo) take(only Spec, unlock func()) (rec record, found bool, err error
 }
 
 // settle stops the build for err, the error its run ended with. It answers the context's error once kiln is
-// interrupted, which ends kiln run.
+// interrupted, which ends kiln run. A build out of rounds is stopped first, and answers nil even then.
 func (b *build) settle(ctx context.Context, err error) error {
 	if s, ok := errors.AsType[*outOfRounds](err); ok {
 		b.stop(s.why, s.failing)
@@ -269,7 +269,7 @@ func (b *build) findings(ctx context.Context) (string, reason, error) {
 }
 
 // waitsOnBranch leaves the build on its branch when head holds the spec's amendments, unless the developer accepted
-// them. It answers whether it left it there.
+// them. A failed read of the amendments leaves it there too, with the error. It answers whether it left it there.
 func (b *build) waitsOnBranch(ctx context.Context, head git.Rev) (bool, error) {
 	if b.rec.Accepted {
 		return false, nil

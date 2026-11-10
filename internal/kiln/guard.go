@@ -33,7 +33,7 @@ func (g guard) guarded(rel string) string {
 		return ""
 	case slices.Contains(names, fold(".git")):
 		return rel + " is in a git directory, which only git and kiln write"
-	case names[0] == fold("specs") && folded != fold(g.spec.amendPath()):
+	case names[0] == fold("specs") && (len(names) != 2 || names[1] != fold(string(g.spec)+amendSuffix)):
 		return fmt.Sprintf("%s is under specs/, which holds what the developer approved: a build writes there only %s",
 			rel, g.spec.amendPath())
 	case settings:
@@ -81,7 +81,13 @@ func (g guard) denial(c hookCall) string {
 		return c.Tool + " names no file, so the hook cannot tell where it writes"
 	}
 
-	rest, ok := g.inside(resolve(resolve(string(g.place), c.Cwd), target))
+	// A relative target joins the cwd as spelled, and only the result is made canonical.
+	cwd := string(g.place)
+	if c.Cwd != "" {
+		cwd = resolve(cwd, c.Cwd)
+	}
+
+	rest, ok := g.inside(resolve(cwd, target))
 	if !ok {
 		return fmt.Sprintf("%s is outside this build's worktree, %s: a build writes only there", target, g.place)
 	}
