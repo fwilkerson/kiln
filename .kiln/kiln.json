@@ -7,9 +7,12 @@
   "hosts": [
     "proxy.golang.org",
     "sum.golang.org",
-    "storage.googleapis.com"
+    "storage.googleapis.com",
+    "pypi.org",
+    "files.pythonhosted.org"
   ],
   "writable": [
-    "go env GOCACHE GOMODCACHE"
+    "go env GOCACHE GOMODCACHE",
+    "uv cache dir"
   ]
 }
