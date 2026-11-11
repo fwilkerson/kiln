@@ -2,8 +2,8 @@
 
 Status: Proposed
 
-<!-- Drafted from concepts_brief.md, which was built from the starter that .kiln/specs/languages.md held at ac21958.
--->
+<!-- Drafted from a concepts brief, built from the starter that .kiln/specs/languages.md held at ac21958. The brief
+was a drafting note and is not kept. -->
 
 ## Overview
 
@@ -462,7 +462,7 @@ The gate command would write to a fixed path such as `.kiln-junit.xml` at the wo
 
 ## Additional Resources
 
-- `concepts_brief.md`: the brief this design was drafted from.
+- The brief this design was drafted from is not kept. Each claim the spec takes from it is quoted where it is used.
 - The starter this design replaced: `git show ac21958:.kiln/specs/languages.md`.
 - Spec 7, project-roles (`git show f6b984cfdf2e:.kiln/specs/project-roles.md`): `.kiln/`, `kiln.json`'s hosts and
   writable paths, and test 6, which this spec must keep passing.
