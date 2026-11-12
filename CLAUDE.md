@@ -6,9 +6,10 @@ for macOS.
 ## Where things are
 
 - `.kiln/specs/<name>.md`: a spec. With Status Proposed it is a plan, a starter `/shape` takes up later; build only
-  the approved spec kiln names. Its Given, When, Then text is the developer's: never change it. Where one can't
-  hold, write `.kiln/specs/<name>.amend.md` with the old wording, the new wording and the reason, and finish the work
-  under the amendment.
+  the approved spec kiln names. Its Given, When, Then text is the developer's: never change it. kiln builds in
+  split: the verify session alone writes the acceptance tests and amends. Where a Then can't hold, it writes
+  `.kiln/specs/<name>.amend.md` with the old wording, the new wording and the reason, and finishes the work under
+  the amendment. The build session says so in its `cannot hold:` line instead.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.
 - `.kiln/`: kiln's own settings, agents and specs, as `kiln init` wrote them, tailored to kiln. `.claude/agents` and
   `.claude/skills` link to `/shape` and its reviewers there. A build changes nothing here but its amendment file.
@@ -18,6 +19,7 @@ for macOS.
 - `docs/practices.md`: how Go code is written and judged here. Read it before adding a package or an exported name.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
 - `acceptance/<spec>/`: the test code for each acceptance test of a spec, one Go test named `TestAT<N>` for test N.
+  The verify session writes it; the build session never does.
 
 ## Sources
 
@@ -34,8 +36,8 @@ working tree, and never write to either.
   write a test that only restates the code, pins a name no caller sees, or exists to raise coverage.
 - Terminal UI: `acceptance/stats-tui/`, `acceptance/tui-reading/` and `acceptance/gauges/` `TestAT7` drive `kiln tui`
   in a pseudo-terminal, which no sandboxed session can open, so `go test ./...` fails there inside a session and
-  passes in kiln's gate. Check a screen through the model's `Update` and `View` in a test of `internal/tui`, and read a failing terminal test from the
-  gate's report. Before a key, wait for a screen it acts on.
+  passes in kiln's gate. Check a screen through the model's `Update` and `View` in a test of `internal/tui`, and read a
+  failing terminal test from the gate's report. Before a key, wait for a screen it acts on.
 - Comments: as `docs/practices.md` "Comments" says. A comment inside a body says why, never what.
 - Commits: [Conventional Commits](https://www.conventionalcommits.org), `type(scope): summary`, imperative and under
   72 characters. The body says why. `go test ./...` passes at each commit. Never push.

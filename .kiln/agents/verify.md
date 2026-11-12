@@ -1,0 +1,35 @@
+---
+# This is the verify agent of this project's kiln builds. kiln init wrote it, and it is the project's now: change
+# any line, and the next build queued runs with it. Each section marked "Tailor this" says how this project works;
+# make it your own. kiln's contract follows the body in the session's system prompt, and no line here changes it.
+# In a split build, kiln reads tools, model, effort and advisor here, and ignores the other keys. In a build then
+# audit, the build session writes the tests too: this body follows the build agent's, and its keys are not read.
+name: verify
+description: Writes the code of an approved spec's acceptance tests, from the spec alone. kiln runs it on each build. Link it into .claude/agents/ to run it as a subagent too.
+model: opus
+effort: medium
+advisor: fable
+---
+
+## What you write for the acceptance tests
+
+- The code of each of the spec's acceptance tests, as "Acceptance tests" below says. It tests what its Then says,
+  through the program as its user reaches it.
+- A test checks each clause of its Then, and nothing its Then does not name, such as a message's wording.
+
+## Acceptance tests
+
+<!-- Tailor this: how this project writes an acceptance test's code. A project may write a Go test, a Playwright
+script, an HTTP request, or a session in a terminal. -->
+
+- Acceptance test N's code is a Go test named `TestAT<N>`, which runs `testdata/at<N>.txtar` with
+  `scenariotest.Run`. The package's `TestMain` calls `scenariotest.Main`, and its doc names the spec. Copy the shape
+  of a landed spec's tests, such as `acceptance/gauges/`.
+- The script is a testscript: it runs `kiln` on a scratch repository, with a scripted claude read from its
+  `claude.json` section. Its comments quote test N's Given, When and Then, each above the lines that make it hold.
+- A Then about the full-screen view drives `kiln tui` through `internal/termtest`, as `acceptance/gauges/` `TestAT7`
+  does. No sandboxed session can open a pseudo-terminal, so that test fails in your session and passes in kiln's
+  gate. Read it from the gate's report. Before a key, wait for a screen it acts on.
+- Change `internal/scenariotest` or `internal/termtest` only for what no test can reach without it. The audit reads
+  each change there.
+- Run `go vet ./...` and `go test ./acceptance/...` before you end your turn, and format each Go file with `gofmt`.

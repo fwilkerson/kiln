@@ -4,6 +4,16 @@
     "go test ./..."
   ],
   "rounds": 3,
+  "workflow": "split",
+  "acceptance": "acceptance/{spec}/",
+  "harness": [
+    "internal/scenariotest/",
+    "internal/termtest/"
+  ],
+  "reaudit": [
+    "internal/scenariotest/",
+    "internal/termtest/"
+  ],
   "hosts": [
     "proxy.golang.org",
     "sum.golang.org",
