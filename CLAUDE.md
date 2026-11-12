@@ -38,7 +38,7 @@ working tree, and never write to either.
   gate's report. Before a key, wait for a screen it acts on.
 - Comments: as `docs/practices.md` "Comments" says. A comment inside a body says why, never what.
 - Commits: [Conventional Commits](https://www.conventionalcommits.org), `type(scope): summary`, imperative and under
-  72 characters. The body says why. `go test ./...` passes at each commit. Commit on main; never push.
+  72 characters. The body says why. `go test ./...` passes at each commit. Never push.
 
 ## Code Health
 
