@@ -241,23 +241,36 @@ func (m model) home() []*lipgloss.Layer {
 	rightW, h := m.w-sideW, m.h-1
 	now := m.nowRows()
 	tiles := m.trendRows(rightW - 2)
+	gauges := gaugeRows(m.specs, rightW-2)
 	nowH := len(now) + 2
 	trendH := min(len(tiles)+2, max(3, h-nowH-5))
-	recentH := max(0, h-nowH-trendH)
+	gaugesH := 0
+	if len(gauges) > 0 {
+		gaugesH = min(len(gauges)+2, max(3, h-nowH-trendH-5))
+	}
+
+	recentH := max(0, h-nowH-trendH-gaugesH)
 	specsBox := panel{to: target{toPane, int(specsPane)}, title: "specs", lit: m.focus == specsPane,
 		area: area{sideW, h}}
 	nowBox := panel{to: target{toPane, int(nowPane)}, title: "now", lit: m.focus == nowPane, x: sideW,
 		area: area{rightW, nowH}}
 	trendBox := panel{title: trendTitle(trend(m.specs)), x: sideW, y: nowH, area: area{rightW, trendH}}
+	gaugesBox := panel{title: "gauges", x: sideW, y: nowH + trendH, area: area{rightW, gaugesH}}
 	recentBox := panel{to: target{toPane, int(recentPane)}, title: m.recentTitle(), lit: m.focus == recentPane,
-		x: sideW, y: nowH + trendH, area: area{rightW, recentH}}
-	return []*lipgloss.Layer{
+		x: sideW, y: nowH + trendH + gaugesH, area: area{rightW, recentH}}
+	layers := []*lipgloss.Layer{
 		specsBox.box(m.side(specsBox.inside())),
 		nowBox.box(now),
 		trendBox.box(tiles),
 		recentBox.box(m.recentRows(recentBox.inside())),
 		m.foot(homeScreen),
 	}
+
+	if gaugesH == 0 {
+		return layers
+	}
+
+	return append(layers, gaugesBox.box(gauges))
 }
 
 // recentTitle names the builds the builds panel lists: every spec's, or the selected spec's.

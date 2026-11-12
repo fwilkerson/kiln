@@ -149,6 +149,11 @@ func (s *buildStats) shown() *tui.Build {
 	}
 
 	b.Steps = append(b.Steps, gateSteps(s.gates[gates:])...)
+	for _, e := range s.readings {
+		b.Readings = append(b.Readings, tui.Reading{Gauge: e.Gauge, At: e.At, Value: e.Value, Line: e.text(),
+			Crossed: e.crossed(e.Value)})
+	}
+
 	return b
 }
 

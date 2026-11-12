@@ -482,3 +482,48 @@ func TestNarrow(t *testing.T) {
 		t.Errorf("the key list does not fit 12 rows:\n%s", shown)
 	}
 }
+
+// TestGauges holds home's gauges panel: a row per gauge, with its newest line. Its readings follow, as kiln wrote
+// them, each beside its spec. A crossed reading is red beside ✗. One read against another line shows it, and an
+// unknown one shows as ?.
+func TestGauges(t *testing.T) {
+	now := time.Now()
+	value := func(v float64) *float64 { return &v }
+	landed := func(spec string, at time.Time, readings ...Reading) *Build {
+		return &Build{Spec: spec, Started: at, Outcome: "landed", Readings: readings, Steps: []Step{
+			&Run{Role: "build", Why: "first run", Start: at, End: at.Add(time.Minute)},
+		}}
+	}
+
+	// billing's build started first, but checkout-flow's landing was read first, as an amended spec accepted late
+	// lands.
+	a := landed("checkout-flow", now.Add(-time.Hour),
+		Reading{Gauge: "files changed", At: now.Add(-3 * time.Minute), Value: value(2), Line: "≤ 9"},
+		Reading{Gauge: "mutation score", At: now.Add(-3 * time.Minute), Value: value(70.5), Line: "≥ 80",
+			Crossed: true})
+	b := landed("billing", now.Add(-2*time.Hour),
+		Reading{Gauge: "files changed", At: now.Add(-2 * time.Minute), Value: value(4), Line: "≤ 3", Crossed: true},
+		Reading{Gauge: "mutation score", At: now.Add(-2 * time.Minute), Line: "≥ 80"})
+	src := source{specs: []Spec{{Name: "checkout-flow", State: UAT, Builds: []*Build{a}}, {Name: "billing",
+		State: UAT, Builds: []*Build{b}}}}
+	m := drive(t, src, "", sized(120, 30))
+	// The trend above it keeps its tiles.
+	for _, want := range []string{`╭ gauges ─+╮\n`, `│files changed ≤ 3  checkout-flow 2 \(≤ 9\) · billing ✗ 4 +│\n`,
+		`│mutation score ≥ 80  checkout-flow ✗ 70\.5 · billing \? +│\n`, `││newest `} {
+		if !regexp.MustCompile(want).MatchString(screenOf(m)) {
+			t.Errorf("no row matches %s on the screen\n%s", want, screenOf(m))
+		}
+	}
+
+	// In a narrow pane, the panels stay apart, and a row too narrow for every reading keeps the newest.
+	narrow := drive(t, src, "", sized(48, 20))
+	for _, want := range []string{`│◆ checkout-fl… UAT││cost `, `│mutation score ≥ 80  bill…│\n`} {
+		if !regexp.MustCompile(want).MatchString(screenOf(narrow)) {
+			t.Errorf("no row matches %s on the screen\n%s", want, screenOf(narrow))
+		}
+	}
+
+	if got := colorOf(t, m, "✗ 4"); !sameColor(got, ansi.Red) {
+		t.Errorf("the crossed reading is drawn in %v, want red", got)
+	}
+}

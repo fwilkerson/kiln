@@ -29,6 +29,8 @@ type config struct {
 	Hosts []string `json:"hosts,omitempty"`
 	// Writable holds commands, each run with sh -c. Each field one prints is a path a session's commands may write.
 	Writable []string `json:"writable,omitempty"`
+	// Gauges are read after each landing, and never block one.
+	Gauges []gauge `json:"gauges,omitempty"`
 }
 
 const configFile = kilnDir + "/kiln.json"
@@ -43,6 +45,16 @@ func parseConfig(raw []byte) (config, error) {
 
 	if len(c.Gate) == 0 || c.Rounds < 0 {
 		return c, fmt.Errorf("%s names no gate command, or fewer than 0 rounds", configFile)
+	}
+
+	named := map[string]bool{}
+	for _, g := range c.Gauges {
+		if g.Name == "" || named[g.Name] || (g.Min == nil) == (g.Max == nil) {
+			return c, fmt.Errorf("%s names a gauge with no name, a name another gauge has, or not exactly one of "+
+				"min and max: %q", configFile, g.Name)
+		}
+
+		named[g.Name] = true
 	}
 
 	return c, nil

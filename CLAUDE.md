@@ -32,9 +32,9 @@ working tree, and never write to either.
 - Tests: as `docs/practices.md` "Tests" says. Each test costs time and care; write the ones a Then, a domain rule or
   the wiring needs, and no more. An acceptance test's code tests what its Then says, through the command line. Don't
   write a test that only restates the code, pins a name no caller sees, or exists to raise coverage.
-- Terminal UI: `acceptance/stats-tui/` and `acceptance/tui-reading/` drive `kiln tui` in a pseudo-terminal, which
-  no sandboxed session can open, so `go test ./...` fails there inside a session and passes in kiln's gate. Check a
-  screen through the model's `Update` and `View` in a test of `internal/tui`, and read a failing terminal test from the
+- Terminal UI: `acceptance/stats-tui/`, `acceptance/tui-reading/` and `acceptance/gauges/` `TestAT7` drive `kiln tui`
+  in a pseudo-terminal, which no sandboxed session can open, so `go test ./...` fails there inside a session and
+  passes in kiln's gate. Check a screen through the model's `Update` and `View` in a test of `internal/tui`, and read a failing terminal test from the
   gate's report. Before a key, wait for a screen it acts on.
 - Comments: as `docs/practices.md` "Comments" says. A comment inside a body says why, never what.
 - Commits: [Conventional Commits](https://www.conventionalcommits.org), `type(scope): summary`, imperative and under

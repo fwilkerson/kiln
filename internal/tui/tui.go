@@ -15,6 +15,11 @@
 // The home screen's trend is the last 10 builds that ended, beside the 10 before them. Each number is the median of
 // the builds that know it. Below it is a bar for each build, oldest first, with the newest in cyan. A number kiln
 // could not read shows as ?, never as zero.
+//
+// Once a build has a gauge's reading, a gauges panel spans the width below the trend. It holds a row per gauge: its
+// name and its newest line. Its readings follow, oldest first, each beside the spec that landed it. A row too narrow
+// for them all keeps the newest. A reading that crossed its line is red beside ✗. One read against another line
+// shows that line too. An unknown reading shows as ?.
 package tui
 
 import (
@@ -77,6 +82,20 @@ type Build struct {
 	Amendments string
 	// Steps are its session runs and gates, in the order they ran.
 	Steps []Step
+	// Readings are the gauges' readings of its landing.
+	Readings []Reading
+}
+
+// Reading is one gauge's reading of a build's landing.
+type Reading struct {
+	Gauge string
+	// At is when kiln wrote it, which orders the readings of one gauge as their landings were.
+	At time.Time
+	// Value is nil when kiln could not take the reading.
+	Value *float64
+	// Line is the line it was read against, such as ≥ 80. Crossed is whether it fell on the line's wrong side.
+	Line    string
+	Crossed bool
 }
 
 // Step is a session run, a *Run, or a gate, a *Gate.

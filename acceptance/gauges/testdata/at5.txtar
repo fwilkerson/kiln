@@ -1,0 +1,100 @@
+# 5. A landing by kiln accept is read.
+
+# Given: a spec waiting on its branch with amendments, whose build changed two files, and kiln.json names a gauge
+# whose command counts the files changed since the commit kiln gives it as the base, outside .kiln/ and PRODUCT.md.
+exec kiln queue a
+exec kiln run
+stdout '^a: waits on kiln/a'
+! stdout 'gauge'
+
+# When: the developer runs kiln accept on it, and it lands.
+# The landing is two commits: the work, then the spec's retirement.
+exec kiln accept a
+stdout '^a: accepted, and main is at'
+cp stdout .tmp/accept
+exec git log -1 --format=%s main~1
+stdout '^feat\(a\): land the approved spec$'
+
+# Then: kiln accept's output and kiln status show the reading 2.
+grep '^a: gauge changed: 2, line ≤ 10$' .tmp/accept
+exec kiln status
+stdout '^gauge changed: 2, line ≤ 10, at a''s landing'
+
+-- .kiln/kiln.json --
+{"gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD -- . ':!.kiln' ':!PRODUCT.md' | wc -l", "max": 10}]}
+-- .kiln/specs/a.md --
+# Spec 1: a
+
+Status: Approved, 2026-11-12
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. A is ready
+
+- **Given**: nothing.
+- **When**: the gate runs.
+- **Then**: ready is there.
+
+## Technical Plan
+
+## Alternatives Considered
+-- claude.json --
+{
+ "build": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/a/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Built it."
+     }
+    }
+   ]
+  }
+ },
+ "audit": {
+  "1": {
+   "1": [
+    {
+     "result": {
+      "result": "read 1 directories, found 0"
+     }
+    }
+   ]
+  }
+ }
+}
+-- _given/a/ready --
+-- _given/a/a.txt --
+a's work
+-- _given/a/.kiln/specs/a.amend.md --
+# Amendments to .kiln/specs/a.md
+
+## Acceptance test 1: A is ready
+
+### Old
+
+- **Then**: ready is there.
+
+### New
+
+- **Then**: ready and a.txt are there.
+
+### Reason
+
+a.txt is the work.

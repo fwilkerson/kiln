@@ -1,0 +1,74 @@
+# 4. A reading kiln could not take is unknown.
+
+# Given: kiln.json names a gauge whose command fails.
+exec kiln queue x
+
+# When: kiln run lands a spec.
+exec kiln run
+stdout '^x: landed on main'
+
+# Then: the spec waits for UAT, and kiln status shows the gauge's reading as unknown, not as zero.
+exec kiln status
+stdout '^x: waiting for UAT$'
+stdout '^gauge size: unknown, line ≥ 0, at x''s landing'
+! stdout 'gauge size: 0'
+
+-- .kiln/kiln.json --
+{"gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "size", "command": "echo 0; exit 3", "min": 0}]}
+-- .kiln/specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-12
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. X is ready
+
+- **Given**: nothing.
+- **When**: the gate runs.
+- **Then**: ready is there.
+
+## Technical Plan
+
+## Alternatives Considered
+-- claude.json --
+{
+ "build": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "touch ready"
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Built it."
+     }
+    }
+   ]
+  }
+ },
+ "audit": {
+  "1": {
+   "1": [
+    {
+     "result": {
+      "result": "read 1 directories, found 0"
+     }
+    }
+   ]
+  }
+ }
+}

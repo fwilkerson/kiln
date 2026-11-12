@@ -34,7 +34,8 @@
 // A project tells kiln how its builds run in .kiln/, on main. kiln init starts it from a preset, go or python. A
 // preset is kiln.json and the "Tailor this" sections of the build and audit agents:
 //
-//	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths
+//	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
+//	                            and the gauges
 //	.kiln/agents/build.md       the build agent
 //	.kiln/agents/audit.md       the audit
 //	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
@@ -72,6 +73,18 @@
 // each build ended. A build's time is its session runs' time plus its gates'. A pause for a usage limit adds nothing.
 // Its turns, cost and failed calls sum its runs. A number kiln could not read shows as unknown, never as zero. A
 // landed build's commit holds its time, cost, turns and failed calls.
+//
+// A gauge is a command kiln.json names, which prints a number, and a line: min or max, never both.
+//
+//	{"name": "mutation", "command": ".kiln/gauges/mutation-score \"$KILN_BASE\"", "min": 80}
+//
+// Once kiln run or kiln accept lands a build on main, kiln reads each gauge kiln.json names at main's tip. It
+// runs each command in turn with sh -c, in a worktree of its own at the landed commit. $KILN_BASE holds main's tip
+// before the landing, so a command can measure one build's work alone. The reading is the last line of stdout,
+// trimmed, as a decimal number. A command that fails, or prints no number last, reads unknown. kiln writes each
+// reading to its ledger with its line, and judges it against that line wherever it shows. A reading below min, or
+// above max, crossed its line. An unknown one never did. kiln run prints the readings after the build's summary, and
+// only then starts the next build. A gauge never blocks a landing, and nothing reads a landing kiln missed.
 //
 // A build that ends waiting on the developer notifies them, in kiln run's output or kiln accept's. It ends stopped,
 // waiting for UAT, or waiting on its branch. kiln prints an OSC 9 sequence, which a terminal such as Ghostty shows as
@@ -497,8 +510,9 @@ func (r *Repo) mayQueue(ctx context.Context, b book, main git.Rev, name Spec) er
 	return b.may(queueCommand, name, r.changed(ctx, name, spec))
 }
 
-// Status shows each spec kiln holds, and where it stands.
-func (r *Repo) Status(_ context.Context, out io.Writer) error {
+// Status shows each spec kiln holds, and where it stands. Then it shows each gauge kiln.json names at main's tip, with
+// its latest reading.
+func (r *Repo) Status(ctx context.Context, out io.Writer) error {
 	b, err := r.store.read()
 	if err != nil {
 		return err
@@ -512,7 +526,7 @@ func (r *Repo) Status(_ context.Context, out io.Writer) error {
 		s.status(out)
 	}
 
-	return nil
+	return r.gaugeStatus(ctx, out)
 }
 
 // status shows where the spec of r stands, as kiln status does.

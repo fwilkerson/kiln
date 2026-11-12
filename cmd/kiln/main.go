@@ -5,7 +5,7 @@
 //	                         pre-commit hook
 //	kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 //	kiln run                 build each queued spec, one at a time, until none is queued
-//	kiln status              show where each spec stands
+//	kiln status              show where each spec stands, and each gauge's latest reading
 //	kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
 //	kiln accept <name>       take the work: retire the spec, or land its amendments first
 //	kiln reject <name>       turn the amendments away: drop the build, and its branch
@@ -44,7 +44,7 @@ const usage = `usage:
                            pre-commit hook
   kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
   kiln run                 build each queued spec, one at a time, until none is queued
-  kiln status              show where each spec stands
+  kiln status              show where each spec stands, and each gauge's latest reading
   kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
   kiln accept <name>       take the work: retire the spec, or land its amendments first
   kiln reject <name>       turn the amendments away: drop the build, and its branch

@@ -68,6 +68,9 @@ func (r *Repo) run(ctx context.Context, out io.Writer, only Spec) error {
 		}
 
 		b.waits(ctx)
+		if err := b.readGauges(ctx); err != nil {
+			return err
+		}
 	}
 }
 
@@ -146,8 +149,8 @@ type build struct {
 	rec  record
 	tree git.Worktree
 	out  io.Writer
-	// landed is the commit the build moved main to, once it has.
-	landed git.Rev
+	// landed is the commit the build moved main to, once it has, and onto the commit main stood at before.
+	landed, onto git.Rev
 }
 
 // outOfRounds is a build that its gate failed past its last round. failing names what failed.
@@ -325,6 +328,7 @@ func (b *build) landWork(ctx context.Context, head git.Rev) (string, reason, err
 func (b *build) onMain(at git.Rev) error {
 	if b.rec.Accepted {
 		b.record(entry{Kind: outcomeKind, Outcome: outAccepted})
+		b.landed = at
 		b.say("accepted, and main is at %s", short(at))
 		return b.r.store.update(func(k *book) error { k.retire(b.rec.Name); return nil })
 	}
@@ -770,7 +774,12 @@ func (b *build) landOnce(ctx context.Context, from git.Rev, retire func(ctx cont
 		return "", setback{whyLanding, v.report, v.failing}, err
 	}
 
-	return b.move(ctx, head, onto)
+	landed, back, err := b.move(ctx, head, onto)
+	if landed != "" {
+		b.onto = onto
+	}
+
+	return landed, back, err
 }
 
 // prepare puts the work from from onto onto, and retires the spec if retire is set. It

@@ -17,7 +17,8 @@ import (
 // rejected when its last build was dropped. A
 // build, and a run with no end line, runs only while the kiln run that started it lives. An interrupt ends the run
 // but leaves the build building. Specs come newest build first, after any
-// with no build yet. Each run says why it started in the words of the spec's Terms.
+// with no build yet. Each run says why it started in the words of the spec's Terms. A build's gauge lines are its
+// readings, each judged against the line it holds.
 func TestView(t *testing.T) {
 	dead := exec.Command("true")
 	if err := dead.Run(); err != nil {
@@ -60,6 +61,9 @@ func TestView(t *testing.T) {
 	}
 
 	line("b-done", entry{Kind: outcomeKind, Outcome: outAccepted})
+	seven, five := 7.0, 5.0
+	line("b-done", entry{Kind: gaugeKind, Gauge: "files", Value: &seven, Max: &five})
+	line("b-done", entry{Kind: gaugeKind, Gauge: "score", Min: &five})
 	line("b-turned", entry{Kind: builtKind, Spec: "turned"})
 	line("b-turned", entry{Kind: outcomeKind, Outcome: outWaits})
 	line("b-turned", entry{Kind: outcomeKind, Outcome: outDropped})
@@ -90,6 +94,22 @@ func TestView(t *testing.T) {
 	}
 	if g, w := strings.Join(got, "\n"), strings.Join(want, "\n"); g != w {
 		t.Errorf("the view reads\n%s\nwant\n%s", g, w)
+	}
+
+	var readings []string
+	for _, rd := range specs[len(specs)-1].Builds[0].Readings {
+		value := "?"
+		if rd.Value != nil {
+			value = fmt.Sprint(*rd.Value)
+		}
+
+		readings = append(readings, fmt.Sprintf("%s %s %s crossed %v, at %v", rd.Gauge, value, rd.Line, rd.Crossed,
+			!rd.At.IsZero()))
+	}
+
+	wantRead := "files 7 ≤ 5 crossed true, at true\nscore ? ≥ 5 crossed false, at true"
+	if g, w := strings.Join(readings, "\n"), wantRead; g != w {
+		t.Errorf("the done build's readings are\n%s\nwant\n%s", g, w)
 	}
 }
 

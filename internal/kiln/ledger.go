@@ -28,6 +28,7 @@ import (
 //	end       after each session run: how it ended, its totals, the stream's length, and what an audit changed
 //	gate      after each gate: when it ended, whether it passed, and whether it gated a landing
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
+//	gauge     after a landing, one per gauge: its name, the landed commit, its value or none, and its line and side
 //
 // Each line names its build, and At is when it was written, or when its run or gate started. A run is the bytes of
 // its session's stream from its start line's length to its end line's.
@@ -42,6 +43,7 @@ const (
 	endKind     kind = "end"
 	gateKind    kind = "gate"
 	outcomeKind kind = "outcome"
+	gaugeKind   kind = "gauge"
 )
 
 // How a session run ended, in an end line.
@@ -89,6 +91,11 @@ type entry struct {
 	// An outcome line's. Amendments is the text of a waiting build's amendments.
 	Outcome    string `json:"outcome,omitempty"`
 	Amendments string `json:"amendments,omitempty"`
+	// A gauge line's. Landed is the commit it read. Value is nil when kiln could not take the reading.
+	Gauge  string   `json:"gauge,omitempty"`
+	Landed git.Rev  `json:"landed,omitempty"`
+	Value  *float64 `json:"value,omitempty"`
+	gaugeLine
 }
 
 // reason is why a session run started, in its start line. Round and Rounds are set when kiln sent the work back,

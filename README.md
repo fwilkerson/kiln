@@ -16,7 +16,7 @@ kiln init [--preset go|python]
                          pre-commit hook
 kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 kiln run                 build each queued spec, one at a time, until none is queued
-kiln status              show where each spec stands
+kiln status              show where each spec stands, and each gauge's latest reading
 kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
 kiln accept <name>       take the work: retire the spec, or land its amendments first
 kiln reject <name>       turn the amendments away: drop the build, and its branch
@@ -33,7 +33,11 @@ kiln reject <name>       turn the amendments away: drop the build, and its branc
    itself up: its time, cost, rounds and audit, what it changed or what failed, and the command to run next. A
    build stopped past its last round names the command that resumes its session in its worktree, to ask it why.
    A fix that session makes on `kiln/<name>` is lost to `kiln queue <name>`, which builds anew from main.
+   Once a build lands, by `kiln run` or `kiln accept`, kiln reads each gauge `kiln.json` names. It prints each
+   reading after the landing, beneath `kiln run`'s summary, marked where it crossed its line. Only then does the next
+   build start.
    Read `kiln status`. A spec waiting for UAT is on main. A spec waiting on its branch with amendments shows them.
+   Each gauge shows its latest reading, the line it was read against, and the landing it measured.
 4. Run `kiln accept <name>`. A spec waiting on its branch lands with its amendments folded in. The spec is deleted,
    and `PRODUCT.md` gains the command that shows it. If that landing stops, `kiln accept <name>` lands it again.
    - When UAT finds a problem, change the spec with `/shape`, commit it, and run `kiln queue <name>`. The new build
@@ -41,7 +45,7 @@ kiln reject <name>       turn the amendments away: drop the build, and its branc
    - To turn amendments away, run `kiln reject <name>`. To change an amendment's wording, commit your own wording to
      the spec, then run `kiln reject <name>` and `kiln queue <name>`.
 5. Read a landed build's commit for its time, cost, turns and failed calls. The ledger is `.git/kiln/ledger.jsonl`,
-   and each session's stream, for why a number is what it is, is `.git/kiln/sessions/<id>/stream.jsonl`.
+   which holds each gauge's readings too. Each session's stream, for why a number is what it is, is `.git/kiln/sessions/<id>/stream.jsonl`.
 6. Run `kiln tui` in a terminal of its own, beside `kiln run`, to watch the running session and look back over each
    build run by run. It only reads.
 
@@ -60,7 +64,8 @@ and audit agents. Run again, `kiln init` adds to `kiln.json` only `rounds`, the 
 
 ```text
 .kiln/
-  kiln.json                    the gate, its rounds, reachable hosts, commands that print writable paths
+  kiln.json                    the gate, its rounds, reachable hosts, commands that print writable paths, gauges
+  gauges/                      the scripts a gauge's command runs, out of a build's reach
   agents/build.md              the build agent: frontmatter for its tools, model, effort and advisor, then its prompt
   agents/audit.md              the audit, which reads the work once the gate passes
   agents/zoom-out.md           the reviewers /shape runs
@@ -74,6 +79,12 @@ and audit agents. Run again, `kiln init` adds to `kiln.json` only `rounds`, the 
 - `kiln.json` holds the gate's commands, the rounds a failing gate goes back to the session, the hosts a session's
   commands reach, and commands that print the paths beside its worktree they write. kiln reads it from main's tip,
   so a build cannot weaken its own gate. The pre-commit hook runs the gate's commands on a commit to main.
+- A gauge in `kiln.json` is a number the developer watches over the landings, such as a mutation score or test time.
+  Each has a `name`, a `command` that prints the number as its last line, and exactly one of `min` and `max`, its
+  line. A reading below `min`, or above `max`, crossed it. kiln runs each command with `sh -c` at the landed commit,
+  and gives it main's tip before the landing in `$KILN_BASE`, so it can measure one build's work alone. A reading
+  kiln could not take is unknown, never zero, and never crossed. A gauge never blocks a landing: a line that must
+  hold is a gate command. Keep a gauge's script under `.kiln/gauges/`, where a build cannot change it.
 - The gate excuses a test that fails at main too. A command names its failed tests in `go test`'s output, or by
   writing JUnit XML to the path kiln gives it in `$KILN_JUNIT`. A command that fails and names no test is never
   excused, nor is a run that left out a test main ran.

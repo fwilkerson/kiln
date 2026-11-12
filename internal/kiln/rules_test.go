@@ -16,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/fwilkerson/kiln/internal/git"
 )
@@ -601,4 +602,108 @@ func shell(t *testing.T, dir, script string) string {
 	}
 
 	return strings.TrimSpace(string(out))
+}
+
+// TestGaugeRules holds what kiln.json may name as a gauge. It holds what a command's output reads as, and when a
+// reading crossed its line.
+func TestGaugeRules(t *testing.T) {
+	for name, tc := range map[string]struct {
+		gauges  string
+		refused bool
+	}{
+		"a gauge with a min":            {gauges: `[{"name": "a", "command": "echo 1", "min": 0}]`},
+		"two gauges, each with a max":   {gauges: `[{"name": "a", "command": "echo 1", "max": 0}, {"name": "b", "command": "echo 1", "max": 2}]`},
+		"a gauge with neither":          {gauges: `[{"name": "a", "command": "echo 1"}]`, refused: true},
+		"a gauge with both":             {gauges: `[{"name": "a", "command": "echo 1", "min": 0, "max": 1}]`, refused: true},
+		"a gauge with no name":          {gauges: `[{"command": "echo 1", "min": 0}]`, refused: true},
+		"two gauges that share a name":  {gauges: `[{"name": "a", "command": "echo 1", "min": 0}, {"name": "a", "command": "echo 2", "min": 0}]`, refused: true},
+		"a gauge with a key kiln lacks": {gauges: `[{"name": "a", "command": "echo 1", "min": 0, "unit": "%"}]`, refused: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseConfig([]byte(`{"gate": ["true"], "rounds": 1, "gauges": ` + tc.gauges + `}`))
+			if (err != nil) != tc.refused {
+				t.Errorf("parseConfig answers %v, want refused %v", err, tc.refused)
+			}
+		})
+	}
+
+	for out, want := range map[string]struct {
+		value float64
+		ok    bool
+	}{
+		"12\n":                    {12, true},
+		"mutants: 152\n  82.5 \n": {82.5, true},
+		"      2\n":               {2, true},
+		"-1e3":                    {-1000, true},
+		"0":                       {0, true},
+		"":                        {},
+		"82%\n":                   {},
+		"0x10\n":                  {},
+		"NaN\n":                   {},
+		"Inf\n":                   {},
+		"82.5\ndone\n":            {},
+	} {
+		if value, ok := readingOf(out); ok != want.ok || value != want.value {
+			t.Errorf("%q reads as %v, %v, want %v, %v", out, value, ok, want.value, want.ok)
+		}
+	}
+
+	// An interrupt of kiln is not the command's failure, so it reads no unknown.
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, _, err := (&Repo{}).readGauge(ctx, git.Worktree(t.TempDir()), "sleep 10", ""); err == nil {
+		t.Error("an interrupted gauge answers no error")
+	}
+
+	at := func(v float64) *float64 { return &v }
+	for name, tc := range map[string]struct {
+		line    gaugeLine
+		value   *float64
+		crossed bool
+	}{
+		"below a min crossed":       {gaugeLine{Min: at(80)}, at(79.9), true},
+		"on a min did not":          {gaugeLine{Min: at(80)}, at(80), false},
+		"above a max crossed":       {gaugeLine{Max: at(0)}, at(1), true},
+		"on a max did not":          {gaugeLine{Max: at(0)}, at(0), false},
+		"an unknown reading never":  {gaugeLine{Min: at(80)}, nil, false},
+		"nor against a max of zero": {gaugeLine{Max: at(0)}, nil, false},
+	} {
+		if got := tc.line.crossed(tc.value); got != tc.crossed {
+			t.Errorf("%s: crossed is %v", name, got)
+		}
+	}
+}
+
+// TestGaugeTree holds that a gauge which leaves a file git can't remove stops no later reading. Each landing gets a
+// reading of each gauge.
+func TestGaugeTree(t *testing.T) {
+	r, repo := scratchRepo(t)
+	t.Cleanup(func() { _ = removeTree(r.trees) })
+	config := `{"gate": ["true"], "rounds": 1, "gauges": [{"name": "n", "max": 5, ` +
+		`"command": "mkdir -p ro/sub && touch ro/sub/f && chmod 555 ro/sub; echo 1"}]}`
+	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json && git add . && git commit --quiet -m start")
+	b := &build{r: r, rec: record{Name: "x", Build: "b-x"}, out: io.Discard}
+	for landing := range 2 {
+		shell(t, repo, fmt.Sprintf("git commit --quiet --allow-empty -m landing-%d", landing))
+		b.onto, b.landed = b.landed, git.Rev(shell(t, repo, "git rev-parse HEAD"))
+		if err := b.readGauges(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	entries, err := r.store.entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var read []string
+	for _, e := range entries {
+		if e.Kind == gaugeKind && e.Value != nil {
+			read = append(read, fmt.Sprintf("%s %v", short(e.Landed), *e.Value))
+		}
+	}
+
+	if len(read) != 2 {
+		t.Errorf("the landings read %v, want a reading of 1 for each of 2", read)
+	}
 }

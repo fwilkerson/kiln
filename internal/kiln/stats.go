@@ -18,6 +18,8 @@ type buildStats struct {
 	amendments string
 	runs       []run
 	gates      []entry
+	// readings are the build's gauge lines, as they were written.
+	readings []entry
 }
 
 // run is one session run. Its end is zero while it runs.
@@ -73,6 +75,8 @@ func (c *collector) add(e entry) {
 		c.end(s, e)
 	case e.Kind == gateKind:
 		s.gates = append(s.gates, e)
+	case e.Kind == gaugeKind:
+		s.readings = append(s.readings, e)
 	case e.Kind == outcomeKind:
 		s.outcome = e.Outcome
 		s.amendments = cmpOr(e.Amendments, s.amendments)
