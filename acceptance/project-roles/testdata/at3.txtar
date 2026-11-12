@@ -7,8 +7,9 @@ exec kiln run
 stdout '^x: landed on main'
 
 # Then: the build agent is told the file's instructions, then kiln's contract.
+# Since spec 10, split, the verify agent's body, which says how the tests are written, comes between them.
 # The contract names the spec, the one file under .kiln/ the build may write, and that kiln lands the work.
-grep '\AWrite every comment in American English\.\n\n## kiln''s contract\n' .claude-calls/build/1/1/system
+grep '\AWrite every comment in American English\.\n\nWrite the acceptance tests\.\n\n## kiln''s contract\n' .claude-calls/build/1/1/system
 grep 'You are building `\.kiln/specs/x\.md`, a spec the developer approved' .claude-calls/build/1/1/system
 grep '^`\.kiln/specs/x\.amend\.md`\.' .claude-calls/build/1/1/system
 grep 'Never push, and never move or reset main: kiln lands your work\.' .claude-calls/build/1/1/system
@@ -18,7 +19,7 @@ grep '\AAudit the packages\.\n\n## kiln''s contract\n' .claude-calls/audit/1/1/s
 grep 'End your reply with one line: `read N directories, found M`' .claude-calls/audit/1/1/system
 
 -- .kiln/kiln.json --
-{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- .kiln/agents/build.md --
 ---
 model: opus

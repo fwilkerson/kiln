@@ -166,7 +166,8 @@ Score both designs on five weighted measures:
 - After a change, run a fresh audit agent that reads whole packages and reports where code breaks a promise. Its
   findings go back to the build that made the change, which prefers a design that makes a finding impossible over a
   patch.
-- Do not audit the fix for an audit finding. Chasing one finding after another hides a better design.
+- Do not audit the fix for an audit finding. Chasing one finding after another hides a better design. The exception
+  is a path the developer lists in `kiln.json`'s `reaudit`, which never lands unread.
 - Tell an agent to run `go doc -all` on a package before using it. Its doc is the contract, and its Example shows the
   use.
 

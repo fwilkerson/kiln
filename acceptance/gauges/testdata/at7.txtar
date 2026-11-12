@@ -16,7 +16,7 @@ screen '╭ gauges ─+╮$'
 screen '│count ≤ 5  a 1 · b 2 +│$'
 
 -- .kiln/kiln.json --
-{"gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "count", "command": "cat count", "max": 5}]}
+{"acceptance": "acceptance/{spec}/", "gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "count", "command": "cat count", "max": 5}]}
 -- .kiln/specs/a.md --
 # Spec 1: a
 

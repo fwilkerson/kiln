@@ -15,7 +15,7 @@ grep 'named no failed test' .claude-calls/build/1/2/prompt
 grep '\$KILN_JUNIT' .claude-calls/build/1/2/prompt
 
 -- .kiln/kiln.json --
-{"gate": ["exit 1"], "rounds": 1}
+{"acceptance": "acceptance/{spec}/", "gate": ["exit 1"], "rounds": 1}
 -- .kiln/specs/t.md --
 # Spec 1: t
 

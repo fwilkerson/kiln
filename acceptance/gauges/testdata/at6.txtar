@@ -13,7 +13,7 @@ stdout '^b: landed on main'
 stdout '(?s)a: landed on main.*\na: gauge one: 1, line ≥ 0\na: gauge two: 2, line ≤ 5\nb: building on .*b: landed on main.*\nb: gauge one: 1, line ≥ 0\nb: gauge two: 2, line ≤ 5\n'
 
 -- .kiln/kiln.json --
-{"gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "one", "command": "echo 1", "min": 0}, {"name": "two", "command": "echo 2", "max": 5}]}
+{"acceptance": "acceptance/{spec}/", "gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "one", "command": "echo 1", "min": 0}, {"name": "two", "command": "echo 2", "max": 5}]}
 -- .kiln/specs/a.md --
 # Spec 1: a
 

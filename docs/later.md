@@ -88,8 +88,9 @@ Spec 1 refuses a build's write to `specs/`. A finer table was drafted:
 odh has two agents design apart from the same brief, and a fresh judge scores both by the five measures in
 `docs/practices.md`. Spec 1 leaves this to the builder: it may spawn its own subagents.
 
-- **Open:** each designer needs its own worktree, and a session can't write outside its checkout. The builder's
-  subagents may need the engine to make those worktrees.
+- **Open:** each designer needs its own checkout, and a session can't write outside its checkout. Spec 10, split,
+  solved it for the verify session: kiln makes each session a clone of main, and denies it reads of the other's. A
+  designer can reuse that clone and its read denials.
 - **Build it when:** a builder wants a design for a shared API or a critical piece of code, and can't get one inside
   its checkout.
 
@@ -114,6 +115,8 @@ lift a rule from it by name.
 ## An audit of the fixes
 
 The audit reads a build's work once, and its findings go back to the build. Nothing but the gate reads the fixes.
+Spec 10, split, took up a part: the audit reads the work again when it changed a path `kiln.json`'s `reaudit`
+names, otherwise than the audit read it. The rest of the fixes the gate alone reads.
 Spec 7 weighed an audit that runs again on the fixes, up to a count in `kiln.json`. Through 2026-11-10, every audit
 found 2 to 5 problems, each build said it fixed them all, and the one fix that broke a test, the gate caught. Each
 audit cost $3 to $9.
@@ -122,7 +125,8 @@ audit cost $3 to $9.
 
 ## A project's own workflow
 
-Spec 7 lets a project set each role's prompt, tools, model and effort, but keeps kiln's two roles, build then audit.
-A project could name its own roles, their order, and which role a role's findings go back to.
+Spec 7 lets a project set each role's prompt, tools, model and effort. Spec 10 added a second fixed workflow, split,
+whose verify role writes the tests apart from the build. A project could name its own roles, their order, and which
+role a role's findings go back to.
 
-- **Build it when:** a project needs a role other than build and audit.
+- **Build it when:** a project needs a role other than build, verify and audit, or another order of them.

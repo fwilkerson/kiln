@@ -3,6 +3,8 @@ package kiln
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -227,7 +229,13 @@ func plural(n int, what string) string {
 func (r *Repo) sumUp(ctx context.Context, rec record, tree git.Worktree, landedAt git.Rev) []string {
 	lines := []string{r.summary(rec.Build), roundsOf(rec) + " · " + r.auditOf(rec)}
 	lines = append(lines, r.ending(ctx, rec, landedAt)...)
-	if where := workPlace(rec, tree); where != "" {
+	// A split build stopped before its first stack has no stack to name.
+	place := tree
+	if _, err := os.Stat(string(tree)); err != nil {
+		place = ""
+	}
+
+	if where := workPlace(rec, place); where != "" {
 		lines = append(lines, where)
 	}
 
@@ -242,7 +250,7 @@ func (r *Repo) auditOf(rec record) string {
 		runs = s.runs
 	}
 
-	return auditDid(rec.Audited, runs, s != nil && err == nil)
+	return auditDid(rec.Audited != "", runs, s != nil && err == nil)
 }
 
 // ending says how the build of rec ended: the files it changed, its amendments, or what failed.
@@ -269,7 +277,7 @@ func (r *Repo) ending(ctx context.Context, rec record, landedAt git.Rev) []strin
 // workPlace says where the work of a build stopped by its gate is, in tree. It is "" for any other build.
 func workPlace(rec record, tree git.Worktree) string {
 	switch {
-	case rec.State != stopped, byKiln(rec), rec.Session == "":
+	case rec.State != stopped, byKiln(rec), rec.Session == "", tree == "":
 		return ""
 	}
 
@@ -291,10 +299,18 @@ func roundsOf(rec record) string {
 }
 
 // auditDid says what the audit did, from whether it answered and the build's runs. known is false when the ledger
-// could not be read, or holds no line of the build.
+// could not be read, or holds no line of the build. An audit that read the work again, for kiln.json's reaudit, says
+// how many times it read it.
 func auditDid(audited bool, runs []run, known bool) string {
 	audits := slices.ContainsFunc(runs, func(r run) bool { return r.role == auditRole })
 	findings := slices.ContainsFunc(runs, func(r run) bool { return r.why.Why == whyFindings })
+	again := ""
+	if reads := len(slices.DeleteFunc(slices.Clone(runs), func(r run) bool {
+		return r.role != auditRole || r.why.Try > 1
+	})); reads > 1 {
+		again = fmt.Sprintf(", and read the work %d times", reads)
+	}
+
 	switch {
 	case !known:
 		return "what the audit did is unknown"
@@ -303,9 +319,9 @@ func auditDid(audited bool, runs []run, known bool) string {
 	case !audited:
 		return "the audit ended with no result"
 	case findings:
-		return "the audit sent findings back"
+		return "the audit sent findings back" + again
 	case audits:
-		return "the audit found nothing"
+		return "the audit found nothing" + again
 	}
 
 	return "the build changed nothing kiln audits, so no audit ran"
@@ -336,6 +352,11 @@ func nextStep(rec record, tree git.Worktree, landedAt git.Rev) string {
 	case byKiln(rec):
 		// The session never saw kiln's error, so it can't say why.
 		return kilnFix(rec)
+	case rec.Verify != "":
+		build, verify := sideClone(tree, rec.Name, buildRole), sideClone(tree, rec.Name, verifyRole)
+		return fmt.Sprintf("cd %s && claude --resume %s, to ask the build session why;\n      "+
+			"cd %s && claude --resume %s, to ask the verify session why;\n      then %s",
+			shellQuote(build), rec.Session, shellQuote(verify), rec.Verify, gateFix(rec))
 	case rec.Session != "":
 		return fmt.Sprintf("cd %s && claude --resume %s, to ask the session why;\n      then %s",
 			shellQuote(string(tree)), rec.Session, gateFix(rec))
@@ -368,4 +389,9 @@ func gateFix(rec record) string {
 // byKiln reports whether the build of rec stopped for an error of kiln's, not its gate's.
 func byKiln(rec record) bool {
 	return rec.State == stopped && strings.HasPrefix(rec.Why, couldNotGoOn)
+}
+
+// sideClone is the clone of role's session of a split build of name, beside the build's worktree, tree.
+func sideClone(tree git.Worktree, name Spec, role string) string {
+	return filepath.Join(filepath.Dir(string(tree)), "."+role+"-"+string(name))
 }

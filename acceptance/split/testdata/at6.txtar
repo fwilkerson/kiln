@@ -1,0 +1,152 @@
+# 6. Each session writes only its side
+
+# Given: the project chooses the split workflow, and kiln.json names the acceptance path and the harness.
+exec kiln queue x
+
+# When: the build session writes a file under the acceptance path and the spec's amendment file, and the verify
+# session writes one outside its side.
+exec kiln run
+stdout '^x: landed on main'
+
+# Then: kiln refuses each of these writes,
+grep 'PreToolUse:Write hook error: [^"]*acceptance/x/mine_test\.go is the verify session''s' .claude-calls/build/1/1/stream.jsonl
+grep 'PreToolUse:Write hook error: [^"]*\.kiln/specs/x\.amend\.md is the verify session''s' .claude-calls/build/1/1/stream.jsonl
+grep 'PreToolUse:Write hook error: [^"]*y\.go is the build session''s' .claude-calls/verify/1/1/stream.jsonl
+
+# and none of the files is on the spec's branch.
+! exec git show main:acceptance/x/mine_test.go
+! exec git show main:.kiln/specs/x.amend.md
+! exec git show main:y.go
+exec git show main:acceptance/x/x_test.go
+
+-- .kiln/kiln.json --
+{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 3, "harness": ["harness/"]}
+-- claude.json --
+{
+ "build": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Write",
+      "input": {
+       "file_path": "acceptance/x/mine_test.go",
+       "content": "package x_test\\n"
+      }
+     }
+    },
+    {
+     "tool": {
+      "name": "Write",
+      "input": {
+       "file_path": ".kiln/specs/x.amend.md",
+       "content": "## Acceptance test 1: X answers\\n"
+      }
+     }
+    },
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/code/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Built x."
+     }
+    }
+   ]
+  }
+ },
+ "verify": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Write",
+      "input": {
+       "file_path": "y.go",
+       "content": "package scratch\\n"
+      }
+     }
+    },
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/tests/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Wrote the tests of x."
+     }
+    }
+   ]
+  }
+ },
+ "audit": {
+  "1": {
+   "1": [
+    {
+     "result": {
+      "result": "read 2 directories, found 0"
+     }
+    }
+   ]
+  }
+ }
+}
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- .kiln/specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-12
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+
+## Technical Plan
+
+`scratch.X()` answers an int.
+
+## Alternatives Considered
+-- _given/code/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/tests/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

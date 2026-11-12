@@ -32,20 +32,25 @@
 // own between them. Each ### N. Title under Acceptance tests holds a Given, a When and a Then, numbered from 1.
 //
 // A project tells kiln how its builds run in .kiln/, on main. kiln init starts it from a preset, go or python. A
-// preset is kiln.json and the "Tailor this" sections of the build and audit agents:
+// preset is kiln.json and the "Tailor this" sections of the build, verify and audit agents:
 //
 //	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
-//	                            and the gauges
+//	                            the gauges, the workflow, where the acceptance tests live, the harness, and the
+//	                            paths the audit reads again
 //	.kiln/agents/build.md       the build agent
+//	.kiln/agents/verify.md      how the acceptance tests are written, and a split build's verify agent
 //	.kiln/agents/audit.md       the audit
 //	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
 //
-// kiln queue reads the build and audit agents' files at the commit it queues, and refuses one it can't use. Every
-// session of the build runs with them as they stood there. An agent's file names the session's tools, model, effort
-// and advisor in its frontmatter. Without tools, it has every tool. Without model or effort, it runs Opus at medium
-// effort. Without advisor, Fable advises it. Its body comes first in the session's system prompt, then kiln's
-// contract with the agent. No file changes that contract, the denied commands, the forbidden actions, or the guard on
-// .kiln/. The hosts and writable paths are kiln.json's at main's tip, and none without its keys. kiln runs each
+// kiln queue reads the build, verify and audit agents' files at the commit it queues. It refuses one it can't use.
+// It refuses a kiln.json that names no acceptance path. It refuses a build agent that says how to write the tests.
+// Every session of the build runs with them as they stood there. An agent's file names the session's tools, model,
+// effort and advisor in its frontmatter. Without tools, it has every tool. Without model or effort, it runs Opus at
+// medium effort. Without advisor, Fable advises it. Its body comes first in the session's system prompt. Then comes
+// kiln's contract with the agent, which names where the tests live. In build then audit, the build session writes
+// the tests too. Its prompt then holds the verify agent's body after the build agent's. No file changes the
+// contract, the denied commands, the forbidden actions, or the guard on .kiln/. The hosts and writable paths are
+// kiln.json's at main's tip, and none without its keys. kiln runs each
 // command that prints paths once per kiln command. One that fails stops the build.
 //
 // A build runs one build session of Claude Code, on its own branch, kiln/<name>, in a worktree kiln makes. kiln commits
@@ -53,17 +58,31 @@
 // times; past that, the build stops. Once the gate passes, the audit agent runs in a session of its own. It reads each
 // directory holding a file the build changed outside .kiln/. For a directory it emptied, it reads the nearest above. A
 // build that changes nothing else gets no audit. The audit runs in a worktree of its own at the build's commit, so
-// nothing it writes reaches the build. An audit that ends with no result runs again in a new session, up to 3 tries.
-// Its findings go back to the build session. A build with no amendment then lands. It is rebased onto main as one
-// commit, and gated again. Then main moves to it, only if main has not moved since. A build that amended its spec
-// waits on its branch instead. A landing that doesn't move main leaves the branch as it stood before the landing
-// began. Work that changes nothing on main never lands. It goes back to the session, as a failed gate does.
+// nothing it writes reaches the build. kiln removes that worktree once the audit ends. An audit that ends with no
+// result runs again in a new session, up to 3 tries. Its findings go back to the build session. The work may then
+// change a path kiln.json's reaudit names, otherwise than the audit read it. The audit then reads it again, as a
+// round. A build
+// with no amendment then lands. It is rebased onto main as one commit, and gated again. Then main moves to it, only
+// if main has not moved since. A build that amended its spec waits on its branch instead. A landing that doesn't
+// move main leaves the branch as it stood before the landing began. Work that changes nothing on main never lands.
+// It goes back to the session, as a failed gate does.
+//
+// A split build runs a build session and a verify session at once, each in a clone of main. kiln.json's workflow
+// names it, at the commit the build was queued at. The build session writes the code, and the verify session the
+// acceptance tests, from the spec alone. Each session's settings deny it reads of the other's clone and transcripts,
+// and of kiln's other checkouts. Its hook keeps it to its side. kiln gates the build side alone, then stacks both
+// sides on kiln/<name>, and gates the stack. Each failure goes to the side that owns it, as a round. The verify
+// session's bugs line sends a bug to the build session. The build session's cannot-hold line sends its reply to the
+// verify session, which alone amends. The audit reads the stack, and its findings go to both. kiln removes every
+// checkout a build made once it lands, is accepted, rejected or queued anew. A build that stopped, or waits on its
+// branch, keeps them.
 //
 // The gate runs kiln.json's commands, read from main's tip, at the build's commit and at main. It passes when every
 // command exits 0, but for tests that fail at main too. A command names its failed tests in go test's output. Or it
 // writes them as JUnit XML, to the path kiln gives it in $KILN_JUNIT. A failure that names no test is never excused.
 // Nor is a run cut short: each test the command ran at main must run at the build's commit too. The gate also
-// fails on any path the work changed under .kiln/ but .kiln/specs/<name>.amend.md. It does so however the path was
+// fails on any path the work changed under .kiln/ but .kiln/specs/<name>.amend.md. It fails on a split session's
+// write outside its side too. It does so however the path was
 // written. A session's hook refuses an Edit or a Write there before it happens.
 //
 // A usage limit pauses the build until the limit resets, and then resumes the same session. A limit with no reset
@@ -317,7 +336,7 @@ func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
 	}
 
 	if drop {
-		if err := r.git.Remove(ctx, r.tree(name), name.branch()); err != nil {
+		if err := r.dropCheckouts(ctx, name); err != nil {
 			return err
 		}
 	}
@@ -345,19 +364,49 @@ func (r *Repo) queueable(ctx context.Context, main git.Rev, name Spec) ([]byte, 
 	return spec, nil
 }
 
-// ready refuses while main, at main, holds no kiln.json, build agent or audit agent that kiln can use.
+// ready refuses while main, at main, holds no kiln.json, build agent, verify agent or audit agent that kiln can use.
+// kiln.json must name where the acceptance tests live. The build agent must not say how to write them.
 func (r *Repo) ready(ctx context.Context, main git.Rev) error {
-	if _, err := r.config(ctx, main); err != nil {
+	c, err := r.config(ctx, main)
+	if err != nil {
 		return fmt.Errorf("%w: %w", errRefused, err)
 	}
 
-	for _, role := range []string{buildRole, auditRole} {
-		if _, err := r.agent(ctx, main, role, initHint); err != nil {
+	if c.fixedPart() == "" {
+		return fmt.Errorf("%w: %s names no acceptance, the path of a spec's acceptance tests, or one that starts "+
+			"with %s; add one, such as \"acceptance/%s/\"", errRefused, configFile, specVar, specVar)
+	}
+
+	agents := map[string]agent{}
+	for _, role := range []string{buildRole, verifyRole, auditRole} {
+		if agents[role], err = r.agent(ctx, main, role, initHint); err != nil {
 			return err
 		}
 	}
 
+	if line := testsText(agents[buildRole].body, c.fixedPart()); line != "" {
+		return fmt.Errorf("%w: %s says how to write the acceptance tests, in %q: move that text to %s, which "+
+			"every build reads", errRefused, agentFile(buildRole), line, agentFile(verifyRole))
+	}
+
 	return nil
+}
+
+// testsText is the first line of body that says how to write the acceptance tests, or "". An older default build
+// agent said so. Such a line is its heading, or its line on what the build writes. Or it names fixed, where the tests
+// live.
+func testsText(body, fixed string) string {
+	for line := range strings.Lines(body) {
+		line = strings.TrimSpace(line)
+		switch {
+		case line == "## Acceptance tests",
+			strings.HasPrefix(line, "- The code of each of the spec's acceptance tests"),
+			strings.Contains(line, fixed):
+			return line
+		}
+	}
+
+	return ""
 }
 
 // approvedSpec reads .kiln/specs/<name>.md at main, a spec whose Status is Approved.
@@ -419,7 +468,7 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 	}
 
 	r.dropped(name, rec.Build, out)
-	if err := r.git.Remove(ctx, r.tree(name), name.branch()); err != nil {
+	if err := r.dropCheckouts(ctx, name); err != nil {
 		return err
 	}
 
@@ -616,16 +665,22 @@ func (r *Repo) acceptLanded(ctx context.Context, b *build) error {
 	return nil
 }
 
-// acceptAmended folds the amendments of b's spec into the spec, on its branch, and lands it.
+// acceptAmended folds the amendments of b's spec into the spec, on its branch, and lands it. A split build folds them
+// in the verify session's clone, whose side owns the amendment file. Every later stack then carries the fold.
 func (r *Repo) acceptAmended(ctx context.Context, b *build) error {
 	name := b.rec.Name
-	tip, err := r.git.Head(ctx, b.tree)
+	at := b.tree
+	if b.rec.Verify != "" {
+		at = r.clone(name, verifyRole)
+	}
+
+	tip, err := r.git.Head(ctx, at)
 	if err != nil {
 		return err
 	}
 
-	if _, err := b.foldAmendments(ctx); err != nil {
-		return errors.Join(err, r.git.Reset(ctx, b.tree, tip))
+	if _, err := b.foldAmendments(ctx, at); err != nil {
+		return errors.Join(err, r.git.Reset(ctx, at, tip))
 	}
 
 	err = r.store.set(name, func(s *record) { s.State, s.Accepted, s.Rounds, s.Amendments = queued, true, 0, "" })

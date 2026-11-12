@@ -19,7 +19,7 @@ screen 'gate-flakes'
 ! screen 'status-line'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "rounds": 1}
+{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1}
 -- .kiln/specs/gate-flakes.md --
 # Spec 1: gate-flakes
 

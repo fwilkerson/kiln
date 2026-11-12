@@ -20,7 +20,7 @@ exec kiln status
 stdout '^gauge score: 70, line ≥ 80, crossed, at x''s landing'
 
 -- .kiln/kiln.json --
-{"gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "score", "command": "echo mutants: 10; echo 70", "min": 80}]}
+{"acceptance": "acceptance/{spec}/", "gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "score", "command": "echo mutants: 10; echo 70", "min": 80}]}
 -- .kiln/specs/x.md --
 # Spec 1: x
 

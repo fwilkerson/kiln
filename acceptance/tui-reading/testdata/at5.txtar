@@ -108,7 +108,7 @@ module example.com/scratch
 
 go 1.27
 -- .kiln/kiln.json --
-{"gate": ["go vet ./...", "go test ./..."], "rounds": 0}
+{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 0}
 -- .kiln/specs/x.md --
 # Spec 1: x
 

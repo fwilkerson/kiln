@@ -37,12 +37,26 @@ type record struct {
 	Build string `json:"build,omitempty"`
 	// Session is the build's Claude Code session, once it has one.
 	Session string `json:"session,omitempty"`
+	// Verify is a split build's verify session, once it has one. Session is then its build session.
+	Verify string `json:"verify,omitempty"`
+	// OldTests is true once kiln removed a revised spec's old acceptance tests from a split build's build side.
+	OldTests bool `json:"old_tests,omitempty"`
+	// ForBuild and ForVerify each hold a reply kiln read, but has not yet passed on to that session.
+	ForBuild  string `json:"for_build,omitempty"`
+	ForVerify string `json:"for_verify,omitempty"`
+	// Asked is true while kiln waits on the verify session's bugs line, in its answer to a failing stack.
+	Asked bool `json:"asked,omitempty"`
+	// Told is the spec, with its amendments folded in, as kiln last told a split build's build session it.
+	Told string `json:"told,omitempty"`
+	// Running names the roles of a split build's sessions whose turn has not ended. kiln resumes only these.
+	Running []string `json:"running,omitempty"`
 	// Rounds counts the failed gates sent back to the session.
 	Rounds int `json:"rounds,omitempty"`
 	// Limit is how many rounds kiln.json gave the build's last gate. It is nil until a gate has run.
 	Limit *int `json:"limit,omitempty"`
-	// Audited is true once the audit has answered.
-	Audited bool `json:"audited,omitempty"`
+	// Audited is the commit the audit last read, once it has answered. An older kiln kept a bool under "audited",
+	// which this key leaves unread.
+	Audited git.Rev `json:"audited_at,omitempty"`
 	// Accepted is a spec the developer accepted while it waited on its branch. kiln lands it as a build does, then
 	// retires it.
 	Accepted bool `json:"accepted,omitempty"`
@@ -211,7 +225,7 @@ func (b *book) queue(name Spec, main git.Rev, changed func(since git.Rev) (bool,
 }
 
 // accept answers the record of a spec the developer accepts, as it stood. A stopped landing of accepted amendments is
-// queued again afresh. It keeps only its build, session and audit, and that it lands accepted amendments. It keeps a
+// queued again afresh. It keeps only its build, sessions and audit, and that it lands accepted amendments. It keeps a
 // branch a landing left to put back, too.
 func (b *book) accept(name Spec) (record, error) {
 	if err := b.may(acceptCommand, name, nil); err != nil {
@@ -222,7 +236,7 @@ func (b *book) accept(name Spec) (record, error) {
 	was := *r
 	if r.Accepted {
 		*r = record{Name: name, State: queued, Approved: r.Approved, Build: r.Build, Session: r.Session,
-			Audited: r.Audited, Accepted: true, Before: r.Before}
+			Verify: r.Verify, OldTests: r.OldTests, Told: r.Told, Audited: r.Audited, Accepted: true, Before: r.Before}
 	}
 
 	return was, nil

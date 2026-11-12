@@ -21,7 +21,7 @@ exec git show main:.kiln/agents/audit.md
 stdout '^Audit the packages\.$'
 
 -- .kiln/kiln.json --
-{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- .kiln/agents/build.md --
 ---
 tools: Agent, Bash, Edit, Glob, Grep, NotebookEdit, Read, WebFetch, WebSearch, Write

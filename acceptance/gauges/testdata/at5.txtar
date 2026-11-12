@@ -21,7 +21,7 @@ exec kiln status
 stdout '^gauge changed: 2, line ≤ 10, at a''s landing'
 
 -- .kiln/kiln.json --
-{"gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD -- . ':!.kiln' ':!PRODUCT.md' | wc -l", "max": 10}]}
+{"acceptance": "acceptance/{spec}/", "gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD -- . ':!.kiln' ':!PRODUCT.md' | wc -l", "max": 10}]}
 -- .kiln/specs/a.md --
 # Spec 1: a
 

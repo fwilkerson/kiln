@@ -30,7 +30,7 @@ grep '^--effort\nmedium$' .claude-calls/build/1/1/args
 grep '"advisorModel": "fable"' .claude-calls/build/1/1/settings.json
 
 -- .kiln/kiln.json --
-{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- .kiln/agents/build.md --
 Build the spec.
 -- .kiln/agents/audit.md --

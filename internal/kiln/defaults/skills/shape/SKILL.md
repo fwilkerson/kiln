@@ -43,11 +43,13 @@ that decides it. The developer answers in any order. Move each answer into the s
 
 ## 3. Write the acceptance tests
 
-Number them. A build writes test N's code, as the build agent's file, `.kiln/agents/build.md`, says. Each has a
-Given, a When and a Then, and the developer owns their words. A build may change one only by an amendment, in
-`.kiln/specs/<name>.amend.md`, which the developer reads at acceptance.
+Number them. A build writes test N's code where `.kiln/kiln.json`'s acceptance says, as the verify agent's file,
+`.kiln/agents/verify.md`, says. Each has a Given, a When and a Then, and the developer owns their words. A build may
+change one only by an amendment, in `.kiln/specs/<name>.amend.md`, which the developer reads at acceptance.
 
 - A Then names a state a test can read through the program, as its user reaches it.
+- In the split workflow, a verify session writes the tests from the spec alone, and never sees the code. So the
+  Technical Plan names each output form a Then reads, such as a line a command prints.
 - A Given, When, Then names only what the intent names: never a timeout, a length or a message's wording. A test that
   locks a detail the intent never asked for becomes an amendment later.
 - Renumbering an approved test breaks the tie to its code. Add a test at the end instead.

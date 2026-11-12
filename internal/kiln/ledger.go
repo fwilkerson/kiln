@@ -178,11 +178,11 @@ func newBuild() string {
 // record writes e as a line of the build's. A build with no ID writes none: its spec was approved before kiln
 // kept a ledger.
 func (b *build) record(e entry) {
-	if b.rec.Build == "" {
+	e.Build = b.now().Build
+	if e.Build == "" {
 		return
 	}
 
-	e.Build = b.rec.Build
 	if err := b.r.store.write(e); err != nil {
 		b.say("kiln could not write its ledger: %v", err)
 	}
@@ -291,6 +291,11 @@ func (r *Repo) lostEnd(ctx context.Context, start entry, spec Spec, say func(for
 	if start.Role == auditRole && start.Read != "" {
 		if e.Changed, err = r.undo(ctx, r.auditTree(spec), start.Read); err != nil {
 			say("kiln could not read what the audit of %s changed: %v", spec, err)
+		}
+
+		// Once read, the audit's worktree goes, as it does when the audit ends.
+		if err := r.git.Remove(ctx, r.auditTree(spec), ""); err != nil {
+			say("kiln could not remove the audit's worktree of %s: %v", spec, err)
 		}
 	}
 

@@ -27,7 +27,8 @@ func settings(l Launch) ([]byte, error) {
 			"enabled":                  true,
 			"allowUnsandboxedCommands": false,
 			"network":                  map[string]any{"allowedDomains": nonNil(l.Domains)},
-			"filesystem":               map[string]any{"allowWrite": nonNil(l.Writable)},
+			"filesystem": map[string]any{"allowWrite": nonNil(l.Writable), "denyRead": nonNil(l.DenyRead),
+				"allowRead": nonNil(l.AllowRead)},
 		},
 	}
 	// Claude Code has no flag for the advisor, and the user's settings, where it would be set, are never read.

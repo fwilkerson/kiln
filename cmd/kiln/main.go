@@ -217,12 +217,20 @@ func hook(args []string, stdin io.Reader, stdout io.Writer) error {
 	flags := flag.NewFlagSet("hook", flag.ContinueOnError)
 	spec := flags.String("spec", "", "the spec the session builds")
 	place := flags.String("place", "", "the build's worktree")
+	var side kiln.Side
+	flags.StringVar(&side.Role, "role", "", "the session's role in a split build: build or verify")
+	flags.StringVar(&side.Acceptance, "acceptance", "", "the spec's acceptance path, in a split build")
+	flags.Func("harness", "a path both sessions of a split build write; given once for each", func(p string) error {
+		side.Harness = append(side.Harness, p)
+		return nil
+	})
+
 	switch err := flags.Parse(args); {
-	case err != nil, *spec == "", *place == "":
+	case err != nil, *spec == "", *place == "", side.Role != "" && side.Acceptance == "":
 		return errUsage
 	}
 
-	if err := kiln.Hook(stdin, stdout, kiln.Spec(*spec), git.Worktree(*place)); err != nil {
+	if err := kiln.Hook(stdin, stdout, kiln.Spec(*spec), git.Worktree(*place), side); err != nil {
 		fmt.Fprintf(os.Stderr, "kiln hook: %v\n", err)
 		os.Exit(2)
 	}

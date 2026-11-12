@@ -1,0 +1,127 @@
+# 7. A landed build leaves no checkout
+
+# Given: the project chooses the split workflow, and a spec is queued.
+exec kiln queue x
+
+# When: kiln run lands the spec.
+exec kiln run
+stdout '^x: building on kiln/x\.build, in [^\n]*/\.build-x, and verifying on kiln/x\.verify, in [^\n]*/\.verify-x$'
+stdout '^x: landed on main'
+
+# Then: none of the clones and worktrees the build made remains, but the .main worktree every gate shares.
+exec sh -c 'ls -A "$HOME"/Library/Caches/kiln/*/'
+stdout '^\.main$'
+! stdout '^\.build-x$'
+! stdout '^\.verify-x$'
+! stdout '^\.audit-x$'
+! stdout '^x$'
+exec git worktree list --porcelain
+! stdout '/x$'
+! stdout 'audit'
+exec git branch --list 'kiln/*'
+! stdout .
+
+-- .kiln/kiln.json --
+{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 3}
+-- claude.json --
+{
+ "build": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/code/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Built x."
+     }
+    }
+   ]
+  }
+ },
+ "verify": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/tests/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Wrote the tests of x."
+     }
+    }
+   ]
+  }
+ },
+ "audit": {
+  "1": {
+   "1": [
+    {
+     "result": {
+      "result": "read 2 directories, found 0"
+     }
+    }
+   ]
+  }
+ }
+}
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- .kiln/specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-12
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+
+## Technical Plan
+
+`scratch.X()` answers an int.
+
+## Alternatives Considered
+-- _given/code/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/tests/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

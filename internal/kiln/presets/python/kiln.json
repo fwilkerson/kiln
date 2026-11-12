@@ -11,5 +11,10 @@
   ],
   "writable": [
     "uv cache dir"
+  ],
+  "acceptance": "tests/acceptance/test_{spec}.py",
+  "harness": [
+    "tests/conftest.py",
+    "tests/acceptance/conftest.py"
   ]
 }

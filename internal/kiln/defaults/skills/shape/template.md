@@ -22,7 +22,7 @@ deferred. -->
 
 ## Acceptance tests
 
-<!-- A build writes test N's code, as .kiln/agents/build.md says. A Then names a state the test can read through
+<!-- A build writes test N's code, as .kiln/agents/verify.md says. A Then names a state the test can read through
 the program, as its user reaches it. kiln refuses to queue a spec whose sections leave this file's order, or whose
 tests are not numbered from 1, each with a Given, a When and a Then. Name only what the intent names: never a
 timeout, a length or a message's wording. -->
@@ -35,7 +35,8 @@ timeout, a length or a message's wording. -->
 
 ## Technical Plan
 
-<!-- Name the commands, packages and files, and the rules each holds. Name the code to copy, and from where. -->
+<!-- Name the commands, packages and files, and the rules each holds. Name the code to copy, and from where. Name
+each output form a Then reads, such as a line a command prints: a split build's tests are written from it alone. -->
 
 ## Alternatives Considered
 

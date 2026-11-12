@@ -14,7 +14,7 @@ exec git show main:work.txt
 stdout '^work$'
 
 -- .kiln/kiln.json --
-{"gate": ["if [ \"$(git rev-parse HEAD)\" = \"$(git rev-parse main)\" ]; then cp _junit/main.xml \"$KILN_JUNIT\"; else cp _junit/build.xml \"$KILN_JUNIT\"; fi; exit 1"], "rounds": 1}
+{"acceptance": "acceptance/{spec}/", "gate": ["if [ \"$(git rev-parse HEAD)\" = \"$(git rev-parse main)\" ]; then cp _junit/main.xml \"$KILN_JUNIT\"; else cp _junit/build.xml \"$KILN_JUNIT\"; fi; exit 1"], "rounds": 1}
 -- .kiln/specs/t.md --
 # Spec 1: t
 

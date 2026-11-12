@@ -1,0 +1,146 @@
+# 5. The audit reads the stack once its gate passes
+
+# Given: the project chooses the split workflow, and the stack passes its gate.
+# The build session changes the harness beside its code. The verify session writes its tests.
+exec kiln queue x
+
+# When: the audit runs.
+exec kiln run
+stdout '^x: the audit reads \. acceptance/x harness$'
+stdout '^x: landed on main'
+
+# Then: the audit reads the directories of both sessions' files,
+grep 'Audit these directories: `\.`, `acceptance/x`, `harness`\.' .claude-calls/audit/1/1/prompt
+
+# its prompt names each harness file the build session changed,
+grep 'harness/h\.go' .claude-calls/audit/1/1/prompt
+grep 'The build session changed these files of the test harness[^\n]*harness/h\.go' .claude-calls/audit/1/1/prompt
+
+# and its findings go to both sessions.
+grep 'h\.go:3 weak test' .claude-calls/build/1/2/prompt
+grep 'h\.go:3 weak test' .claude-calls/verify/1/2/prompt
+
+-- .kiln/kiln.json --
+{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 3, "harness": ["harness/"]}
+-- claude.json --
+{
+ "build": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/code/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Built x."
+     }
+    }
+   ],
+   "2": [
+    {
+     "result": {
+      "result": "The finding is wrong: the harness checks what it did."
+     }
+    }
+   ]
+  }
+ },
+ "verify": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/tests/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Wrote the tests of x."
+     }
+    }
+   ],
+   "2": [
+    {
+     "result": {
+      "result": "My tests hold."
+     }
+    }
+   ]
+  }
+ },
+ "audit": {
+  "1": {
+   "1": [
+    {
+     "result": {
+      "result": "1. harness/h.go:3 weak test\n\nread 3 directories, found 1"
+     }
+    }
+   ]
+  }
+ }
+}
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- .kiln/specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-12
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+
+## Technical Plan
+
+`scratch.X()` answers an int.
+
+## Alternatives Considered
+-- _given/code/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/code/harness/h.go --
+// Package harness is what the acceptance tests run through.
+package harness
+
+// Ready is true.
+const Ready = true
+-- _given/tests/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

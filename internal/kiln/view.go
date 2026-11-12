@@ -201,5 +201,10 @@ func (w reason) shown() string {
 		whyUnchanged:   "work changed nothing on main, " + round,
 		whyLimit:       "after a usage limit",
 		whyInterrupted: "after kiln stopped",
+		whyStack:       "stack's gate failed, " + round,
+		whyBug:         "a bug the verify session found, " + round,
+		whyCannotHold:  "tests the build can't meet",
+		whyNoResult:    fmt.Sprintf("after no result, try %d", w.Try),
+		whyBugsLine:    "asked for its bugs line",
 	}[w.Why]
 }

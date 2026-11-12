@@ -151,6 +151,17 @@ type build struct {
 	out  io.Writer
 	// landed is the commit the build moved main to, once it has, and onto the commit main stood at before.
 	landed, onto git.Rev
+	// side is what each session may write, once read.
+	side *sides
+	// mu guards rec while a split build's two sessions run at once. set, now, record and say hold it.
+	mu sync.Mutex
+}
+
+// now is the build's record, as its last set left it.
+func (b *build) now() record {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.rec
 }
 
 // outOfRounds is a build that its gate failed past its last round. failing names what failed.
@@ -162,6 +173,15 @@ type outOfRounds struct {
 func (s *outOfRounds) Error() string { return s.why }
 
 func (b *build) run(ctx context.Context) error {
+	s, err := b.sides(ctx)
+	if err != nil {
+		return err
+	}
+
+	if s.split {
+		return b.splitRun(ctx)
+	}
+
 	if err := b.goOn(ctx); err != nil {
 		return err
 	}
@@ -245,8 +265,8 @@ func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 		return b.round(setback{why: whyGate, report: v.report, failing: v.failing})
 	}
 
-	if prompt, why, err := b.findings(ctx); err != nil || prompt != "" {
-		return prompt, why, err
+	if findings, why, err := b.findings(ctx); err != nil || findings != "" {
+		return fmt.Sprintf(audited, findings), why, err
 	}
 
 	head, err := b.r.git.Head(ctx, b.tree)
@@ -261,11 +281,25 @@ func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 	return b.landWork(ctx, head)
 }
 
-// findings runs the audit, unless it has answered. It answers the prompt that sends its findings to the session, or ""
-// when it found none.
+// findings runs the audit, unless it has answered. It runs it again when the work changed a path kiln.json's reaudit
+// names otherwise than the audit last read. That audit counts as a round, and past the last one the build
+// stops. It answers the findings, or "" when the audit found none or did not run.
 func (b *build) findings(ctx context.Context) (string, reason, error) {
-	if b.rec.Audited {
-		return "", reason{}, nil
+	head, err := b.r.git.Head(ctx, b.tree)
+	if err != nil {
+		return "", reason{}, err
+	}
+
+	why := reason{Why: whyFindings}
+	if b.rec.Audited != "" {
+		again, err := b.r.reaudits(ctx, b.rec.Audited, head)
+		if err != nil || !again {
+			return "", reason{}, err
+		}
+
+		if why, err = b.reauditRound(); err != nil {
+			return "", reason{}, err
+		}
 	}
 
 	findings, err := b.audit(ctx)
@@ -273,12 +307,35 @@ func (b *build) findings(ctx context.Context) (string, reason, error) {
 		return "", reason{}, err
 	}
 
-	b.set(func(r *record) { r.Audited = true })
+	b.set(func(r *record) { r.Audited = head })
 	if findings == "" {
 		return "", reason{}, nil
 	}
 
-	return fmt.Sprintf(audited, findings), reason{Why: whyFindings}, nil
+	return findings, why, nil
+}
+
+// reauditRound counts an audit past the first as a round. Past the last round, it stops the build, so no change the
+// audit has not read lands.
+func (b *build) reauditRound() (reason, error) {
+	rounds := b.limit()
+	if b.rec.Rounds >= rounds {
+		return reason{}, &outOfRounds{why: "the work changed a path the audit must read, after its last round"}
+	}
+
+	b.set(func(r *record) { r.Rounds++ })
+	b.say("the work changed a path the audit must read; it reads the work again, round %d of %d", b.rec.Rounds,
+		rounds)
+	return reason{Why: whyFindings, Round: b.rec.Rounds, Rounds: rounds}, nil
+}
+
+// limit is the rounds kiln.json gave the build's last gate, or 0 before any gate ran.
+func (b *build) limit() int {
+	if b.rec.Limit == nil {
+		return 0
+	}
+
+	return *b.rec.Limit
 }
 
 // waitsOnBranch leaves the build on its branch when head holds the spec's amendments, unless the developer accepted
@@ -317,7 +374,7 @@ func (b *build) landWork(ctx context.Context, head git.Rev) (string, reason, err
 		return b.round(back)
 	}
 
-	if err := b.r.git.Remove(ctx, b.tree, b.rec.Name.branch()); err != nil {
+	if err := b.r.dropCheckouts(ctx, b.rec.Name); err != nil {
 		return "", reason{}, err
 	}
 
@@ -361,11 +418,7 @@ type setback struct {
 // round sends a setback's report back to the session, or stops the build past its last round. It answers the prompt,
 // and the round it starts. The rounds it allows are those kiln.json gave the build's last gate.
 func (b *build) round(back setback) (string, reason, error) {
-	rounds := 0
-	if b.rec.Limit != nil {
-		rounds = *b.rec.Limit
-	}
-
+	rounds := b.limit()
 	if b.rec.Rounds >= rounds {
 		return "", reason{}, &outOfRounds{why: "the gate still failed after its last round:\n" + back.report,
 			failing: back.failing}
@@ -421,17 +474,29 @@ func (b *build) launch(ctx context.Context, resume bool, prompt string) (claude.
 // sandboxed adds to l what every session of a build holds to. No agent's file changes the denied commands and
 // forbidden actions. The hosts and writable paths are kiln.json's, at main's tip.
 func (b *build) sandboxed(ctx context.Context, l claude.Launch) (claude.Launch, error) {
-	l.Deny = []string{"Bash(git push)", "Bash(git push *)", "Bash(git update-ref *)", "Bash(git branch -f *)",
-		"Bash(git branch -D *)", "Bash(git checkout main)", "Bash(git switch main)", "Bash(git reset * main)"}
+	s, err := b.sides(ctx)
+	if err != nil {
+		return l, err
+	}
+
+	l.Deny = append([]string{"Bash(git push)", "Bash(git push *)", "Bash(git update-ref *)", "Bash(git branch -f *)",
+		"Bash(git branch -D *)", "Bash(git checkout main)", "Bash(git switch main)", "Bash(git reset * main)"},
+		l.Deny...)
+	kept := fmt.Sprintf("Changing anything under .kiln/ but %s, by a file tool or a shell command.",
+		b.rec.Name.amendPath())
+	// A split build's amendments are the verify session's.
+	if s.split && l.Role == buildRole {
+		kept = fmt.Sprintf("Changing anything under .kiln/, or under %s, by a file tool or a shell command.",
+			s.acceptance)
+	}
+
 	l.Forbidden = []string{
 		"Pushing to any remote, in any form.",
 		"Writing, moving, resetting or deleting any ref but the branch checked out in the working directory, " +
 			"and above all main.",
-		fmt.Sprintf("Changing anything under .kiln/ but %s, by a file tool or a shell command.",
-			b.rec.Name.amendPath()),
+		kept,
 		"Changing .claude/settings.json or .claude/settings.local.json.",
 	}
-	var err error
 	l.Domains, l.Writable, err = b.r.reach(ctx)
 	return l, err
 }
@@ -493,8 +558,12 @@ func (r *Repo) printed(ctx context.Context, command string) ([]string, error) {
 func (b *build) talk(ctx context.Context, l claude.Launch, why reason) (claude.Ended, error) {
 	for {
 		ended, err := b.runOnce(ctx, l, why)
-		if err != nil || ended.Limit == nil {
+		if err != nil {
 			return ended, err
+		}
+
+		if ended.Limit == nil {
+			return ended, b.heard(ctx, l, ended)
 		}
 
 		if err := b.pause(ctx, ended.Limit.Resets); err != nil {
@@ -602,15 +671,33 @@ func (b *build) audit(ctx context.Context) (string, error) {
 	}
 
 	b.say("the audit reads %s", strings.Join(dirs, " "))
-	// The audit's own worktree keeps what it writes out of the build's, even when kiln stops mid-audit.
-	l, err := b.agentLaunch(ctx, auditRole, claude.Launch{
-		Prompt: fmt.Sprintf(auditing, "`"+strings.Join(dirs, "`, `")+"`", b.rec.Name.file(), strings.Join(files, ", ")),
-		Dir:    string(b.r.auditTree(b.rec.Name)),
-	})
+	prompt := fmt.Sprintf(auditing, "`"+strings.Join(dirs, "`, `")+"`", b.rec.Name.file(), strings.Join(files, ", "))
+	harness, err := b.harnessChanged(ctx)
 	if err != nil {
 		return "", err
 	}
 
+	if len(harness) > 0 {
+		prompt += fmt.Sprintf(auditingHarness, strings.Join(harness, ", "))
+	}
+
+	// The audit's own worktree keeps what it writes out of the build's, even when kiln stops mid-audit.
+	l, err := b.agentLaunch(ctx, auditRole, claude.Launch{Prompt: prompt, Dir: string(b.r.auditTree(b.rec.Name))})
+	if err != nil {
+		return "", err
+	}
+
+	findings, err := b.auditTries(ctx, l, head)
+	// recount reads the worktree of an audit kiln stopped, so it stays until then.
+	if ctx.Err() == nil {
+		err = errors.Join(err, b.r.git.Remove(ctx, git.Worktree(l.Dir), ""))
+	}
+
+	return findings, err
+}
+
+// auditTries runs the audit l launches on head until it ends with a result, up to auditTries times.
+func (b *build) auditTries(ctx context.Context, l claude.Launch, head git.Rev) (string, error) {
 	for try := 1; ; try++ {
 		findings, err := b.auditTry(ctx, l, head, try)
 		if !errors.Is(err, errNoResult) {
@@ -875,11 +962,11 @@ func (b *build) unland(ctx context.Context) error {
 	return nil
 }
 
-// foldAmendments commits, on the spec's branch, the spec with its amendments folded in, and the amendment file
-// removed. It answers that commit.
-func (b *build) foldAmendments(ctx context.Context) (git.Rev, error) {
+// foldAmendments commits, at checkout, the spec with its amendments folded in, and the amendment file removed. It
+// answers that commit.
+func (b *build) foldAmendments(ctx context.Context, checkout git.Worktree) (git.Rev, error) {
 	name := b.rec.Name
-	head, err := b.r.git.Head(ctx, b.tree)
+	head, err := b.r.git.Head(ctx, checkout)
 	if err != nil {
 		return "", err
 	}
@@ -899,15 +986,15 @@ func (b *build) foldAmendments(ctx context.Context) (git.Rev, error) {
 		return "", fmt.Errorf("%w: %s cannot fold into %s: %w", errRefused, name.amendPath(), name.file(), err)
 	}
 
-	if err := os.WriteFile(b.path(name.file()), []byte(folded), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(string(checkout), name.file()), []byte(folded), 0o644); err != nil {
 		return "", err
 	}
 
-	if err := os.Remove(b.path(name.amendPath())); err != nil {
+	if err := os.Remove(filepath.Join(string(checkout), name.amendPath())); err != nil {
 		return "", err
 	}
 
-	return b.r.git.Commit(ctx, b.tree, fmt.Sprintf("docs(%s): fold the amendments into the spec\n", name))
+	return b.r.git.Commit(ctx, checkout, fmt.Sprintf("docs(%s): fold the amendments into the spec\n", name))
 }
 
 func (b *build) checkoutMain(ctx context.Context) error {
@@ -981,6 +1068,8 @@ const productHead = "# Product\n\nEach spec the developer accepted, and the comm
 
 // set applies change once, to the stored record, and takes that record as the build's copy.
 func (b *build) set(change func(*record)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	err := b.r.store.update(func(k *book) error {
 		if r := k.find(b.rec.Name); r != nil {
 			change(r)
@@ -991,7 +1080,7 @@ func (b *build) set(change func(*record)) {
 	})
 	if err != nil {
 		change(&b.rec)
-		b.say("kiln could not record it: %v", err)
+		fmt.Fprintf(b.out, "%s: kiln could not record it: %v\n", b.rec.Name, err)
 	}
 }
 
@@ -1003,7 +1092,7 @@ func (b *build) stop(why string, failing []string) {
 }
 
 func (b *build) say(format string, args ...any) {
-	fmt.Fprintf(b.out, "%s: %s\n", b.rec.Name, fmt.Sprintf(format, args...))
+	fmt.Fprintf(b.out, "%s: %s\n", b.now().Name, fmt.Sprintf(format, args...))
 }
 
 func (b *build) message(what string) string {
@@ -1020,8 +1109,14 @@ func (b *build) landing() string {
 // gate runs the gate on the build's worktree, and writes it to the ledger. landing is the gate on the work rebased
 // onto main.
 func (b *build) gate(ctx context.Context, landing bool, allowed ...string) (verdict, error) {
+	return b.gated(ctx, landing, "", guard{spec: b.rec.Name, place: b.tree, allowed: allowed})
+}
+
+// gated runs the gate as Repo.gate does, and writes it to the ledger. landing is the gate on the work rebased onto
+// main.
+func (b *build) gated(ctx context.Context, landing bool, without string, guards ...guard) (verdict, error) {
 	start := time.Now()
-	v, err := b.r.gate(ctx, guard{spec: b.rec.Name, place: b.tree, allowed: allowed})
+	v, err := b.r.gate(ctx, without, guards...)
 	b.record(entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed, Landing: landing})
 	if err == nil {
 		b.set(func(r *record) { r.Limit = &v.rounds })
@@ -1050,7 +1145,9 @@ const (
 	gateFailed = "The gate failed, so it comes back to you. Fix what it found, and end your turn.\n\n%s"
 	audited    = "The audit read the directories you changed, and your acceptance tests' code beside their Given, " +
 		"When, Then. Fix each finding, or say in your reply why it is wrong. Then end your turn.\n\n%s"
-	auditing  = "Audit these directories: %s. The spec is %s. The build changed these files: %s."
+	auditing        = "Audit these directories: %s. The spec is %s. The build changed these files: %s."
+	auditingHarness = " The build session changed these files of the test harness, which the tests run through: " +
+		"%s. Read each for a check it weakened."
 	conflicts = "Main moved, and your work conflicts with it in these files:\n%s\n\nMerge main into your " +
 		"branch with git merge main, resolve each conflict, commit, and end your turn."
 	unchanged   = "Your work changes nothing on main, so it can't land. Build the spec, and end your turn."

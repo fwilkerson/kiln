@@ -85,6 +85,9 @@ type Launch struct {
 	Writable []string
 	// Domains are the hosts a command may reach.
 	Domains []string
+	// DenyRead are absolute paths no command may read, but those under AllowRead, which reopens what it names. The
+	// sandbox holds them for a command. Deny's Read rules hold the Read tool, and Grep and Glob on a best effort.
+	DenyRead, AllowRead []string
 }
 
 // Ended is how a session ended.

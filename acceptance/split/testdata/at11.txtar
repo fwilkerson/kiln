@@ -1,0 +1,151 @@
+# 11. The build session learns of an amendment
+
+# Given: the project chooses the split workflow, and the verify session amends a Given, When, Then.
+exec kiln queue x
+
+# When: the build session next runs.
+# The audit sends a finding back, so it runs again.
+exec kiln run
+stdout '^x: waits on kiln/x, with amendments for UAT'
+exists .claude-calls/build/1/2/prompt
+
+# Then: its prompt holds the amendment's new wording.
+grep '\*\*Then\*\*: it answers 42, or more\.' .claude-calls/build/1/2/prompt
+! grep 'it answers 42, or more' .claude-calls/build/1/1/prompt
+
+-- .kiln/kiln.json --
+{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 3}
+-- claude.json --
+{
+ "build": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/code/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Built x."
+     }
+    }
+   ],
+   "2": [
+    {
+     "result": {
+      "result": "The finding is wrong."
+     }
+    }
+   ]
+  }
+ },
+ "verify": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/tests/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Wrote the tests of x, and amended test 1."
+     }
+    }
+   ],
+   "2": [
+    {
+     "result": {
+      "result": "My tests hold."
+     }
+    }
+   ]
+  }
+ },
+ "audit": {
+  "1": {
+   "1": [
+    {
+     "result": {
+      "result": "1. x.go:4 false comment\n\nread 2 directories, found 1"
+     }
+    }
+   ]
+  }
+ }
+}
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- .kiln/specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-12
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+
+## Technical Plan
+
+`scratch.X()` answers an int.
+
+## Alternatives Considered
+-- _given/code/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/tests/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}
+-- _given/tests/.kiln/specs/x.amend.md --
+## Acceptance test 1: X answers
+
+### Old
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+
+### New
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42, or more.
+
+### Reason
+
+A larger answer serves too.

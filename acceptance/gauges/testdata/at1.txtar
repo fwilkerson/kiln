@@ -16,7 +16,7 @@ stdout '^gauge size: 3, line ≤ 5, at x''s landing [0-9a-f]{12}$'
 exec sh -c 'kiln status | grep -q "landing $(git rev-parse --short=12 main)$"'
 
 -- .kiln/kiln.json --
-{"gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "size", "command": "echo 3", "max": 5}]}
+{"acceptance": "acceptance/{spec}/", "gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "size", "command": "echo 3", "max": 5}]}
 -- .kiln/specs/x.md --
 # Spec 1: x
 

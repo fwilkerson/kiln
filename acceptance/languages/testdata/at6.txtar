@@ -12,7 +12,7 @@ exists .claude-calls/audit/1/1/prompt
 grep '^Audit these directories: `\.`, `app`\. ' .claude-calls/audit/1/1/prompt
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "rounds": 1}
+{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1}
 -- .kiln/specs/t.md --
 # Spec 1: t
 

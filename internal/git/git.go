@@ -1,4 +1,4 @@
-// Package git is kiln's git: worktrees for builds, the commits a build lands as, and the one move of main.
+// Package git is kiln's git: checkouts for builds, the commits a build lands as, and the one move of main.
 //
 //	g, err := git.New(repo, os.Environ())
 //	err = g.Checkout(ctx, tree, "kiln/x", "main")      // a branch made from main, in its own worktree
@@ -494,6 +494,12 @@ func (g *Git) Changed(ctx context.Context, from, to Rev) ([]string, error) {
 	diff := []string{"diff", "--name-only", "-z", "--no-renames", "--no-ext-diff"}
 	out, err := g.in(ctx, g.repo, append(diff, string(from), string(to), "--")...)
 	return paths(out), err
+}
+
+// Diff is the patch from the commit from to the commit to, of paths alone, with no line of context.
+func (g *Git) Diff(ctx context.Context, from, to Rev, paths ...string) (string, error) {
+	diff := []string{"--literal-pathspecs", "diff", "--no-renames", "--no-ext-diff", "--no-color", "--unified=0"}
+	return g.in(ctx, g.repo, append(append(diff, string(from), string(to), "--"), paths...)...)
 }
 
 // Shortstat is how much a diff changed, as git diff --shortstat counts it.

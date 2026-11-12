@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
@@ -23,8 +24,11 @@ import (
 
 func TestGuard(t *testing.T) {
 	const place = "/Users/dev/Library/Caches/kiln/repo/x"
+	builds := Side{Role: buildRole, Acceptance: "acceptance/x/", Harness: []string{"harness/"}}
+	verifies := Side{Role: verifyRole, Acceptance: "acceptance/x/", Harness: []string{"harness/"}}
 	for name, tc := range map[string]struct {
 		tool, cwd, file string
+		side            Side
 		refused         bool
 	}{
 		"a build writes its code":                    {tool: "Write", file: place + "/x.go"},
@@ -42,6 +46,18 @@ func TestGuard(t *testing.T) {
 		"nor a notebook under .kiln":                 {tool: "NotebookEdit", file: place + "/.kiln/n.ipynb", refused: true},
 		"a write that names no file is refused":      {tool: "Write", refused: true},
 		"a path through /private is the same path":   {tool: "Write", file: "/private/tmp/w/.kiln/specs/x.md", refused: true},
+		"a split build session writes its code":      {tool: "Write", file: place + "/x.go", side: builds},
+		"and the harness":                            {tool: "Edit", file: place + "/harness/h.go", side: builds},
+		"and another spec's tests":                   {tool: "Edit", file: place + "/acceptance/y/y_test.go", side: builds},
+		"but not its spec's tests":                   {tool: "Write", file: place + "/acceptance/x/x_test.go", side: builds, refused: true},
+		"nor its spec's tests in other letters":      {tool: "Write", file: place + "/Acceptance/X/x_test.go", side: builds, refused: true},
+		"nor its spec's amendments":                  {tool: "Write", file: place + "/.kiln/specs/x.amend.md", side: builds, refused: true},
+		"a verify session writes its spec's tests":   {tool: "Write", file: place + "/acceptance/x/x_test.go", side: verifies},
+		"and its spec's amendments":                  {tool: "Write", file: place + "/.kiln/specs/x.amend.md", side: verifies},
+		"and the harness too":                        {tool: "Write", file: place + "/harness/h.go", side: verifies},
+		"but not code":                               {tool: "Write", file: place + "/x.go", side: verifies, refused: true},
+		"nor another spec's tests":                   {tool: "Write", file: place + "/acceptance/y/y_test.go", side: verifies, refused: true},
+		"nor a path that only starts like its tests": {tool: "Write", file: place + "/acceptance/xy/t.go", side: verifies, refused: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			input := map[string]string{"file_path": tc.file}
@@ -58,7 +74,7 @@ func TestGuard(t *testing.T) {
 				worktree = "/tmp/w"
 			}
 
-			if err := Hook(bytes.NewReader(in), &out, "x", worktree); err != nil {
+			if err := Hook(bytes.NewReader(in), &out, "x", worktree, tc.side); err != nil {
 				t.Fatal(err)
 			}
 
@@ -249,7 +265,7 @@ func givenBook(given string) book {
 
 	given, landing := strings.CutSuffix(given, " landing")
 	return book{Specs: []*record{{Name: "x", State: state(given), Accepted: landing, Approved: "old", Session: "s",
-		Build: "b", Rounds: 2, Audited: true, Why: "w", FailingAtMain: []string{"TestF"}}}}
+		Build: "b", Rounds: 2, Audited: "read", Why: "w", FailingAtMain: []string{"TestF"}}}}
 }
 
 // commanded is what a command left of the spec x. It holds x's state, as a row's then words it, its error and
@@ -321,7 +337,7 @@ type carried struct {
 
 func carriedOf(r *record) carried {
 	return carried{approved: r.Approved, session: r.Session, why: r.Why, oldBuild: r.Build == "b",
-		noBuild: r.Build == "", audited: r.Audited, rounds: r.Rounds, failingAtMain: r.FailingAtMain != nil}
+		noBuild: r.Build == "", audited: r.Audited != "", rounds: r.Rounds, failingAtMain: r.FailingAtMain != nil}
 }
 
 // thenOf words the state of r as a row's then does.
@@ -459,10 +475,12 @@ func TestAuditDid(t *testing.T) {
 		known   bool
 		want    string
 	}{
-		"no audit run":                    {known: true, want: "the audit had not run"},
-		"an audit run with no answer":     {runs: []run{audit, audit, audit}, known: true, want: "the audit ended with no result"},
-		"an audit that sent findings":     {audited: true, runs: []run{audit, findings}, known: true, want: "the audit sent findings back"},
-		"an audit that found nothing":     {audited: true, runs: []run{audit}, known: true, want: "the audit found nothing"},
+		"no audit run":                {known: true, want: "the audit had not run"},
+		"an audit run with no answer": {runs: []run{audit, audit, audit}, known: true, want: "the audit ended with no result"},
+		"an audit that sent findings": {audited: true, runs: []run{audit, findings}, known: true, want: "the audit sent findings back"},
+		"an audit that found nothing": {audited: true, runs: []run{audit}, known: true, want: "the audit found nothing"},
+		"an audit that read the work again": {audited: true, runs: []run{audit, findings, audit}, known: true,
+			want: "the audit sent findings back, and read the work 2 times"},
 		"an audit with nothing to read":   {audited: true, known: true, want: "the build changed nothing kiln audits, so no audit ran"},
 		"a ledger that could not be read": {audited: true, want: "what the audit did is unknown"},
 	} {
@@ -705,5 +723,69 @@ func TestGaugeTree(t *testing.T) {
 
 	if len(read) != 2 {
 		t.Errorf("the landings read %v, want a reading of 1 for each of 2", read)
+	}
+}
+
+// TestBugsLine holds how kiln reads the verify session's bugs line. A line it can't read never passes as none.
+func TestBugsLine(t *testing.T) {
+	tests := map[int]string{1: "### 1.", 2: "### 2.", 4: "### 4."}
+	for name, tc := range map[string]struct {
+		line    string
+		numbers []int
+		read    bool
+	}{
+		"none":                           {line: "none", read: true},
+		"one test":                       {line: "1", numbers: []int{1}, read: true},
+		"tests by commas":                {line: "2, 4", numbers: []int{2, 4}, read: true},
+		"tests by spaces, once each":     {line: "4 2 4", numbers: []int{4, 2}, read: true},
+		"a test with a period":           {line: "1."},
+		"a test by its code's name":      {line: "AT1"},
+		"a test by a hash":               {line: "#1"},
+		"a number the spec holds none":   {line: "3"},
+		"a known test beside an unknown": {line: "1, 3"},
+		"nothing":                        {line: ""},
+		"none, and a test":               {line: "none, 1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			numbers, read := bugsLine(tc.line, tests)
+			if !slices.Equal(numbers, tc.numbers) || read != tc.read {
+				t.Errorf("bugsLine(%q) = %v, %v; want %v, %v", tc.line, numbers, read, tc.numbers, tc.read)
+			}
+		})
+	}
+}
+
+// TestSumUpPlaces holds that a stopped build's summary names its stack only where its worktree is. A split build
+// stopped before its first stack has none, and its summary still names each session's clone.
+func TestSumUpPlaces(t *testing.T) {
+	dir := t.TempDir()
+	r := &Repo{store: store{dir: dir}}
+	rec := record{Name: "x", State: stopped, Session: "b", Verify: "v", Why: "the gate still failed",
+		Failing: []string{"`go vet ./...`"}}
+	for name, tc := range map[string]struct {
+		made  bool
+		stack bool
+	}{
+		"a stack kiln made":       {made: true, stack: true},
+		"no stack, so none named": {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tree := filepath.Join(dir, name, "x")
+			if tc.made {
+				if err := os.MkdirAll(tree, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			lines := strings.Join(r.sumUp(t.Context(), rec, git.Worktree(tree), ""), "\n")
+			if strings.Contains(lines, "the work is on kiln/x") != tc.stack {
+				t.Errorf("the summary names the stack %v, want %v:\n%s", !tc.stack, tc.stack, lines)
+			}
+
+			if !strings.Contains(lines, "/.build-x' && claude --resume b") &&
+				!strings.Contains(lines, "/.build-x && claude --resume b") {
+				t.Errorf("the summary names no resume of the build session in its clone:\n%s", lines)
+			}
+		})
 	}
 }

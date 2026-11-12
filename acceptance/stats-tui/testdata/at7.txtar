@@ -35,7 +35,7 @@ module example.com/scratch
 
 go 1.27
 -- .kiln/kiln.json --
-{"gate": ["go vet ./...", "go test ./..."], "rounds": 2}
+{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 2}
 -- .kiln/specs/mouse-spec.md --
 # Spec 1: mouse-spec
 

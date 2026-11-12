@@ -14,7 +14,7 @@ func TestPresetsFillMarkers(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			for _, name := range []string{"kiln.json", "agents/build.md", "agents/audit.md"} {
+			for _, name := range []string{"kiln.json", "agents/build.md", "agents/verify.md", "agents/audit.md"} {
 				if len(files[name]) == 0 {
 					t.Errorf("preset %s writes no %s", p, name)
 				}

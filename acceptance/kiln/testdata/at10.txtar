@@ -23,7 +23,7 @@ module example.com/scratch
 
 go 1.27
 -- .kiln/kiln.json --
-{"gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- scratch.go --
 // Package scratch is where kiln's builds land.
 package scratch

@@ -4,7 +4,7 @@
 # works; make it your own. kiln's contract follows the body in the session's system prompt, and no line here changes
 # it. kiln reads tools, model, effort and advisor here, and ignores the other keys.
 name: build
-description: Builds an approved spec, alone, with the code and tests it asks for. kiln runs it on each build. Link it into .claude/agents/ to run it as a subagent too.
+description: Builds an approved spec, alone, with the code it asks for. kiln runs it on each build. Link it into .claude/agents/ to run it as a subagent too.
 model: opus
 effort: medium
 advisor: fable
@@ -17,18 +17,9 @@ decided and why.
 ## What you write
 
 - The code the spec's Goals and Technical Plan ask for, testable, as the repository's practices say.
-- The code of each of the spec's acceptance tests, as "Acceptance tests" below says. It tests what its Then says,
-  through the program as its user reaches it.
-- Below that, a test for a domain rule or for how the code is wired. A rule's test is not repeated at a higher layer.
+- A test for a domain rule or for how the code is wired. A rule's test is not repeated at a higher layer.
 - Don't write a test that only restates the code, pins a name no caller sees, or exists to raise coverage.
 - Change a document in the same commit as the code it describes. A stale document is a bug.
-
-## Acceptance tests
-
-<!-- Tailor this: how this project writes an acceptance test's code. A project may write a Go test, a Playwright
-script, an HTTP request, or a session in a terminal. -->
-
-<!-- kiln:preset build-tests -->
 
 ## How this project checks its work
 

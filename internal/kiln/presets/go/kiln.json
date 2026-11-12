@@ -11,5 +11,9 @@
   ],
   "writable": [
     "go env GOCACHE GOMODCACHE"
+  ],
+  "acceptance": "acceptance/{spec}/",
+  "harness": [
+    "internal/testutil/"
   ]
 }

@@ -20,6 +20,49 @@ type guard struct {
 	// allowed are paths the build may change, though guarded names them. A landing of accepted amendments changes
 	// its spec.
 	allowed []string
+	// side is the part of a split build that one session may write, or the zero Side outside one.
+	side Side
+}
+
+// Side is the part of a split build one session may write. The zero Side is a build then audit's session, which
+// writes anywhere but where every guard refuses.
+type Side struct {
+	// Role is "build" or "verify", or "" outside a split build.
+	Role string
+	// Acceptance is the spec's acceptance path, with its name filled in, such as "acceptance/x/".
+	Acceptance string
+	// Harness holds the paths both sessions may write, such as the code the acceptance tests run through.
+	Harness []string
+}
+
+// refusal says why the session of s may not write folded, a path folded as APFS reads it, or "". The build session
+// writes neither the acceptance tests nor the amendments. The verify session writes only those, and the harness.
+func (s Side) refusal(rel, folded string, spec Spec) string {
+	tests := within(folded, s.Acceptance) || folded == fold(spec.amendPath())
+	switch {
+	case s.Role == buildRole && tests:
+		return fmt.Sprintf("%s is the verify session's: in a split build, it alone writes %s and %s", rel,
+			s.Acceptance, spec.amendPath())
+	case s.Role == verifyRole && !tests && !slices.ContainsFunc(s.Harness, func(h string) bool {
+		return within(folded, h)
+	}):
+		return fmt.Sprintf("%s is the build session's: in a split build, the verify session writes only %s, %s "+
+			"and the harness", rel, s.Acceptance, spec.amendPath())
+	}
+
+	return ""
+}
+
+// within is whether folded is side or under it. A side that ends in a slash is a directory, and holds only what is
+// under it.
+func within(folded, side string) bool {
+	if side == "" {
+		return false
+	}
+
+	dir := strings.HasSuffix(side, "/")
+	side = fold(path.Clean(side))
+	return (!dir && folded == side) || strings.HasPrefix(folded, side+"/")
 }
 
 // guarded says why the build may not change rel, a path within the repository. It says "" if the build may. It reads
@@ -40,7 +83,7 @@ func (g guard) guarded(rel string) string {
 		return rel + " is a Claude Code settings file, which stays the developer's"
 	}
 
-	return ""
+	return g.side.refusal(rel, folded, g.spec)
 }
 
 // hookCall is what Claude Code gives a PreToolUse hook on its standard input.
@@ -54,15 +97,16 @@ type hookCall struct {
 }
 
 // Hook answers the PreToolUse call on in, for a session building spec in the worktree at place. It refuses a write
-// outside place, and one to a path that guard.guarded names. It writes its refusal to out, as Claude Code reads it.
-// It reads no shell command: the gate's own check finds a guarded path a command changed.
-func Hook(in io.Reader, out io.Writer, spec Spec, place git.Worktree) error {
+// outside place, and one to a path that guard.guarded names. In a split build, side is the session's: it refuses a
+// write outside it too. It writes its refusal to out, as Claude Code reads it. It reads no shell command: the gate's
+// own check finds a guarded path a command changed.
+func Hook(in io.Reader, out io.Writer, spec Spec, place git.Worktree, side Side) error {
 	var c hookCall
 	if err := json.NewDecoder(in).Decode(&c); err != nil {
 		return fmt.Errorf("the hook's input: %w", err)
 	}
 
-	why := guard{spec: spec, place: place}.denial(c)
+	why := guard{spec: spec, place: place, side: side}.denial(c)
 	if why == "" {
 		return nil
 	}

@@ -6,6 +6,8 @@ You are building `.kiln/specs/%[1]s.md`, a spec the developer approved, alone. N
 question you ask will be answered. Build only this spec: one in `.kiln/specs/` whose Status is Proposed is a plan the
 developer has not approved.
 
+You write the code of each of the spec's acceptance tests too, in `%[2]s`, as the text above says how.
+
 ### What you never change
 
 The spec's Given, When, Then text is the developer's. Nothing under `.kiln/` is yours to change, but one file:

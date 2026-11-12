@@ -11,7 +11,7 @@ exec kiln queue x
 stderr 'terminal'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "rounds": 1}
+{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1}
 -- .kiln/specs/x.md --
 # Spec 1: x
 

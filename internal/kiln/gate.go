@@ -31,6 +31,32 @@ type config struct {
 	Writable []string `json:"writable,omitempty"`
 	// Gauges are read after each landing, and never block one.
 	Gauges []gauge `json:"gauges,omitempty"`
+	// Workflow is "split", or "" for build then audit. Like Acceptance and Harness, kiln reads it at the commit the
+	// build was queued at.
+	Workflow string `json:"workflow,omitempty"`
+	// Acceptance is where a spec's acceptance tests live, with {spec} for its name, such as "acceptance/{spec}/".
+	Acceptance string `json:"acceptance,omitempty"`
+	// Harness holds paths both sessions of a split build may write, such as the code the acceptance tests run through.
+	Harness []string `json:"harness,omitempty"`
+	// Reaudit holds paths the audit reads again whenever the work's own change to them differs from what it read.
+	Reaudit []string `json:"reaudit,omitempty"`
+}
+
+// splitWorkflow is the workflow whose build session writes the code, and whose verify session writes the tests.
+const splitWorkflow = "split"
+
+// specVar stands for the spec's name in kiln.json's acceptance.
+const specVar = "{spec}"
+
+// acceptancePath is where the acceptance tests of spec live.
+func (c config) acceptancePath(spec Spec) string {
+	return strings.ReplaceAll(c.Acceptance, specVar, string(spec))
+}
+
+// fixedPart is the part of acceptance before {spec}, which is the same for every spec.
+func (c config) fixedPart() string {
+	fixed, _, _ := strings.Cut(c.Acceptance, specVar)
+	return fixed
 }
 
 const configFile = kilnDir + "/kiln.json"
@@ -45,6 +71,11 @@ func parseConfig(raw []byte) (config, error) {
 
 	if len(c.Gate) == 0 || c.Rounds < 0 {
 		return c, fmt.Errorf("%s names no gate command, or fewer than 0 rounds", configFile)
+	}
+
+	if c.Workflow != "" && c.Workflow != splitWorkflow {
+		return c, fmt.Errorf("%s names the workflow %q: name %q, or none for build then audit", configFile, c.Workflow,
+			splitWorkflow)
 	}
 
 	named := map[string]bool{}
@@ -286,9 +317,11 @@ func (c check) namesNothing() bool {
 	return c.Exit != 0 && !c.Broken && len(c.Failed) == 0
 }
 
-// gate runs the gate on the commit checked out at g's worktree, a worktree of a build of g's spec. It runs kiln.json's
-// commands there, and at main's tip. It checks the paths the work changed since it left main, as g says.
-func (r *Repo) gate(ctx context.Context, g guard) (verdict, error) {
+// gate runs the gate on the commit checked out at the first guard's checkout, a build's checkout. It runs
+// kiln.json's commands there, and at main's tip. It checks the paths each guard's work changed since it left
+// main, as that guard says. without is a path kiln removed from the work, or "". Main is gated without it too. Its
+// removal is no write of the work's.
+func (r *Repo) gate(ctx context.Context, without string, guards ...guard) (verdict, error) {
 	main, err := r.git.Tip(ctx, mainBranch)
 	if err != nil {
 		return verdict{}, err
@@ -299,17 +332,22 @@ func (r *Repo) gate(ctx context.Context, g guard) (verdict, error) {
 		return verdict{}, err
 	}
 
-	refused, err := r.refused(ctx, g, main)
+	refused := map[string]string{}
+	for _, g := range guards {
+		found, err := r.refused(ctx, g, main, without)
+		if err != nil {
+			return verdict{}, err
+		}
+
+		maps.Copy(refused, found)
+	}
+
+	tip, err := runChecks(ctx, guards[0].place, c.Gate, r.env)
 	if err != nil {
 		return verdict{}, err
 	}
 
-	tip, err := runChecks(ctx, g.place, c.Gate, r.env)
-	if err != nil {
-		return verdict{}, err
-	}
-
-	atMain, err := r.atMain(ctx, main, c.Gate)
+	atMain, err := r.atMain(ctx, main, c.Gate, without)
 	if err != nil {
 		return verdict{}, err
 	}
@@ -319,8 +357,9 @@ func (r *Repo) gate(ctx context.Context, g guard) (verdict, error) {
 	return v, nil
 }
 
-// refused says, by path, why the build may not change each path its work changed since it left main.
-func (r *Repo) refused(ctx context.Context, g guard, main git.Rev) (map[string]string, error) {
+// refused says, by path, why the build may not change each path its work changed since it left main. A path under
+// without that the work lacks is kiln's removal, not the work's.
+func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without string) (map[string]string, error) {
 	head, err := r.git.Head(ctx, g.place)
 	if err != nil {
 		return nil, err
@@ -338,7 +377,19 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev) (map[string]s
 
 	refused := map[string]string{}
 	for _, p := range changed {
-		if why := g.guarded(p); why != "" {
+		why := g.guarded(p)
+		if why != "" && within(fold(p), without) {
+			_, held, err := r.git.Show(ctx, head, p)
+			if err != nil {
+				return nil, err
+			}
+
+			if !held {
+				why = ""
+			}
+		}
+
+		if why != "" {
 			refused[p] = why
 		}
 	}
@@ -350,9 +401,10 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev) (map[string]s
 // no check an older kiln kept is read.
 const checksVersion = 2
 
-// atMain runs commands at main's tip, in a worktree of its own. It keeps the checks, and runs them again only once main
-// or the commands change. kiln run and kiln accept share the worktree, one at a time.
-func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string) ([]check, error) {
+// atMain runs commands at main's tip, less the path without, in a worktree of its own. It keeps the checks, and runs
+// them again only once main, without or the commands change. kiln run and kiln accept share the worktree, one at a
+// time.
+func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string, without string) ([]check, error) {
 	unlock, err := r.store.lock(mainLock, syscall.LOCK_EX)
 	if err != nil {
 		return nil, err
@@ -360,7 +412,7 @@ func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string) ([]c
 
 	defer unlock()
 
-	key := fmt.Sprint(checksVersion) + "\x00" + string(main) + "\x00" + strings.Join(commands, "\x00")
+	key := strings.Join(append([]string{fmt.Sprint(checksVersion), string(main), without}, commands...), "\x00")
 	b, err := r.store.read()
 	if err != nil {
 		return nil, err
@@ -373,6 +425,13 @@ func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string) ([]c
 	tree := git.Worktree(filepath.Join(r.trees, mainTree))
 	if err := r.git.Detached(ctx, tree, main); err != nil {
 		return nil, err
+	}
+
+	// The next Detached puts back what this removes.
+	if without != "" {
+		if err := os.RemoveAll(filepath.Join(string(tree), without)); err != nil {
+			return nil, err
+		}
 	}
 
 	checks, err := runChecks(ctx, tree, commands, r.env)

@@ -1,6 +1,7 @@
 package kiln
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -171,7 +172,7 @@ func scratchRepo(t *testing.T) (*Repo, string) {
 
 // TestQueueNeedsInit holds that kiln queue refuses while main lacks a file of .kiln/ it needs, and names kiln init.
 func TestQueueNeedsInit(t *testing.T) {
-	for _, missing := range []string{configFile, agentFile(buildRole), agentFile(auditRole)} {
+	for _, missing := range []string{configFile, agentFile(buildRole), agentFile(verifyRole), agentFile(auditRole)} {
 		t.Run(missing, func(t *testing.T) {
 			r, repo := scratchRepo(t)
 			if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
@@ -184,6 +185,47 @@ func TestQueueNeedsInit(t *testing.T) {
 			err := r.Queue(t.Context(), "x", io.Discard)
 			if !errors.Is(err, errRefused) || !strings.Contains(err.Error(), "kiln init") {
 				t.Errorf("kiln queue answered %v; want a refusal that names kiln init", err)
+			}
+		})
+	}
+}
+
+// TestQueueNeedsTestsPlace holds that kiln queue refuses a kiln.json that names no place for the acceptance tests.
+// It refuses a build agent that still says how to write them, as an older default did.
+func TestQueueNeedsTestsPlace(t *testing.T) {
+	for name, tc := range map[string]struct {
+		change, refusal string
+	}{
+		"kiln init's files are taken": {},
+		"kiln.json names no acceptance": {change: `sed -i '' '/"acceptance"/d' .kiln/kiln.json`,
+			refusal: "names no acceptance"},
+		"its acceptance starts with the spec's name": {
+			change:  `sed -i '' 's|"acceptance": .*|"acceptance": "{spec}/",|' .kiln/kiln.json`,
+			refusal: "names no acceptance"},
+		"the build agent keeps the old heading": {change: `printf '\n## Acceptance tests\n' >>.kiln/agents/build.md`,
+			refusal: "move that text to .kiln/agents/verify.md"},
+		"the build agent keeps the old line": {
+			change:  `printf "\n- The code of each of the spec's acceptance tests.\n" >>.kiln/agents/build.md`,
+			refusal: "move that text to .kiln/agents/verify.md"},
+		"the build agent names where the tests live": {
+			change:  `printf '\nWrite them in acceptance/x/.\n' >>.kiln/agents/build.md`,
+			refusal: "move that text to .kiln/agents/verify.md"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, repo := scratchRepo(t)
+			if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
+				t.Fatal(err)
+			}
+
+			shell(t, repo, "mkdir .kiln/specs && cp .kiln/skills/shape/template.md .kiln/specs/x.md && "+
+				"sed -i '' 's/^Status: Proposed/Status: Approved/' .kiln/specs/x.md && "+cmp.Or(tc.change, "true")+
+				" && git add -A && git commit --quiet --no-verify -m start")
+			err := r.Queue(t.Context(), "x", io.Discard)
+			switch {
+			case tc.refusal == "" && err != nil:
+				t.Errorf("kiln queue answered %v; want it queued", err)
+			case tc.refusal != "" && (!errors.Is(err, errRefused) || !strings.Contains(err.Error(), tc.refusal)):
+				t.Errorf("kiln queue answered %v; want a refusal that says %q", err, tc.refusal)
 			}
 		})
 	}

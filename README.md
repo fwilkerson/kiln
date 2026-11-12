@@ -31,8 +31,10 @@ kiln reject <name>       turn the amendments away: drop the build, and its branc
 3. When a build waits on you, `kiln run` prints a terminal notification that names the spec and its state. Ghostty
    shows it with `desktop-notifications` on, and a click on it brings forward the terminal. There, the build sums
    itself up: its time, cost, rounds and audit, what it changed or what failed, and the command to run next. A
-   build stopped past its last round names the command that resumes its session in its worktree, to ask it why.
-   A fix that session makes on `kiln/<name>` is lost to `kiln queue <name>`, which builds anew from main.
+   build stopped past its last round names the command that resumes its session in its worktree, to ask it why. A
+   split build names one for each session, in its own clone. A fix a session makes there is lost to
+   `kiln queue <name>`, which builds anew from main. kiln removes every checkout a build made once it lands, is
+   accepted, is rejected or is queued anew. A build that stopped, or waits on its branch, keeps them.
    Once a build lands, by `kiln run` or `kiln accept`, kiln reads each gauge `kiln.json` names. It prints each
    reading after the landing, beneath `kiln run`'s summary, marked where it crossed its line. Only then does the next
    build start.
@@ -58,15 +60,19 @@ builds main, never the working tree, and refuses while any kiln drives a build s
 
 A project tells kiln how its builds run in `.kiln/`, on main. `kiln init` writes kiln's defaults there, as a preset
 fills them, each where `.kiln/` holds no file of its name. The project owns them from then on. A preset is `go`, the
-default, or `python`, for uv, pytest, ruff and ty. It writes `kiln.json` and the "Tailor this" sections of the build
-and audit agents. Run again, `kiln init` adds to `kiln.json` only `rounds`, the one key every preset shares. It links `/shape` and its reviewers into
-`.claude/`. A build writes nothing in `.kiln/` but its spec's amendment file: the hook and the gate refuse the rest.
+default, or `python`, for uv, pytest, ruff and ty. It writes `kiln.json` and the "Tailor this" sections of the build,
+verify and audit agents. Run again, `kiln init` writes each file `.kiln/` lacks, such as `agents/verify.md`, and adds
+to `kiln.json` only `rounds`, the one key every preset shares. So a project from before the split workflow adds
+`acceptance`, and `harness` if it builds in split, to `kiln.json` by hand. It moves the acceptance-test text out of
+an older `agents/build.md` into `agents/verify.md` by hand too: `kiln queue` refuses until it does. It links `/shape`
+and its reviewers into `.claude/`. A build writes nothing in `.kiln/` but its spec's amendment file: the hook and the gate refuse the rest.
 
 ```text
 .kiln/
   kiln.json                    the gate, its rounds, reachable hosts, commands that print writable paths, gauges
   gauges/                      the scripts a gauge's command runs, out of a build's reach
   agents/build.md              the build agent: frontmatter for its tools, model, effort and advisor, then its prompt
+  agents/verify.md             how the acceptance tests' code is written, and the verify agent of a split build
   agents/audit.md              the audit, which reads the work once the gate passes
   agents/zoom-out.md           the reviewers /shape runs
   agents/comprehension.md
@@ -79,6 +85,20 @@ and audit agents. Run again, `kiln init` adds to `kiln.json` only `rounds`, the 
 - `kiln.json` holds the gate's commands, the rounds a failing gate goes back to the session, the hosts a session's
   commands reach, and commands that print the paths beside its worktree they write. kiln reads it from main's tip,
   so a build cannot weaken its own gate. The pre-commit hook runs the gate's commands on a commit to main.
+- `kiln.json`'s `acceptance` is where a spec's acceptance tests live, with `{spec}` for its name, such as
+  `"acceptance/{spec}/"`. `kiln queue` refuses a `kiln.json` without it. `reaudit` lists paths the audit must read
+  whenever the work changes them, such as a harness or migrations. When the work's own change to one differs from what
+  the audit last read, the audit reads the work again before it lands, as a round. kiln reads `reaudit` from main's
+  tip too.
+- `"workflow": "split"` builds each spec with two sessions at once, each in a clone of main of its own. The build
+  session writes the code, and the verify session writes the acceptance tests from the spec alone, never seeing the
+  code. Each session's settings deny it reads of the other's clone, and the hook keeps each to its side. The build
+  session writes nothing under `acceptance` or in the amendment file. The verify session writes only there, and in
+  `harness`, the paths both may write. kiln gates the build session's work alone, and its failures go to the build
+  session. Then kiln stacks both sides on `kiln/<name>`, and gates the stack. Its failures go to the verify session,
+  which fixes its tests, or names the tests the code fails, which go to the build session. The audit then reads the
+  stack, and its findings go to both. kiln reads `workflow`, `acceptance` and `harness` at the commit the build was
+  queued at.
 - A gauge in `kiln.json` is a number the developer watches over the landings, such as a mutation score or test time.
   Each has a `name`, a `command` that prints the number as its last line, and exactly one of `min` and `max`, its
   line. A reading below `min`, or above `max`, crossed it. kiln runs each command with `sh -c` at the landed commit,
@@ -90,9 +110,10 @@ and audit agents. Run again, `kiln init` adds to `kiln.json` only `rounds`, the 
   excused, nor is a run that left out a test main ran.
 - An agent's file is frontmatter between lines of `---`, then its body. kiln reads `tools:`, `model:`, `effort:` and
   `advisor:`, and ignores any other key. Without them, a session has every tool, and runs Opus at medium effort,
-  with Fable as its advisor. `kiln queue` reads the build and audit agents at the commit it queues, and each session
-  of that build runs with them. Its system prompt is the file's body, then kiln's contract with the agent, compiled
-  into kiln. No file changes the contract, the denied commands and forbidden actions, or the guard on `.kiln/`.
+  with Fable as its advisor. `kiln queue` reads the build, verify and audit agents at the commit it queues, and each
+  session of that build runs with them. Its system prompt is the file's body, then kiln's contract with the agent,
+  compiled into kiln. In build then audit, the build session writes the tests too, so the verify agent's body follows
+  the build agent's. No file changes the contract, the denied commands and forbidden actions, or the guard on `.kiln/`.
 - A file such as an agent or a skill, meant for `.kiln/` or `.claude/`, is the developer's. A build names it in its
   last reply instead of writing it.
 
@@ -110,7 +131,7 @@ and audit agents. Run again, `kiln init` adds to `kiln.json` only `rounds`, the 
   preset's `kiln.json`, and its text for the defaults' "Tailor this" sections. `internal/kiln/contract/`: kiln's
   contract with each agent.
 - `.kiln/`: kiln's own, as `kiln init` wrote it, tailored to kiln. `.claude/skills` and `.claude/agents` link to
-  `/shape` and its reviewers there. kiln's worktrees hold the links as plain files, since Claude Code's sandbox
+  `/shape` and its reviewers there. kiln's worktrees and clones hold the links as plain files, since Claude Code's sandbox
   refuses a shell's write through a link under `.claude/`.
 - `cmd/kiln/_kiln`: the zsh completion, which `tools/install` copies.
 - `tools/install`: reinstalls kiln and its completion from main's tip.

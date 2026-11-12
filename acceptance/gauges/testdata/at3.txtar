@@ -17,7 +17,7 @@ stdout '^gauge changed: 2, line ≤ 10, at x''s landing'
 -- old.txt --
 already on main
 -- .kiln/kiln.json --
-{"gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD | wc -l", "max": 10}]}
+{"acceptance": "acceptance/{spec}/", "gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD | wc -l", "max": 10}]}
 -- .kiln/specs/x.md --
 # Spec 1: x
 

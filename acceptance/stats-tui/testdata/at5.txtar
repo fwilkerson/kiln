@@ -63,7 +63,7 @@ screen '│✓ \$1\.00 +(?:[✓✗] )?[0-9.]+ +✓ 0 +✓ 0 +1 +│$'
 screen '│before \$5\.00 +before [0-9.]+ +before 1 +before 1 +before 1 +│$'
 
 -- .kiln/kiln.json --
-{"gate": ["test -e ready"], "rounds": 1}
+{"acceptance": "acceptance/{spec}/", "gate": ["test -e ready"], "rounds": 1}
 -- .kiln/specs/t.md --
 # Spec 1: t
 

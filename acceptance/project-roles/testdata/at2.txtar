@@ -22,7 +22,7 @@ exec git rev-parse main:.kiln
 cmp stdout .tmp/kiln-before
 
 -- .kiln/kiln.json --
-{"gate": ["go vet ./...", "go test ./..."], "rounds": 0}
+{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 0}
 -- .tmp/.keep --
 -- claude.json --
 {

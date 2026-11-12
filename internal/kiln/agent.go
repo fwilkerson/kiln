@@ -99,8 +99,9 @@ func frontmatter(raw string) (front, body string, err error) {
 }
 
 const (
-	buildRole = "build"
-	auditRole = "audit"
+	buildRole  = "build"
+	auditRole  = "audit"
+	verifyRole = "verify"
 )
 
 // agentFile is the path of a role's agent file.
@@ -128,26 +129,88 @@ func (r *Repo) agent(ctx context.Context, at git.Rev, role, fix string) (agent, 
 var (
 	//go:embed contract/build.md
 	buildContract string
+	//go:embed contract/build-split.md
+	splitContract string
+	//go:embed contract/verify.md
+	verifyContract string
 	//go:embed contract/audit.md
 	auditContract string
 )
 
-// contracts are kiln's contract with each agent, by role, for a spec's name. No agent's file holds it, so no project
-// drops a line of it.
-var contracts = map[string]string{buildRole: buildContract, auditRole: auditContract}
+// contract is kiln's contract with role's agent, in the build's workflow. No agent's file holds it, so no project
+// drops a line of it. It fills in the spec's name, its acceptance path and the harness.
+func (s sides) contract(role string, name Spec) string {
+	text := map[string]string{buildRole: buildContract, verifyRole: verifyContract, auditRole: auditContract}[role]
+	if role == buildRole && s.split {
+		text = splitContract
+	}
+
+	harness := "which kiln.json names none of"
+	if len(s.harness) > 0 {
+		harness = "`" + strings.Join(s.harness, "`, `") + "`"
+	}
+
+	return fmt.Sprintf(text, name, s.acceptance, harness)
+}
 
 // agentLaunch is l, a session of role's agent in the build, as the agent's file at the build's approval says. Its
-// system prompt is the file's body, then kiln's contract. It holds to what every session of a build holds to.
+// system prompt is the file's body, then kiln's contract. Outside a split build, the build session writes the
+// acceptance tests too. Its prompt then holds the verify agent's body after the build agent's. Every session of a
+// build holds to what sandboxed adds.
 func (b *build) agentLaunch(ctx context.Context, role string, l claude.Launch) (claude.Launch, error) {
-	// A build queued by a kiln from before .kiln/ held its agents names a commit without them.
-	fix := fmt.Sprintf("the build was queued before main held it, so run kiln queue %s again", b.rec.Name)
-	a, err := b.r.agent(ctx, b.rec.Approved, role, fix)
+	s, err := b.sides(ctx)
 	if err != nil {
 		return l, err
 	}
 
+	a, err := b.agentAt(ctx, role)
+	if err != nil {
+		return l, err
+	}
+
+	body := a.body
+	if role == buildRole && !s.split {
+		v, err := b.agentAt(ctx, verifyRole)
+		if err != nil {
+			return l, err
+		}
+
+		body += "\n\n" + v.body
+	}
+
 	l.Role = role
-	l.System = strings.TrimSpace(a.body + "\n\n" + fmt.Sprintf(contracts[role], b.rec.Name))
+	l.System = strings.TrimSpace(body + "\n\n" + s.contract(role, b.rec.Name))
 	l.Tools, l.Model, l.Effort, l.Advisor = a.tools, a.model, a.effort, a.advisor
 	return b.sandboxed(ctx, l)
+}
+
+// agentAt reads role's agent as it stood at the build's approval.
+func (b *build) agentAt(ctx context.Context, role string) (agent, error) {
+	// A build queued by a kiln from before .kiln/ held its agents names a commit without them.
+	fix := fmt.Sprintf("the build was queued before main held it, so run kiln queue %s again", b.rec.Name)
+	return b.r.agent(ctx, b.rec.Approved, role, fix)
+}
+
+// sides is what each session of a build may write, as kiln.json at the build's approval says.
+type sides struct {
+	split bool
+	// acceptance is the spec's acceptance path, with its name filled in.
+	acceptance string
+	harness    []string
+}
+
+// sides reads the build's sides from kiln.json at the build's approval, once.
+func (b *build) sides(ctx context.Context) (sides, error) {
+	if b.side != nil {
+		return *b.side, nil
+	}
+
+	c, err := b.r.config(ctx, b.rec.Approved)
+	if err != nil {
+		return sides{}, err
+	}
+
+	s := sides{split: c.Workflow == splitWorkflow, acceptance: c.acceptancePath(b.rec.Name), harness: c.Harness}
+	b.side = &s
+	return s, nil
 }

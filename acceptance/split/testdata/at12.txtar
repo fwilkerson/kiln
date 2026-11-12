@@ -1,0 +1,206 @@
+# 12. A revised spec's build session starts without its old tests
+
+# Given: a split spec landed, its acceptance tests are on main, and the developer revised a Then and queued it again.
+exec kiln queue x
+exec kiln run
+stdout '^x: landed on main'
+exec git show main:acceptance/x/x_test.go
+stdout 'want 42'
+exec sed -i '' 's/it answers 42\./it answers 43./' .kiln/specs/x.md
+exec git commit --quiet -am 'docs(x): revise test 1'
+exec kiln queue x
+
+# When: kiln run builds it.
+# kiln.json gives the build no round, so a gate that failed once would stop it.
+exec kiln run
+
+# Then: the build session's checkout holds no file under the spec's acceptance path,
+exists .claude-calls/build-listed
+! grep '^acceptance/' .claude-calls/build-listed
+grep '^x\.go$' .claude-calls/build-listed
+
+# its gate never runs the old tests,
+stdout '^x: landed on main'
+! stdout 'the gate failed'
+
+# and the spec lands with the verify session's tests.
+exec git show main:acceptance/x/x_test.go
+stdout 'want 43'
+exec git show main:x.go
+stdout 'return 43'
+
+-- .kiln/kiln.json --
+{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 0}
+-- claude.json --
+{
+ "build": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/code/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Built x."
+     }
+    }
+   ]
+  },
+  "2": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "{ git ls-files --cached --others; git log --all --format=%s; } >\"$WORK/.claude-calls/build-listed\""
+      }
+     }
+    },
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/code43/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Built x again."
+     }
+    }
+   ]
+  }
+ },
+ "verify": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/tests/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Wrote the tests of x."
+     }
+    }
+   ]
+  },
+  "2": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp -R \"$WORK/_given/tests43/.\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Wrote the tests of x again."
+     }
+    }
+   ]
+  }
+ },
+ "audit": {
+  "1": {
+   "1": [
+    {
+     "result": {
+      "result": "read 2 directories, found 0"
+     }
+    }
+   ]
+  },
+  "2": {
+   "1": [
+    {
+     "result": {
+      "result": "read 2 directories, found 0"
+     }
+    }
+   ]
+  }
+ }
+}
+-- go.mod --
+module example.com/scratch
+
+go 1.27
+-- .kiln/specs/x.md --
+# Spec 1: x
+
+Status: Approved, 2026-11-12
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+
+## Technical Plan
+
+`scratch.X()` answers an int.
+
+## Alternatives Considered
+-- _given/code/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/code43/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 43.
+func X() int { return 43 }
+-- _given/tests/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}
+-- _given/tests43/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 43 {
+		t.Fatalf("X answers %d, want 43", got)
+	}
+}
