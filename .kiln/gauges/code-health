@@ -1,0 +1,41 @@
+#!/bin/sh
+# Prints the lowest CodeScene Code Health among the files a landing changed since $KILN_BASE, from 1 to 10.
+# CLAUDE.md asks each touched file to reach 10.0, so the lowest file is the one that misses it.
+# A landing that changed no file CodeScene scores prints no number, and kiln reads it as unknown.
+set -eu
+
+: "${KILN_BASE:?kiln gives the commit main stood at before the landing}"
+export CS_DISABLE_VERSION_CHECK=1
+
+# The CLI ships inside the CodeScene MCP server's cache when it isn't installed on its own.
+cs=$(command -v cs || ls -t "$HOME"/Library/Caches/codehealth-mcp/*/cs 2>/dev/null | head -n 1 || true)
+if [ -z "$cs" ]; then
+  echo "code-health: no CodeScene CLI, cs, on PATH or in the MCP server's cache" >&2
+  exit 1
+fi
+
+# The MCP server's wrapper, cs-mcp-auth, keeps the token in this file, so the key lives in one place.
+if [ -z "${CS_ACCESS_TOKEN:-}" ]; then
+  conf="${CODESCENE_CONF:-$HOME/.config/trial/codescene.toml}"
+  CS_ACCESS_TOKEN=$(sed -nE 's/^[[:space:]]*api_key[[:space:]]*=[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/p' "$conf")
+  export CS_ACCESS_TOKEN
+fi
+
+lowest=""
+for f in $(git diff --name-only --diff-filter=d "$KILN_BASE" HEAD); do
+  out=$("$cs" review "$f" --output-format json 2>&1 || true)
+  case $out in
+    Unsupported\ file-type*) continue ;;
+  esac
+  score=$(printf '%s\n' "$out" | sed -nE 's/^\{"score":([0-9.]+).*/\1/p' | head -n 1)
+  if [ -z "$score" ]; then
+    # A missing token or a CLI error must not read as a clean landing.
+    printf 'code-health: no score for %s:\n%s\n' "$f" "$out" >&2
+    exit 1
+  fi
+  echo "$f $score" >&2
+  lowest=$(awk -v a="$lowest" -v b="$score" 'BEGIN { print (a == "" || b < a) ? b : a }')
+done
+
+[ -n "$lowest" ] && echo "$lowest"
+exit 0

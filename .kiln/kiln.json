@@ -14,5 +14,12 @@
   "writable": [
     "go env GOCACHE GOMODCACHE",
     "uv cache dir"
+  ],
+  "gauges": [
+    {
+      "name": "code health",
+      "command": ".kiln/gauges/code-health",
+      "min": 10
+    }
   ]
 }
