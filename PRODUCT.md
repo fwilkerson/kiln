@@ -9,3 +9,4 @@ Each spec the developer accepted, and the command that shows it in the commit th
 - Spec 5: Tell the developer when a spec waits on them: `git show b9499c2d5463:specs/notify.md`
 - Spec 6: Reading a build in kiln tui: `git show 973b15174c97:specs/tui-reading.md`
 - Spec 7: A project's own agents: `git show f6b984cfdf2e:.kiln/specs/project-roles.md`
+- Spec 9: Gauges: `git show c401ea2a5350:.kiln/specs/gauges.md`
