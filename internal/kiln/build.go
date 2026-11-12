@@ -588,19 +588,19 @@ func (r *Repo) undo(ctx context.Context, dir git.Worktree, read git.Rev) ([]stri
 
 var tally = regexp.MustCompile(`found (\d+)\s*$`)
 
-// audit runs the audit agent on the packages the build changed, and its acceptance tests. It answers the findings, or
-// "" for none. An audit that names no finding count is all findings. An audit that ends with no result runs again, in a
-// new session, up to auditTries times.
+// audit runs the audit agent on the directories the build changed, and its acceptance tests. It answers the findings,
+// or "" for none. An audit that names no finding count is all findings. An audit that ends with no result runs again,
+// in a new session, up to auditTries times.
 func (b *build) audit(ctx context.Context) (string, error) {
-	head, packages, err := b.changedPackages(ctx)
-	if err != nil || len(packages) == 0 {
+	head, dirs, files, err := b.changedFiles(ctx)
+	if err != nil || len(dirs) == 0 {
 		return "", err
 	}
 
-	b.say("the audit reads %s", strings.Join(packages, " "))
+	b.say("the audit reads %s", strings.Join(dirs, " "))
 	// The audit's own worktree keeps what it writes out of the build's, even when kiln stops mid-audit.
 	l, err := b.agentLaunch(ctx, auditRole, claude.Launch{
-		Prompt: fmt.Sprintf(auditing, "`"+strings.Join(packages, "`, `")+"`", b.rec.Name.file(), b.rec.Name),
+		Prompt: fmt.Sprintf(auditing, "`"+strings.Join(dirs, "`, `")+"`", b.rec.Name.file(), strings.Join(files, ", ")),
 		Dir:    string(b.r.auditTree(b.rec.Name)),
 	})
 	if err != nil {
@@ -652,58 +652,64 @@ func findingsOf(text string) string {
 	return text
 }
 
-// changedPackages answers the build's commit, and the Go packages its work changed since it left main.
-func (b *build) changedPackages(ctx context.Context) (git.Rev, []string, error) {
+// changedFiles answers the build's commit, and the files its work changed since it left main, outside .kiln/. It
+// answers their directories too, as changedDirs names them.
+func (b *build) changedFiles(ctx context.Context) (head git.Rev, dirs, files []string, err error) {
 	main, err := b.r.git.Tip(ctx, mainBranch)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
-	head, err := b.r.git.Head(ctx, b.tree)
+	head, err = b.r.git.Head(ctx, b.tree)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
 	base, err := b.r.git.MergeBase(ctx, main, head)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
 	changed, err := b.r.git.Changed(ctx, base, head)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
-	packages, err := b.goPackages(ctx, head, changed)
-	return head, packages, err
+	files = slices.DeleteFunc(changed, func(p string) bool { return strings.HasPrefix(p, kilnDir+"/") })
+	dirs, err = b.changedDirs(ctx, head, files)
+	return head, dirs, files, err
 }
 
-// goPackages are the packages at head that hold the Go files of paths, each once, as patterns: . for the top, or
-// ./ and the directory. A directory whose last Go file the work deleted holds no package.
-func (b *build) goPackages(ctx context.Context, head git.Rev, paths []string) ([]string, error) {
-	var packages []string
+// changedDirs are the directories at head that hold paths, sorted, each once: . for the top, or the directory's path.
+// A directory the work emptied gives way to the nearest one above it that head holds. A deletion is audited too.
+// It names no file extension, so it serves a project in any language.
+func (b *build) changedDirs(ctx context.Context, head git.Rev, paths []string) ([]string, error) {
+	var dirs []string
 	for _, p := range paths {
-		dir := path.Dir(p)
-		pattern := "./" + dir
-		if dir == "." {
-			pattern = "."
-		}
-
-		if !strings.HasSuffix(p, ".go") || slices.Contains(packages, pattern) {
-			continue
-		}
-
-		files, err := b.r.git.Files(ctx, head, dir)
+		dir, err := b.heldDir(ctx, head, path.Dir(p))
 		if err != nil {
 			return nil, err
 		}
 
-		if slices.ContainsFunc(files, func(f string) bool { return strings.HasSuffix(f, ".go") }) {
-			packages = append(packages, pattern)
+		if !slices.Contains(dirs, dir) {
+			dirs = append(dirs, dir)
 		}
 	}
 
-	return packages, nil
+	slices.Sort(dirs)
+	return dirs, nil
+}
+
+// heldDir is dir, or the nearest directory above it, that holds a file at head. The top always counts.
+func (b *build) heldDir(ctx context.Context, head git.Rev, dir string) (string, error) {
+	for ; dir != "."; dir = path.Dir(dir) {
+		files, err := b.r.git.Files(ctx, head, dir)
+		if err != nil || len(files) > 0 {
+			return dir, err
+		}
+	}
+
+	return ".", nil
 }
 
 const auditTries = 3
@@ -1034,9 +1040,9 @@ const (
 		"is done, end your turn: kiln commits what you leave, and gates it."
 	gateFailed = "The gate failed, so it comes back to you: round %d of %d. Fix what it found, and end your " +
 		"turn.\n\n%s"
-	audited = "The audit read the packages you changed, and your acceptance tests' code beside their Given, " +
+	audited = "The audit read the directories you changed, and your acceptance tests' code beside their Given, " +
 		"When, Then. Fix each finding, or say in your reply why it is wrong. Then end your turn.\n\n%s"
-	auditing  = "Audit these packages: %s. The spec is %s, and its acceptance tests' code is in acceptance/%s/."
+	auditing  = "Audit these directories: %s. The spec is %s. The build changed these files: %s."
 	conflicts = "Main moved, and your work conflicts with it in these files:\n%s\n\nMerge main into your " +
 		"branch with git merge main, resolve each conflict, commit, and end your turn."
 	unchanged   = "Your work changes nothing on main, so it can't land. Build the spec, and end your turn."

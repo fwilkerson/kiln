@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by pytest 9.2.0 under uv 0.13.7, running tests/test_ok.py and tests/test_bad.py, which imports a missing module. pytest stops at a collection error, so test_ok did not run. -->
+<testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.031" timestamp="2026-11-11T23:24:08.896410-05:00" hostname="localhost"><testcase classname="" name="tests.test_bad" time="0.000"><error message="collection failure">ImportError while importing test module '/project/tests/test_bad.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_bad.py:1: in &lt;module&gt;
+    import missing_module
+E   ModuleNotFoundError: No module named 'missing_module'</error></testcase></testsuite></testsuites>

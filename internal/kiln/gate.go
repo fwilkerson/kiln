@@ -55,7 +55,7 @@ func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {
 	}
 
 	if !found {
-		return config{}, fmt.Errorf("main holds no %s: run kiln init, and commit what it writes", configFile)
+		return config{}, fmt.Errorf("main holds no %s: %s", configFile, initHint)
 	}
 
 	return parseConfig(raw)
@@ -67,35 +67,61 @@ type check struct {
 	Exit    int    `json:"exit"`
 	// Output is the end of what the command printed.
 	Output string `json:"output,omitempty"`
-	// Failed names each Go test the output says failed, with its package.
+	// Failed names each test that failed, as go test's output or the command's JUnit XML names it.
 	Failed []string `json:"failed,omitempty"`
-	// Broken is true when a Go package failed with no test named. A timeout or a failed build does that.
+	// Ran names each test the command's JUnit XML lists. go test's output lists none.
+	Ran []string `json:"ran,omitempty"`
+	// Broken is true when the command failed in a way no test names. A Go package that fails to build does that. So do
+	// JUnit XML that will not parse, and a test module that will not import.
 	Broken bool `json:"broken,omitempty"`
 }
 
 // outputKept is how much of a command's output a check keeps, from its end.
 const outputKept = 16 << 10
 
+// junitVar names the file a gate command may write JUnit XML to, so kiln learns the tests that failed.
+const junitVar = "KILN_JUNIT"
+
 func runChecks(ctx context.Context, dir git.Worktree, commands, env []string) ([]check, error) {
 	var checks []check
 	for _, command := range commands {
-		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-		cmd.Dir, cmd.Env = string(dir), proc.Shell.Env(env)
-		proc.OwnGroup(cmd)
-		out, err := cmd.CombinedOutput()
-		c := check{Command: command}
-		c.Failed, c.Broken = failedTests(string(out))
-		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
-			c.Exit = exit.ExitCode()
-		} else if err != nil {
-			return nil, fmt.Errorf("the gate's %q: %w", command, err)
+		c, err := runCheck(ctx, dir, command, env)
+		if err != nil {
+			return nil, err
 		}
 
-		c.Output = string(out[max(0, len(out)-outputKept):])
 		checks = append(checks, c)
 	}
 
 	return checks, ctx.Err()
+}
+
+// runCheck runs one gate command in dir. Its JUnit XML goes to a new directory, so no earlier run's file is read.
+func runCheck(ctx context.Context, dir git.Worktree, command string, env []string) (check, error) {
+	tmp, err := os.MkdirTemp("", "kiln-junit-")
+	if err != nil {
+		return check{}, err
+	}
+
+	defer os.RemoveAll(tmp)
+	junit := filepath.Join(tmp, "junit.xml")
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	cmd.Dir = string(dir)
+	cmd.Env = append(slices.Clone(proc.Shell.Env(env)), junitVar+"="+junit)
+	proc.OwnGroup(cmd)
+	out, err := cmd.CombinedOutput()
+	c := check{Command: command, Output: string(out[max(0, len(out)-outputKept):])}
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+		c.Exit = exit.ExitCode()
+	} else if err != nil {
+		return check{}, fmt.Errorf("the gate's %q: %w", command, err)
+	}
+
+	goFailed, goBroken := failedTests(string(out))
+	failed, ran, broken := readJUnit(junit)
+	c.Failed = slices.Compact(slices.Sorted(slices.Values(append(goFailed, failed...))))
+	c.Ran, c.Broken = ran, goBroken || broken
+	return c, nil
 }
 
 // failedTests reads go test's output for the top-level tests that failed, each named with its package. broken is true
@@ -144,26 +170,25 @@ func (f *failures) read(line string) {
 // verdict is what a gate found.
 type verdict struct {
 	passed bool
-	// atMain names the Go tests that failed at main.
+	// atMain names the tests that failed at main.
 	atMain []string
 	// report says what failed, for the session and for kiln status.
 	report string
-	// failing names each failure report counts. A Go test is named as check.Failed names it, and only if it passes
-	// at main. A command that failed is named when it names no such test. A refused path is named too.
+	// failing names each failure report counts. A test is named as check.Failed names it, and only if it passes at
+	// main. A command that failed is named when it names no such test. A refused path is named too.
 	failing []string
 	// rounds is how many times kiln.json lets a failing gate go back to the session.
 	rounds int
 }
 
-// judge passes a gate when each check at the tip exited 0, or failed on Go tests failing at main. A package that
-// failed with no test named is a failure nothing at main excuses. refused says, by path, why the build may not change
-// each path it holds.
+// judge passes a gate when each check at the tip exited 0, or failed on tests failing at main. A check that is broken
+// is a failure nothing at main excuses. refused says, by path, why the build may not change each path it holds.
 func judge(tip, main []check, refused map[string]string) verdict {
 	atMain, names := failedAt(main)
 	v := verdict{atMain: names}
 	var failures []string
 	for _, c := range tip {
-		if report, failing := c.judged(atMain); report != "" {
+		if report, failing := c.judged(atMain[c.Command]); report != "" {
 			failures = append(failures, report)
 			v.failing = append(v.failing, failing...)
 		}
@@ -179,35 +204,54 @@ func judge(tip, main []check, refused map[string]string) verdict {
 	return v
 }
 
-// failedAt reads the checks at main for the Go tests that failed there. It answers them by command, and their names,
-// sorted, each once.
-func failedAt(main []check) (byCommand map[string]bool, names []string) {
-	byCommand = map[string]bool{}
+// failedAt reads the checks at main, as go test's output and JUnit XML name their tests. It answers each check by
+// command. It answers the names of the tests that failed too, sorted, each once. A command run twice answers one
+// check, which holds what both failed and ran.
+func failedAt(main []check) (byCommand map[string]check, names []string) {
+	byCommand = map[string]check{}
 	for _, c := range main {
-		for _, t := range c.Failed {
-			byCommand[c.Command+"\x00"+t] = true
-			names = append(names, t)
+		if seen, ok := byCommand[c.Command]; ok {
+			c.Exit = cmpOr(c.Exit, seen.Exit)
+			c.Failed = append(slices.Clone(seen.Failed), c.Failed...)
+			c.Ran = append(slices.Clone(seen.Ran), c.Ran...)
+			c.Broken = c.Broken || seen.Broken
 		}
+
+		byCommand[c.Command] = c
+		names = append(names, c.Failed...)
 	}
 
 	slices.Sort(names)
 	return byCommand, slices.Compact(names)
 }
 
-func not[T any](f func(T) bool) func(T) bool {
-	return func(t T) bool { return !f(t) }
-}
+// unnamed is what a report adds for a command that failed at the tip and at main. It named no test at either.
+const unnamed = "The command named no failed test, so kiln could not compare it with main.\n" +
+	"A test runner names its failed tests by writing JUnit XML to $" + junitVar + "."
 
-// judged says what failed in c, at the tip, given atMain, the tests that failed at main by command. It answers "" when
-// c passed, or failed only on tests failing at main. failing names what failed, as verdict.failing does.
-func (c check) judged(atMain map[string]bool) (report string, failing []string) {
-	failedAtMain := func(t string) bool { return atMain[c.Command+"\x00"+t] }
-	if c.Exit == 0 || c.excused(failedAtMain) {
+// judged says what failed in c, at the tip, given main, the check of c's command at main. It answers "" when c passed,
+// or failed only on tests failing at main. failing names what failed, as verdict.failing does. c is never excused
+// when it is broken, or names no test. Nor is a run cut short: every test main ran must have run in c too.
+func (c check) judged(main check) (report string, failing []string) {
+	if c.Exit == 0 {
+		return "", nil
+	}
+
+	failing, notRun := c.against(main)
+	if !c.Broken && len(c.Failed) > 0 && len(failing) == 0 && len(notRun) == 0 {
 		return "", nil
 	}
 
 	report = fmt.Sprintf("`%s` exited %d:\n%s", c.Command, c.Exit, strings.TrimSpace(c.Output))
-	failing = slices.DeleteFunc(slices.Clone(c.Failed), failedAtMain)
+	if len(notRun) > 0 {
+		report += "\n\nThe run was cut short. These tests ran at main, but not here: " +
+			strings.Join(notRun, ", ") + "."
+	}
+
+	if c.namesNothing() && main.namesNothing() {
+		report += "\n\n" + unnamed
+	}
+
 	if c.Broken || len(failing) == 0 {
 		failing = append(failing, "`"+c.Command+"`")
 	}
@@ -215,15 +259,19 @@ func (c check) judged(atMain map[string]bool) (report string, failing []string) 
 	return report, failing
 }
 
-// excused is whether c failed only on Go tests that failedAtMain. A package that failed with no test named is never
-// excused.
-func (c check) excused(failedAtMain func(test string) bool) bool {
-	switch {
-	case c.Broken, len(c.Failed) == 0:
-		return false
-	}
+// against answers the tests that failed in c but not in main. It answers the tests main ran that c did not, too.
+func (c check) against(main check) (failedHere, notRun []string) {
+	return without(c.Failed, main.Failed), without(main.Ran, c.Ran)
+}
 
-	return !slices.ContainsFunc(c.Failed, not(failedAtMain))
+// without is each name in names that is not in drop.
+func without(names, drop []string) []string {
+	return slices.DeleteFunc(slices.Clone(names), func(n string) bool { return slices.Contains(drop, n) })
+}
+
+// namesNothing is whether c failed, is not broken, and names no failed test.
+func (c check) namesNothing() bool {
+	return c.Exit != 0 && !c.Broken && len(c.Failed) == 0
 }
 
 // gate runs the gate on the commit checked out at g's worktree, a worktree of a build of g's spec. It runs kiln.json's
@@ -286,6 +334,10 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev) (map[string]s
 	return refused, nil
 }
 
+// checksVersion is part of the key main's checks are kept under. Raise it whenever what a check records changes, so
+// no check an older kiln kept is read.
+const checksVersion = 2
+
 // atMain runs commands at main's tip, in a worktree of its own. It keeps the checks, and runs them again only once main
 // or the commands change. kiln run and kiln accept share the worktree, one at a time.
 func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string) ([]check, error) {
@@ -296,7 +348,7 @@ func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string) ([]c
 
 	defer unlock()
 
-	key := string(main) + "\x00" + strings.Join(commands, "\x00")
+	key := fmt.Sprint(checksVersion) + "\x00" + string(main) + "\x00" + strings.Join(commands, "\x00")
 	b, err := r.store.read()
 	if err != nil {
 		return nil, err
@@ -323,7 +375,7 @@ func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string) ([]c
 }
 
 // Precommit refuses a commit to main when one of .kiln/kiln.json's commands fails. It runs them in dir, the working
-// tree, unstaged edits included, and names each Go test that failed. A pre-commit hook in dir calls it, with git's env.
+// tree, unstaged edits included, and names each test that failed. A pre-commit hook in dir calls it, with git's env.
 func Precommit(ctx context.Context, dir string, env []string, out *os.File) error {
 	branch, err := plainGit(ctx, dir, env, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil || branch != mainBranch {

@@ -1,7 +1,7 @@
 // Package kiln builds the specs a developer approved, and lands them on main.
 //
 //	r, err := kiln.Open(ctx, ".", os.Environ())
-//	err = r.Init(ctx, os.Stdout)          // .kiln/, and the pre-commit hook
+//	err = r.Init(ctx, os.Stdout, kiln.InitOptions{})  // .kiln/, as Go's preset, and the pre-commit hook
 //	err = r.Queue(ctx, "x", os.Stdout)    // queues .kiln/specs/x.md, as main holds it
 //	err = r.Run(ctx, os.Stdout)           // builds each queued spec, one at a time
 //	err = r.Status(ctx, os.Stdout)
@@ -31,7 +31,8 @@
 // template, as kiln embeds it. Its ## sections all appear, in the template's order, with any of the spec's
 // own between them. Each ### N. Title under Acceptance tests holds a Given, a When and a Then, numbered from 1.
 //
-// A project tells kiln how its builds run in .kiln/, on main, which kiln init starts from kiln's defaults:
+// A project tells kiln how its builds run in .kiln/, on main. kiln init starts it from a preset, go or python. A
+// preset is kiln.json and the "Tailor this" sections of the build and audit agents:
 //
 //	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths
 //	.kiln/agents/build.md       the build agent
@@ -48,18 +49,21 @@
 //
 // A build runs one build session of Claude Code, on its own branch, kiln/<name>, in a worktree kiln makes. kiln commits
 // what the session leaves, then gates it. A failing gate goes back to the same session, at most kiln.json's rounds
-// times; past that, the build stops. Once the gate passes, the audit agent reads the changed packages, in a session
-// of its own. It runs in a worktree of its own at the build's commit, so nothing it writes reaches the build. An audit
-// that ends with no result runs again in a new session, up to 3 tries. Its findings go back to the build session. A
-// build with no amendment then lands. It is rebased onto main as one commit, and gated again. Then main moves to it,
-// only if main has not moved since. A build that amended its spec waits on its branch instead. A landing that doesn't
-// move main leaves the branch as it stood before the landing began. Work that changes nothing on main never lands. It
-// goes back to the session, as a failed gate does.
+// times; past that, the build stops. Once the gate passes, the audit agent runs in a session of its own. It reads each
+// directory holding a file the build changed outside .kiln/. For a directory it emptied, it reads the nearest above. A
+// build that changes nothing else gets no audit. The audit runs in a worktree of its own at the build's commit, so
+// nothing it writes reaches the build. An audit that ends with no result runs again in a new session, up to 3 tries.
+// Its findings go back to the build session. A build with no amendment then lands. It is rebased onto main as one
+// commit, and gated again. Then main moves to it, only if main has not moved since. A build that amended its spec
+// waits on its branch instead. A landing that doesn't move main leaves the branch as it stood before the landing
+// began. Work that changes nothing on main never lands. It goes back to the session, as a failed gate does.
 //
 // The gate runs kiln.json's commands, read from main's tip, at the build's commit and at main. It passes when every
-// command exits 0, but for Go tests that fail at main too. It fails on any path the work changed under .kiln/ but
-// .kiln/specs/<name>.amend.md, however it was written. A session's hook refuses an Edit or a Write there before it
-// happens.
+// command exits 0, but for tests that fail at main too. A command names its failed tests in go test's output. Or it
+// writes them as JUnit XML, to the path kiln gives it in $KILN_JUNIT. A failure that names no test is never excused.
+// Nor is a run cut short: each test the command ran at main must run at the build's commit too. The gate also
+// fails on any path the work changed under .kiln/ but .kiln/specs/<name>.amend.md. It does so however the path was
+// written. A session's hook refuses an Edit or a Write there before it happens.
 //
 // A usage limit pauses the build until the limit resets, and then resumes the same session. A limit with no reset
 // pauses it for 5 minutes.
@@ -335,7 +339,7 @@ func (r *Repo) ready(ctx context.Context, main git.Rev) error {
 	}
 
 	for _, role := range []string{buildRole, auditRole} {
-		if _, err := r.agent(ctx, main, role, "run kiln init, and commit what it writes"); err != nil {
+		if _, err := r.agent(ctx, main, role, initHint); err != nil {
 			return err
 		}
 	}

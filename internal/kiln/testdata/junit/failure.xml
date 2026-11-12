@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by pytest 9.2.0 under uv 0.13.7, running tests/test_failure.py. -->
+<testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="2" time="0.011" timestamp="2026-11-11T23:24:04.355105-05:00" hostname="localhost"><testcase classname="tests.test_failure" name="test_ok" time="0.000" /><testcase classname="tests.test_failure" name="test_a" time="0.000"><failure message="assert 1 == 2">def test_a():
+&gt;       assert 1 == 2
+E       assert 1 == 2
+
+tests/test_failure.py:5: AssertionError</failure></testcase></testsuite></testsuites>

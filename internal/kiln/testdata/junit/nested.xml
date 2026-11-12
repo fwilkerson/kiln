@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by hand: suites nest to any depth, and the summary counts are wrong on purpose. -->
+<testsuites tests="99" failures="0">
+  <testsuites name="outer">
+    <testsuite name="inner" tests="0">
+      <testcase classname="pkg.test_deep" name="test_ok"/>
+      <testcase classname="pkg.test_deep" name="test_a">
+        <failure message="deep">nested</failure>
+      </testcase>
+    </testsuite>
+  </testsuites>
+  <testcase classname="" name="test_top"/>
+</testsuites>

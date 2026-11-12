@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by hand: a file cut mid-element. -->
+<testsuites name="pytest tests"><testsuite name="pytest" tests="2"><testcase classname="tests.test_x" name="test_ok" /><testcase classname="tests.te

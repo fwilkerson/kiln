@@ -16,7 +16,8 @@ import (
 	"slices"
 )
 
-// defaults are what kiln init writes into .kiln/, written for any project. The project owns them from then on.
+// defaults are what kiln init writes into .kiln/ for every preset. A preset fills each marker in their prompts, and
+// adds kiln.json. The project owns them from then on.
 //
 //go:embed defaults
 var defaults embed.FS
@@ -25,12 +26,27 @@ var defaults embed.FS
 // reviewers. Neither the build agent nor the audit is linked: a developer who wants one as a subagent links it.
 var linked = []string{"skills/shape", "agents/zoom-out.md", "agents/comprehension.md", "agents/critic.md"}
 
-// Init writes kiln's defaults into .kiln/ in the checkout, each where .kiln/ holds no file of its name. To
-// a kiln.json that is there, it adds only the keys the file lacks. It links /shape and its reviewers into .claude/,
-// each where .claude/ holds nothing of its name. It installs the pre-commit hook. The hook refuses a commit to main
-// that fails kiln.json's commands. Init refuses to write over another pre-commit hook.
-func (r *Repo) Init(ctx context.Context, out io.Writer) error {
-	wrote, err := r.writeDefaults(out)
+// initHint is how a refusal says to start .kiln/. It names the preset, since kiln init with none writes Go's.
+const initHint = "run kiln init --preset go or python, as the project is, and commit what it writes"
+
+// InitOptions are what the developer chose for kiln init.
+type InitOptions struct {
+	// Preset names the preset Init writes, go or python. "" means go, even in a project that started from python.
+	Preset string
+}
+
+// Init writes kiln's defaults into .kiln/ in the checkout, as opt's preset fills them. It writes each where .kiln/
+// holds no file of its name. To a kiln.json that is there, it adds only rounds, the key every preset shares, if the
+// file lacks it. It links /shape and its reviewers into .claude/, each where .claude/ holds nothing of its name.
+// It installs the pre-commit hook. The hook refuses a commit to main that fails kiln.json's commands. Init refuses
+// a preset it does not know before it writes anything, and refuses to write over another pre-commit hook.
+func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
+	p, err := presetNamed(opt.Preset)
+	if err != nil {
+		return err
+	}
+
+	wrote, err := r.writeDefaults(p, out)
 	if err != nil {
 		return err
 	}
@@ -48,34 +64,32 @@ func (r *Repo) Init(ctx context.Context, out io.Writer) error {
 	return r.installHook(ctx, out)
 }
 
-// writeDefaults writes each default that .kiln/ lacks, and adds to kiln.json the keys it lacks. It answers whether it
-// wrote anything.
-func (r *Repo) writeDefaults(out io.Writer) (wrote bool, err error) {
-	err = fs.WalkDir(defaults, "defaults", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
+// writeDefaults writes each of p's files that .kiln/ lacks, and adds to kiln.json the shared keys it lacks. It
+// answers whether it wrote anything.
+func (r *Repo) writeDefaults(p preset, out io.Writer) (wrote bool, err error) {
+	files, err := presetFiles(p)
+	if err != nil {
+		return false, err
+	}
 
-		raw, err := defaults.ReadFile(p)
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		rel := path.Join(kilnDir, name)
+		changed, err := r.writeDefault(rel, files[name])
 		if err != nil {
-			return err
+			return wrote, err
 		}
 
-		rel := path.Join(kilnDir, p[len("defaults/"):])
-		changed, err := r.writeDefault(rel, raw)
 		if changed {
 			wrote = true
 			fmt.Fprintf(out, "wrote %s\n", rel)
 		}
+	}
 
-		return err
-	})
-
-	return wrote, err
+	return wrote, nil
 }
 
-// writeDefault writes raw at rel, unless the checkout holds a file there. Into kiln.json, it adds only the keys the
-// file lacks. It answers whether it changed the file.
+// writeDefault writes raw at rel, unless the checkout holds a file there. Into kiln.json, it adds only the shared keys
+// the file lacks. It answers whether it changed the file.
 func (r *Repo) writeDefault(rel string, raw []byte) (bool, error) {
 	target := filepath.Join(r.top, rel)
 	old, err := os.ReadFile(target)
@@ -98,7 +112,12 @@ func (r *Repo) writeDefault(rel string, raw []byte) (bool, error) {
 	return true, os.WriteFile(target, raw, 0o644)
 }
 
-// addKeys adds to the JSON object old each key of from that it lacks. It answers nil when old lacks none.
+// sharedKeys are the keys of kiln.json whose default is the same in every preset. A re-run of kiln init adds only
+// these, so it never adds one language's commands to a project in another.
+var sharedKeys = []string{"rounds"}
+
+// addKeys adds to the JSON object old each of sharedKeys that it lacks, as from holds it. It answers nil when old
+// lacks none.
 func addKeys(old, from []byte) ([]byte, error) {
 	var have, want map[string]json.RawMessage
 	if err := json.Unmarshal(old, &have); err != nil {
@@ -110,7 +129,7 @@ func addKeys(old, from []byte) ([]byte, error) {
 	}
 
 	added := false
-	for _, key := range slices.Sorted(maps.Keys(want)) {
+	for _, key := range sharedKeys {
 		if _, ok := have[key]; !ok {
 			have[key], added = want[key], true
 		}

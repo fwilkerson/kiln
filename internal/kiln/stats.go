@@ -304,7 +304,7 @@ func auditDid(audited bool, runs []run, known bool) string {
 		return "the audit found nothing"
 	}
 
-	return "no Go package changed, so no audit ran"
+	return "the build changed nothing kiln audits, so no audit ran"
 }
 
 // filesChanged counts the files, insertions and deletions from the commit from to the commit to.

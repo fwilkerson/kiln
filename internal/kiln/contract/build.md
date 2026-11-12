@@ -46,5 +46,5 @@ message's wording.
 
 You work in your own worktree, on the spec's branch. Commit as you go, or leave your changes: when you end your turn,
 kiln commits what is left, and runs the gate. The gate runs `.kiln/kiln.json`'s commands at your commit and at main.
-Make every one pass, but for a Go test that fails at main too. A failing gate comes back to you, and so do the
+Make every one pass, but for a test that fails at main too. A failing gate comes back to you, and so do the
 audit's findings. Never push, and never move or reset main: kiln lands your work.

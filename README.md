@@ -11,7 +11,9 @@ starter spec, with Status Proposed, until `/shape` takes it up.
 ## Use
 
 ```text
-kiln init                write kiln's defaults into .kiln/, and install the pre-commit hook
+kiln init [--preset go|python]
+                         write a preset of kiln's defaults into .kiln/, Go's by default, and install the
+                         pre-commit hook
 kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 kiln run                 build each queued spec, one at a time, until none is queued
 kiln status              show where each spec stands
@@ -50,8 +52,10 @@ builds main, never the working tree, and refuses while any kiln drives a build s
 
 ## `.kiln/`
 
-A project tells kiln how its builds run in `.kiln/`, on main. `kiln init` writes kiln's defaults there, each where
-`.kiln/` holds no file of its name, and the project owns them from then on. It links `/shape` and its reviewers into
+A project tells kiln how its builds run in `.kiln/`, on main. `kiln init` writes kiln's defaults there, as a preset
+fills them, each where `.kiln/` holds no file of its name. The project owns them from then on. A preset is `go`, the
+default, or `python`, for uv, pytest, ruff and ty. It writes `kiln.json` and the "Tailor this" sections of the build
+and audit agents. Run again, `kiln init` adds to `kiln.json` only `rounds`, the one key every preset shares. It links `/shape` and its reviewers into
 `.claude/`. A build writes nothing in `.kiln/` but its spec's amendment file: the hook and the gate refuse the rest.
 
 ```text
@@ -70,6 +74,9 @@ A project tells kiln how its builds run in `.kiln/`, on main. `kiln init` writes
 - `kiln.json` holds the gate's commands, the rounds a failing gate goes back to the session, the hosts a session's
   commands reach, and commands that print the paths beside its worktree they write. kiln reads it from main's tip,
   so a build cannot weaken its own gate. The pre-commit hook runs the gate's commands on a commit to main.
+- The gate excuses a test that fails at main too. A command names its failed tests in `go test`'s output, or by
+  writing JUnit XML to the path kiln gives it in `$KILN_JUNIT`. A command that fails and names no test is never
+  excused, nor is a run that left out a test main ran.
 - An agent's file is frontmatter between lines of `---`, then its body. kiln reads `tools:`, `model:`, `effort:` and
   `advisor:`, and ignores any other key. Without them, a session has every tool, and runs Opus at medium effort,
   with Fable as its advisor. `kiln queue` reads the build and audit agents at the commit it queues, and each session
@@ -88,8 +95,9 @@ A project tells kiln how its builds run in `.kiln/`, on main. `kiln init` writes
 - `internal/termtest`: a pseudo-terminal that runs a program and reads its screen, for the acceptance tests of
   `kiln tui`. No sandboxed session can open one, so those tests run only in kiln's gate.
 - `acceptance/<spec>/`: the code of each acceptance test, `TestAT<N>` for test N.
-- `internal/kiln/defaults/`: what `kiln init` writes into `.kiln/`, for any project. `internal/kiln/contract/`:
-  kiln's contract with each agent.
+- `internal/kiln/defaults/`: what `kiln init` writes into `.kiln/`, for any project. `internal/kiln/presets/`: each
+  preset's `kiln.json`, and its text for the defaults' "Tailor this" sections. `internal/kiln/contract/`: kiln's
+  contract with each agent.
 - `.kiln/`: kiln's own, as `kiln init` wrote it, tailored to kiln. `.claude/skills` and `.claude/agents` link to
   `/shape` and its reviewers there. kiln's worktrees hold the links as plain files, since Claude Code's sandbox
   refuses a shell's write through a link under `.claude/`.

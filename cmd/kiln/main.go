@@ -1,6 +1,8 @@
 // Command kiln builds the specs a developer approved, with headless Claude Code sessions, and lands them on main.
 //
-//	kiln init                write kiln's defaults into .kiln/, and install the pre-commit hook
+//	kiln init [--preset go|python]
+//	                         write a preset of kiln's defaults into .kiln/, Go's by default, and install the
+//	                         pre-commit hook
 //	kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 //	kiln run                 build each queued spec, one at a time, until none is queued
 //	kiln status              show where each spec stands
@@ -37,7 +39,9 @@ import (
 )
 
 const usage = `usage:
-  kiln init                write kiln's defaults into .kiln/, and install the pre-commit hook
+  kiln init [--preset go|python]
+                           write a preset of kiln's defaults into .kiln/, Go's by default, and install the
+                           pre-commit hook
   kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
   kiln run                 build each queued spec, one at a time, until none is queued
   kiln status              show where each spec stands
@@ -51,7 +55,7 @@ var commands = []string{"init", "queue", "run", "status", "tui", "accept", "reje
 
 // onRepo holds each of the developer's commands, which act on the repository in the working directory.
 var onRepo = map[string]repoCommand{
-	"init":   noArgs((*kiln.Repo).Init),
+	"init":   initRepo,
 	"run":    noArgs((*kiln.Repo).Run),
 	"status": noArgs((*kiln.Repo).Status),
 	"tui":    tui,
@@ -94,7 +98,11 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 // exit reports err on stderr and returns the status kiln exits with.
 func exit(command string, err error, stderr io.Writer) int {
 	switch {
-	case err == errUsage:
+	case errors.Is(err, errUsage):
+		if err != errUsage {
+			fmt.Fprintf(stderr, "kiln %s: %v\n", command, err)
+		}
+
 		fmt.Fprint(stderr, usage)
 		return 2
 	case err != nil:
@@ -105,7 +113,8 @@ func exit(command string, err error, stderr io.Writer) int {
 	return 0
 }
 
-var errUsage = errors.New("usage")
+// errUsage is a usage error. kiln's own refusal of an argument has the same kind.
+var errUsage = kiln.ErrUsage
 
 // repo opens the repository in the working directory and runs command on it.
 func repo(ctx context.Context, command string, args []string, out *os.File) error {
@@ -131,6 +140,18 @@ func noArgs(do func(*kiln.Repo, context.Context, io.Writer) error) repoCommand {
 
 		return do(r, ctx, out)
 	}
+}
+
+// initRepo is kiln init, which takes the preset's name in --preset, and no other argument.
+func initRepo(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
+	flags := flag.NewFlagSet("init", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	preset := flags.String("preset", "", "the preset to write: go or python")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
+		return errUsage
+	}
+
+	return r.Init(ctx, out, kiln.InitOptions{Preset: *preset})
 }
 
 // oneName is a command that takes one spec's name.

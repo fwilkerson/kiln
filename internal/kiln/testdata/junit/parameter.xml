@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by pytest 9.2.0 under uv 0.13.7, running tests/test_param.py. -->
+<testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="3" time="0.011" timestamp="2026-11-11T23:24:04.625454-05:00" hostname="localhost"><testcase classname="tests.test_param" name="test_ok" time="0.000" /><testcase classname="tests.test_param" name="test_a[1]" time="0.000" /><testcase classname="tests.test_param" name="test_a[2]" time="0.000"><failure message="assert 2 == 1">n = 2
+
+    @pytest.mark.parametrize("n", [1, 2])
+    def test_a(n):
+&gt;       assert n == 1
+E       assert 2 == 1
+
+tests/test_param.py:8: AssertionError</failure></testcase></testsuite></testsuites>

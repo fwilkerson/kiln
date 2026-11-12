@@ -1,0 +1,28 @@
+# 7. kiln init --preset python writes Python's defaults.
+
+# Given: a repository with no .kiln/.
+! exists .kiln
+
+# When: the developer runs kiln init --preset python.
+exec kiln init --preset python
+
+# Then: .kiln/kiln.json holds pytest, ruff and ty gate commands, the PyPI hosts and uv cache dir,
+# Each value is matched as an item of its key's list: an item is a line of its own, and none crosses the list's
+# closing bracket.
+grep '"gate": \[\n(?:\s+"[^\n]*\n)*?\s+"uv run pytest [^\n]*KILN_JUNIT' .kiln/kiln.json
+grep '"gate": \[\n(?:\s+"[^\n]*\n)*?\s+"uv run ruff check",?\n' .kiln/kiln.json
+grep '"gate": \[\n(?:\s+"[^\n]*\n)*?\s+"uv run ty check",?\n' .kiln/kiln.json
+grep '"hosts": \[\n(?:\s+"[^\n]*\n)*?\s+"pypi\.org",?\n' .kiln/kiln.json
+grep '"hosts": \[\n(?:\s+"[^\n]*\n)*?\s+"files\.pythonhosted\.org",?\n' .kiln/kiln.json
+grep '"writable": \[\n(?:\s+"[^\n]*\n)*?\s+"uv cache dir",?\n' .kiln/kiln.json
+! grep 'go ' .kiln/kiln.json
+
+# and .kiln/agents/build.md says where Python acceptance tests live.
+grep '`tests/acceptance/test_<name>\.py`' .kiln/agents/build.md
+grep '`test_at<N>`' .kiln/agents/build.md
+! grep 'kiln:preset' .kiln/agents/build.md
+
+-- README.md --
+# A Python project
+-- claude.json --
+{}

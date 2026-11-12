@@ -15,7 +15,7 @@ grep 'Never push, and never move or reset main: kiln lands your work\.' .claude-
 
 # The audit is told its file's body, then its own contract, whose last line findingsOf reads.
 grep '\AAudit the packages\.\n\n## kiln''s contract\n' .claude-calls/audit/1/1/system
-grep 'End your reply with one line: `read N packages, found M`' .claude-calls/audit/1/1/system
+grep 'End your reply with one line: `read N directories, found M`' .claude-calls/audit/1/1/system
 
 -- .kiln/kiln.json --
 {"gate": ["go vet ./...", "go test ./..."], "rounds": 1}

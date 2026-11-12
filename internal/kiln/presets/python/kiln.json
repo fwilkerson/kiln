@@ -1,0 +1,15 @@
+{
+  "gate": [
+    "uv run ruff check",
+    "uv run ty check",
+    "uv run pytest ${KILN_JUNIT:+--junitxml=\"$KILN_JUNIT\"} || [ $? -eq 5 ]"
+  ],
+  "rounds": 3,
+  "hosts": [
+    "pypi.org",
+    "files.pythonhosted.org"
+  ],
+  "writable": [
+    "uv cache dir"
+  ]
+}

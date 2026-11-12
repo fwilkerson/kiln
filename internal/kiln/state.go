@@ -54,7 +54,7 @@ type record struct {
 	// Failing names what failed a build stopped past its last round. It names tests, commands and refused paths, or
 	// the files in conflict with main.
 	Failing []string `json:"failing,omitempty"`
-	// FailingAtMain names the Go tests that failed at main before the build.
+	// FailingAtMain names the tests that failed at main before the build.
 	FailingAtMain []string `json:"failing_at_main,omitempty"`
 	// Amendments is the text of the amendment file the build left on its branch.
 	Amendments string `json:"amendments,omitempty"`

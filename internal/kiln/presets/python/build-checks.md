@@ -1,0 +1,2 @@
+- Format each Python file with `uv run ruff format`.
+- Run `uv run ruff check`, `uv run ty check` and `uv run pytest` before you end your turn. The gate runs them too.

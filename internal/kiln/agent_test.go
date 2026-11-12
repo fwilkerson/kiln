@@ -112,14 +112,15 @@ func TestSpecBeforeKiln(t *testing.T) {
 	}
 }
 
-// TestInitKeeps holds what kiln init leaves as the project made it. It adds to kiln.json only the keys it lacks. It
-// writes no default over a file of its name, and links nothing over one in .claude/.
+// TestInitKeeps holds what kiln init leaves as the project made it. It keeps kiln.json's gate and rounds, and adds no
+// hosts or writable key, since those differ by preset. It writes no default over a file of its name. It links nothing
+// over one in .claude/.
 func TestInitKeeps(t *testing.T) {
 	r, repo := scratchRepo(t)
 	shell(t, repo, `mkdir -p .kiln/agents .claude/agents && `+
 		`echo '{"gate": ["true"], "rounds": 1}' >.kiln/kiln.json && `+
 		`echo mine >.kiln/agents/build.md && echo mine >.claude/agents/critic.md`)
-	if err := r.Init(t.Context(), io.Discard); err != nil {
+	if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -133,8 +134,8 @@ func TestInitKeeps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if fmt.Sprint(c.Gate, c.Rounds) != "[true] 1" || len(c.Hosts) == 0 || len(c.Writable) == 0 {
-		t.Errorf("kiln.json is %s; want its gate and rounds kept, with hosts and writable added", raw)
+	if fmt.Sprint(c.Gate, c.Rounds) != "[true] 1" || c.Hosts != nil || c.Writable != nil {
+		t.Errorf("kiln.json is %s; want its gate and rounds kept, with no hosts or writable added", raw)
 	}
 
 	for p, want := range map[string]string{".kiln/agents/build.md": "mine\n", ".claude/agents/critic.md": "mine\n"} {
@@ -173,7 +174,7 @@ func TestQueueNeedsInit(t *testing.T) {
 	for _, missing := range []string{configFile, agentFile(buildRole), agentFile(auditRole)} {
 		t.Run(missing, func(t *testing.T) {
 			r, repo := scratchRepo(t)
-			if err := r.Init(t.Context(), io.Discard); err != nil {
+			if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -188,19 +189,31 @@ func TestQueueNeedsInit(t *testing.T) {
 	}
 }
 
-// TestAuditedPackages holds which packages the audit reads. A Go file at the top names the package ".". A directory
-// whose last Go file the work deleted names none.
-func TestAuditedPackages(t *testing.T) {
-	b, repo, _ := landingBuild(t)
-	shell(t, repo, "mkdir gone && echo 'package gone' >gone/g.go && git add -A && git commit --quiet -m gone")
-	if err := b.r.git.Reset(t.Context(), b.tree, git.Rev(shell(t, repo, "git rev-parse HEAD"))); err != nil {
-		t.Fatal(err)
-	}
+// TestAuditedDirs holds which directories the audit reads. A file at the top, in any language, names ".". A directory
+// whose every file the work deleted names the nearest directory above it. A file under .kiln/ names none.
+func TestAuditedDirs(t *testing.T) {
+	for name, tc := range map[string]struct{ work, want string }{
+		"files in several directories and languages": {
+			work: "git rm --quiet deep/gone/g.go && mkdir sub && echo 'package sub' >sub/s.go && " +
+				"echo 'package top' >top.go && echo notes >notes.md && mkdir app && echo 'x = 1' >app/models.py && " +
+				"mkdir -p .kiln/specs && echo amended >.kiln/specs/x.amend.md",
+			want: "[. app deep sub]",
+		},
+		"only a deletion": {work: "git rm --quiet deep/gone/g.go", want: "[deep]"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b, repo, _ := landingBuild(t)
+			shell(t, repo, "mkdir -p deep/gone && echo 'package gone' >deep/gone/g.go && echo d >deep/d.md && "+
+				"git add -A && git commit --quiet -m gone")
+			if err := b.r.git.Reset(t.Context(), b.tree, git.Rev(shell(t, repo, "git rev-parse HEAD"))); err != nil {
+				t.Fatal(err)
+			}
 
-	shell(t, string(b.tree), "git rm --quiet gone/g.go && mkdir sub && echo 'package sub' >sub/s.go && "+
-		"echo 'package top' >top.go && echo notes >notes.md && git add -A && git commit --quiet -m work")
-	_, packages, err := b.changedPackages(t.Context())
-	if got := fmt.Sprint(packages); err != nil || got != "[./sub .]" {
-		t.Errorf("the audit reads %s, %v; want [./sub .]", got, err)
+			shell(t, string(b.tree), tc.work+" && git add -A && git commit --quiet -m work")
+			_, dirs, _, err := b.changedFiles(t.Context())
+			if got := fmt.Sprint(dirs); err != nil || got != tc.want {
+				t.Errorf("the audit reads %s, %v; want %s", got, err, tc.want)
+			}
+		})
 	}
 }

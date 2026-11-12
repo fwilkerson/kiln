@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by pytest 9.2.0 under uv 0.13.7, running tests/test_setup.py. -->
+<testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="2" time="0.010" timestamp="2026-11-11T23:24:04.446548-05:00" hostname="localhost"><testcase classname="tests.test_setup" name="test_ok" time="0.000" /><testcase classname="tests.test_setup" name="test_a" time="0.000"><error message="failed on setup with &quot;RuntimeError: setup broke&quot;">@pytest.fixture
+    def broken():
+&gt;       raise RuntimeError("setup broke")
+E       RuntimeError: setup broke
+
+tests/test_setup.py:5: RuntimeError</error></testcase></testsuite></testsuites>

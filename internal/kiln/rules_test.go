@@ -79,6 +79,9 @@ func TestGate(t *testing.T) {
 		passed    bool
 		atMain    []string
 		failing   []string
+		hinted    bool
+		// mentions is what the report must hold.
+		mentions string
 	}{
 		"every command exits 0": {
 			tip: []check{{Command: "go test ./...", Exit: 0}}, passed: true,
@@ -126,6 +129,17 @@ func TestGate(t *testing.T) {
 			atMain:  []string{"TestFlaky (example.com/s)"},
 			failing: []string{"TestFlaky (example.com/s)"},
 		},
+		"a command that names no test fails at main too": {
+			tip:     []check{{Command: "./check", Exit: 1, Output: "no"}},
+			main:    []check{{Command: "./check", Exit: 1, Output: "no"}},
+			failing: []string{"`./check`"}, hinted: true,
+		},
+		"a test fails at main too, but a test main ran did not run": {
+			tip:     []check{{Command: "pytest", Exit: 1, Failed: []string{"t"}, Ran: []string{"t"}}},
+			main:    []check{{Command: "pytest", Exit: 1, Failed: []string{"t"}, Ran: []string{"t", "u"}}},
+			atMain:  []string{"t"},
+			failing: []string{"`pytest`"}, mentions: "not here: u.",
+		},
 		"a guarded path changed": {
 			tip:     []check{{Command: "go test ./...", Exit: 0}},
 			refused: map[string]string{".kiln/specs/x.md": ".kiln/specs/x.md is under .kiln/"},
@@ -135,8 +149,13 @@ func TestGate(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			readOutputs(tc.tip, tc.main)
 			v := judge(tc.tip, tc.main, tc.refused)
-			got := judgment{v.passed, fmt.Sprintf("%q", v.atMain), fmt.Sprintf("%q", v.failing), v.report != ""}
-			want := judgment{tc.passed, fmt.Sprintf("%q", tc.atMain), fmt.Sprintf("%q", tc.failing), !tc.passed}
+			got := judgment{
+				v.passed, fmt.Sprintf("%q", v.atMain), fmt.Sprintf("%q", v.failing), v.report != "",
+				strings.Contains(v.report, "KILN_JUNIT"), strings.Contains(v.report, tc.mentions),
+			}
+			want := judgment{
+				tc.passed, fmt.Sprintf("%q", tc.atMain), fmt.Sprintf("%q", tc.failing), !tc.passed, tc.hinted, true,
+			}
 			if got != want {
 				t.Errorf("got %+v, report %q; want %+v", got, v.report, want)
 			}
@@ -144,18 +163,21 @@ func TestGate(t *testing.T) {
 	}
 }
 
-// judgment is what TestGate compares of a verdict. reported is whether it has a report.
+// judgment is what TestGate compares of a verdict. reported is whether it has a report. hinted is whether the report
+// points at KILN_JUNIT. mentioned is whether it holds what the row says it mentions.
 type judgment struct {
-	passed          bool
-	atMain, failing string
-	reported        bool
+	passed                      bool
+	atMain, failing             string
+	reported, hinted, mentioned bool
 }
 
-// readOutputs reads each check's output for the Go tests that failed, as runChecks does.
+// readOutputs reads each check's output for the Go tests that failed, as runChecks does. It reads only go test's
+// output, and keeps what a row says its JUnit XML named.
 func readOutputs(checks ...[]check) {
 	for _, cs := range checks {
 		for i := range cs {
-			cs[i].Failed, cs[i].Broken = failedTests(cs[i].Output)
+			failed, broken := failedTests(cs[i].Output)
+			cs[i].Failed, cs[i].Broken = append(cs[i].Failed, failed...), cs[i].Broken || broken
 		}
 	}
 }
@@ -440,7 +462,7 @@ func TestAuditDid(t *testing.T) {
 		"an audit run with no answer":     {runs: []run{audit, audit, audit}, known: true, want: "the audit ended with no result"},
 		"an audit that sent findings":     {audited: true, runs: []run{audit, findings}, known: true, want: "the audit sent findings back"},
 		"an audit that found nothing":     {audited: true, runs: []run{audit}, known: true, want: "the audit found nothing"},
-		"an audit with nothing to read":   {audited: true, known: true, want: "no Go package changed, so no audit ran"},
+		"an audit with nothing to read":   {audited: true, known: true, want: "the build changed nothing kiln audits, so no audit ran"},
 		"a ledger that could not be read": {audited: true, want: "what the audit did is unknown"},
 	} {
 		t.Run(name, func(t *testing.T) {

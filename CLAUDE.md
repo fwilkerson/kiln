@@ -13,6 +13,8 @@ for macOS.
 - `.kiln/`: kiln's own settings, agents and specs, as `kiln init` wrote them, tailored to kiln. `.claude/agents` and
   `.claude/skills` link to `/shape` and its reviewers there. A build changes nothing here but its amendment file.
 - `internal/kiln/defaults/`: what `kiln init` writes, for any project. No line there names kiln's own repository.
+- `internal/kiln/presets/`: each preset's `kiln.json`, and its text for the "Tailor this" sections of the defaults'
+  prompts. `kiln init` writes them with `internal/kiln/defaults/`.
 - `docs/practices.md`: how Go code is written and judged here. Read it before adding a package or an exported name.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
 - `acceptance/<spec>/`: the test code for each acceptance test of a spec, one Go test named `TestAT<N>` for test N.

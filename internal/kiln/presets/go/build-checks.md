@@ -1,0 +1,2 @@
+- Run `go vet ./...` and `go test ./...` before you end your turn. The gate runs them too.
+- Format each Go file with `gofmt`.

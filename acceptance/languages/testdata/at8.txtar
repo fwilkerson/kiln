@@ -1,0 +1,79 @@
+# 8. A run cut short is not excused.
+
+# Given: a project whose gate command reports test_a failed on main, where test_b also ran and passed, and reports
+# test_a failed on the build's commit, where test_b did not run.
+# The build's run stopped at its first failure, as pytest -x does. kiln.json allows no round.
+
+# When: a build reaches the gate.
+exec kiln queue t
+exec kiln run
+
+# Then: the gate fails.
+stdout '^t: stopped'
+stdout '^  failing: `if \['
+! stdout 'landed on main'
+
+-- .kiln/kiln.json --
+{"gate": ["if [ \"$(git rev-parse HEAD)\" = \"$(git rev-parse main)\" ]; then cp _junit/main.xml \"$KILN_JUNIT\"; else cp _junit/build.xml \"$KILN_JUNIT\"; fi; exit 1"], "rounds": 0}
+-- .kiln/specs/t.md --
+# Spec 1: t
+
+Status: Approved, 2026-11-11
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. T is built
+
+- **Given**: nothing.
+- **When**: the gate runs.
+- **Then**: the work is there.
+
+## Technical Plan
+
+## Alternatives Considered
+-- _junit/main.xml --
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by pytest 9.2.0 under uv 0.13.7: test_a fails, test_b passes. -->
+<testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="2" time="0.010" timestamp="2026-11-11T23:35:28.212216-05:00" hostname="localhost"><testcase classname="tests.test_x" name="test_a" time="0.000"><failure message="assert False">def test_a():
+&gt;       assert False
+E       assert False
+
+tests/test_x.py:2: AssertionError</failure></testcase><testcase classname="tests.test_x" name="test_b" time="0.000" /></testsuite></testsuites>
+-- _junit/build.xml --
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by pytest 9.2.0 under uv 0.13.7: under -x, test_a fails and test_b does not run. -->
+<testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="0.009" timestamp="2026-11-11T23:35:28.583325-05:00" hostname="localhost"><testcase classname="tests.test_x" name="test_a" time="0.000"><failure message="assert False">def test_a():
+&gt;       assert False
+E       assert False
+
+tests/test_x.py:2: AssertionError</failure></testcase></testsuite></testsuites>
+-- claude.json --
+{
+ "build": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "echo work >work.txt"
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Built t."
+     }
+    }
+   ]
+  }
+ }
+}

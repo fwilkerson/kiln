@@ -1,0 +1,87 @@
+# 4. A collection error fails the gate even when main has it.
+
+# Given: a project whose gate command reports a collection error, both on the build's commit and on main.
+# The test module imports a module that does not exist. kiln.json allows no round, so the first failing gate stops
+# the build.
+
+# When: a build reaches the gate.
+exec kiln queue t
+exec kiln run
+
+# Then: the gate fails.
+stdout '^t: stopped'
+stdout '^  failing: `if \['
+! stdout 'landed on main'
+
+-- .kiln/kiln.json --
+{"gate": ["if [ \"$(git rev-parse HEAD)\" = \"$(git rev-parse main)\" ]; then cp _junit/main.xml \"$KILN_JUNIT\"; else cp _junit/build.xml \"$KILN_JUNIT\"; fi; exit 1"], "rounds": 0}
+-- .kiln/specs/t.md --
+# Spec 1: t
+
+Status: Approved, 2026-11-11
+
+## Overview
+
+## Goals
+
+## Non-goals
+
+## Open Questions
+
+## Acceptance tests
+
+### 1. T is built
+
+- **Given**: nothing.
+- **When**: the gate runs.
+- **Then**: the work is there.
+
+## Technical Plan
+
+## Alternatives Considered
+-- _junit/main.xml --
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by pytest 9.2.0 under uv 0.13.7: tests/test_x.py imports a missing module. -->
+<testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.030" timestamp="2026-11-11T23:35:28.475475-05:00" hostname="localhost"><testcase classname="" name="tests.test_x" time="0.000"><error message="collection failure">ImportError while importing test module '/project/tests/test_x.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_x.py:1: in &lt;module&gt;
+    import missing_module
+E   ModuleNotFoundError: No module named 'missing_module'</error></testcase></testsuite></testsuites>
+-- _junit/build.xml --
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Written by pytest 9.2.0 under uv 0.13.7: tests/test_x.py imports a missing module. -->
+<testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.030" timestamp="2026-11-11T23:35:28.475475-05:00" hostname="localhost"><testcase classname="" name="tests.test_x" time="0.000"><error message="collection failure">ImportError while importing test module '/project/tests/test_x.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/python/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_x.py:1: in &lt;module&gt;
+    import missing_module
+E   ModuleNotFoundError: No module named 'missing_module'</error></testcase></testsuite></testsuites>
+-- claude.json --
+{
+ "build": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "echo work >work.txt"
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Built t."
+     }
+    }
+   ]
+  }
+ }
+}

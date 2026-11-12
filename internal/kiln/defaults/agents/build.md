@@ -28,13 +28,10 @@ decided and why.
 <!-- Tailor this: how this project writes an acceptance test's code. A project may write a Go test, a Playwright
 script, an HTTP request, or a session in a terminal. -->
 
-Each acceptance test N of the spec has its code in a Go test in `acceptance/<name>/`, where `<name>` is the spec's
-name. The test's name starts `TestAT<N>`. It drives the program through its command line or HTTP, as its user would,
-and checks each clause of its Then.
+<!-- kiln:preset build-tests -->
 
 ## How this project checks its work
 
 <!-- Tailor this: the commands that check this project's work, and what each needs. -->
 
-- Run `go vet ./...` and `go test ./...` before you end your turn. The gate runs them too.
-- Format each Go file with `gofmt`.
+<!-- kiln:preset build-checks -->
