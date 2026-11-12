@@ -74,6 +74,8 @@ Each is a way the split can leak or weaken, which this spec names and leaves ope
   The verify session's clone holds the landed code.
 - **The read denials are untried.** Claude Code's docs describe them, and say Grep and Glob honor a `Read` denial on
   a best effort. No scripted test can show a denial holding, since the scripted claude runs no sandbox.
+- **The build session may change another spec's acceptance tests.** 4 of 8 landed specs did, since their code
+  changed what those tests read. The guard keeps it only out of this spec's path, and the audit reads those changes.
 - **A wrong guess spends a round.** A verify session that guesses an output form the Technical Plan does not name
   spends one of the build's rounds, which `kiln.json` sets at 3.
 
@@ -175,6 +177,13 @@ names the split workflow, but in test 8.
 - **When**: `kiln run` builds the spec, and the build session fixes the finding.
 - **Then**: the audit reads the work again before it lands.
 
+### 14. Each session's prompt holds only its own work
+
+- **Given**: a project whose agents' files kiln init wrote, and a spec queued under each workflow.
+- **When**: `kiln run` builds each.
+- **Then**: under build then audit, the build session's prompt says how to write the acceptance tests. Under split,
+  the verify session's prompt says it, and the build session's prompt does not.
+
 ## Technical Plan
 
 ```text
@@ -205,8 +214,8 @@ main ──┬─▶ kiln/<name>.build    build session, its own checkout
 - kiln reads the three keys from `kiln.json` at the commit the build was queued at, `record.Approved`, as it reads the
   agents (`agentLaunch`, `internal/kiln/agent.go:144`). A change to main's `kiln.json` reaches only a build queued
   after it. The gate's commands are still read at main's tip.
-- `kiln queue` refuses a split spec whose `kiln.json` at that commit names no acceptance path, or no
-  `.kiln/agents/verify.md`.
+- `kiln queue` refuses, in either workflow, a `kiln.json` at that commit that names no `acceptance`, since the
+  contract names where the tests go. It refuses an `acceptance` value whose fixed part, before `{spec}`, is empty.
 - Neither preset names the workflow, but each names its acceptance and harness paths. `kiln init`, run again, adds
   only `rounds` (`sharedKeys`, `internal/kiln/init.go`), so an existing project adds the new keys by hand. The README
   says so.
@@ -250,8 +259,9 @@ main ──┬─▶ kiln/<name>.build    build session, its own checkout
   the removal conflicts with each test file the verify session changed, and deletes each one it left alone: on
   2026-11-12, `git merge-tree --write-tree` showed both in a scratch repository, and the put-back merge held the
   verify side's file, the untouched one, and the build side's code.
-- When main moves under a landing setback, kiln merges main into both sessions' branches before the next stack. A
-  conflict there goes to the session whose side holds the file.
+- When main moves under a landing setback, kiln fetches main into both sessions' clones, and merges it in a commit of
+  its own only when the merge is clean. On a conflict, kiln makes no commit: the session whose side holds the file
+  merges and commits, so the gate's wrong-side check reads what it staged as its own write.
 
 ### Who hears what
 
@@ -315,14 +325,39 @@ main ──┬─▶ kiln/<name>.build    build session, its own checkout
 
 ### Sessions and roles
 
-- `internal/kiln/contract/verify.md` is kiln's contract with the verify agent: it writes the acceptance tests from
-  the spec alone, it alone amends, and it ends its reply with its `bugs:` line. A bug report names the expected state
-  in the spec's words, and what the program did. `internal/kiln/contract/build.md` gains wording for a split build:
-  the verify session writes the acceptance tests, and the build session writes no amendment, but ends its reply with
-  its `cannot hold:` line.
-- `kiln init` writes `.kiln/agents/verify.md` from `internal/kiln/defaults/`, with a "Tailor this" section from each
-  preset, as `build.md`'s does today.
-- `kiln hook` gains `--role`, so `Hook` and the guard in `internal/kiln/guard.go` tell the two sessions apart.
+- Each agent's file holds one responsibility. `build.md` says how the code is written and checked, and no longer
+  mentions acceptance tests. `verify.md` says how this project writes an acceptance test's code: the "What you
+  write" line on acceptance tests and the "Acceptance tests" section move there from `build.md`, and each preset's
+  `build-tests.md` becomes `verify-tests.md`.
+- Where the tests live is written once, in `kiln.json`'s `acceptance`. kiln's contract with whichever session writes
+  the tests names that path, with `{spec}` filled in, as it fills in the spec's name today. `verify.md` and
+  `verify-tests.md` say only how a test is written, never where. Each preset's `kiln.json` names `acceptance`, so a
+  project in either workflow has it.
+- kiln composes each session's system prompt from the workflow. In today's workflow, the build session writes the
+  tests too, so it gets `build.md`'s body, then `verify.md`'s, then today's build contract. Only `verify.md`'s body
+  rides there; its frontmatter applies only to a verify session of its own. In split, the build session gets
+  `build.md`'s body and the split build contract, and the verify session gets `verify.md`'s body and the verify
+  contract. No prompt kiln makes tells a split build session to write the tests, and a project switches workflows by
+  `kiln.json` alone.
+- kiln picks the contract by workflow, never appends to one: `internal/kiln/contract/build.md` stays today's,
+  `internal/kiln/contract/build-split.md` says the verify session writes the tests and amends, and the build session
+  ends its reply with its `cannot hold:` line. `internal/kiln/contract/verify.md` says the verify session writes the
+  tests from the spec alone, it alone amends, and it ends its reply with its `bugs:` line. A bug report names the
+  expected state in the spec's words, and what the program did.
+- Both workflows compose both bodies, so both need `verify.md`. `kiln queue` reads it in either workflow, as it
+  reads `build.md` and `audit.md`, and refuses one that is missing or that it can't use. The refusal says `kiln init
+  --preset <preset>` writes it. `internal/scenariotest`'s seeded agents gain a verify agent.
+- A `build.md` that an earlier `kiln init` wrote still tells the build session to write the tests, and `kiln init`
+  never rewrites a file. So `kiln queue` refuses, in either workflow, a `build.md` that holds a line of the old
+  default's acceptance-test text, such as its "## Acceptance tests" heading or its "What you write" line on
+  acceptance tests, or that names the acceptance path's fixed part, such as `acceptance/`. The refusal says to move
+  that text to `verify.md`. Today only kiln's own file is in that state.
+- `kiln init` writes `.kiln/agents/verify.md` from `internal/kiln/defaults/`, with its "Tailor this" section from each
+  preset.
+- In split, kiln passes `kiln hook` each session's side, as it read it at `record.Approved`: `--acceptance` and
+  `--harness` for the verify session's side, and `--role`, so `Hook` and the guard in `internal/kiln/guard.go` keep
+  each session to its side. In today's workflow kiln passes none, and the hook guards `.kiln/` alone, as today. The
+  hook never reads `kiln.json`, and a role never stands in for the workflow.
   `sandboxed`'s Forbidden line for the amendment file follows the role. The gate fails on a path written on the wrong
   side however it was written, as it does for `.kiln/` today. It reads each side's writes from the commit kiln handed
   that session, which the record keeps: main, or kiln's commit that removes a revised spec's old tests. A commit of
@@ -349,9 +384,13 @@ main ──┬─▶ kiln/<name>.build    build session, its own checkout
 A build writes nothing under `.kiln/` but its amendment. It names these in its last reply, as spec 7's build did
 for `246f158`:
 
-- `.kiln/agents/verify.md`, tailored to kiln, and `.claude/agents/verify.md` if it is linked.
-- `.kiln/kiln.json`'s new keys, if kiln builds itself in split, and `reaudit`, if kiln lists its harness there.
+- `.kiln/agents/verify.md`, tailored to kiln, and `.claude/agents/verify.md` if it is linked. kiln's own
+  `.kiln/agents/build.md` loses its acceptance-test text, which moves there.
+- `.kiln/kiln.json`'s `acceptance`, which every build now needs, `workflow` and `harness`, if kiln builds itself in
+  split, and `reaudit`, if kiln lists its harness there.
 - `.kiln/skills/shape/SKILL.md` and `template.md`: a split spec's Technical Plan names each output form a Then reads.
+- `CLAUDE.md`, if kiln builds itself in split. Every session reads it, and it says each session writes the
+  acceptance tests in `acceptance/<spec>/` and amends a Then that can't hold.
 
 ### What the plan breaks
 
@@ -373,8 +412,13 @@ for `246f158`:
   a case no test of `internal/tui` holds.
 - `internal/kiln/defaults/skills/shape/SKILL.md` and `template.md`, which say a build writes test N's code, and
   `internal/kiln/presets/go/build-tests.md` and `internal/kiln/presets/python/build-tests.md`, which tell the build
-  agent to write the acceptance tests. Under split, the verify agent's file says it, and the build agent's contract
-  says the verify session writes them.
+  agent to write the acceptance tests. They move to `verify.md` and `verify-tests.md`.
+- `internal/kiln/defaults/agents/build.md`, which loses its acceptance-test text, and `agentLaunch`
+  (`internal/kiln/agent.go:144`), which joins one body and one contract.
+- Spec 8's test 7, `acceptance/languages/testdata/at7.txtar`. Its Then, ".kiln/agents/build.md says where Python
+  acceptance tests live", is a retired spec's, and this plan moves that text out of `build.md`. The build changes
+  the test to read `kiln.json`'s `acceptance` and `verify.md`, and names the change in its last reply, so the
+  developer reads it at UAT.
 - The package doc's preset and agent paragraphs (`internal/kiln/kiln.go:34-48`), `README.md`'s `.kiln/` tree and
   its lines on "the build and audit agents", and `internal/scenariotest`'s seeded agents, which hold no verify agent.
 - `docs/later.md`: "A project's own workflow" says kiln keeps two roles, and "Two designers and a judge" holds the
