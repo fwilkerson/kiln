@@ -1,9 +1,9 @@
 # Spec 8: Projects in other languages
 
-Status: Proposed
+Status: Approved, 2026-11-11
 
-<!-- Drafted from a concepts brief, built from the starter that .kiln/specs/languages.md held at ac21958. The brief
-was a drafting note and is not kept. -->
+<!-- Status is Proposed or Approved, with the date it was approved. kiln deletes the spec once the developer accepts
+it, and PRODUCT.md names the commit that last held it. -->
 
 ## Overview
 
@@ -384,7 +384,7 @@ project with no `writable` key, that adds `go env GOCACHE GOMODCACHE`, which fai
 every build. A re-run now adds only keys that are the same for every preset, which today is `rounds` alone. A Go
 project that deleted its `writable` key no longer gets it back from a re-run.
 
-## Risks
+### Risks
 
 - **A build changes its tools' settings.** pytest, ruff and ty read settings from files a build may change, such as
   `pyproject.toml`, `ruff.toml` and `conftest.py`, and the guard covers only `.kiln/`. A run cut short cannot be
@@ -404,77 +404,12 @@ project that deleted its `writable` key no longer gets it back from a re-run.
 - **The audit's cost.** Accepted: a build that changes only documentation, a lockfile or settings now runs an audit
   (Decision 6).
 
-## Alternatives Considered
-
-These come from the brief's alternatives.
-
-### A reader picked per gate command in `kiln.json`
-
-Each gate entry would name its reader, for example `{"run": "uv run pytest", "reads": "junit"}`. The starter spec
-proposed this.
-
-- **Pros**: kiln would know which commands are test runners, so it could refuse a command that names no test only
-  where it expects names. The XML path could be passed as an argument instead of an environment variable.
-- **Cons**: Each gate entry changes from a string to an object. `parseConfig` in `internal/kiln/gate.go` rejects
-  unknown fields, so an older kiln binary refuses the new `kiln.json`, and a project shared between machines breaks
-  until each one upgrades.
-- **Reason for Rejection**: `KILN_JUNIT` gives the same subtraction with no change to `kiln.json`'s format. A
-  command that does not write XML names no test, which kiln never excuses.
-
-### Reading pytest's printed `FAILED path::test` lines
-
-kiln would read pytest's terminal summary, as it reads `go test`'s `--- FAIL:` lines today.
-
-- **Pros**: No variable, no file, and no change to the gate command. The names would be pytest's own test ids.
-- **Cons**: The summary's form depends on pytest's flags (`-q`, `-rA`, `--tb`) and plugins, and kiln keeps only the
-  last 16 KiB of output, where a long summary can be cut.
-- **Reason for Rejection**: kiln could not rely on finding the summary, or on its form.
-
-### No subtraction for Python, on the grounds that main should never fail
-
-The gate would judge a Python command by its exit code alone.
-
-- **Pros**: No reader, no variable, no new rule about crashes. This spec gets smaller.
-- **Cons**: A flaky end-to-end test, or a test broken on main, blocks every worktree waiting to land until someone
-  fixes main by hand. Go and Python projects would behave differently under the same gate.
-- **Reason for Rejection**: the subtraction exists for flaky end-to-end tests while several worktrees land, and Go
-  and Python should behave the same.
-
-### Skipping the audit for Python builds for now
-
-The audit would stay scoped to `.go` files, so a Python build would land after the gate alone.
-
-- **Pros**: No change to the audit's scope, prompts or tally line in this spec.
-- **Cons**: A Python build would land with no review beyond its own tests and linters.
-- **Reason for Rejection**: the audit is required.
-
-### Writing the XML inside the worktree
-
-The gate command would write to a fixed path such as `.kiln-junit.xml` at the worktree's top.
-
-- **Pros**: No temporary directory. The path could be written into the gate command itself, with no environment
-  variable.
-- **Cons**: kiln commits untracked files with `add --all` (`Commit` in `internal/git/git.go`), so the file would land
-  in the build's commit unless every project ignores it. A file left by an earlier round could be read after a
-  command that crashed before writing a new one, and excuse the crash.
-- **Reason for Rejection**: kiln would commit the file, and a stale file could excuse a crash. A fresh directory per
-  command makes a stale file impossible.
-
-## Additional Resources
-
-- The brief this design was drafted from is not kept. Each claim the spec takes from it is quoted where it is used.
-- The starter this design replaced: `git show ac21958:.kiln/specs/languages.md`.
-- Spec 7, project-roles (`git show f6b984cfdf2e:.kiln/specs/project-roles.md`): `.kiln/`, `kiln.json`'s hosts and
-  writable paths, and test 6, which this spec must keep passing.
-- `docs/practices.md`: how kiln's Go code and tests are written.
-
-## Detailed Implementation Plan
+### Commits
 
 This plan follows Decisions 1 to 7. Paths are from the repository's top. kiln's own `.kiln/kiln.json` lets a build
 reach `pypi.org` and `files.pythonhosted.org` and write `uv cache dir`, so the build can run uv and pytest to capture
 item 4's files.
 
-### Commits
 
 Each commit passes `go vet ./...` and `go test ./...`.
 
@@ -484,7 +419,7 @@ Each commit passes `go vet ./...` and `go test ./...`.
 4. The acceptance tests and `CLAUDE.md`: items 22 to 24. Its message says it changes the test code of spec 7's
    test 3 and spec 3's test 5 (Decision 5).
 
-### Target Files to Create/Modify
+### Files
 
 **The gate**
 
@@ -731,7 +666,7 @@ Each commit passes `go vet ./...` and `go test ./...`.
 * `docs/later.md`: line 7 lists `languages` as a starter, which stays true until the developer approves this spec.
   Line 43's "packages" records what was deferred, in the words of its time.
 
-### Verification Plan
+### Verification
 
 * `go vet ./...` and `go test ./...` pass at each commit. `acceptance/stats-tui/` and `acceptance/tui-reading/` need a
   pseudo-terminal, which no sandboxed session can open, so a build session reads their result from kiln's gate
@@ -742,3 +677,59 @@ Each commit passes `go vet ./...` and `go test ./...`.
 * By hand, once: in a `uv init` project with pytest, ruff and ty added as dev dependencies and one passing test, run
   `kiln init --preset python`, commit `.kiln/`, approve a one-test spec, and `kiln run` lands it with an audit that
   names the directory its test lives in.
+
+## Alternatives Considered
+
+These come from the brief's alternatives.
+
+### A reader picked per gate command in `kiln.json`
+
+Each gate entry would name its reader, for example `{"run": "uv run pytest", "reads": "junit"}`. The starter spec
+proposed this.
+
+- **Pros**: kiln would know which commands are test runners, so it could refuse a command that names no test only
+  where it expects names. The XML path could be passed as an argument instead of an environment variable.
+- **Cons**: Each gate entry changes from a string to an object. `parseConfig` in `internal/kiln/gate.go` rejects
+  unknown fields, so an older kiln binary refuses the new `kiln.json`, and a project shared between machines breaks
+  until each one upgrades.
+- **Reason for Rejection**: `KILN_JUNIT` gives the same subtraction with no change to `kiln.json`'s format. A
+  command that does not write XML names no test, which kiln never excuses.
+
+### Reading pytest's printed `FAILED path::test` lines
+
+kiln would read pytest's terminal summary, as it reads `go test`'s `--- FAIL:` lines today.
+
+- **Pros**: No variable, no file, and no change to the gate command. The names would be pytest's own test ids.
+- **Cons**: The summary's form depends on pytest's flags (`-q`, `-rA`, `--tb`) and plugins, and kiln keeps only the
+  last 16 KiB of output, where a long summary can be cut.
+- **Reason for Rejection**: kiln could not rely on finding the summary, or on its form.
+
+### No subtraction for Python, on the grounds that main should never fail
+
+The gate would judge a Python command by its exit code alone.
+
+- **Pros**: No reader, no variable, no new rule about crashes. This spec gets smaller.
+- **Cons**: A flaky end-to-end test, or a test broken on main, blocks every worktree waiting to land until someone
+  fixes main by hand. Go and Python projects would behave differently under the same gate.
+- **Reason for Rejection**: the subtraction exists for flaky end-to-end tests while several worktrees land, and Go
+  and Python should behave the same.
+
+### Skipping the audit for Python builds for now
+
+The audit would stay scoped to `.go` files, so a Python build would land after the gate alone.
+
+- **Pros**: No change to the audit's scope, prompts or tally line in this spec.
+- **Cons**: A Python build would land with no review beyond its own tests and linters.
+- **Reason for Rejection**: the audit is required.
+
+### Writing the XML inside the worktree
+
+The gate command would write to a fixed path such as `.kiln-junit.xml` at the worktree's top.
+
+- **Pros**: No temporary directory. The path could be written into the gate command itself, with no environment
+  variable.
+- **Cons**: kiln commits untracked files with `add --all` (`Commit` in `internal/git/git.go`), so the file would land
+  in the build's commit unless every project ignores it. A file left by an earlier round could be read after a
+  command that crashed before writing a new one, and excuse the crash.
+- **Reason for Rejection**: kiln would commit the file, and a stale file could excuse a crash. A fresh directory per
+  command makes a stale file impossible.
