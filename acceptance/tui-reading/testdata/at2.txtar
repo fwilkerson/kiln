@@ -11,15 +11,17 @@ exec kiln run
 stdout '^x: landed on main'
 
 # When: the developer opens the spec.
+# Selecting it on home opens its builds in the builds panel.
 term 120 30 kiln tui
 screen '◆ x'
-keys enter
-screen '^x · ◆ UAT · approved 2 times'
+keys j
+screen 'builds of x · approved 2 times'
 
 # Then: the second build is listed above the first,
-screen '^2 +.* ✓ landed .*\$0\.21 .*\n1 +.* ✓ landed .*\$0\.11 '
+screen ' #2 +✓ landed .*\$0\.21 .*\n.* #1 +✓ landed .*\$0\.11 '
 
-# and is the one selected.
+# and is the one Enter opens.
+# Amended 2026-11-12, from "and is the one selected": the spec's own screen is gone, and home's keys stay on the spec.
 keys enter
 screen '^x · build 2 · '
 screen '^1 +build +first run +\S+ +1 +\$0\.20 '

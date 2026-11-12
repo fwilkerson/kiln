@@ -1,10 +1,10 @@
 // Package tui draws kiln's builds in one full-screen view, live and past. It reads, and changes nothing.
 //
-//	home ──enter──▶ spec ──enter──▶ build ──enter──▶ run ──s──▶ the spec, as the build's approval held it
-//	  │  side panel: specs, newest first, / filters      ▲
-//	  └──────────── the "now" line, enter ───────────────┘   esc goes back one screen at every step
+//	home ──enter──▶ build ──enter──▶ run ──s──▶ the spec, as the build's approval held it
+//	  │  side panel: specs, newest first, / filters; the one selected narrows home's builds to its own
+//	  └──── the "now" line, enter ────▲   esc goes back one screen at every step
 //
-//	err := tui.Show(ctx, source, "", tui.Terminal{In: os.Stdin, Out: os.Stdout})  // "" opens home, a name its spec
+//	err := tui.Show(ctx, source, "", tui.Terminal{In: os.Stdin, Out: os.Stdout})  // a name selects its spec
 //
 // It reads its [Source] again once a second, so a running run grows as its session writes. A run lists its calls
 // newest first, below its answer. Keys and the mouse both work, and ? lists every key a screen takes. A click opens
@@ -127,8 +127,8 @@ type Terminal struct {
 	In, Out *os.File
 }
 
-// Show draws the view on the terminal until the developer quits. It opens on the spec name, or on home when name is
-// "". It refuses a terminal whose Out is not one, and draws nothing then.
+// Show draws the view on the terminal until the developer quits. It opens on home, with the spec name selected
+// unless name is "". It refuses a terminal whose Out is not one, and draws nothing then.
 func Show(ctx context.Context, src Source, name string, t Terminal) error {
 	if !term.IsTerminal(t.Out.Fd()) {
 		return errNoTerminal

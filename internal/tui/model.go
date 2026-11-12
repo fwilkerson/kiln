@@ -27,12 +27,13 @@ type model struct {
 	w, h int
 	// stack holds the screens the developer opened, home first. Esc takes the top one off.
 	stack []*screen
-	// open names the spec to open once the source is first read.
+	// open names the spec to select on home once the source is first read.
 	open string
 	// keysShown lists the top screen's keys over it. Until it is closed, no other key or click reaches the screen.
 	keysShown bool
 
-	// The home screen's.
+	// The home screen's. The specs' first row stands for all of them, so sel[specsPane] is 0 there. On a spec, it is
+	// the spec's index in filtered, plus 1.
 	focus  pane
 	filter string
 	typing bool
@@ -53,7 +54,6 @@ type kind int
 
 const (
 	homeScreen kind = iota
-	specScreen
 	buildScreen
 	runScreen
 	textScreen
@@ -63,7 +63,7 @@ const (
 type screen struct {
 	kind kind
 	runRef
-	// sel is the selected build, on a spec's screen, or run, on a build's.
+	// sel is the selected run, on a build's screen.
 	sel int
 	// reveal brings the selection into view at the next refresh.
 	reveal bool
@@ -193,17 +193,78 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) loaded(msg loaded) {
 	m.now, m.err, m.live = msg.at, msg.err, msg.live
 	if msg.err == nil {
-		m.specs = msg.specs
+		m.keep(msg.specs)
 	}
 
 	if s := m.top(); s.kind == runScreen && s.runRef == msg.opened {
 		s.recounted(msg.open)
 	}
 
-	if m.open != "" {
-		m.openSpec(m.open)
-		m.open = ""
+	// A name kiln holds no spec of becomes the filter, which then says so.
+	if m.open != "" && !m.pick(m.open) {
+		m.filter = m.open
 	}
+
+	m.open = ""
+}
+
+// keep takes the specs as read anew. The spec and the build selected on home stay selected, wherever a new spec or
+// build moves them to.
+func (m *model) keep(specs []Spec) {
+	spec, picked := m.picked()
+	build, held := m.homeBuild(recentPane)
+	m.specs = specs
+	if picked {
+		m.pick(spec.Name)
+	}
+
+	if i := slices.IndexFunc(m.recent(), func(l listed) bool { return l.buildRef == build }); held && i >= 0 {
+		m.sel[recentPane] = i
+	}
+}
+
+// picked is the spec selected in the specs panel, if one is. Its first row selects none, for the builds of all.
+func (m model) picked() (Spec, bool) {
+	specs := m.filtered()
+	if i := m.sel[specsPane] - 1; i >= 0 && i < len(specs) {
+		return specs[i], true
+	}
+
+	return Spec{}, false
+}
+
+// pick selects the spec name in the specs panel, or all of them when the panel lists no such spec.
+func (m *model) pick(name string) bool {
+	i := slices.IndexFunc(m.filtered(), func(s Spec) bool { return s.Name == name })
+	m.selectSpec(i + 1)
+	return i >= 0
+}
+
+// selectSpec selects row i of the specs panel, and the newest of the builds it narrows the builds panel to.
+func (m *model) selectSpec(i int) {
+	if i != m.sel[specsPane] {
+		m.sel[specsPane], m.sel[recentPane] = i, 0
+	}
+}
+
+// homeBuild is the build home's pane p points at, if any. That is the selected spec's newest, the running one, or
+// the one selected among the builds.
+func (m model) homeBuild(p pane) (buildRef, bool) {
+	switch p {
+	case specsPane:
+		s, ok := m.picked()
+		return buildRef{s.Name, len(s.Builds) - 1}, ok && len(s.Builds) > 0
+	case nowPane:
+		ref, _, ok := running(m.specs)
+		return ref.buildRef, ok
+	}
+
+	all := m.recent()
+	if i := m.sel[recentPane]; i < len(all) {
+		return all[i].buildRef, true
+	}
+
+	return buildRef{}, false
 }
 
 // recounted gives a run's screen its stream as read, if one was. An answer that changed is drawn again.
@@ -231,16 +292,21 @@ func (m *model) texted(msg texted) {
 	}
 }
 
-// click opens the row a left click hits. While the key list shows, a click only closes it.
+// click opens the row a left click hits. On a spec, it selects it, which shows its builds. While the key list
+// shows, a click only closes it.
 func (m *model) click(msg tea.MouseClickMsg) tea.Cmd {
-	switch {
-	case m.keysShown:
+	if m.keysShown || msg.Button != tea.MouseLeft {
 		m.keysShown = false
-	case msg.Button == tea.MouseLeft:
-		t, _ := m.hit(msg.Mouse())
+		return nil
+	}
+
+	t, _ := m.hit(msg.Mouse())
+	if t.to != toSpec {
 		return m.openTarget(t)
 	}
 
+	m.focus, m.typing = specsPane, false
+	m.selectSpec(t.i)
 	return nil
 }
 
@@ -303,7 +369,7 @@ func (m model) nextPane(by int) pane {
 func (m model) items(p pane) int {
 	switch p {
 	case specsPane:
-		return len(m.filtered())
+		return len(m.filtered()) + 1
 	case nowPane:
 		if _, _, ok := running(m.specs); ok {
 			return 1
@@ -316,7 +382,13 @@ func (m model) items(p pane) int {
 }
 
 func (m *model) move(by int) {
-	m.sel[m.focus] = max(0, min(m.items(m.focus)-1, m.sel[m.focus]+by))
+	to := max(0, min(m.items(m.focus)-1, m.sel[m.focus]+by))
+	if m.focus == specsPane {
+		m.selectSpec(to)
+		return
+	}
+
+	m.sel[m.focus] = to
 }
 
 func (m *model) typeFilter(k tea.KeyPressMsg) {
@@ -333,36 +405,13 @@ func (m *model) typeFilter(k tea.KeyPressMsg) {
 		m.filter += k.Text
 	}
 
-	m.sel[specsPane] = 0
+	// The first spec the filter leaves, so Enter then opens it.
+	m.sel[specsPane], m.sel[recentPane] = min(1, len(m.filtered())), 0
 }
 
-// rows counts the rows of a spec's screen or a build's that a key selects.
-func (m model) rows(s *screen) int {
-	if s.kind == specScreen {
-		return len(m.builds(s.spec))
-	}
-
-	return len(m.runs(s.buildRef))
-}
-
-// row is the selection's row, from the top. A spec's screen lists its builds newest first, and a build's its runs
-// in order.
-func (m model) row(s *screen) int {
-	if s.kind == specScreen {
-		return m.rows(s) - 1 - s.sel
-	}
-
-	return s.sel
-}
-
-// selectRow selects the row at i from the top, or the nearest row there is.
-func (m model) selectRow(s *screen, i int) {
-	i = max(0, min(m.rows(s)-1, i))
-	if s.kind == specScreen {
-		i = m.rows(s) - 1 - i
-	}
-
-	s.sel, s.reveal = max(0, i), true
+// selectRun selects run i of a build's screen, or the nearest run there is.
+func (m model) selectRun(s *screen, i int) {
+	s.sel, s.reveal = max(0, min(len(m.runs(s.buildRef))-1, i)), true
 }
 
 // wheel scrolls what is under the pointer. On home, that is the pane it is over, which takes the keys too. While the
@@ -403,15 +452,13 @@ func (m *model) wheelPane(msg tea.MouseWheelMsg) {
 func (m *model) openTarget(t target) tea.Cmd {
 	switch t.to {
 	case toSpec:
-		m.openFiltered(t)
+		m.openPicked()
 	case toNow:
 		if ref, _, ok := running(m.specs); ok {
 			return m.openRun(ref)
 		}
 	case toRecent:
 		m.openRecent(t)
-	case toBuild:
-		m.openBuildRow(t)
 	case toRun:
 		return m.openRunRow(t)
 	}
@@ -419,35 +466,23 @@ func (m *model) openTarget(t target) tea.Cmd {
 	return nil
 }
 
-// openFiltered opens the spec at a row of the home screen's specs.
-func (m *model) openFiltered(t target) {
-	specs := m.filtered()
-	if t.i >= len(specs) {
-		return
+// openPicked opens the newest build of the spec selected on home. On the row for all specs, it gives the builds
+// panel the keys instead.
+func (m *model) openPicked() {
+	if _, ok := m.picked(); !ok && m.items(recentPane) > 0 {
+		m.focus = recentPane
 	}
 
-	m.focus, m.sel[specsPane], m.typing = specsPane, t.i, false
-	m.openSpec(specs[t.i].Name)
+	if ref, ok := m.homeBuild(specsPane); ok {
+		m.push(&screen{kind: buildScreen, buildRef: ref})
+	}
 }
 
-// openSpec opens the spec's screen, with its newest build selected.
-func (m *model) openSpec(name string) {
-	m.push(&screen{kind: specScreen, spec: name, sel: max(0, len(m.builds(name))-1), reveal: true})
-}
-
-// openRecent opens the build at a row of the home screen's recent builds.
+// openRecent opens the build at a row of the home screen's builds.
 func (m *model) openRecent(t target) {
 	if all := m.recent(); t.i < len(all) {
 		m.focus, m.sel[recentPane] = recentPane, t.i
 		m.push(&screen{kind: buildScreen, buildRef: all[t.i].buildRef})
-	}
-}
-
-// openBuildRow opens the build at a row of a spec's screen.
-func (m *model) openBuildRow(t target) {
-	if s := m.top(); t.i < len(m.builds(s.spec)) {
-		s.sel = t.i
-		m.push(&screen{kind: buildScreen, buildRef: buildRef{s.spec, t.i}})
 	}
 }
 
@@ -586,10 +621,15 @@ type listed struct {
 	b *Build
 }
 
-// recent is every build, newest first.
+// recent is every build of the spec selected on home, or of all specs when none is, newest first.
 func (m model) recent() []listed {
+	specs := m.specs
+	if s, ok := m.picked(); ok {
+		specs = []Spec{s}
+	}
+
 	var all []listed
-	for _, s := range m.specs {
+	for _, s := range specs {
 		for i, b := range s.Builds {
 			all = append(all, listed{buildRef{s.Name, i}, b})
 		}

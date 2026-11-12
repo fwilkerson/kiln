@@ -18,6 +18,7 @@ screen '│ tab  '
 screen '│ shift\+tab  '
 screen '│ /  '
 screen '│ enter  '
+screen '│ s  '
 screen '│ esc  '
 screen '│ \?  '
 screen '│ q ctrl\+c  '
@@ -25,32 +26,10 @@ screen '│ q ctrl\+c  '
 keys esc
 ! screen '│ keys +│'
 screen ' x +✓ landed +1 test '
-screen '^ j/k select · tab panel · / filter · enter open · \? keys · q quit$'
-
-# The spec's screen.
-keys enter
-screen '^x · ◆ UAT · approved once$'
-screen '^1 +.* ✓ landed .*\$0\.75 '
-keys ?
-screen '│ keys +│'
-screen '│ j ↓  '
-screen '│ k ↑  '
-screen '│ space pgdn  '
-screen '│ b pgup  '
-screen '│ g home  '
-screen '│ G end  '
-screen '│ enter  '
-screen '│ s  '
-screen '│ esc  '
-screen '│ \?  '
-screen '│ q ctrl\+c  '
-keys esc
-! screen '│ keys +│'
-screen '^x · ◆ UAT · approved once$'
-screen '^1 +.* ✓ landed .*\$0\.75 '
+screen '^ j/k select · tab panel · / filter · enter open · s spec as approved · \? keys · q quit$'
 
 # The build's screen.
-keys enter
+keys j enter
 screen '^x · build 1 · '
 screen '^ +gate +✓ passed · landing +\d+[sm]$'
 keys ?

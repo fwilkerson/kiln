@@ -1,6 +1,7 @@
 # 4. Keys a MacBook has.
 
-# Given: a build long enough that its run screen, its spec's screen and its spec text each scroll.
+# Given: a build long enough that its run screen, its build's screen and its spec text each scroll.
+# Amended 2026-11-12, from "its spec's screen": that screen is gone, and home lists a spec's builds.
 # The terminal is 7 rows tall. The spec has 4 builds, the last build's first run answers in 3 lines, and the spec's
 # text is 14 lines.
 exec kiln queue x
@@ -19,41 +20,17 @@ exec kiln queue x
 exec kiln run
 stdout '^x: landed on main'
 
-# When: the developer reads the footer of each of the five screens, and on each screen that scrolls, presses the
+# When: the developer reads the footer of each of the four screens, and on each screen that scrolls, presses the
 # keys its footer names to page down, page up, go to the end and go to the top.
+# Amended 2026-11-12, from "each of the five screens".
 # Then: no footer names a key a MacBook lacks, such as End or Page Down, and each key does what its footer says.
 # Each footer is the screen's last row. A key it names starts one of its entries, and each key pressed is named there.
 term 120 7 kiln tui
 screen '(?:^ |· )enter [^\n]*\z'
 ! screen '(?:^ |· )\S*(?:[Ee]nd|[Hh]ome|[Pp]g|[Pp]age|↑|↓|←|→)\S* [^\n]*\z'
 
-# The spec's screen lists its builds newest first, 3 rows at a time.
-keys enter
-screen '^x · ◆ UAT · approved 4 times'
-screen '(?:^ |· )space/b [^\n]*\z'
-screen '(?:^ |· )g/G [^\n]*\z'
-screen '(?:^ |· )enter [^\n]*\z'
-screen '(?:^ |· )esc [^\n]*\z'
-! screen '(?:^ |· )\S*(?:[Ee]nd|[Hh]ome|[Pp]g|[Pp]age|↑|↓|←|→)\S* [^\n]*\z'
-screen '^4 +'
-! screen '^1 +'
-keys space
-screen '^1 +'
-! screen '^4 +'
-keys b
-screen '^4 +'
-! screen '^1 +'
-keys G
-screen '^1 +'
-! screen '^4 +'
-keys enter
-screen '^x · build 1 · '
-keys esc
-screen '^x · ◆ UAT · approved 4 times'
-keys g
-screen '^4 +'
-! screen '^1 +'
-keys enter
+# Enter on the spec opens its newest build.
+keys j enter
 screen '^x · build 4 · '
 
 # The build's screen shows its steps 2 rows at a time.

@@ -11,7 +11,8 @@ term 100 14 kiln tui
 click '◆ mouse-spec'
 
 # Then: each click opens what it clicked,
-screen '^mouse-spec · ◆ UAT · approved once'
+# A click on a spec opens its builds in home's builds panel.
+screen 'builds of mouse-spec · approved once'
 
 # When: then clicks its build,
 click '✓ landed'

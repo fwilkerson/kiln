@@ -38,8 +38,7 @@ var (
 // keyMaps holds each kind of screen's keys.
 var keyMaps = map[kind]keyMap{
 	homeScreen:  homeKeys(),
-	specScreen:  listKeys("build"),
-	buildScreen: listKeys("run"),
+	buildScreen: listKeys(),
 	runScreen:   textKeys(true),
 	textScreen:  textKeys(false),
 }
@@ -64,46 +63,46 @@ func homeKeys() keyMap {
 			{open, func(m *model, _ *screen) tea.Cmd {
 				return m.openTarget(target{paneTargets[m.focus], m.sel[m.focus]})
 			}},
+			{spec, func(m *model, _ *screen) tea.Cmd {
+				if ref, ok := m.homeBuild(m.focus); ok {
+					return m.openText(ref)
+				}
+
+				return nil
+			}},
 			{key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear the filter")),
-				func(m *model, _ *screen) tea.Cmd { m.filter = ""; return nil }},
+				func(m *model, _ *screen) tea.Cmd {
+					s, _ := m.picked()
+					m.filter = ""
+					m.pick(s.Name)
+					return nil
+				}},
 			showKeys, quits,
 		},
-		foot: []key.Binding{pair(down, up, "select"), tab, filter, open, keysList, quit},
+		foot: []key.Binding{pair(down, up, "select"), tab, filter, open, spec, keysList, quit},
 	}
 }
 
-// listKeys are the keys of a screen that lists what opens, a spec's builds or a build's runs. Each moves the
-// selection, but space and b, which scroll the list a page.
-func listKeys(opens string) keyMap {
+// listKeys are the keys of a build's screen, which lists its runs. Each moves the selection, but space and b, which
+// scroll the list a page.
+func listKeys() keyMap {
 	down := key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j", "down"))
 	up := key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k", "up"))
 	pageDown := key.NewBinding(key.WithKeys("space", "pgdown"), key.WithHelp("space", "page down"))
 	pageUp := key.NewBinding(key.WithKeys("b", "pgup"), key.WithHelp("b", "page up"))
 	first := key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g", "first"))
 	last := key.NewBinding(key.WithKeys("G", "end"), key.WithHelp("G", "last"))
-	open := key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", opens))
+	open := key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "run"))
 	return keyMap{
 		commands: []command{
-			{down, func(m *model, s *screen) tea.Cmd { m.selectRow(s, m.row(s)+1); return nil }},
-			{up, func(m *model, s *screen) tea.Cmd { m.selectRow(s, m.row(s)-1); return nil }},
+			{down, func(m *model, s *screen) tea.Cmd { m.selectRun(s, s.sel+1); return nil }},
+			{up, func(m *model, s *screen) tea.Cmd { m.selectRun(s, s.sel-1); return nil }},
 			{pageDown, scroll((*viewport.Model).PageDown)},
 			{pageUp, scroll((*viewport.Model).PageUp)},
-			{first, func(m *model, s *screen) tea.Cmd { m.selectRow(s, 0); return nil }},
-			{last, func(m *model, s *screen) tea.Cmd { m.selectRow(s, m.rows(s)-1); return nil }},
-			{open, func(m *model, s *screen) tea.Cmd {
-				if s.kind == specScreen {
-					return m.openTarget(target{toBuild, s.sel})
-				}
-
-				return m.openTarget(target{toRun, s.sel})
-			}},
-			{spec, func(m *model, s *screen) tea.Cmd {
-				if s.kind == specScreen {
-					return m.openText(buildRef{s.spec, s.sel})
-				}
-
-				return m.openText(s.buildRef)
-			}},
+			{first, func(m *model, s *screen) tea.Cmd { m.selectRun(s, 0); return nil }},
+			{last, func(m *model, s *screen) tea.Cmd { m.selectRun(s, len(m.runs(s.buildRef))-1); return nil }},
+			{open, func(m *model, s *screen) tea.Cmd { return m.openTarget(target{toRun, s.sel}) }},
+			{spec, func(m *model, s *screen) tea.Cmd { return m.openText(s.buildRef) }},
 			goesBack, showKeys, quits,
 		},
 		foot: []key.Binding{pair(down, up, "select"), pair(pageDown, pageUp, "page"), pair(first, last, "first/last"),

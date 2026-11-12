@@ -34,7 +34,6 @@ const (
 	toSpec   = "spec"
 	toNow    = "now"
 	toRecent = "recent"
-	toBuild  = "build"
 	toRun    = "run"
 	// toPane names a home screen's pane, by its number. A click there opens nothing, and the wheel scrolls it.
 	toPane = "pane"
@@ -52,7 +51,7 @@ func (t target) id() string {
 func parseTarget(id string) (target, bool) {
 	to, n, _ := strings.Cut(id, ":")
 	i, err := strconv.Atoi(n)
-	if err != nil || !slices.Contains([]string{toSpec, toNow, toRecent, toBuild, toRun, toPane}, to) {
+	if err != nil || !slices.Contains([]string{toSpec, toNow, toRecent, toRun, toPane}, to) {
 		return target{}, false
 	}
 
@@ -250,7 +249,7 @@ func (m model) home() []*lipgloss.Layer {
 	nowBox := panel{to: target{toPane, int(nowPane)}, title: "now", lit: m.focus == nowPane, x: sideW,
 		area: area{rightW, nowH}}
 	trendBox := panel{title: trendTitle(trend(m.specs)), x: sideW, y: nowH, area: area{rightW, trendH}}
-	recentBox := panel{to: target{toPane, int(recentPane)}, title: "recent builds", lit: m.focus == recentPane,
+	recentBox := panel{to: target{toPane, int(recentPane)}, title: m.recentTitle(), lit: m.focus == recentPane,
 		x: sideW, y: nowH + trendH, area: area{rightW, recentH}}
 	return []*lipgloss.Layer{
 		specsBox.box(m.side(specsBox.inside())),
@@ -259,6 +258,19 @@ func (m model) home() []*lipgloss.Layer {
 		recentBox.box(m.recentRows(recentBox.inside())),
 		m.foot(homeScreen),
 	}
+}
+
+// recentTitle names the builds the builds panel lists: every spec's, or the selected spec's.
+func (m model) recentTitle() string {
+	s, ok := m.picked()
+	switch {
+	case !ok:
+		return "recent builds"
+	case len(s.Builds) == 0:
+		return "builds of " + s.Name
+	}
+
+	return fmt.Sprintf("builds of %s · approved %s", s.Name, times(len(s.Builds)))
 }
 
 // sideWidth fits the specs panel to its longest row, but takes at most a third of the terminal.
@@ -271,31 +283,40 @@ func (m model) sideWidth() int {
 	return max(20, min(need+2, 40, m.w/3))
 }
 
-// side lists the specs whose names hold the filter, below the filter, in an area of the specs panel.
+// side lists the specs whose names hold the filter, in an area of the specs panel. Above them are the filter and a
+// row for all specs.
 func (m model) side(in area) []row {
-	filter := dim.Render("/ filter")
-	switch {
-	case m.typing:
-		filter = "/ " + m.filter + "▏"
-	case m.filter != "":
-		filter = "/ " + m.filter
-	}
-
-	rows := []row{{text: filter}, {}}
+	rows := []row{{text: m.filterRow()}, {}}
 	specs := m.filtered()
-	if len(specs) == 0 {
-		return append(rows, row{text: dim.Render("no spec")})
-	}
-
 	room := max(1, in.h-len(rows))
 	sel := m.sel[specsPane]
-	for i := max(0, sel-room+1); i < len(specs) && len(rows) < in.h; i++ {
-		s := specs[i]
-		text := marked(s.State) + " " + fit(s.Name, max(1, in.w-3-len(s.State))) + " " + stated(s.State)
+	for i := max(0, sel-room+1); i <= len(specs) && len(rows) < in.h; i++ {
+		text := "≡ all specs"
+		if i > 0 {
+			s := specs[i-1]
+			text = marked(s.State) + " " + fit(s.Name, max(1, in.w-3-len(s.State))) + " " + stated(s.State)
+		}
+
 		rows = append(rows, row{pick(text, m.focus == specsPane && i == sel), target{toSpec, i}})
 	}
 
+	if len(specs) == 0 && len(rows) < in.h {
+		rows = append(rows, row{text: dim.Render("no spec")})
+	}
+
 	return rows
+}
+
+// filterRow is the filter as the specs panel shows it: its text, with a cursor while it takes keys.
+func (m model) filterRow() string {
+	switch {
+	case m.typing:
+		return "/ " + m.filter + "▏"
+	case m.filter != "":
+		return "/ " + m.filter
+	}
+
+	return dim.Render("/ filter")
 }
 
 // stated is a state's word. A spec that needs nothing more is dim, so the ones in play stand out.
@@ -376,8 +397,8 @@ func (m model) liveFacts(r *Run, c *claude.Recounted) []string {
 // idleWarned is how long a session may write nothing, with no call open, before the view marks it.
 const idleWarned = time.Minute
 
-// recentRows lists every build, newest first, in an area, below its columns' names. A narrow terminal drops the
-// date, and a wide one draws each cost as a bar beside it.
+// recentRows lists the builds panel's builds, newest first, in an area, below its columns' names. A narrow terminal
+// drops the date, then each build's turns, failed calls and rounds. A wide one draws each cost as a bar.
 func (m model) recentRows(in area) []row {
 	all := m.recent()
 	if len(all) == 0 {
@@ -390,40 +411,51 @@ func (m model) recentRows(in area) []row {
 		most = max(most, cost)
 	}
 
+	// A spec's builds are told apart by number, and all specs' builds by spec.
+	_, narrowed := m.picked()
+	second := map[bool]string{true: "build", false: "spec"}[narrowed]
 	// A panel with room for one build or two lists them with no names above.
 	var rows []row
 	if in.h > 2 {
-		rows = []row{{text: dim.Render(line("started", "spec", "outcome", "size", "time", "cost", ""))}}
+		rows = []row{{text: dim.Render(line("started", second, "outcome", "size", "time", "cost", "turns", "failed",
+			"rounds", ""))}}
 	}
 
 	sel := m.sel[recentPane]
 	for i := max(0, sel-in.h+len(rows)+1); i < len(all) && len(rows) < in.h; i++ {
-		rows = append(rows, row{pick(line(m.recentCells(all[i], most)...), m.focus == recentPane && i == sel),
-			target{toRecent, i}})
+		cells := m.recentCells(all[i], most)
+		if narrowed {
+			cells[1] = fmt.Sprintf("#%d", all[i].build+1)
+		}
+
+		rows = append(rows, row{pick(line(cells...), m.focus == recentPane && i == sel), target{toRecent, i}})
 	}
 
 	return rows
 }
 
-// recentLine lays a recent build's cells out in w cells. A narrow panel drops the date, and a wide one keeps the
-// cost's bar.
+// recentLine lays a build's cells out in w cells of the builds panel. A narrow panel drops the date, then the
+// turns, failed calls and rounds. A wide one keeps the cost's bar.
 func recentLine(w int) func(cells ...string) string {
+	widths := []int{12, 16, 16, 8, -6, -7, -6, -7, -7}
 	return func(cells ...string) string {
 		switch {
 		case w < 75:
 			return cols([]int{12, 13, 8, -5, -7}, cells[1:6]...)
-		case w < 75+costBar:
-			return cols([]int{12, 16, 16, 8, -6, -7}, cells[:6]...)
+		case w < 93:
+			return cols(widths, cells[:6]...)
+		case w < 93+costBar:
+			return cols(widths, cells[:9]...)
 		}
 
-		return cols([]int{12, 16, 16, 8, -6, -7}, cells...)
+		return cols(widths, cells...)
 	}
 }
 
 // costBar is how many cells the widest cost's bar takes in the recent builds, with the space before it.
 const costBar = 13
 
-// recentCells are a build's cells in the recent builds. Its last is its cost as a bar, its share of most.
+// recentCells are a build's cells in the builds panel. Its last is its cost as a bar, its share of most.
 func (m model) recentCells(l listed, most float64) []string {
 	took, known := l.b.took()
 	time := "?"
@@ -435,8 +467,11 @@ func (m model) recentCells(l listed, most float64) []string {
 	}
 
 	cost, costKnown := l.b.cost()
+	turns, turnsKnown := l.b.turns()
+	failed, _, failedKnown := l.b.failed()
 	return []string{dim.Render(l.b.Started.Local().Format("Jan 02 15:04")), l.spec, m.outcome(l.buildRef),
-		plural(l.b.Size, "test"), time, dollars(cost, costKnown), dim.Render(gauge(cost, most, costBar-1))}
+		plural(l.b.Size, "test"), time, dollars(cost, costKnown), count(turns, turnsKnown), count(failed, failedKnown),
+		count(l.b.rounds()), dim.Render(gauge(cost, most, costBar-1))}
 }
 
 // gauge draws v's share of most as a bar of at most w cells, to an eighth of a cell.
@@ -479,8 +514,6 @@ func (m model) outcome(ref buildRef) string {
 // -1.
 func (m model) page(s *screen) (head, body []row, sel int) {
 	switch s.kind {
-	case specScreen:
-		return m.specPage(s)
 	case buildScreen:
 		return m.buildPage(s)
 	case runScreen:
@@ -507,53 +540,6 @@ func (m model) page(s *screen) (head, body []row, sel int) {
 	}
 
 	return head, body, -1
-}
-
-func (m model) specPage(s *screen) (head, body []row, sel int) {
-	spec := m.spec(s.spec)
-	if spec == nil {
-		return []row{{text: s.spec}, {}, {text: dim.Render("kiln holds no spec named " + s.spec)}}, nil, -1
-	}
-
-	// A narrow terminal drops the commit each build was approved at, which the build's screen shows.
-	widths, narrow := []int{3, 12, 12, 22, -6, -9, -6, -7, -7}, m.w < 92
-	line := func(cells ...string) string {
-		if narrow {
-			return cols(slices.Delete(slices.Clone(widths), 2, 3), slices.Delete(cells, 2, 3)...)
-		}
-
-		return cols(widths, cells...)
-	}
-
-	head = []row{
-		{text: dotted(heading.Render(spec.Name), marked(spec.State)+" "+string(spec.State),
-			"approved "+times(len(spec.Builds)))},
-		{},
-		{text: dim.Render(line("#", "started", "approved at", "outcome", "time", "cost", "turns", "failed", "rounds"))},
-	}
-	if len(spec.Builds) == 0 {
-		return head, []row{{text: dim.Render("no build yet")}}, -1
-	}
-
-	// Newest first, while sel and each row's target stay the build's index, which a new build never moves.
-	for i, b := range slices.Backward(spec.Builds) {
-		took, known := b.took()
-		time := "?"
-		if known {
-			time = span(took)
-		}
-
-		cost, costKnown := b.cost()
-		turns, turnsKnown := b.turns()
-		failed, _, failedKnown := b.failed()
-		text := line(strconv.Itoa(i+1), dim.Render(b.Started.Local().Format("Jan 02 15:04")),
-			dim.Render(short(b.Approved, 12)),
-			m.outcome(buildRef{spec.Name, i}), time, dollars(cost, costKnown), count(turns, turnsKnown),
-			count(failed, failedKnown), count(b.rounds()))
-		body = append(body, row{pick(text, i == s.sel), target{toBuild, i}})
-	}
-
-	return head, body, len(spec.Builds) - 1 - s.sel
 }
 
 func times(n int) string {

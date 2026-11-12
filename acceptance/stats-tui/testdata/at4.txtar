@@ -16,7 +16,7 @@ stdout '^a: accepted'
 
 # When: the developer opens each one's spec text, and scrolls to its end.
 term 120 24 kiln tui a
-screen '^a · ✓ accepted · approved once'
+screen 'builds of a · approved once'
 keys s
 screen '^a · as approved at [0-9a-f]{12}$'
 
@@ -29,8 +29,8 @@ screen 'This line ends spec a\.'
 ! screen 'came after the approval'
 
 # The second shows its text and its amendment.
-keys esc esc / b enter enter
-screen '^b · ◆ waits · approved once'
+keys esc / b enter
+screen 'builds of b · approved once'
 keys s
 screen '^b · as approved at [0-9a-f]{12}, with its amendments$'
 screen 'This line opens spec b\.'

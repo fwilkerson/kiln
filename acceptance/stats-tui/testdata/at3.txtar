@@ -16,12 +16,13 @@ stdout '^b: landed on main'
 term 120 30 kiln tui b
 
 # Then: the spec shows both builds, each with how it ended,
-screen '^b · ◆ UAT · approved 2 times'
-screen '^1 +.* [0-9a-f]{12} ✗ stopped .*\$0\.10'
-screen '^2 +.* [0-9a-f]{12} ✓ landed .*\$0\.21'
+screen 'builds of b · approved 2 times'
+screen ' #1 +✗ stopped .*\$0\.10 '
+screen ' #2 +✓ landed .*\$0\.21 '
 
 # When: then each of its builds.
-keys down enter
+# Tab gives the builds panel the keys, with the newest build selected.
+keys tab down enter
 
 # Then: and each build shows only its own runs.
 screen '^b · build 1 · .* · ✗ stopped'

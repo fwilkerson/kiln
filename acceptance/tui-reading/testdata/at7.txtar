@@ -7,7 +7,7 @@ stdout '^x: landed on main'
 
 # When: the developer opens its spec text.
 term 120 40 kiln tui x
-screen '^x · ◆ UAT · approved once$'
+screen 'builds of x · approved once'
 keys s
 screen '^x · as approved at [0-9a-f]{12}$'
 

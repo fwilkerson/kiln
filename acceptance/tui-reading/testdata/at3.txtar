@@ -8,7 +8,7 @@ stdout '^x: landed on main'
 
 # When: the developer opens the audit's run,
 term 100 20 kiln tui x
-screen '^x · ◆ UAT · approved once'
+screen 'builds of x · approved once'
 keys enter
 screen '^2 +audit +audit, try 1 '
 keys j enter

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image/color"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -86,7 +87,7 @@ func TestTrend(t *testing.T) {
 }
 
 // TestRoundsUnknown holds that a build's rounds are unknown when a run does not say why it started. The trend
-// leaves it out of the median, and its spec's screen shows its rounds as unknown, never as 0.
+// leaves it out of the median, and the builds panel shows its rounds as unknown, never as 0.
 func TestRoundsUnknown(t *testing.T) {
 	now := time.Now()
 	b := &Build{Spec: "x", Started: now, Outcome: "landed", Steps: []Step{&Run{Role: "build", Start: now, End: now}}}
@@ -96,9 +97,9 @@ func TestRoundsUnknown(t *testing.T) {
 		t.Errorf("the trend counts the rounds:\n%s", screenOf(m))
 	}
 
-	if m := drive(t, src, "x", sized(140, 30)); !regexp.MustCompile(`(?m)^1 .* landed .* \?$`).MatchString(
+	if m := drive(t, src, "x", sized(140, 30)); !regexp.MustCompile(`#1 +✓ landed .* 0 +\? +│`).MatchString(
 		screenOf(m)) {
-		t.Errorf("the spec's screen shows the rounds:\n%s", screenOf(m))
+		t.Errorf("the builds panel shows the rounds:\n%s", screenOf(m))
 	}
 }
 
@@ -214,7 +215,7 @@ type source struct {
 	text  string
 }
 
-func (s source) Specs(context.Context) ([]Spec, error)        { return s.specs, nil }
+func (s source) Specs(context.Context) ([]Spec, error)        { return slices.Clone(s.specs), nil }
 func (s source) Recount(r *Run) (claude.Recounted, error)     { return s.calls[r.Session], nil }
 func (s source) Text(context.Context, *Build) (string, error) { return s.text, nil }
 
@@ -366,24 +367,62 @@ func TestLiveRun(t *testing.T) {
 	tops("Built x.")
 }
 
-// TestNewBuild holds that a build queued while the developer is on its spec's screen leaves the selection where it
-// was. The new build is listed first.
+// TestNewBuild holds that a new build leaves both of home's selections where they were. So does a spec that moves
+// in the list. The new build is listed first.
 func TestNewBuild(t *testing.T) {
 	now := time.Now()
 	build := func(at time.Duration) *Build {
-		return &Build{Spec: "x", Started: now.Add(at), Steps: []Step{&Run{Role: "build", Session: "s", Start: now}}}
+		return &Build{Spec: "x", Started: now.Add(at), Steps: []Step{&Run{Role: "build", Session: "s", Start: now,
+			End: now}}}
 	}
 
-	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{build(-2 * time.Hour), build(-time.Hour)}}}}
-	m := drive(t, src, "x", sized(100, 20), press('j'))
-	src.specs[0].Builds = append(src.specs[0].Builds, build(0))
+	x := Spec{Name: "x", State: UAT, Builds: []*Build{build(-2 * time.Hour), build(-time.Hour)}}
+	src := source{specs: []Spec{x, {Name: "w", State: Queued}}}
+	m := drive(t, src, "x", sized(100, 20), press(tea.KeyTab), press('j'))
+	x.Builds = append(x.Builds, build(0))
+	src.specs[0], src.specs[1] = src.specs[1], x
 	m = send(m, func() tea.Msg { return tick{} })
-	if !regexp.MustCompile(`(?m)^#.*\n3 .*\n2 .*\n1 `).MatchString(screenOf(m)) {
-		t.Errorf("the builds are not listed newest first:\n%s", screenOf(m))
+	listed := regexp.MustCompile(`builds of x · approved 3 times .*\n.*\n.* #3 .*\n.* #2 .*\n.* #1 `)
+	if !listed.MatchString(screenOf(m)) {
+		t.Errorf("x's builds are not listed newest first:\n%s", screenOf(m))
 	}
 
 	if m = sendAll(m, press(tea.KeyEnter)); !strings.Contains(screenOf(m), "x · build 1 · ") {
 		t.Errorf("enter opened another build than build 1:\n%s", screenOf(m))
+	}
+}
+
+// TestSpecsPanel holds how home's specs panel narrows its builds. A spec selected lists only its own, and Enter on
+// it opens its newest. The row for all specs lists every build. A click on a spec selects it, and opens nothing.
+func TestSpecsPanel(t *testing.T) {
+	now := time.Now()
+	build := func(spec string, at time.Duration) *Build {
+		return &Build{Spec: spec, Started: now.Add(at), Steps: []Step{&Run{Role: "build", Session: "s", Start: now}}}
+	}
+
+	src := source{specs: []Spec{{Name: "new", State: Queued},
+		{Name: "x", State: UAT, Builds: []*Build{build("x", -3*time.Hour), build("x", -time.Hour)}},
+		{Name: "y", State: UAT, Builds: []*Build{build("y", -2*time.Hour)}}}}
+	m := drive(t, src, "", sized(100, 20))
+	if !regexp.MustCompile(`recent builds .*\n.*\n.* x .*\n.* y .*\n.* x `).MatchString(screenOf(m)) {
+		t.Errorf("home does not list every build, newest first:\n%s", screenOf(m))
+	}
+
+	x, y := locate(t, m, "◆ y")
+	m = sendAll(m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	switch shown := screenOf(m); {
+	case len(m.stack) != 1, !strings.Contains(shown, "builds of y · approved once"), strings.Contains(shown, "#2"):
+		t.Errorf("a click on y did not list y's one build on home:\n%s", shown)
+	}
+
+	if m = sendAll(m, press('k'), press(tea.KeyEnter)); !strings.Contains(screenOf(m), "x · build 2 · ") {
+		t.Errorf("enter on x did not open its newest build:\n%s", screenOf(m))
+	}
+
+	m = sendAll(m, press(tea.KeyEscape), press('k'), press(tea.KeyEnter))
+	switch {
+	case len(m.stack) != 1, !strings.Contains(screenOf(m), "no build yet"):
+		t.Errorf("enter on a spec with no build opened a screen:\n%s", screenOf(m))
 	}
 }
 
@@ -420,7 +459,8 @@ func sendAll(m model, msgs ...tea.Msg) model {
 	return m
 }
 
-// TestNarrow holds that in a narrow or short terminal, each footer still names ? and esc, and the key list fits.
+// TestNarrow holds that in a narrow or short terminal, each footer still names ?, and esc where it goes back. The
+// key list fits.
 func TestNarrow(t *testing.T) {
 	now := time.Now()
 	b := &Build{Spec: "x", Started: now, Steps: []Step{&Run{Role: "build", Session: "s", Why: "first run", Start: now,
@@ -429,7 +469,8 @@ func TestNarrow(t *testing.T) {
 	for _, keys := range [][]tea.Msg{nil, {press(tea.KeyEnter)}, {press(tea.KeyEnter), press(tea.KeyEnter)}} {
 		rows := strings.Split(screenOf(drive(t, src, "x", append([]tea.Msg{sized(80, 24)}, keys...)...)), "\n")
 		switch foot := rows[len(rows)-1]; {
-		case !strings.Contains(foot, "? keys"), !strings.Contains(foot, "esc back"), strings.Contains(foot, "…"):
+		case !strings.Contains(foot, "? keys"), strings.Contains(foot, "esc back") != (len(keys) > 0),
+			strings.Contains(foot, "…"):
 			t.Errorf("the footer is %q", foot)
 		}
 	}
