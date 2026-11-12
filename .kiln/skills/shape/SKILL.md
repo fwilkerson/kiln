@@ -19,8 +19,8 @@ yourself, wherever a file, the code or a measurement settles it.
 
 ## 1. Draft before the first point
 
-Write the spec before you discuss anything. A draft ranks the points, and discussing one point a reply once ran 2.5
-hours without reaching a design.
+Write the spec before you discuss anything. A draft ranks the points, so the developer answers them together, in any
+order, rather than one point a reply.
 
 1. If `.kiln/specs/<name>.md` exists, resume it from its Open Questions. A spec with Status Approved is being
    revised: keep its Status Approved, and edit it in place. Otherwise, copy [`template.md`](template.md) to that path.
@@ -55,19 +55,32 @@ Given, a When and a Then, and the developer owns their words. A build may change
 ## 4. Review once the questions are settled
 
 When no Open Question remains, run the `zoom-out`, `comprehension` and `critic` agents on the spec, once each, in
-parallel. A review of a spec with open questions reviews a spec that will still change. Run them again only when the
-developer asks. A run the developer asks for goes ahead even with questions open, so say in its brief that they asked.
+parallel. A review of a spec with open questions reviews a spec that will still change. A run the developer asks for
+goes ahead even with questions open, so say in its brief that they asked.
 
 - Fix each finding, or contest it. To contest one, cite a file and symbol, or a line of the spec, that the agent could
   read.
 - Never contest a comprehension gap. If a fresh reader could not follow the spec, the spec lacks context.
 - When a finding is wrong only because of a fact no file holds, bring it to the developer.
-- Fix each false claim that `zoom-out` lists, since the developer decides on those sentences.
+- Fix each false claim that `zoom-out` lists, since the developer decides on those sentences. Name in the Technical
+  Plan each test, file or doc that it says the plan breaks, or contest one as above.
+- A finding that two agents report is not yours to contest. Fix it, or bring it to the developer.
+
+The fixes change the spec the agents read. Wait until each finding is fixed, contested or answered by the developer.
+Then run `critic` once more if the fixes changed what a Goal, an acceptance test or the Technical Plan requires, and
+name the changed sections in its brief. Naming the files the plan breaks does not count as such a change. Fix or
+contest what it finds, and stop there: a second run's fixes never start a third. Beyond that, run an agent again
+only when the developer asks.
 
 ## 5. Ask for approval
 
-Ask the developer to approve the spec, with each contested finding beside the request. Once they approve, set its
-Status to Approved, with the date, and commit it on main. Then tell them to run `kiln queue <name>`.
+Ask the developer to approve the spec. Put beside the request each contested finding, and each finding two agents
+reported that you brought to the developer. Put each risk the spec accepts there too, since only the developer
+accepts one. A risk is a way the work can go wrong that the spec names and leaves open; a Non-goal is not one. For
+each, give the rule that would make it impossible in code and what that rule costs, or say that you found none.
+
+Once they approve, set its Status to Approved, with the date, and commit it on main. Then tell them to run
+`kiln queue <name>`.
 
 ## Revising a spec
 

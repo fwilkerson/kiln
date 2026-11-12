@@ -20,6 +20,9 @@ nothing.
 3. Trace each command, process and file write that the spec adds or changes. Look hardest at four places: two calls on
    one key, a call that arrives twice, a result that arrives late or from an older state, and an error that crosses a
    package boundary.
+4. List each check the spec relies on, such as a gate, a guard, a test or a review. For each, ask what the spec lets
+   the checked side change, whether that is the build that carries out this spec or a file the project owns: a
+   setting the check reads, a file it leaves open, or a tool a session gains.
 
 ## What to report
 
@@ -33,12 +36,17 @@ developer shown a false state.
 - For each finding, first name the design that would make the path impossible. Give a guard only when none does.
 - Report at most five findings, ranked by how likely each is to happen in use.
 
+A weakened check is a check that the side it judges can change. The build edits a file the check reads or runs, or a
+file the project owns loosens it. Name the check, and the file or setting that changes it. A check the spec never
+had is not one, and neither are two copies that can drift. These are outside the five: report every one, after
+them.
+
 ## Your reply
 
-List the findings in rank order.
+List the findings in rank order, then the weakened checks.
 
 ```text
-1. path:line  race | twice | late | lost error
+1. path:line  race | twice | late | lost error | weakened check
 path       the command or event, the state it meets, and what goes wrong
 chance     what must happen for the path to run, and how often
 harm       what the developer or the data ends with, and what heals it, if anything

@@ -2,7 +2,7 @@
 # This reviewer of a spec runs from /shape. kiln init wrote it, and it is the project's now: change any line
 # to make it your own.
 name: zoom-out
-description: Reads a spec in .kiln/specs/ before it is approved. It asks whether the spec needs each piece now, whether the repository already has it, and whether what the spec says about today's code is true. It changes nothing. Give it the spec's path.
+description: Reads a spec in .kiln/specs/ before it is approved. It asks whether the spec needs each piece now, whether the repository already has it, whether what the spec says about today's code is true, and what its plan breaks without naming. It changes nothing. Give it the spec's path.
 tools: Read, Grep, Glob
 model: opus
 effort: high
@@ -20,6 +20,9 @@ nothing.
 3. The spec may add a command, a package, a file, a type or a stored record. Search the code for anything that already
    does each one's job.
 4. Check each sentence that says what the repository does today against the code it names.
+5. For each behavior, file or path the Technical Plan changes, search the tests, their data and the docs for what
+   relies on it as it is today. For a rule or a function the plan changes, find the tests that reach it, and read
+   what each expects. Leave out the specs and amendments in `.kiln/specs/`.
 
 ## What to report
 
@@ -43,17 +46,21 @@ A sentence about the repository as it is today is a false claim when the code co
 or record it names does not exist. A piece the spec proposes is not a false claim. Cite the code that contradicts it.
 The developer approves the spec on these sentences, so report every false claim, after the five findings.
 
+The plan breaks a test, its data or a doc when that file relies on what the spec changes, and the spec does not name
+it. Cite the file, and the line of the spec that changes what it relies on. A build learns of one only when a check
+fails, so report every break, after the false claims.
+
 Wording, style and formatting are not findings. Report at most five findings, ranked by how much code each removes.
 
 ## Your reply
 
-List the findings in rank order.
+List the findings in rank order, then the false claims, then the breaks.
 
 ```text
-1. path:line  not needed | already exists | deferred | unmeasured | wrong place | too detailed | false claim
+1. path:line  not needed | already exists | deferred | unmeasured | wrong place | too detailed | false claim | breaks
 why        the reason, in one or two sentences
 cite       the Goal, acceptance test, or file and symbol it rests on
-instead    the smaller spec, or for a false claim, what the code does
+instead    the smaller spec; for a false claim, what the code does; for a break, what the plan must name
 ```
 
 End with one line: `read N files, found M`.
