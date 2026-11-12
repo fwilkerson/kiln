@@ -73,7 +73,28 @@ var (
 	bold     = lipgloss.NewStyle().Bold(true)
 	reversed = lipgloss.NewStyle().Reverse(true)
 	frame    = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+	// accent marks where the eye starts: the panel the keys go to, and a key's name. It marks what waits on the
+	// developer too.
+	accent  = lipgloss.NewStyle().Foreground(lipgloss.Cyan)
+	heading = accent.Bold(true)
+	blue    = lipgloss.NewStyle().Foreground(lipgloss.BrightBlue)
+	magenta = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
 )
+
+// dotted joins what a line says, with a dim dot between each two, so each reads apart.
+func dotted(parts ...string) string { return strings.Join(parts, dim.Render(" · ")) }
+
+// role colors a role's name, so a build session's runs and an audit's tell apart.
+func role(name string) string {
+	switch name {
+	case "build":
+		return blue.Render(name)
+	case "audit":
+		return magenta.Render(name)
+	}
+
+	return name
+}
 
 // layout places every row of the top screen in a terminal of m.w by m.h cells. The view draws it, and a click asks it
 // which row it hit.
@@ -164,7 +185,7 @@ func pick(text string, selected bool) string {
 }
 
 func (m model) foot(k kind) *lipgloss.Layer {
-	text := dim.Render(footer(k, m.w-1))
+	text := footer(k, m.w-1)
 	if m.err != nil {
 		text = red.Render("✗ kiln could not read its ledger: " + m.err.Error())
 	}
@@ -173,10 +194,11 @@ func (m model) foot(k kind) *lipgloss.Layer {
 }
 
 // panel is a box on the home screen, at column x and row y, the size of its area. Its title is in its top border. A
-// wheel turned over it scrolls the pane to names, if any.
+// wheel turned over it scrolls the pane to names, if any. A lit panel is the one the keys go to.
 type panel struct {
 	to    target
 	title string
+	lit   bool
 	x, y  int
 	area
 }
@@ -193,15 +215,20 @@ func (p panel) box(rows []row) *lipgloss.Layer {
 		return lipgloss.NewLayer("").X(p.x).Y(p.y)
 	}
 
-	inner := max(0, p.w-2)
-	title := ansi.Truncate(p.title, max(0, inner-2), "…")
-	lines := []string{frame.Render("╭ ") + bold.Render(title) + frame.Render(" "+
-		strings.Repeat("─", max(0, inner-ansi.StringWidth(title)-2))+"╮")}
-	for range max(0, p.h-2) {
-		lines = append(lines, frame.Render("│")+strings.Repeat(" ", inner)+frame.Render("│"))
+	edge, name := frame, bold
+	if p.lit {
+		edge, name = accent, heading
 	}
 
-	lines = append(lines, frame.Render("╰"+strings.Repeat("─", inner)+"╯"))
+	inner := max(0, p.w-2)
+	title := ansi.Truncate(p.title, max(0, inner-2), "…")
+	lines := []string{edge.Render("╭ ") + name.Render(title) + edge.Render(" "+
+		strings.Repeat("─", max(0, inner-ansi.StringWidth(title)-2))+"╮")}
+	for range max(0, p.h-2) {
+		lines = append(lines, edge.Render("│")+strings.Repeat(" ", inner)+edge.Render("│"))
+	}
+
+	lines = append(lines, edge.Render("╰"+strings.Repeat("─", inner)+"╯"))
 	layer := lipgloss.NewLayer(strings.Join(lines, "\n")).ID(p.to.id()).Z(1)
 	for i, r := range rows[:min(len(rows), max(0, p.h-2))] {
 		layer.AddLayers(lipgloss.NewLayer(fit(r.text, inner)).ID(r.to.id()).X(1).Y(1 + i).Z(2))
@@ -213,24 +240,22 @@ func (p panel) box(rows []row) *lipgloss.Layer {
 func (m model) home() []*lipgloss.Layer {
 	sideW := m.sideWidth()
 	rightW, h := m.w-sideW, m.h-1
-	const nowH = 4
-	trendH := min(9, max(3, h-nowH-3))
+	now := m.nowRows()
+	tiles := m.trendRows(rightW - 2)
+	nowH := len(now) + 2
+	trendH := min(len(tiles)+2, max(3, h-nowH-5))
 	recentH := max(0, h-nowH-trendH)
-	recent, _ := trend(m.specs)
-	title := "trend"
-	if len(recent) > 0 {
-		title = fmt.Sprintf("last %s", plural(len(recent), "build"))
-	}
-
-	specsBox := panel{to: target{toPane, int(specsPane)}, title: "specs", area: area{sideW, h}}
-	nowBox := panel{to: target{toPane, int(nowPane)}, title: "now", x: sideW, area: area{rightW, nowH}}
-	trendBox := panel{title: title, x: sideW, y: nowH, area: area{rightW, trendH}}
-	recentBox := panel{to: target{toPane, int(recentPane)}, title: "recent builds", x: sideW, y: nowH + trendH,
-		area: area{rightW, recentH}}
+	specsBox := panel{to: target{toPane, int(specsPane)}, title: "specs", lit: m.focus == specsPane,
+		area: area{sideW, h}}
+	nowBox := panel{to: target{toPane, int(nowPane)}, title: "now", lit: m.focus == nowPane, x: sideW,
+		area: area{rightW, nowH}}
+	trendBox := panel{title: trendTitle(trend(m.specs)), x: sideW, y: nowH, area: area{rightW, trendH}}
+	recentBox := panel{to: target{toPane, int(recentPane)}, title: "recent builds", lit: m.focus == recentPane,
+		x: sideW, y: nowH + trendH, area: area{rightW, recentH}}
 	return []*lipgloss.Layer{
 		specsBox.box(m.side(specsBox.inside())),
-		nowBox.box(m.nowRows()),
-		trendBox.box(m.trendRows(trendBox.inside())),
+		nowBox.box(now),
+		trendBox.box(tiles),
 		recentBox.box(m.recentRows(recentBox.inside())),
 		m.foot(homeScreen),
 	}
@@ -266,11 +291,20 @@ func (m model) side(in area) []row {
 	sel := m.sel[specsPane]
 	for i := max(0, sel-room+1); i < len(specs) && len(rows) < in.h; i++ {
 		s := specs[i]
-		text := marked(s.State) + " " + fit(s.Name, max(1, in.w-3-len(s.State))) + " " + string(s.State)
+		text := marked(s.State) + " " + fit(s.Name, max(1, in.w-3-len(s.State))) + " " + stated(s.State)
 		rows = append(rows, row{pick(text, m.focus == specsPane && i == sel), target{toSpec, i}})
 	}
 
 	return rows
+}
+
+// stated is a state's word. A spec that needs nothing more is dim, so the ones in play stand out.
+func stated(s State) string {
+	if s == Accepted || s == Rejected {
+		return dim.Render(string(s))
+	}
+
+	return string(s)
 }
 
 // marked is a state's glyph, in its color.
@@ -285,7 +319,7 @@ func marked(s State) string {
 	case Stopped:
 		return red.Render("✗")
 	case UAT, Waits:
-		return "◆"
+		return heading.Render("◆")
 	case Accepted:
 		return green.Render("✓")
 	case Rejected:
@@ -305,11 +339,11 @@ func (m model) nowRows() []row {
 		return []row{{text: dim.Render("nothing is running")}}
 	}
 
-	first := fmt.Sprintf("%s %s · %s role · %s · running %s", yellow.Render("▶"), ref.spec, r.Role, r.why(),
-		span(m.now.Sub(r.Start)))
-	second := "reading its stream"
+	first := dotted(yellow.Render("▶")+" "+bold.Render(ref.spec), role(r.Role)+" role", r.why(),
+		"running "+span(m.now.Sub(r.Start)))
+	second := dim.Render("reading its stream")
 	if m.live != nil {
-		second = strings.Join(m.liveFacts(r, m.live), "  ·  ")
+		second = strings.Join(m.liveFacts(r, m.live), dim.Render("  ·  "))
 	}
 
 	to := target{toNow, 0}
@@ -342,127 +376,77 @@ func (m model) liveFacts(r *Run, c *claude.Recounted) []string {
 // idleWarned is how long a session may write nothing, with no call open, before the view marks it.
 const idleWarned = time.Minute
 
-// trendRows lays the trend out in the area's width. A narrow terminal gets short labels, then loses the sparklines,
-// before it cuts the previous window's median.
-func (m model) trendRows(in area) []row {
-	t := layTrend(in.w)
-	t.recent, t.previous = trend(m.specs)
-	rows := []row{{text: dim.Render(t.head())}}
-	for _, ms := range measures {
-		rows = append(rows, row{text: t.line(ms)})
-	}
-
-	return rows
-}
-
-// trendTable is the trend's columns in a width, with the builds whose numbers it shows. A long table labels each
-// number in full, and a sparked one draws its sparkline.
-type trendTable struct {
-	recent, previous []*Build
-	widths           []int
-	long, sparked    bool
-}
-
-// layTrend fits the trend's columns to w cells.
-func layTrend(w int) trendTable {
-	const fixed = 2 + 8 + 21 + 3 // the mark, the median, "  previous 10: $99.99", and the spaces between
-	t := trendTable{widths: []int{12, 2, -8, window}, long: w >= 24+fixed+1+window+1,
-		sparked: w >= 12+fixed+1+window+1}
-	if t.long {
-		t.widths[0] = 24
-	}
-
-	if !t.sparked {
-		t.widths = t.widths[:3]
-	}
-
-	return t
-}
-
-// head labels the trend's columns.
-func (t trendTable) head() string {
-	head := cols(t.widths[:3], "", "", "median")
-	if t.sparked {
-		head += " oldest → newest"
-	}
-
-	return head
-}
-
-// line is one measure's row of the trend. A median worse than before is red, and a better one green.
-func (t trendTable) line(ms measure) string {
-	shown, known := ms.shownMedian(t.recent)
-	was, _ := ms.shownMedian(t.previous)
-	mark := ""
-	switch ms.change(t.recent, t.previous) {
-	case 1:
-		mark, shown = red.Render("✗"), red.Render(shown)
-	case -1:
-		mark, shown = green.Render("✓"), green.Render(shown)
-	}
-
-	label := ms.short
-	if t.long {
-		label = ms.label
-	}
-
-	cells := []string{label, mark, shown, ms.spark(t.recent), fmt.Sprintf(" previous %d: %s", len(t.previous), was)}
-	if !t.sparked {
-		cells = slices.Delete(cells, 3, 4)
-	}
-
-	text := cols(t.widths, cells...)
-	if known < len(t.recent) {
-		text += dim.Render(fmt.Sprintf("  %d of %d", known, len(t.recent)))
-	}
-
-	return text
-}
-
-// shownMedian is the median of m over the builds that know it, as shown, and how many do. It is — when none does.
-func (m measure) shownMedian(builds []*Build) (string, int) {
-	median, known := m.median(builds)
-	if known == 0 {
-		return "—", 0
-	}
-
-	return m.shown(median), known
-}
-
-// recentRows lists every build, newest first, in an area. A narrow terminal drops the date before the cost.
+// recentRows lists every build, newest first, in an area, below its columns' names. A narrow terminal drops the
+// date, and a wide one draws each cost as a bar beside it.
 func (m model) recentRows(in area) []row {
 	all := m.recent()
 	if len(all) == 0 {
 		return []row{{text: dim.Render("no build yet")}}
 	}
 
-	sel := m.sel[recentPane]
+	line, most := recentLine(in.w), 0.0
+	for _, l := range all {
+		cost, _ := l.b.cost()
+		most = max(most, cost)
+	}
+
+	// A panel with room for one build or two lists them with no names above.
 	var rows []row
-	for i := max(0, sel-in.h+1); i < len(all) && len(rows) < in.h; i++ {
-		b := all[i].b
-		took, known := b.took()
-		time := "?"
-		switch {
-		case known:
-			time = span(took)
-		case slices.ContainsFunc(b.runs(), (*Run).running):
-			time = span(m.now.Sub(b.Started))
-		}
+	if in.h > 2 {
+		rows = []row{{text: dim.Render(line("started", "spec", "outcome", "size", "time", "cost", ""))}}
+	}
 
-		cost, costKnown := b.cost()
-		price := dollars(cost, costKnown)
-
-		outcome := m.outcome(all[i].buildRef)
-		text := cols([]int{12, 16, 16, 8, -6}, dim.Render(b.Started.Local().Format("Jan 02 15:04")), all[i].spec,
-			outcome, plural(b.Size, "test"), time, price)
-		if in.w < 75 {
-			text = cols([]int{12, 13, 8, -5}, all[i].spec, outcome, plural(b.Size, "test"), time, price)
-		}
-
-		rows = append(rows, row{pick(text, m.focus == recentPane && i == sel), target{toRecent, i}})
+	sel := m.sel[recentPane]
+	for i := max(0, sel-in.h+len(rows)+1); i < len(all) && len(rows) < in.h; i++ {
+		rows = append(rows, row{pick(line(m.recentCells(all[i], most)...), m.focus == recentPane && i == sel),
+			target{toRecent, i}})
 	}
 
 	return rows
+}
+
+// recentLine lays a recent build's cells out in w cells. A narrow panel drops the date, and a wide one keeps the
+// cost's bar.
+func recentLine(w int) func(cells ...string) string {
+	return func(cells ...string) string {
+		switch {
+		case w < 75:
+			return cols([]int{12, 13, 8, -5, -7}, cells[1:6]...)
+		case w < 75+costBar:
+			return cols([]int{12, 16, 16, 8, -6, -7}, cells[:6]...)
+		}
+
+		return cols([]int{12, 16, 16, 8, -6, -7}, cells...)
+	}
+}
+
+// costBar is how many cells the widest cost's bar takes in the recent builds, with the space before it.
+const costBar = 13
+
+// recentCells are a build's cells in the recent builds. Its last is its cost as a bar, its share of most.
+func (m model) recentCells(l listed, most float64) []string {
+	took, known := l.b.took()
+	time := "?"
+	switch {
+	case known:
+		time = span(took)
+	case slices.ContainsFunc(l.b.runs(), (*Run).running):
+		time = span(m.now.Sub(l.b.Started))
+	}
+
+	cost, costKnown := l.b.cost()
+	return []string{dim.Render(l.b.Started.Local().Format("Jan 02 15:04")), l.spec, m.outcome(l.buildRef),
+		plural(l.b.Size, "test"), time, dollars(cost, costKnown), dim.Render(gauge(cost, most, costBar-1))}
+}
+
+// gauge draws v's share of most as a bar of at most w cells, to an eighth of a cell.
+func gauge(v, most float64, w int) string {
+	if most <= 0 {
+		return ""
+	}
+
+	eighths := int(v/most*float64(w*8) + 0.5)
+	return strings.TrimRight(strings.Repeat("█", eighths/8)+string([]rune(" ▏▎▍▌▋▊▉")[eighths%8]), " ")
 }
 
 // outcome is how a build ended, in its color and beside its glyph. A build that has not ended shows where it stands.
@@ -508,12 +492,12 @@ func (m model) page(s *screen) (head, body []row, sel int) {
 		return []row{{text: s.spec}}, nil, -1
 	}
 
-	title := fmt.Sprintf("%s · as approved at %s", s.spec, short(b.Approved, 12))
+	title := "as approved at " + short(b.Approved, 12)
 	if b.Amendments != "" {
 		title += ", with its amendments"
 	}
 
-	head = []row{{text: bold.Render(title)}, {}}
+	head = []row{{text: dotted(heading.Render(s.spec), title)}, {}}
 	if s.drawn == nil {
 		return head, []row{{text: dim.Render("reading the spec")}}, -1
 	}
@@ -542,8 +526,8 @@ func (m model) specPage(s *screen) (head, body []row, sel int) {
 	}
 
 	head = []row{
-		{text: fmt.Sprintf("%s · %s %s · approved %s", bold.Render(spec.Name), marked(spec.State), spec.State,
-			times(len(spec.Builds)))},
+		{text: dotted(heading.Render(spec.Name), marked(spec.State)+" "+string(spec.State),
+			"approved "+times(len(spec.Builds)))},
 		{},
 		{text: dim.Render(line("#", "started", "approved at", "outcome", "time", "cost", "turns", "failed", "rounds"))},
 	}
@@ -587,8 +571,8 @@ func (m model) buildPage(s *screen) (head, body []row, sel int) {
 	}
 
 	head = []row{
-		{text: fmt.Sprintf("%s · build %d · approved at %s · %s · %s", bold.Render(s.spec), s.build+1,
-			dim.Render(short(b.Approved, 12)), plural(b.Size, "test"), m.outcome(s.buildRef))},
+		{text: dotted(heading.Render(s.spec), fmt.Sprintf("build %d", s.build+1),
+			"approved at "+dim.Render(short(b.Approved, 12)), plural(b.Size, "test"), m.outcome(s.buildRef))},
 		{text: m.summary(b)},
 		{},
 		{text: dim.Render(cols(m.runCols(), "", "run", "", "took", "turns", "cost", "failed", "context"))},
@@ -615,7 +599,8 @@ func (m model) stepRows(s *screen, b *Build) (body []row, sel int) {
 			body = append(body, runNotes(step)...)
 			n++
 		case *Gate:
-			body = append(body, row{text: cols(m.runCols(), "", "gate", verdict(step), span(step.End.Sub(step.Start)))})
+			body = append(body, row{text: cols(m.runCols(), "", dim.Render("gate"), verdict(step),
+				dim.Render(span(step.End.Sub(step.Start))))})
 		}
 	}
 
@@ -678,11 +663,15 @@ func (m model) runRow(n int, r *Run) string {
 		failed = strconv.Itoa(len(r.Totals.Failed))
 	}
 
+	if len(r.Totals.Failed) > 0 {
+		failed = red.Render(failed)
+	}
+
 	if c := r.Totals.Context; c != nil {
 		context = tokens(c.Last)
 	}
 
-	return cols(m.runCols(), strconv.Itoa(n+1), r.Role, cmp.Or(r.Why, "?"), took, turns, cost, failed, context)
+	return cols(m.runCols(), strconv.Itoa(n+1), role(r.Role), cmp.Or(r.Why, "?"), took, turns, cost, failed, context)
 }
 
 // summary is a build's time, cost, turns and failed calls.
@@ -711,9 +700,9 @@ func (m model) summary(b *Build) string {
 
 	turns, turnsKnown := b.turns()
 	failed, refused, failedKnown := b.failed()
-	return fmt.Sprintf("%s: %s in gates, %s waiting on tools · %s · %s turns · %s failed, %s refused", time,
-		span(gates), span(waiting), price, count(turns, turnsKnown), count(failed, failedKnown),
-		count(refused, failedKnown))
+	return dotted(fmt.Sprintf("%s: %s in gates, %s waiting on tools", time, span(gates), span(waiting)), price,
+		count(turns, turnsKnown)+" turns",
+		fmt.Sprintf("%s failed, %s refused", count(failed, failedKnown), count(refused, failedKnown)))
 }
 
 // causes are a build's failed calls, grouped by cause, the most first.
@@ -745,8 +734,9 @@ func (m model) runPage(s *screen) (head, body []row, sel int) {
 
 	r := runs[s.run]
 	head = []row{
-		{text: fmt.Sprintf("%s · build %d · run %d: %s · %s role · session %s", bold.Render(s.spec), s.build+1,
-			s.run+1, r.why(), r.Role, dim.Render(short(r.Session, 8)))},
+		{text: dotted(heading.Render(s.spec), fmt.Sprintf("build %d", s.build+1),
+			fmt.Sprintf("run %d: %s", s.run+1, r.why()), role(r.Role)+" role",
+			"session "+dim.Render(short(r.Session, 8)))},
 		{text: m.runState(r, s.calls)},
 		{},
 	}
@@ -758,8 +748,9 @@ func (m model) runPage(s *screen) (head, body []row, sel int) {
 		body = append(body, row{text: line})
 	}
 
+	// One row, as callsFrom counts it.
 	if len(body) > 0 {
-		body = append(body, row{})
+		body = append(body, row{text: dim.Render("── calls, newest first " + strings.Repeat("─", max(0, m.w-23)))})
 	}
 
 	for _, a := range slices.Backward(s.calls.Actions) {
@@ -789,7 +780,7 @@ func (m model) runState(r *Run, c *claude.Recounted) string {
 		cost = fmt.Sprintf("$%.2f", *r.Totals.CostUSD)
 	}
 
-	return strings.Join(append(facts, turns, cost), " · ")
+	return dotted(append(facts, turns, cost)...)
 }
 
 // ran is how long a run ran, or how long it has run and how long since its session wrote.

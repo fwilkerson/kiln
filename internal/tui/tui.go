@@ -9,10 +9,12 @@
 // It reads its [Source] again once a second, so a running run grows as its session writes. A run lists its calls
 // newest first, below its answer. Keys and the mouse both work, and ? lists every key a screen takes. A click opens
 // the row it hits, and the wheel scrolls what it is over. Red marks what failed, yellow what runs or waits, and green
-// what passed. A glyph beside each color says the same: ✗, ▶ and ✓.
+// what passed. A glyph beside each color says the same: ✗, ▶ and ✓. Cyan marks the panel the keys go to, and each
+// key's name. It marks a spec that waits on the developer too, beside ◆.
 //
 // The home screen's trend is the last 10 builds that ended, beside the 10 before them. Each number is the median of
-// the builds that know it. A number kiln could not read shows as ?, never as zero.
+// the builds that know it. Below it is a bar for each build, oldest first, with the newest in cyan. A number kiln
+// could not read shows as ?, never as zero.
 package tui
 
 import (

@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/claude"
@@ -109,29 +108,29 @@ func (b *Build) rounds() (int, bool) {
 
 // measure is one number of a build that the trend shows.
 type measure struct {
-	// label names it, and short names it in a narrow terminal.
-	label, short string
-	of           func(*Build) (float64, bool)
-	shown        func(float64) string
+	// short names it.
+	short string
+	of    func(*Build) (float64, bool)
+	shown func(float64) string
 	// judged is a number that is worse as it grows. One that is not is told in no color.
 	judged bool
 }
 
 var measures = []measure{
-	{"cost per build", "cost", (*Build).cost, func(v float64) string { return fmt.Sprintf("$%.2f", v) }, true},
-	{"minutes per build", "minutes", func(b *Build) (float64, bool) {
+	{"cost", (*Build).cost, func(v float64) string { return fmt.Sprintf("$%.2f", v) }, true},
+	{"minutes", func(b *Build) (float64, bool) {
 		d, ok := b.took()
 		return d.Minutes(), ok
 	}, decimal, true},
-	{"failed calls per build", "failed calls", func(b *Build) (float64, bool) {
+	{"failed calls", func(b *Build) (float64, bool) {
 		n, _, ok := b.failed()
 		return float64(n), ok
 	}, decimal, true},
-	{"rounds per build", "rounds", func(b *Build) (float64, bool) {
+	{"rounds", func(b *Build) (float64, bool) {
 		n, ok := b.rounds()
 		return float64(n), ok
 	}, decimal, true},
-	{"size, in tests", "size, tests", func(b *Build) (float64, bool) { return float64(b.Size), true }, decimal, false},
+	{"size, tests", func(b *Build) (float64, bool) { return float64(b.Size), true }, decimal, false},
 }
 
 // window is how many builds the trend holds, and the previous builds beside it.
@@ -153,8 +152,8 @@ func trend(specs []Spec) (recent, previous []*Build) {
 	return ended[cut:], ended[max(0, cut-window):cut]
 }
 
-// median is the median of m over the builds that know it, and how many do.
-func (m measure) median(builds []*Build) (median float64, known int) {
+// values are m for each build that knows it, in the builds' order.
+func (m measure) values(builds []*Build) []float64 {
 	var values []float64
 	for _, b := range builds {
 		if v, ok := m.of(b); ok {
@@ -162,6 +161,12 @@ func (m measure) median(builds []*Build) (median float64, known int) {
 		}
 	}
 
+	return values
+}
+
+// median is the median of m over the builds that know it, and how many do.
+func (m measure) median(builds []*Build) (median float64, known int) {
+	values := m.values(builds)
 	if len(values) == 0 {
 		return 0, 0
 	}
@@ -173,34 +178,6 @@ func (m measure) median(builds []*Build) (median float64, known int) {
 	}
 
 	return (values[n/2-1] + values[n/2]) / 2, n
-}
-
-// spark draws m for each build, oldest first, one cell each, as high as its share of the largest. A build that
-// does not know m draws a dot.
-func (m measure) spark(builds []*Build) string {
-	const levels = "▁▂▃▄▅▆▇█"
-	steps := []rune(levels)
-	most := 0.0
-	for _, b := range builds {
-		if v, ok := m.of(b); ok {
-			most = max(most, v)
-		}
-	}
-
-	var s strings.Builder
-	for _, b := range builds {
-		v, ok := m.of(b)
-		switch {
-		case !ok:
-			s.WriteRune('·')
-		case most == 0:
-			s.WriteRune(steps[0])
-		default:
-			s.WriteRune(steps[min(len(steps)-1, int(v/most*float64(len(steps)-1)+0.5))])
-		}
-	}
-
-	return s.String()
 }
 
 // change says how the recent median moved from the previous one: +1 worse, -1 better. It is 0 when they show the

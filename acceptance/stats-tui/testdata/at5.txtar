@@ -56,12 +56,11 @@ term 120 30 kiln tui
 
 # Then: it shows cost, minutes, failed calls and rounds per build, and size, each for the recent builds beside the
 # builds before them.
-screen 'last 10 builds'
-screen 'cost per build +✓ +\$1\.00 .*previous 2: \$5\.00'
-screen 'minutes per build +\S* +[0-9.]+ .*previous 2: [0-9.]+'
-screen 'failed calls per build +✓ +0 .*previous 2: 1 '
-screen 'rounds per build +✓ +0 .*previous 2: 1 '
-screen 'size, in tests +1 .*previous 2: 1 '
+# Each number is a tile: its name, the median of the last 10 builds, then the median of the 2 before them.
+screen 'last 10 builds · median per build, beside the 2 before'
+screen 'cost +minutes +failed calls +rounds +size, tests +│$'
+screen '│✓ \$1\.00 +(?:[✓✗] )?[0-9.]+ +✓ 0 +✓ 0 +1 +│$'
+screen '│before \$5\.00 +before [0-9.]+ +before 1 +before 1 +before 1 +│$'
 
 -- .kiln/kiln.json --
 {"gate": ["test -e ready"], "rounds": 1}

@@ -202,12 +202,12 @@ func footer(k kind, w int) string {
 	kept := fitting(order, w)
 	var named []string
 	for _, b := range foot {
-		if n := footName(b); kept[n] {
-			named = append(named, n)
+		if kept[footName(b)] {
+			named = append(named, accent.Render(b.Help().Key)+" "+dim.Render(b.Help().Desc))
 		}
 	}
 
-	return strings.Join(named, " · ")
+	return dotted(named...)
 }
 
 // fitting names the bindings that fit in w cells, taken in order, with 3 cells between each two.
@@ -243,13 +243,13 @@ func (m model) keyList(k kind) *lipgloss.Layer {
 		columns = append(columns, column(chunk), "   ")
 	}
 
-	body := []string{bold.Render("keys"), lipgloss.JoinHorizontal(lipgloss.Top, columns[:len(columns)-1]...)}
+	body := []string{heading.Render("keys"), lipgloss.JoinHorizontal(lipgloss.Top, columns[:len(columns)-1]...)}
 	if len(lines)+5 <= m.h {
 		body = append(body, "")
 	}
 
 	body = append(body, dim.Render("? or esc closes this"))
-	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.BrightBlack).
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Cyan).
 		Padding(0, 1).Render(strings.Join(body, "\n"))
 	x := max(0, (m.w-lipgloss.Width(box))/2)
 	y := max(0, (m.h-lipgloss.Height(box))/2)
@@ -279,7 +279,7 @@ func column(lines []keyLine) string {
 
 	rows := make([]string, len(lines))
 	for i, l := range lines {
-		rows[i] = fmt.Sprintf("%-*s  %s", keysW, l.keys, dim.Render(l.desc))
+		rows[i] = accent.Render(fmt.Sprintf("%-*s", keysW, l.keys)) + "  " + dim.Render(l.desc)
 	}
 
 	return strings.Join(rows, "\n")

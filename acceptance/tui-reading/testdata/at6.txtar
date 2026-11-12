@@ -12,7 +12,7 @@ term 120 30 kiln tui
 screen '▶ x · build role · first run · running'
 
 # Then: each number kiln does not know shows as ?, and no screen shows the word "unknown".
-screen '\w{3} \d\d \d\d:\d\d x +▶ running +1 test +\d+[sm] \? +│$'
+screen '\w{3} \d\d \d\d:\d\d x +▶ running +1 test +\d+[sm] +\? +│$'
 ! screen 'unknown'
 
 # When: the spec's screen,

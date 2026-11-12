@@ -9,7 +9,7 @@ stdout '^x: landed on main'
 # Then: a list of every key that screen takes shows over it, and once closed, the screen is as it was.
 # Each screen first shows a row the list then covers.
 term 120 30 kiln tui
-screen 'failed calls per build +0 ▁ +previous 0: —'
+screen ' x +✓ landed +1 test '
 keys ?
 screen '│ keys +│'
 screen '│ j ↓  '
@@ -21,10 +21,10 @@ screen '│ enter  '
 screen '│ esc  '
 screen '│ \?  '
 screen '│ q ctrl\+c  '
-! screen 'failed calls per build +0 ▁ +previous 0: —'
+! screen ' x +✓ landed +1 test '
 keys esc
 ! screen '│ keys +│'
-screen 'failed calls per build +0 ▁ +previous 0: —'
+screen ' x +✓ landed +1 test '
 screen '^ j/k select · tab panel · / filter · enter open · \? keys · q quit$'
 
 # The spec's screen.

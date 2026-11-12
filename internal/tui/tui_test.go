@@ -18,7 +18,8 @@ import (
 )
 
 // TestTrend holds the home screen's trend: the last 10 builds that ended, beside the 10 before them. Each number is
-// the median of the builds that know it. A number worse than before is red, and a better one green.
+// the median of the builds that know it, above a bar for each build. A number worse than before is red, and a better
+// one green.
 func TestTrend(t *testing.T) {
 	now := time.Now()
 	ended := func(costs ...float64) []*Build {
@@ -45,30 +46,36 @@ func TestTrend(t *testing.T) {
 		builds []*Build
 		// w is the terminal's width, or 140.
 		w int
-		// row is a pattern the trend's cost row matches, and median the text that starts with its median.
-		row, median string
-		color       color.Color
+		// rows is a pattern the trend's rows for cost match. median is a text that starts with its median, or "".
+		rows, median string
+		color        color.Color
 	}{
 		{"the window holds the last 10 that ended, beside the 10 before them",
 			ended(9, 9, 9, 9, 9, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), 0,
-			`cost per build +✓ +\$1\.00 ██████████ +previous 10: \$3\.00 *│`, "$1.00 █", ansi.Green},
-		{"a build that has not ended is outside it", append(ended(1, 1, 1), running), 0,
-			`cost per build +\$1\.00 ███ +previous 0: — *│`, "$1.00 █", nil},
-		{"a build whose number is unknown is left out of its median", ended(1, -1, 3), 0,
-			`cost per build +\$2\.00 ▃·█ +previous 0: —  2 of 3 *│`, "$2.00 ▃", nil},
+			`last 10 builds .* the 10 before .*\n.*││cost .*\n.*││✓ \$1\.00 .*\n.*\n.*││█ █ █ █ █ █ █ █ █ █ .*\n` +
+				`.*││newest \$1\.00 .*\n.*││\$1\.00 – \$1\.00 .*\n.*││before \$3\.00 `, "✓ $1.00", ansi.Green},
+		{"a build that has not ended is outside it", append(ended(1, 2, 4), running), 0,
+			`last 3 builds .*\n.*││cost .*\n.*││\$2\.00 .*\n.*││ {8}███ .*\n.*││▄▄▄ ███ ███ .*\n.*││newest \$4\.00 .*\n` +
+				`.*││\$1\.00 – \$4\.00 .*\n.*│╰`, "", nil},
+		{"a build whose number is unknown is left out of its median, and draws a dot", ended(1, -1, 3), 0,
+			`││\$2\.00  2 of 3 .*\n.*\n.*││▅▅▅ ··· ███ `, "$2.00  2 of 3", nil},
 		{"a worse number is red", ended(1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2), 0,
-			`cost per build +✗ +\$2\.00 ██████████ +previous 2: \$1\.00 *│`, "$2.00 █", ansi.Red},
-		{"a trend too narrow for its sparklines does not label them", ended(1, 1), 74,
-			`│ +median *│`, "$1.00  previous", nil},
+			`││✗ \$2\.00 .*\n(.*\n){4}.*││before \$1\.00 `, "✗ $2.00", ansi.Red},
+		{"a trend too narrow for its tiles is a table with no bars", ended(1, 1), 74,
+			`│cost +\$1\.00 +│\n.*│minutes `, "", nil},
 		{"an 80-column terminal shows both medians",
 			ended(3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), 80,
-			`│cost +✓ +\$1\.00 ██████████ +previous 10: \$3\.00 *│`, "$1.00 █", ansi.Green},
+			`│cost +✓ \$1\.00 +before \$3\.00 *│`, "✓ $1.00", ansi.Green},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			src := source{specs: []Spec{{Name: "x", State: UAT, Builds: tc.builds}}}
 			m := drive(t, src, "", sized(cmp.Or(tc.w, 140), 30))
-			if !regexp.MustCompile("(?m)" + tc.row).MatchString(screenOf(m)) {
-				t.Errorf("no row matches\n%s\non the screen\n%s", tc.row, screenOf(m))
+			if !regexp.MustCompile(tc.rows).MatchString(screenOf(m)) {
+				t.Errorf("no rows match\n%s\non the screen\n%s", tc.rows, screenOf(m))
+			}
+
+			if tc.median == "" {
+				return
 			}
 
 			if got := colorOf(t, m, tc.median); !sameColor(got, tc.color) {
@@ -84,7 +91,7 @@ func TestRoundsUnknown(t *testing.T) {
 	now := time.Now()
 	b := &Build{Spec: "x", Started: now, Outcome: "landed", Steps: []Step{&Run{Role: "build", Start: now, End: now}}}
 	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}}
-	if m := drive(t, src, "", sized(140, 30)); !regexp.MustCompile(`rounds per build +— .*  0 of 1 *│`).MatchString(
+	if m := drive(t, src, "", sized(140, 30)); !regexp.MustCompile(`││—  0 of 1 +0 +0 +—  0 of 1 +0 *│`).MatchString(
 		screenOf(m)) {
 		t.Errorf("the trend counts the rounds:\n%s", screenOf(m))
 	}
