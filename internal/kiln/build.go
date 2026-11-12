@@ -370,7 +370,7 @@ func (b *build) round(back setback) (string, reason, error) {
 	b.set(func(r *record) { r.Rounds++ })
 	b.say("the gate failed; it goes back to the session, round %d of %d", b.rec.Rounds, rounds)
 	why := reason{Why: back.why, Round: b.rec.Rounds, Rounds: rounds}
-	return fmt.Sprintf(gateFailed, b.rec.Rounds, rounds, back.report), why, nil
+	return fmt.Sprintf(gateFailed, back.report), why, nil
 }
 
 func (b *build) start(ctx context.Context) error {
@@ -1038,9 +1038,8 @@ func cmpOr[T comparable](a, b T) T {
 const (
 	starting = "Build %s, approved at %s. Your worktree is on its branch, %s, made from main. When the build " +
 		"is done, end your turn: kiln commits what you leave, and gates it."
-	gateFailed = "The gate failed, so it comes back to you: round %d of %d. Fix what it found, and end your " +
-		"turn.\n\n%s"
-	audited = "The audit read the directories you changed, and your acceptance tests' code beside their Given, " +
+	gateFailed = "The gate failed, so it comes back to you. Fix what it found, and end your turn.\n\n%s"
+	audited    = "The audit read the directories you changed, and your acceptance tests' code beside their Given, " +
 		"When, Then. Fix each finding, or say in your reply why it is wrong. Then end your turn.\n\n%s"
 	auditing  = "Audit these directories: %s. The spec is %s. The build changed these files: %s."
 	conflicts = "Main moved, and your work conflicts with it in these files:\n%s\n\nMerge main into your " +
