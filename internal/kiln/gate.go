@@ -1,9 +1,7 @@
 package kiln
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,91 +17,6 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// config is .kiln/kiln.json, read from main's tip, so a build cannot weaken the gate it is held to.
-type config struct {
-	// Gate holds the commands the gate runs, each with sh -c, at the top of a worktree.
-	Gate []string `json:"gate"`
-	// Rounds is how many times a failing gate goes back to the session before the build stops.
-	Rounds int `json:"rounds"`
-	// Hosts are the only hosts a session's commands reach.
-	Hosts []string `json:"hosts,omitempty"`
-	// Writable holds commands, each run with sh -c. Each field one prints is a path a session's commands may write.
-	Writable []string `json:"writable,omitempty"`
-	// Gauges are read after each landing, and never block one.
-	Gauges []gauge `json:"gauges,omitempty"`
-	// Workflow is "split", or "" for build then audit. Like Acceptance and Harness, kiln reads it at the commit the
-	// build was queued at.
-	Workflow string `json:"workflow,omitempty"`
-	// Acceptance is where a spec's acceptance tests live, with {spec} for its name, such as "acceptance/{spec}/".
-	Acceptance string `json:"acceptance,omitempty"`
-	// Harness holds paths both sessions of a split build may write, such as the code the acceptance tests run through.
-	Harness []string `json:"harness,omitempty"`
-	// Reaudit holds paths the audit reads again whenever the work's own change to them differs from what it read.
-	Reaudit []string `json:"reaudit,omitempty"`
-}
-
-// splitWorkflow is the workflow whose build session writes the code, and whose verify session writes the tests.
-const splitWorkflow = "split"
-
-// specVar stands for the spec's name in kiln.json's acceptance.
-const specVar = "{spec}"
-
-// acceptancePath is where the acceptance tests of spec live.
-func (c config) acceptancePath(spec Spec) string {
-	return strings.ReplaceAll(c.Acceptance, specVar, string(spec))
-}
-
-// fixedPart is the part of acceptance before {spec}, which is the same for every spec.
-func (c config) fixedPart() string {
-	fixed, _, _ := strings.Cut(c.Acceptance, specVar)
-	return fixed
-}
-
-const configFile = kilnDir + "/kiln.json"
-
-func parseConfig(raw []byte) (config, error) {
-	var c config
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&c); err != nil {
-		return c, fmt.Errorf("%s: %w", configFile, err)
-	}
-
-	if len(c.Gate) == 0 || c.Rounds < 0 {
-		return c, fmt.Errorf("%s names no gate command, or fewer than 0 rounds", configFile)
-	}
-
-	if c.Workflow != "" && c.Workflow != splitWorkflow {
-		return c, fmt.Errorf("%s names the workflow %q: name %q, or none for build then audit", configFile, c.Workflow,
-			splitWorkflow)
-	}
-
-	named := map[string]bool{}
-	for _, g := range c.Gauges {
-		if g.Name == "" || named[g.Name] || (g.Min == nil) == (g.Max == nil) {
-			return c, fmt.Errorf("%s names a gauge with no name, a name another gauge has, or not exactly one of "+
-				"min and max: %q", configFile, g.Name)
-		}
-
-		named[g.Name] = true
-	}
-
-	return c, nil
-}
-
-func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {
-	raw, found, err := r.git.Show(ctx, at, configFile)
-	if err != nil {
-		return config{}, err
-	}
-
-	if !found {
-		return config{}, fmt.Errorf("main holds no %s: %s", configFile, initHint)
-	}
-
-	return parseConfig(raw)
-}
-
 // check is one gate command's run.
 type check struct {
 	Command string `json:"command"`
@@ -111,13 +24,16 @@ type check struct {
 	// Output is the end of what the command printed.
 	Output string `json:"output,omitempty"`
 	// Failed names each test that failed, as go test's output or the command's JUnit XML names it.
-	Failed []string `json:"failed,omitempty"`
+	Failed tests `json:"failed,omitempty"`
 	// Ran names each test the command's JUnit XML lists. go test's output lists none.
-	Ran []string `json:"ran,omitempty"`
+	Ran tests `json:"ran,omitempty"`
 	// Broken is true when the command failed in a way no test names. A Go package that fails to build does that. So do
 	// JUnit XML that will not parse, and a test module that will not import.
 	Broken bool `json:"broken,omitempty"`
 }
+
+// tests names tests, each as a check names it, such as "TestAT1 (example.com/acceptance/x)".
+type tests []string
 
 // outputKept is how much of a command's output a check keeps, from its end.
 const outputKept = 16 << 10
@@ -281,11 +197,26 @@ func (c check) judged(main check) (report string, failing []string) {
 	}
 
 	failing, notRun := c.against(main)
-	if !c.Broken && len(c.Failed) > 0 && len(failing) == 0 && len(notRun) == 0 {
+	if c.excused(failing, notRun) {
 		return "", nil
 	}
 
-	report = fmt.Sprintf("`%s` exited %d:\n%s", c.Command, c.Exit, strings.TrimSpace(c.Output))
+	if c.Broken || len(failing) == 0 {
+		failing = append(failing, "`"+c.Command+"`")
+	}
+
+	return c.report(main, notRun), failing
+}
+
+// excused is whether c failed only on tests that failed at main, and ran every test main ran. failing and notRun are
+// what against answers.
+func (c check) excused(failing, notRun tests) bool {
+	return !c.Broken && len(c.Failed) > 0 && len(failing) == 0 && len(notRun) == 0
+}
+
+// report says what failed in c. main is the check of c's command at main, and notRun the tests main ran but c did not.
+func (c check) report(main check, notRun tests) string {
+	report := fmt.Sprintf("`%s` exited %d:\n%s", c.Command, c.Exit, strings.TrimSpace(c.Output))
 	if len(notRun) > 0 {
 		report += "\n\nThe run was cut short. These tests ran at main, but not here: " +
 			strings.Join(notRun, ", ") + "."
@@ -295,21 +226,17 @@ func (c check) judged(main check) (report string, failing []string) {
 		report += "\n\n" + unnamed
 	}
 
-	if c.Broken || len(failing) == 0 {
-		failing = append(failing, "`"+c.Command+"`")
-	}
-
-	return report, failing
+	return report
 }
 
 // against answers the tests that failed in c but not in main. It answers the tests main ran that c did not, too.
-func (c check) against(main check) (failedHere, notRun []string) {
-	return without(c.Failed, main.Failed), without(main.Ran, c.Ran)
+func (c check) against(main check) (failedHere, notRun tests) {
+	return c.Failed.without(main.Failed), main.Ran.without(c.Ran)
 }
 
-// without is each name in names that is not in drop.
-func without(names, drop []string) []string {
-	return slices.DeleteFunc(slices.Clone(names), func(n string) bool { return slices.Contains(drop, n) })
+// without is each test in t that is not in drop.
+func (t tests) without(drop tests) tests {
+	return slices.DeleteFunc(slices.Clone(t), func(n string) bool { return slices.Contains(drop, n) })
 }
 
 // namesNothing is whether c failed, is not broken, and names no failed test.
@@ -378,23 +305,31 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without strin
 	refused := map[string]string{}
 	for _, p := range changed {
 		why := g.guarded(p)
-		if why != "" && within(fold(p), without) {
-			_, held, err := r.git.Show(ctx, head, p)
-			if err != nil {
-				return nil, err
-			}
-
-			if !held {
-				why = ""
-			}
+		if why == "" {
+			continue
 		}
 
-		if why != "" {
+		removed, err := r.removed(ctx, head, p, without)
+		if err != nil {
+			return nil, err
+		}
+
+		if !removed {
 			refused[p] = why
 		}
 	}
 
 	return refused, nil
+}
+
+// removed is whether p is under without, and head lacks it. That is kiln's removal, not the work's.
+func (r *Repo) removed(ctx context.Context, head git.Rev, p, without string) (bool, error) {
+	if !within(fold(p), without) {
+		return false, nil
+	}
+
+	_, held, err := r.git.Show(ctx, head, p)
+	return !held, err
 }
 
 // checksVersion is part of the key main's checks are kept under. Raise it whenever what a check records changes, so
