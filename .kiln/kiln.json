@@ -26,6 +26,9 @@
     "echo \"$(go env GOPATH | cut -d: -f1)/pkg/sumdb\"",
     "uv cache dir"
   ],
+  "mcp": {
+    "codescene": {"command": "cs-mcp-auth"}
+  },
   "gauges": [
     {
       "name": "code health",
