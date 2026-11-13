@@ -8,6 +8,12 @@ import (
 
 const settingsFile = "settings.json"
 
+// mcpFile holds a session's MCP servers, as Claude Code's --mcp-config reads them.
+const mcpFile = "mcp.json"
+
+// trustd verifies certificates on macOS. A Go program reaches it to check a host's TLS certificate, as go get does.
+const trustd = "com.apple.trustd.agent"
+
 // writeTools are the tools that write a file Claude Code names, and so the ones Hook is asked about.
 const writeTools = "Edit|Write|MultiEdit|NotebookEdit"
 
@@ -26,7 +32,8 @@ func settings(l Launch) ([]byte, error) {
 		"sandbox": map[string]any{
 			"enabled":                  true,
 			"allowUnsandboxedCommands": false,
-			"network":                  map[string]any{"allowedDomains": nonNil(l.Domains)},
+			"network": map[string]any{"allowedDomains": nonNil(l.Domains),
+				"allowMachLookup": []string{trustd}},
 			"filesystem": map[string]any{"allowWrite": nonNil(l.Writable), "denyRead": nonNil(l.DenyRead),
 				"allowRead": nonNil(l.AllowRead)},
 		},
@@ -49,6 +56,14 @@ func settings(l Launch) ([]byte, error) {
 	enc.SetIndent("", "  ")
 	err := enc.Encode(own)
 	return b.Bytes(), err
+}
+
+func nonNilMap[V any](items map[string]V) map[string]V {
+	if items == nil {
+		return map[string]V{}
+	}
+
+	return items
 }
 
 func nonNil(items []string) []string {

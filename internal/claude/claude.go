@@ -9,12 +9,13 @@
 //
 // Each session runs the model, effort and advisor its Launch names. It runs in auto permission mode, with only the
 // project's settings and those Run writes. A question it would ask is refused instead, since no one answers it. Its
-// commands run in Claude Code's sandbox, which writes only in Dir and Writable, and reaches only Domains. When it
-// exits, Run kills every process it left behind. It finds them by their process tree, their group, and their working
-// directory.
+// commands run in Claude Code's sandbox, which writes only in Dir and Writable, and reaches only Domains. It calls
+// only the MCP servers its Launch names, which run outside the sandbox. When it exits, Run kills every process it
+// left behind. It finds them by their process tree, their group, and their working directory.
 //
-// A session's files are kept in Config.Sessions, under its ID. They are the system prompt, the settings, and the
-// stream it wrote, across every resume. Beside them is the end of its standard error, from its last run.
+// A session's files are kept in Config.Sessions, under its ID. They are the system prompt, the settings, its MCP
+// servers, and the stream it wrote, across every resume. Beside them is the end of its standard error, from its last
+// run.
 //
 // Run totals what each run printed, in Ended.Totals: its turns, cost, context, tool calls, waits and failed calls.
 // Recount totals a run again from the stream, from the length Streamed answered before it ran, and lists its calls.
@@ -85,6 +86,8 @@ type Launch struct {
 	Writable []string
 	// Domains are the hosts a command may reach.
 	Domains []string
+	// MCP holds the only MCP servers the session calls, by name, each as Claude Code's mcpServers holds one.
+	MCP map[string]json.RawMessage
 	// DenyRead are absolute paths no command may read, but those under AllowRead, which reopens what it names. The
 	// sandbox holds them for a command. Deny's Read rules hold the Read tool, and Grep and Glob on a best effort.
 	DenyRead, AllowRead []string
@@ -176,7 +179,13 @@ func write(dir string, l Launch) error {
 		return err
 	}
 
-	for name, content := range map[string][]byte{l.Role + ".md": []byte(l.System), settingsFile: settings} {
+	servers, err := json.Marshal(map[string]any{"mcpServers": nonNilMap(l.MCP)})
+	if err != nil {
+		return err
+	}
+
+	files := map[string][]byte{l.Role + ".md": []byte(l.System), settingsFile: settings, mcpFile: servers}
+	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), content, 0o600); err != nil {
 			return err
 		}
@@ -207,6 +216,7 @@ func arguments(l Launch, dir string) []string {
 	return append(args, "--permission-mode", "auto",
 		"--setting-sources", "project",
 		"--settings", filepath.Join(dir, settingsFile),
+		"--mcp-config", filepath.Join(dir, mcpFile), "--strict-mcp-config",
 		"--output-format", "stream-json", "--verbose")
 }
 

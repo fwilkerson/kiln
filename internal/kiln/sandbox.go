@@ -11,7 +11,7 @@ import (
 )
 
 // sandboxed adds to l what every session of a build holds to. No agent's file changes the denied commands and
-// forbidden actions. The hosts and writable paths are kiln.json's, at main's tip.
+// forbidden actions. What the session reaches is kiln.json's, at main's tip.
 func (b *build) sandboxed(ctx context.Context, l claude.Launch) (claude.Launch, error) {
 	s, err := b.sides(ctx)
 	if err != nil {
@@ -39,8 +39,8 @@ func (b *build) sandboxed(ctx context.Context, l claude.Launch) (claude.Launch, 
 	return b.r.reached(ctx, l)
 }
 
-// reached adds to l what kiln.json at main's tip says a session reaches. Those are the hosts its commands reach, and
-// the paths beside its worktree they write.
+// reached adds to l what kiln.json at main's tip says a session reaches. Those are the hosts its commands reach, the
+// paths beside its worktree they write, and the MCP servers it calls.
 func (r *Repo) reached(ctx context.Context, l claude.Launch) (claude.Launch, error) {
 	main, err := r.git.Tip(ctx, mainBranch)
 	if err != nil {
@@ -61,7 +61,7 @@ func (r *Repo) reached(ctx context.Context, l claude.Launch) (claude.Launch, err
 		l.Writable = append(l.Writable, paths...)
 	}
 
-	l.Domains = c.Hosts
+	l.Domains, l.MCP = c.Hosts, c.MCP
 	return l, nil
 }
 

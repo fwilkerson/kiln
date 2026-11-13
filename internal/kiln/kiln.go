@@ -35,8 +35,8 @@
 // preset is kiln.json and the "Tailor this" sections of the build, verify and audit agents:
 //
 //	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
-//	                            the gauges, the workflow, where the acceptance tests live, the harness, and the
-//	                            paths the audit reads again
+//	                            the MCP servers a session calls, the gauges, the workflow, where the acceptance
+//	                            tests live, the harness, and the paths the audit reads again
 //	.kiln/agents/build.md       the build agent
 //	.kiln/agents/verify.md      how the acceptance tests are written, and a split build's verify agent
 //	.kiln/agents/audit.md       the audit
@@ -49,8 +49,8 @@
 // medium effort. Without advisor, Fable advises it. Its body comes first in the session's system prompt. Then comes
 // kiln's contract with the agent, which names where the tests live. In build then audit, the build session writes
 // the tests too. Its prompt then holds the verify agent's body after the build agent's. No file changes the
-// contract, the denied commands, the forbidden actions, or the guard on .kiln/. The hosts and writable paths are
-// kiln.json's at main's tip, and none without its keys. kiln runs each
+// contract, the denied commands, the forbidden actions, or the guard on .kiln/. The hosts, writable paths and MCP
+// servers are kiln.json's at main's tip, and none without its keys. kiln runs each
 // command that prints paths once per kiln command. One that fails stops the build.
 //
 // A build runs one build session of Claude Code, on its own branch, kiln/<name>, in a worktree kiln makes. kiln commits

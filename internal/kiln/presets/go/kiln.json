@@ -10,7 +10,8 @@
     "storage.googleapis.com"
   ],
   "writable": [
-    "go env GOCACHE GOMODCACHE"
+    "go env GOCACHE GOMODCACHE",
+    "echo \"$(go env GOPATH | cut -d: -f1)/pkg/sumdb\""
   ],
   "acceptance": "acceptance/{spec}/",
   "harness": [

@@ -69,7 +69,8 @@ and its reviewers into `.claude/`. A build writes nothing in `.kiln/` but its sp
 
 ```text
 .kiln/
-  kiln.json                    the gate, its rounds, reachable hosts, commands that print writable paths, gauges
+  kiln.json                    the gate, its rounds, reachable hosts, commands that print writable paths, MCP
+                               servers, gauges
   gauges/                      the scripts a gauge's command runs, out of a build's reach
   agents/build.md              the build agent: frontmatter for its tools, model, effort and advisor, then its prompt
   agents/verify.md             how the acceptance tests' code is written, and the verify agent of a split build
@@ -83,8 +84,10 @@ and its reviewers into `.claude/`. A build writes nothing in `.kiln/` but its sp
 ```
 
 - `kiln.json` holds the gate's commands, the rounds a failing gate goes back to the session, the hosts a session's
-  commands reach, and commands that print the paths beside its worktree they write. kiln reads it from main's tip,
-  so a build cannot weaken its own gate. The pre-commit hook runs the gate's commands on a commit to main.
+  commands reach, and commands that print the paths beside its worktree they write. Its `mcp` names the only MCP
+  servers a session calls, each as Claude Code's MCP server settings hold one, such as
+  `{"codescene": {"command": "cs-mcp-auth"}}`. They run outside the sandbox. kiln reads it from main's tip, so a build
+  cannot weaken its own gate. The pre-commit hook runs the gate's commands on a commit to main.
 - `kiln.json`'s `acceptance` is where a spec's acceptance tests live, with `{spec}` for its name, such as
   `"acceptance/{spec}/"`. `kiln queue` refuses a `kiln.json` without it. `reaudit` lists paths the audit must read
   whenever the work changes them, such as a harness or migrations. When the work's own change to one differs from what

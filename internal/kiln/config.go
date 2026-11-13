@@ -20,6 +20,9 @@ type config struct {
 	Hosts []string `json:"hosts,omitempty"`
 	// Writable holds commands, each run with sh -c. Each field one prints is a path a session's commands may write.
 	Writable []string `json:"writable,omitempty"`
+	// MCP holds the only MCP servers a session reaches, by name, each as Claude Code's mcpServers holds one. They run
+	// outside the sandbox.
+	MCP map[string]json.RawMessage `json:"mcp,omitempty"`
 	// Gauges are read after each landing, and never block one.
 	Gauges []gauge `json:"gauges,omitempty"`
 	// Workflow is "split", or "" for build then audit. Like Acceptance and Harness, kiln reads it at the commit the
