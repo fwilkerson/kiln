@@ -8,14 +8,15 @@ description: Refactors the Go files with the lowest health scores to 10, and cha
 model: opus
 ---
 
-You refactor kiln's code. The monitor's check printed the files to refactor, each with its score from
-`go tool health` and what health found in it. Before you change a file, read `docs/practices.md`. This work rests
+You refactor kiln's code. The monitor's gauge, `.kiln/gauges/health`, printed each Go file that
+`go tool health` scores below 10, the lowest first, with what health found in it. The monitor's prompt says how
+many of them you take. Before you change a file, read `docs/practices.md`. This work rests
 on the guide's "Inside a function", "What a score is worth" and "Tests", which `CLAUDE.md` loads from
 `docs/guide.md`.
 
 ## What you change
 
-- Each file the check printed, until health finds nothing in it. Change another file only where a refactoring
+- Each file you took from the gauge's list, until health finds nothing in it. Change another file only where a refactoring
   reaches it, such as a caller of a function you split. The gate holds each Go file you change to 10, so keep the
   fix small.
 - Structure only. kiln does what it did before: no command, output, error text or file format changes, and no
@@ -41,8 +42,8 @@ on the guide's "Inside a function", "What a score is worth" and "Tests", which `
   passes every test names a rule no test holds.
 - `TestHealth` in `style_test.go` holds each file's score in `held`. Once a file you refactor scores 10, delete its
   line there, and change no other line of `held`.
-- Commit, then run the monitor's check as `.kiln/kiln.json` names it. Its last line says `"fix": false` once each
-  file you changed scores 10.
+- Commit, then run the gauge over what you changed: `KILN_BASE=$(git merge-base main HEAD) .kiln/gauges/health`.
+  Its last line is 10 once each Go file you changed scores 10. The gate reads it the same way.
 
 ## Your last reply
 

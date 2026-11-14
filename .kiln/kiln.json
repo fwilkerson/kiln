@@ -26,6 +26,13 @@
     "echo \"$(go env GOPATH | cut -d: -f1)/pkg/sumdb\"",
     "uv cache dir"
   ],
+  "gauges": [
+    {
+      "name": "health",
+      "command": ".kiln/gauges/health",
+      "min": 10
+    }
+  ],
   "monitors": [
     {
       "name": "uat",
@@ -39,9 +46,9 @@
     {
       "name": "code-health",
       "every": "24h",
-      "check": ".kiln/monitors/code-health 3",
+      "gauge": "health",
       "agent": ".kiln/agents/refactor.md",
-      "prompt": "Refactor each file the check listed until go tool health finds nothing in it, as your instructions say."
+      "prompt": "Refactor the three files the gauge lists first until go tool health finds nothing in them, as your instructions say."
     }
   ]
 }

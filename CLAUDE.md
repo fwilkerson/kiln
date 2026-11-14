@@ -7,9 +7,10 @@ for macOS.
 
 - `.kiln/specs/<name>.md`: a spec. With Status Proposed it is a plan, a starter `/shape` takes up later; build only
   the approved spec kiln names. Its Given, When, Then text is the developer's: never change it.
-- `.kiln/monitors/`: the scripts kiln's monitors' checks run, out of a fix's reach. A build names a new one in its
-  last reply, for the developer to commit. `uat` is the check of the monitor that folds an accepted spec's tests, and
-  `code-health` of the one that refactors the files `go tool health` scores lowest.
+- `.kiln/monitors/` and `.kiln/gauges/`: the scripts kiln's monitors' checks and gauges run, out of a fix's reach. A
+  build names a new one in its last reply, for the developer to commit. `monitors/uat` is the check of the monitor
+  that folds an accepted spec's tests. `gauges/health` is the gauge of `code-health`, the monitor that refactors the
+  files `go tool health` scores lowest.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.
 - `.kiln/`: kiln's own settings, agents and specs, as `kiln init` wrote them, tailored to kiln. `.claude/agents` and
   `.claude/skills` link to `/shape`, its reviewers and the verify agent there. A build changes nothing here but its

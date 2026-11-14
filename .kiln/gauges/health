@@ -1,0 +1,46 @@
+#!/bin/sh
+# The gauge health of kiln's code-health monitor. It reads each Go file changed since $KILN_BASE that the commit still
+# holds, and prints each one that go tool health scores below 10, the lowest first, with what health found in it.
+#
+#   KILN_BASE=<commit or tree> .kiln/gauges/health
+#
+# Its last line is the lowest score of those files, or 10. It prints no number where it read no Go file. It leaves
+# out uat/, which a fix never writes.
+set -eu
+export LC_ALL=C
+
+read=$(git diff --name-only --diff-filter=d "$KILN_BASE" HEAD -- '*.go' ':!uat/')
+if [ -z "$read" ]; then
+  exit 0
+fi
+
+found=$(mktemp)
+failed=$(mktemp)
+trap 'rm -f "$found" "$failed"' EXIT
+
+# health scores the whole repository, since a duplicate body is found across files. It exits 1 when a file scores
+# below 10, and when it could not run. Only a run that printed a score ran.
+if ! go tool health . >"$found" 2>"$failed" && ! grep -Eq '^ *[0-9]+  ' "$found"; then
+  cat "$failed" >&2
+  echo "health: go tool health could not run" >&2
+  exit 1
+fi
+
+# low prints "<score> <file>" for each file read that health scored below 10, the lowest first.
+low=$(awk '/^ *[0-9]+  / { print $1, $2 }' "$found" | sort -k1,1n -k2,2 | while read -r score f; do
+  if echo "$read" | grep -qxF "$f"; then echo "$score $f"; fi
+done)
+
+# Each finding drops its line number, which moves with any commit, since kiln holds a monitor while the gauge prints
+# the same.
+echo "$low" | while read -r score f; do
+  [ -n "$f" ] || continue
+  echo "$f scores $score"
+  awk -v at="$f:" 'index($0, at) == 1 { sub(/^[^ ]+ /, ""); print "  " $0 }' "$found"
+done
+
+if [ -n "$low" ]; then
+  echo "$low" | head -n 1 | cut -d' ' -f1
+else
+  echo 10
+fi
