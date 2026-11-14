@@ -10,3 +10,4 @@ Each spec the developer accepted, and the command that shows it in the commit th
 - Spec 6: Reading a build in kiln tui: `git show 973b15174c97:specs/tui-reading.md`
 - Spec 7: A project's own agents: `git show f6b984cfdf2e:.kiln/specs/project-roles.md`
 - Spec 9: Gauges: `git show c401ea2a5350:.kiln/specs/gauges.md`
+- Spec 10: Tests written apart from the code: `git show 710fc0f82870:.kiln/specs/split.md`
