@@ -11,7 +11,8 @@ for macOS.
   last reply, for the developer to commit. `uat` is the check of the monitor that folds an accepted spec's tests.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.
 - `.kiln/`: kiln's own settings, agents and specs, as `kiln init` wrote them, tailored to kiln. `.claude/agents` and
-  `.claude/skills` link to `/shape` and its reviewers there. A build changes nothing here but its amendment file.
+  `.claude/skills` link to `/shape`, its reviewers and the verify agent there. A build changes nothing here but its
+  amendment file.
 - `internal/kiln/defaults/`: what `kiln init` writes, for any project. No line there names kiln's own repository.
 - `internal/kiln/presets/`: each preset's `kiln.json`, and its text for the "Tailor this" sections of the defaults'
   prompts. `kiln init` writes them with `internal/kiln/defaults/`.
