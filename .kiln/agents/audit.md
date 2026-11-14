@@ -26,7 +26,7 @@ You read packages you have never seen, as the next developer on this repository 
 
 <!-- Tailor this: where this project keeps an acceptance test's code, as its build agent writes it. -->
 
-Acceptance test N's code is the Go test in `acceptance/<name>/` whose name starts `TestAT<N>`, where `<name>` is the
+Acceptance test N's code is the Go test in `uat/<name>/` whose name starts `TestAT<N>`, where `<name>` is the
 spec's name.
 
 ## A program that draws a terminal UI

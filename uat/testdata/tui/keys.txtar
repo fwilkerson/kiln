@@ -29,7 +29,8 @@ term 120 7 kiln tui
 screen '(?:^ |· )enter [^\n]*\z'
 ! screen '(?:^ |· )\S*(?:[Ee]nd|[Hh]ome|[Pp]g|[Pp]age|↑|↓|←|→)\S* [^\n]*\z'
 
-# Enter on the spec opens its newest build.
+# Enter on the spec opens its newest build. The footer is drawn before the specs are read, so the keys wait for the spec.
+screen '◆ x'
 keys j enter
 screen '^x · build 4 · '
 

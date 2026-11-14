@@ -21,13 +21,15 @@ model: opus
 script, an HTTP request, or a session in a terminal. -->
 
 - Acceptance test N's code is a Go test named `TestAT<N>`, which runs `testdata/at<N>.txtar` with
-  `scenariotest.Run`. The package's `TestMain` calls `scenariotest.Main`, and its doc names the spec. Copy the shape
-  of a landed spec's tests, such as `acceptance/gauges/`.
+  `scenariotest.Run`, in the package `uat/<spec>/`. The package's `TestMain` calls `scenariotest.Main`, and its doc
+  names the spec. `go doc ./internal/scenariotest` shows the shape.
 - The script is a testscript: it runs `kiln` on a scratch repository, with a scripted claude read from its
   `claude.json` section. Its comments quote test N's Given, When and Then, each above the lines that make it hold.
-- A Then about the full-screen view drives `kiln tui` through `internal/termtest`, as `acceptance/gauges/` `TestAT7`
-  does. No sandboxed session can open a pseudo-terminal, so that test fails in your session and passes in kiln's
-  gate. Read it from the gate's report. Before a key, wait for a screen it acts on.
+- A script brings only the files its Given names. The harness adds the rest of a project kiln builds, as its doc
+  lists: `kiln.json`'s usual keys, `go.mod`, the agents' files, and the empty sections of a spec.
+- A Then about the full-screen view drives `kiln tui` through `internal/termtest`, as
+  `uat/testdata/tui/gauges.txtar` does. No sandboxed session can open a pseudo-terminal, so that test fails in your
+  session and passes in kiln's gate. Read it from the gate's report. Before a key, wait for a screen it acts on.
 - Change `internal/scenariotest` or `internal/termtest` only for what no test can reach without it. The audit reads
   each change there.
-- Run `go vet ./...` and `go test ./acceptance/...` before you end your turn, and format each Go file with `gofmt`.
+- Run `go vet ./...` and `go test ./uat/...` before you end your turn, and format each Go file with `gofmt`.

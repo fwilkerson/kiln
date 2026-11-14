@@ -5,7 +5,7 @@
   ],
   "rounds": 3,
   "workflow": "split",
-  "acceptance": "acceptance/{spec}/",
+  "acceptance": "uat/{spec}/",
   "harness": [
     "internal/scenariotest/",
     "internal/termtest/"

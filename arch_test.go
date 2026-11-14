@@ -8,7 +8,7 @@ import (
 )
 
 // TestArchitecture keeps kiln's layers apart. It checks these rules:
-//   - Nothing imports cmd or acceptance.
+//   - Nothing imports cmd or uat.
 //   - A package imports from outside the standard library only the modules that outside lists for it.
 func TestArchitecture(t *testing.T) {
 	format := `{{.ImportPath}} {{join .Imports " "}} {{join .TestImports " "}} {{join .XTestImports " "}}`
@@ -34,7 +34,7 @@ func violation(pkg, imp string) string {
 	switch {
 	case impTop == "" && strings.Contains(strings.Split(imp, "/")[0], ".") && !allowed(pkg, imp):
 		return "list its module for this package in outside"
-	case impTop == "cmd" || impTop == "acceptance":
+	case impTop == "cmd" || impTop == "uat":
 		return "nothing imports " + impTop
 	}
 

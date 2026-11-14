@@ -5,6 +5,10 @@
 //
 //	func TestAT1(t *testing.T) { scenariotest.Run(t, "testdata/at1.txtar") }
 //
+//	func TestUAT(t *testing.T) { scenariotest.RunAll(t, "testdata") }
+//
+// Run runs one script, for a spec's test N. RunAll runs each script of each feature, testdata/<feature>/*.txtar.
+//
 // A script's $WORK is the scratch repository's main checkout, on main. Its first commit holds every file the script
 // brings, but claude.json and what is under _given/. A session copies in the work it builds from _given/, which Go's
 // ./... leaves out too. HOME is a directory of the script's own, so kiln's worktrees are the script's own too.
@@ -148,8 +152,26 @@ var readSource = sync.OnceValue(func() error {
 	return nil
 })
 
-// Run runs the script in file, beside the other tests that call Run.
+// Run runs the script in file, beside the other tests that call Run or RunAll.
 func Run(t *testing.T, file string) {
+	run(t, testscript.Params{Files: []string{file}})
+}
+
+// RunAll runs each script at dir/<feature>/<scenario>.txtar as the test <feature>/<scenario>, beside the others.
+func RunAll(t *testing.T, dir string) {
+	features, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal("scenariotest:", err)
+	}
+
+	for _, feature := range features {
+		t.Run(feature.Name(), func(t *testing.T) {
+			run(t, testscript.Params{Dir: filepath.Join(dir, feature.Name())})
+		})
+	}
+}
+
+func run(t *testing.T, scripts testscript.Params) {
 	t.Parallel()
 	if len(goEnv) == 0 {
 		t.Fatal("scenariotest: this package's TestMain must call scenariotest.Main(m)")
@@ -159,8 +181,8 @@ func Run(t *testing.T, file string) {
 		t.Fatal("scenariotest:", err)
 	}
 
-	testscript.Run(t, testscript.Params{Files: []string{file}, Setup: setUp, RequireExplicitExec: true,
-		Cmds: terminalCommands})
+	scripts.Setup, scripts.RequireExplicitExec, scripts.Cmds = setUp, true, terminalCommands
+	testscript.Run(t, scripts)
 }
 
 // givenDir holds the files a scripted session copies in, which the repository leaves out.

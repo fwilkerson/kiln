@@ -46,12 +46,13 @@ kiln monitor show <name> show how a monitor's last run ended, in the window kiln
    Each gauge shows its latest reading, the line it was read against, and the landing it measured.
 4. Run `kiln accept <name>`. A spec waiting on its branch lands with its amendments folded in. The spec is deleted,
    and `PRODUCT.md` gains the command that shows it. If that landing stops, `kiln accept <name>` lands it again.
-   - When UAT finds a problem, change the spec with `/shape`, commit it, and run `kiln queue <name>`. The new build
-     starts from main, which holds the landed work. kiln refuses to queue a landed spec whose spec is unchanged.
-   - To turn amendments away, run `kiln reject <name>`. To change an amendment's wording, commit your own wording to
-     the spec, then run `kiln reject <name>` and `kiln queue <name>`.
+    - When UAT finds a problem, change the spec with `/shape`, commit it, and run `kiln queue <name>`. The new build
+      starts from main, which holds the landed work. kiln refuses to queue a landed spec whose spec is unchanged.
+    - To turn amendments away, run `kiln reject <name>`. To change an amendment's wording, commit your own wording to
+      the spec, then run `kiln reject <name>` and `kiln queue <name>`.
 5. Read a landed build's commit for its time, cost, turns and failed calls. The ledger is `.git/kiln/ledger.jsonl`,
-   which holds each gauge's readings too. Each session's stream, for why a number is what it is, is `.git/kiln/sessions/<id>/stream.jsonl`.
+   which holds each gauge's readings too. Each session's stream, for why a number is what it is, is
+   `.git/kiln/sessions/<id>/stream.jsonl`.
 6. Run `kiln tui` in a terminal of its own, beside `kiln run`, to watch the running session and look back over each
    build run by run. It only reads.
 
@@ -95,7 +96,8 @@ verify and audit agents. Run again, `kiln init` writes each file `.kiln/` lacks,
 to `kiln.json` only `rounds`, the one key every preset shares. So a project from before the split workflow adds
 `acceptance`, and `harness` if it builds in split, to `kiln.json` by hand. It moves the acceptance-test text out of
 an older `agents/build.md` into `agents/verify.md` by hand too: `kiln queue` refuses until it does. It links `/shape`
-and its reviewers into `.claude/`. A build writes nothing in `.kiln/` but its spec's amendment file: the hook and the gate refuse the rest.
+and its reviewers into `.claude/`. A build writes nothing in `.kiln/` but its spec's amendment file: the hook and the
+gate refuse the rest.
 
 ```text
 .kiln/
@@ -144,7 +146,8 @@ and its reviewers into `.claude/`. A build writes nothing in `.kiln/` but its sp
   excused, nor is a run that left out a test main ran.
 - An agent's file is frontmatter between lines of `---`, then its body. kiln reads `tools:`, `model:`, `effort:` and
   `advisor:`, and ignores any other key. Without them, a session has every tool, and runs Opus. kiln sets no
-  effort and no advisor of its own: a file that names neither leaves both to Claude Code. `kiln queue` reads the build, verify and audit agents at the commit it queues, and each
+  effort and no advisor of its own: a file that names neither leaves both to Claude Code. `kiln queue` reads the build,
+  verify and audit agents at the commit it queues, and each
   session of that build runs with them. Its system prompt is the file's body, then kiln's contract with the agent,
   compiled into kiln. In build then audit, the build session writes the tests too, so the verify agent's body follows
   the build agent's. No file changes the contract, the denied commands and forbidden actions, or the guard on `.kiln/`.
@@ -170,12 +173,14 @@ and its reviewers into `.claude/`. A build writes nothing in `.kiln/` but its sp
 - `internal/scenariotest`: the scripted claude and the harness the acceptance tests run on.
 - `internal/termtest`: a pseudo-terminal that runs a program and reads its screen, for the acceptance tests of
   `kiln tui`. No sandboxed session can open one, so those tests run only in kiln's gate.
-- `acceptance/<spec>/`: the code of each acceptance test, `TestAT<N>` for test N.
+- `uat/`: the acceptance tests. `uat/<spec>/` holds a spec's until the developer accepts it, `TestAT<N>` for test N.
+  `uat/testdata/<feature>/` holds each accepted spec's scenarios, filed by feature, and `TestUAT` runs them.
 - `internal/kiln/defaults/`: what `kiln init` writes into `.kiln/`, for any project. `internal/kiln/presets/`: each
   preset's `kiln.json`, and its text for the defaults' "Tailor this" sections. `internal/kiln/contract/`: kiln's
   contract with each agent.
 - `.kiln/`: kiln's own, as `kiln init` wrote it, tailored to kiln. `.claude/skills` and `.claude/agents` link to
-  `/shape` and its reviewers there. kiln's worktrees and clones hold the links as plain files, since Claude Code's sandbox
+  `/shape` and its reviewers there. kiln's worktrees and clones hold the links as plain files, since Claude Code's
+  sandbox
   refuses a shell's write through a link under `.claude/`.
 - `cmd/kiln/_kiln`: the zsh completion, which `tools/install` copies.
 - `tools/install`: reinstalls kiln and its completion from main's tip.
