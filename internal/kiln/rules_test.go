@@ -737,7 +737,7 @@ func TestGaugeRules(t *testing.T) {
 	// An interrupt of kiln is not the command's failure, so it reads no unknown.
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, _, err := (&Repo{}).readGauge(ctx, git.Worktree(t.TempDir()), "sleep 10", ""); err == nil {
+	if _, err := (&Repo{}).readGauge(ctx, git.Worktree(t.TempDir()), "sleep 10", ""); err == nil {
 		t.Error("an interrupted gauge answers no error")
 	}
 
@@ -760,8 +760,30 @@ func TestGaugeRules(t *testing.T) {
 	}
 }
 
+// TestGaugeVerdict holds how a monitor's run reads its gauge: as a check's verdict, summed up as kiln status shows
+// it. A reading kiln could not take couldn't run, and says why.
+func TestGaugeVerdict(t *testing.T) {
+	for name, tc := range map[string]struct {
+		command, summary, found string
+		ran, fix                bool
+	}{
+		"on its line":                 {command: "echo 0", ran: true, summary: "count: 0, line ≤ 0"},
+		"crossed":                     {command: "echo a.txt is low; echo 1", ran: true, fix: true, summary: "count: 1, line ≤ 0, crossed", found: "a.txt is low"},
+		"no number":                   {command: "echo nothing to read", summary: "count: its command's last line is no number"},
+		"a command that says why":     {command: "echo no such tool >&2; echo 3; exit 1", summary: "no such tool"},
+		"a command that says nothing": {command: "exit 3", summary: "count: its command failed: exit status 3"},
+	} {
+		g := gauge{Name: "count", Command: tc.command, Max: new(0.0)}
+		c, err := (&Repo{env: os.Environ()}).measured(t.Context(), git.Worktree(t.TempDir()), g, "")
+		got := fmt.Sprintf("%v %v %q %q", c.ran, c.fix, c.summary, c.found)
+		if want := fmt.Sprintf("%v %v %q %q", tc.ran, tc.fix, tc.summary, tc.found); err != nil || got != want {
+			t.Errorf("%s: got %s, %v; want %s", name, got, err, want)
+		}
+	}
+}
+
 // TestGaugeTree holds that a gauge which leaves a file git can't remove stops no later reading. Each landing gets a
-// reading of each gauge.
+// reading of each gauge, and each monitor's run gets one too.
 func TestGaugeTree(t *testing.T) {
 	r, repo := scratchRepo(t)
 	t.Cleanup(func() { _ = removeTree(r.trees) })
@@ -780,6 +802,90 @@ func TestGaugeTree(t *testing.T) {
 	if read := gaugeReadings(t, r); len(read) != 2 {
 		t.Errorf("the landings read %v, want a reading of 1 for each of 2", read)
 	}
+
+	// A monitor's run reads its gauge in the monitors' own worktree, which a check then shares.
+	c, err := r.config(t.Context(), "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, m := range []monitor{{Name: "m", Gauge: "n"}, {Name: "m", Gauge: "n"}, {Name: "u", Check: checkHealthy}} {
+		if found, err := r.firstCheck(t.Context(), c, m, "main"); err != nil || !found.ran {
+			t.Errorf("%s's run answers %v, %q; want it ran", m.Name, err, found.summary)
+		}
+	}
+}
+
+// checkHealthy is a check that finds nothing to fix.
+const checkHealthy = `echo '{"fix": false, "summary": "fine"}'`
+
+// countGauge counts the .txt files changed since $KILN_BASE that hold the word low, and names each. It reads no
+// number where no .txt file changed. It fails while the commit holds broken.txt.
+const countGauge = `if [ -e broken.txt ]; then echo cannot parse broken.txt >&2; exit 2; fi
+files=$(git diff --name-only --diff-filter=d "$KILN_BASE" HEAD -- '*.txt')
+[ -z "$files" ] && exit 0
+n=0
+for f in $files; do if grep -q low "$f"; then echo "$f is low"; n=$((n+1)); fi; done
+echo $n
+`
+
+// TestGatedGauge holds how a fix's gate reads its monitor's gauge: over the fix's change, against main's line. A
+// crossed reading or a failed command fails the gate. A reading of no number never crossed.
+func TestGatedGauge(t *testing.T) {
+	for name, tc := range map[string]struct {
+		fix, gauge   string
+		passed       bool
+		holds, lacks string
+	}{
+		"a fix that brings its file on the line": {fix: "echo fine >a.txt", passed: true},
+		"a fix whose file still crosses": {fix: "echo still low >a.txt", holds: "count: 1, line ≤ 0, crossed\n\n" +
+			"a.txt is low", lacks: "b.txt"},
+		"a fix that deletes what crossed":        {fix: "git rm --quiet a.txt b.txt", passed: true},
+		"a fix of no file the gauge reads":       {fix: "echo x >notes.md", passed: true},
+		"a gauge whose command fails":            {fix: "echo x >broken.txt", holds: "cannot parse broken.txt"},
+		"a gauge main's kiln.json no longer has": {fix: "echo still low >a.txt", gauge: "gone", passed: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := gaugedFix(t, tc.fix, monitor{Name: "m", Gauge: cmp.Or(tc.gauge, "count")})
+			v, err := b.gatedCheck(t.Context(), verdict{passed: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if v.passed != tc.passed {
+				t.Errorf("passed %v, want %v: %s", v.passed, tc.passed, v.report)
+			}
+
+			if !strings.Contains(v.report, tc.holds) {
+				t.Errorf("the report holds no %q:\n%s", tc.holds, v.report)
+			}
+
+			if tc.lacks != "" && strings.Contains(v.report, tc.lacks) {
+				t.Errorf("the report holds %q:\n%s", tc.lacks, v.report)
+			}
+		})
+	}
+}
+
+// gaugedFix is the fix of m, in a repository whose main counts a.txt and b.txt against countGauge's line. The fix
+// commits what the shell script fix changes.
+func gaugedFix(t *testing.T, fix string, m monitor) *build {
+	t.Helper()
+	r, repo := scratchRepo(t)
+	t.Cleanup(func() { _ = removeTree(r.trees) })
+	config := `{"gate": ["true"], "rounds": 1, "gauges": [{"name": "count", "max": 0, ` +
+		`"command": "sh .kiln/gauges/count"}]}`
+	shell(t, repo, "mkdir -p .kiln/gauges && echo '"+config+"' >.kiln/kiln.json && echo low >a.txt && "+
+		"echo low >b.txt && echo fine >c.txt")
+	if err := os.WriteFile(filepath.Join(repo, ".kiln/gauges/count"), []byte(countGauge), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	tree := filepath.Join(t.TempDir(), "m")
+	shell(t, repo, "git add . && git commit --quiet -m start && git worktree add --quiet -b kiln/m "+tree+" main")
+	shell(t, tree, fix+" && git add -A && git commit --quiet -m fix")
+	return &build{r: r, rec: record{Name: "m", Monitor: true}, tree: git.Worktree(tree), out: io.Discard,
+		fix: &fixing{monitor: m}}
 }
 
 // gaugeReadings is each reading of a gauge the store holds, as the landing it read and its value.

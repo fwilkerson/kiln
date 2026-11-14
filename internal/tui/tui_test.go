@@ -574,3 +574,41 @@ func TestGauges(t *testing.T) {
 		t.Errorf("the crossed reading is drawn in %v, want red", got)
 	}
 }
+
+// TestRepositoryGauge holds the gauges panel's row of a gauge that monitors name, below its row of landings. It holds
+// their readings of the whole repository, oldest first. Two monitors share it. A monitor's readings alone show the
+// panel, and a panel too short for both rows marks the cut.
+func TestRepositoryGauge(t *testing.T) {
+	now := time.Now()
+	value := func(v float64) *float64 { return &v }
+	read := func(ago time.Duration, v *float64, crossed bool) Reading {
+		return Reading{Gauge: "health", At: now.Add(-ago), Value: v, Line: "≥ 10", Crossed: crossed}
+	}
+
+	monitors := []Spec{
+		{Name: "code-health", State: Healthy, Monitor: &Monitor{Result: "healthy",
+			Readings: []Reading{read(3*time.Hour, value(8), true), read(time.Hour, value(9), true)}}},
+		{Name: "lint", State: Healthy, Monitor: &Monitor{Result: "couldn't run",
+			Readings: []Reading{read(2*time.Hour, nil, false)}}},
+	}
+
+	alone := drive(t, source{monitors: monitors}, "", sized(120, 30))
+	if want := `│health, repository ≥ 10  ✗ 8 · \? · ✗ 9 +│\n`; !regexp.MustCompile(want).MatchString(screenOf(alone)) {
+		t.Errorf("no row matches %s on the screen\n%s", want, screenOf(alone))
+	}
+
+	landed := &Build{Spec: "languages", Started: now, Outcome: "landed",
+		Readings: []Reading{read(30*time.Minute, value(9), true)}}
+	src := source{specs: []Spec{{Name: "languages", State: UAT, Builds: []*Build{landed}}}, monitors: monitors}
+	both := drive(t, src, "", sized(120, 30))
+	want := `│health ≥ 10  languages ✗ 9 +│\n[│ ]+│health, repository ≥ 10  ✗ 8 · \? · ✗ 9 +│\n`
+	if !regexp.MustCompile(want).MatchString(screenOf(both)) {
+		t.Errorf("no rows match %s on the screen\n%s", want, screenOf(both))
+	}
+
+	// A panel too short for both rows says it cut one.
+	short := drive(t, src, "", sized(120, 20))
+	if want := `╭ gauges \+1 ─+╮\n`; !regexp.MustCompile(want).MatchString(screenOf(short)) {
+		t.Errorf("no row matches %s on the screen\n%s", want, screenOf(short))
+	}
+}

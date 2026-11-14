@@ -30,7 +30,8 @@ import (
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
 //	gauge     after a landing, one per gauge: its name, the landed commit, its value or none, and its line and side
 //	monitor   when kiln monitor run runs a monitor: its name, main's tip, a hash of its entry and one of what its
-//	          check printed, and what it found: healthy, couldn't run, held, or a fix, which names its build
+//	          check or gauge printed, and what it found: healthy, couldn't run, held, or a fix, which names its build.
+//	          A monitor that names a gauge adds the gauge's name, its reading of the whole repository, and its line
 //
 // A fix's build writes a build's lines, under its monitor's name, and its build line names the monitor. It ends
 // landed, stopped, waits on its branch, needs you, session failed, or usage limit. Or it ends couldn't run, unchanged,
@@ -113,13 +114,14 @@ type entry struct {
 	// An outcome line's. Amendments is the text of a waiting build's amendments.
 	Outcome    string `json:"outcome,omitempty"`
 	Amendments string `json:"amendments,omitempty"`
-	// A gauge line's. Landed is the commit it read. Value is nil when kiln could not take the reading.
+	// A gauge line's, and Gauge, Value and the line a monitor line's that read a gauge. Landed is the commit a gauge
+	// line read. Value is nil when kiln could not take the reading.
 	Gauge  string   `json:"gauge,omitempty"`
 	Landed git.Rev  `json:"landed,omitempty"`
 	Value  *float64 `json:"value,omitempty"`
 	gaugeLine
 	// A monitor line's, and Monitor a fix's build line's too. Main is main's tip when the run started. Entry and
-	// Printed hash the monitor's entry in kiln.json and what its check printed. Found is what the run found.
+	// Printed hash the monitor's entry in kiln.json and what its check or gauge printed. Found is what the run found.
 	Monitor Spec    `json:"monitor,omitempty"`
 	Main    git.Rev `json:"main,omitempty"`
 	Entry   string  `json:"entry,omitempty"`

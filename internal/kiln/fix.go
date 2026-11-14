@@ -24,8 +24,8 @@ import (
 //	agent, then commit and gate (+ check), up to rounds ── pass ─▶ audit ─▶ unchanged, waits, or lands
 //	  │ asks for the developer ─▶ needs you    │ fails ─▶ session failed    │ usage limit ─▶ usage limit
 //
-// A gated check that couldn't run ends the fix couldn't run. Past the last round, or on a command alone that the gate
-// fails, it stops.
+// A gated check that couldn't run ends the fix couldn't run. A gauge in the gate whose command fails goes back to the
+// agent, as a crossed reading does. Past the last round, or on a command alone that the gate fails, it stops.
 
 var (
 	//go:embed contract/monitor.md
@@ -37,7 +37,7 @@ var (
 // fixing is what a monitor's fix carries beside its build.
 type fixing struct {
 	monitor monitor
-	// checked is what the run's first check found. A landing kiln accept started has none.
+	// checked is what the run's first check, or its gauge, found. A landing kiln accept started has none.
 	checked checked
 	// side is what the fix may write.
 	side Side
@@ -187,13 +187,17 @@ func (b *build) fixAgent(ctx context.Context, gateReport string) error {
 	return err
 }
 
-// prompt is the agent's first message. It holds what the check printed, and what the gate printed after the command.
-// The monitor's prompt follows.
+// prompt is the agent's first message. It holds what the check or the gauge printed, and what the gate printed after
+// the command. The monitor's prompt follows.
 func (f *fixing) prompt(gateReport string) string {
 	m := f.monitor
 	var parts []string
-	if m.Check != "" {
-		parts = append(parts, fmt.Sprintf(checkFound, m.Check, f.checked.summary, cmpOr(f.checked.found, "(nothing)")))
+	found := cmpOr(f.checked.found, "(nothing)")
+	switch {
+	case m.Gauge != "":
+		parts = append(parts, fmt.Sprintf(gaugeFound, m.Gauge, f.checked.summary, found))
+	case m.Check != "":
+		parts = append(parts, fmt.Sprintf(checkFound, m.Check, f.checked.summary, found))
 	}
 
 	if gateReport != "" {
@@ -305,22 +309,29 @@ func (b *build) fixLand(ctx context.Context, head git.Rev) (string, reason, erro
 
 // fixChanged answers the fix's commit, and whether it changes anything since it left main.
 func (b *build) fixChanged(ctx context.Context) (head git.Rev, changed bool, err error) {
-	if head, err = b.r.git.Head(ctx, b.tree); err != nil {
-		return "", false, err
-	}
-
-	main, err := b.r.git.Tip(ctx, mainBranch)
-	if err != nil {
-		return "", false, err
-	}
-
-	base, err := b.r.git.MergeBase(ctx, main, head)
+	head, base, err := b.fixBase(ctx)
 	if err != nil {
 		return "", false, err
 	}
 
 	paths, err := b.r.git.Changed(ctx, base, head)
 	return head, len(paths) > 0, err
+}
+
+// fixBase answers the fix's commit, and base, where it left main: its merge base with main's tip. Once the fix is
+// rebased onto main, base is main's tip.
+func (b *build) fixBase(ctx context.Context) (head, base git.Rev, err error) {
+	if head, err = b.r.git.Head(ctx, b.tree); err != nil {
+		return "", "", err
+	}
+
+	main, err := b.r.git.Tip(ctx, mainBranch)
+	if err != nil {
+		return "", "", err
+	}
+
+	base, err = b.r.git.MergeBase(ctx, main, head)
+	return head, base, err
 }
 
 // landFix lands a fix the developer accepted. It is rebased onto main, and gated again, check included. Then main
@@ -469,6 +480,9 @@ func (f *fixing) contract(name Spec) string {
 
 const (
 	checkFound    = "The monitor's check, `%s`, asks for a fix: %s\n\nIt printed:\n\n%s"
+	gaugeFound    = "The monitor's gauge, %s, crossed its line over the whole repository: %s\n\nIt printed:\n\n%s"
+	gaugeCrossed  = "The monitor's gauge, %s, still crosses its line over what the fix changed: %s"
+	gaugeFailed   = "The monitor's gauge, %s, failed over what the fix changed. Its command, `%s`, wrote:\n\n%s"
 	commandFailed = "The monitor's command, `%s`, ran, and the gate failed after it:\n\n%s"
 	noPrompt      = "Fix what the monitor %s found, and end your turn."
 	auditingFix   = "Audit these directories: %s. They hold the fix of the monitor %s, which has no spec. The fix " +
@@ -477,11 +491,14 @@ const (
 		"wrong. Then end your turn.\n\n%s"
 )
 
-// gatedCheck adds a fix's gated check to the gate's verdict v. The gate fails while the check asks for a fix,
-// whatever it exits with. A check that couldn't run is a checkFailed.
+// gatedCheck adds a fix's gated check, or its gauge, to the gate's verdict v. The gate fails while the check asks for a
+// fix, whatever it exits with. A check that couldn't run is a checkFailed.
 func (b *build) gatedCheck(ctx context.Context, v verdict) (verdict, error) {
-	if b.fix == nil || !b.fix.monitor.gated() {
+	switch {
+	case b.fix == nil || !b.fix.monitor.gated():
 		return v, nil
+	case b.fix.monitor.Gauge != "":
+		return b.gatedGauge(ctx, v)
 	}
 
 	command := b.fix.monitor.Check
@@ -504,4 +521,61 @@ func (b *build) gatedCheck(ctx context.Context, v verdict) (verdict, error) {
 	v.report = strings.TrimSpace(v.report + "\n\n" + report)
 	v.failing = append(v.failing, "`"+command+"`")
 	return v, nil
+}
+
+// gatedGauge adds the reading of a fix's gauge, over what the fix changed, to the gate's verdict v. The gate fails
+// while the reading crosses the gauge's line, or its command fails. A reading of no number never crossed. The gauge's
+// command and line are kiln.json's at main's tip, which may no longer name the gauge.
+func (b *build) gatedGauge(ctx context.Context, v verdict) (verdict, error) {
+	main, err := b.r.git.Tip(ctx, mainBranch)
+	if err != nil {
+		return v, err
+	}
+
+	c, err := b.r.config(ctx, main)
+	if err != nil {
+		return v, err
+	}
+
+	g, found := c.gaugeNamed(b.fix.monitor.Gauge)
+	if !found {
+		return v, nil
+	}
+
+	rd, err := b.readFix(ctx, g)
+	if err != nil {
+		return v, err
+	}
+
+	e := entry{Gauge: g.Name, Value: rd.value, gaugeLine: g.gaugeLine}
+	var report string
+	switch {
+	case rd.failed:
+		report = fmt.Sprintf(gaugeFailed, g.Name, g.Command, lastLines(rd.both, 10))
+	case !g.crossed(rd.value):
+		return v, nil
+	default:
+		report = strings.TrimSpace(fmt.Sprintf(gaugeCrossed, g.Name, shownReading(e)) + "\n\n" + rd.found)
+	}
+
+	v.passed = false
+	v.report = strings.TrimSpace(v.report + "\n\n" + report)
+	v.failing = append(v.failing, "`"+g.Command+"`")
+	return v, nil
+}
+
+// readFix reads g over what the fix changed, at its commit. It reads in the monitor's check's worktree, never the
+// fix's, so a file the gauge leaves never lands. It answers an error only once kiln is interrupted, or git fails.
+func (b *build) readFix(ctx context.Context, g gauge) (gaugeRead, error) {
+	head, base, err := b.fixBase(ctx)
+	if err != nil {
+		return gaugeRead{}, err
+	}
+
+	tree, err := b.r.scratchTree(ctx, checkTree, head)
+	if err != nil {
+		return gaugeRead{}, err
+	}
+
+	return b.r.readGauge(ctx, tree, g.Command, base)
 }

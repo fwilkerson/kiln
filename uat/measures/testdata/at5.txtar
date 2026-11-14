@@ -1,0 +1,57 @@
+# 5. A fix that deletes what crossed lands.
+
+env KILN_OPEN=true
+
+# Given: a monitor that names a gauge, and a main that holds one file the gauge counts against its line. The agent's
+# turn deletes that file.
+
+# When: kiln monitor run runs.
+env KILN_NOW=2026-11-14T10:00:00Z
+exec kiln monitor run
+
+# Then: the fix lands, though the gauge reads no number over what the fix changed.
+! exec git cat-file -e main:a.txt
+exec kiln status
+stdout '^lows: landed'
+
+# When: then the monitor is due again, and kiln monitor run runs.
+env KILN_NOW=2026-11-15T10:30:00Z
+exec kiln monitor run
+
+# Then: after the second run, kiln status shows the monitor healthy.
+exec kiln status
+stdout '^lows: healthy'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "rounds": 2, "gauges": [
+ {"name": "count", "command": "sh .kiln/gauges/count", "max": 0}
+], "monitors": [
+ {"name": "lows", "every": "24h", "gauge": "count", "agent": ".kiln/agents/fixer.md", "prompt": "Make each file the gauge names say fine."}
+]}
+-- .kiln/gauges/count --
+n=0
+read=
+for f in $(git diff --name-only --diff-filter=d "$KILN_BASE" HEAD -- '*.txt'); do
+  read=yes
+  if grep -q low "$f"; then
+    echo "low: $f"
+    n=$((n + 1))
+  fi
+done
+if [ -n "$read" ]; then
+  echo "$n"
+fi
+-- .kiln/agents/fixer.md --
+Fix the files the gauge names.
+-- ok.txt --
+fine
+-- a.txt --
+low a
+-- claude.json --
+{
+  "fixer": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "rm a.txt"}}},
+    {"result": {"result": "Deleted a.txt."}}
+  ]}},
+  "audit": {"1": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}}
+}

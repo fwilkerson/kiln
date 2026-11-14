@@ -61,15 +61,17 @@ kiln monitor show <name> show how a monitor's last run ended, in the window kiln
 A monitor is a job named in `kiln.json` that kiln runs on its schedule, in the background, with no terminal open. It
 looks for a problem, and when it finds one, it fixes it. You come back to a fix already gated and landed.
 
-1. Name the monitor in `kiln.json`'s `monitors`, and commit its check's script under `.kiln/monitors/`, where a fix
-   can't change it.
+1. Name the monitor in `kiln.json`'s `monitors`. Commit its check's script under `.kiln/monitors/`, or name a gauge
+   in place of a check, with its script under `.kiln/gauges/`. Either is where a fix can't change it.
 2. Run `kiln monitor install` once. A launchd job then runs `kiln monitor run` in the repository each hour, and on
-   wake after a missed hour. It runs each monitor that is due, at main's tip: one that never ran, whose check
-   couldn't run, or whose last run started its interval, less half an hour, ago. `kiln monitor run <name>` runs one
+   wake after a missed hour. It runs each monitor that is due, at main's tip: one that never ran, whose check or gauge
+   couldn't run, or whose last run started its interval, less half an hour, ago. A monitor's gauge reads the whole
+   repository there: a reading that crossed its line starts a fix, and one on its line is healthy. `kiln monitor run <name>` runs one
    now. `kiln monitor run` refuses while `kiln run` builds, and `kiln run` while it does.
 3. A fix is a build with no spec, on `kiln/<name>`. Its command runs first. Its agent runs when the command left the
    gate failing, or when the monitor has none, and gets `kiln.json`'s rounds and the audit. The gate holds the fix,
-   with the check added when it joins the gate. A fix that passes lands, or waits on its branch for
+   with the check added when it joins the gate. A gauge always joins it, read over what the fix changed: the gate
+   fails while that reading crosses the line, or its command fails. A fix that passes lands, or waits on its branch for
    `kiln accept <name>` or `kiln reject <name>`. A fix that can't pass stops. An agent may ask for you instead, with
    a report: kiln then drops what it changed.
 4. When a fix lands, stops or waits on you, an agent asks for you, or a session fails, kiln opens a Ghostty window
@@ -79,7 +81,10 @@ looks for a problem, and when it finds one, it fixes it. You come back to a fix 
    monitors beside the specs, and opens each fix as it opens a build.
 
 A monitor is held, and starts no fix, while nothing changed since its last fix stopped, asked for you, was rejected,
-or changed nothing. Its check still runs when due. An unattended session needs a long-lived sign-in: run
+or changed nothing. It is held after a fix landed too, while its check stays out of the gate and prints the same. A
+monitor with a gauge is held after a landed fix while its entry and what the gauge prints are as they were, since
+the gate read only what the fix changed. `kiln status` shows either as `held: landed`. Its check or gauge still runs
+when due. An unattended session needs a long-lived sign-in: run
 `claude setup-token` for one, since an interactive sign-in expires within days.
 
 To reinstall kiln from main's tip, with its zsh completion, run `go run ./tools/install` in this repository. It
@@ -103,11 +108,11 @@ gate refuse the rest.
 .kiln/
   kiln.json                    the gate, its rounds, reachable hosts, commands that print writable paths, MCP
                                servers, gauges, monitors
-  gauges/                      the scripts a gauge's command runs, out of a build's reach
+  gauges/                      the scripts a gauge's command runs, which a monitor may name, out of a build's reach
   agents/build.md              the build agent: frontmatter for its tools, model, effort and advisor, then its prompt
   agents/verify.md             how the acceptance tests' code is written, and the verify agent of a split build
   agents/audit.md              the audit, which reads the work once the gate passes
-  monitors/                    the scripts a monitor's check runs, out of a fix's reach
+  monitors/                    the scripts a monitor's check runs, out of a fix's reach, for one that names no gauge
   agents/zoom-out.md           the reviewers /shape runs
   agents/comprehension.md
   agents/critic.md
@@ -141,6 +146,12 @@ gate refuse the rest.
   and gives it main's tip before the landing in `$KILN_BASE`, so it can measure one build's work alone. A reading
   kiln could not take is unknown, never zero, and never crossed. A gauge never blocks a landing: a line that must
   hold is a gate command. Keep a gauge's script under `.kiln/gauges/`, where a build cannot change it.
+  A monitor's run gives `$KILN_BASE` as git's empty tree, and its fix's gate as the commit where the fix left main.
+  So `git diff --name-only --diff-filter=d "$KILN_BASE" HEAD` names every file there, or the files one change left.
+  A command that names a commit's parents, such as `git log "$KILN_BASE"..HEAD`, fails at the empty tree. Read only
+  the files the commit still holds, as `--diff-filter=d` lists them: a change that only deletes files then reads no
+  number, and no deleted file fails the command. A gauge that a monitor names prints the same for the same finding,
+  as a check does, with no line numbers and no timestamps, since the hold compares what it printed.
 - The gate excuses a test that fails at main too. A command names its failed tests in `go test`'s output, or by
   writing JUnit XML to the path kiln gives it in `$KILN_JUNIT`. A command that fails and names no test is never
   excused, nor is a run that left out a test main ran.
@@ -153,10 +164,13 @@ gate refuse the rest.
   the build agent's. No file changes the contract, the denied commands and forbidden actions, or the guard on `.kiln/`.
 - A monitor in `kiln.json`'s `monitors` has a `name`, as a spec's name, and `every`, a Go duration in whole hours,
   at least `1h`. It names a `command`, an `agent` or both. Its `agent` is a file under `.kiln/agents/`, such as
-  `"triage.md"`, which names its session's role, and its `prompt` follows the check's and the gate's output in the
-  session's first message. Its optional `check` prints, as its last line, `{"fix": true|false, "summary": "..."}`.
-  The rest of its stdout goes to the agent. A check that exits non-zero, or prints no such line, couldn't run, and
-  starts no fix. `"gates": false` keeps the check out of the gate, for a check that reads something a fix can't
+  `"triage.md"`, which names its session's role, and its `prompt` follows the check's or gauge's output, and the
+  gate's, in the session's first message. Its optional `check` prints, as its last line,
+  `{"fix": true|false, "summary": "..."}`. The rest of its stdout goes to the agent. A check that exits non-zero, or
+  prints no such line, couldn't run, and starts no fix. In place of a check, its `gauge` names one of `gauges`, such
+  as `"gauge": "health"`. Its reading of the whole repository is the monitor's summary, and what the gauge printed
+  above its number goes to the agent. A reading kiln could not take, of no number or a failed command, couldn't run.
+  A monitor names a check or a gauge, never both, and `gates` only beside a check. `"gates": false` keeps the check out of the gate, for a check that reads something a fix can't
   change until it is deployed. `"accept": true` keeps each fix waiting for `kiln accept`. A fix never writes under
   `.kiln/`, nor under `acceptance`'s part before `{spec}`, unless the monitor says `"tests": true`.
   An agent asks for the developer with the last line of its reply: `{"ask": true, "summary": "..."}`.

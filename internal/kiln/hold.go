@@ -98,12 +98,12 @@ func (h *history) holds(m monitor, now entry) string {
 	return outcome
 }
 
-// change is what changed since a monitor's last fix started: main's tip, its entry, or what its check printed.
+// change is what changed since a monitor's last fix started: main's tip, its entry, or what it printed.
 type change struct {
 	main, entry, printed bool
 }
 
-// finding is whether the monitor's finding is the same: its entry, and what its check printed.
+// finding is whether the monitor's finding is the same: its entry, and what its check or gauge printed.
 func (c change) finding() bool {
 	return !c.entry && !c.printed
 }
@@ -112,9 +112,9 @@ func (c change) finding() bool {
 var holding = map[string]func(m monitor, c change) bool{
 	outStopped:  stillStopped,
 	outRejected: stillStopped,
-	// An hourly monitor that finds the same errors asks once. With no check, main's tip is all that can change.
+	// An hourly monitor that finds the same errors asks once. With no finding, main's tip is all that can change.
 	outNeedsYou: func(m monitor, c change) bool {
-		if m.Check == "" {
+		if !m.finds() {
 			return c.finding() && !c.main
 		}
 
@@ -122,11 +122,15 @@ var holding = map[string]func(m monitor, c change) bool{
 	},
 	// An agent that judged the finding noise runs once for it.
 	outUnchanged: func(m monitor, c change) bool {
-		return m.Check != "" && c.finding()
+		return m.finds() && c.finding()
 	},
-	// A check out of the gate can't see a fix until it is deployed.
+	// A check out of the gate can't see a fix until it is deployed. A gauge in the gate read only the fix's change.
+	// So a fix that left the repository's reading as it was runs once.
 	outLanded: func(m monitor, c change) bool {
-		if m.Check == "" || m.gated() {
+		switch {
+		case m.Gauge != "":
+			return c.finding()
+		case m.Check == "" || m.gated():
 			return false
 		}
 

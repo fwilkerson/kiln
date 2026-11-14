@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -22,7 +21,8 @@ import (
 type gauge struct {
 	// Name names the gauge. No two gauges share one.
 	Name string `json:"name"`
-	// Command runs with sh -c, at the top of a worktree at the landed commit. Its last line of stdout is its reading.
+	// Command runs with sh -c, at the top of a worktree at the commit it reads. That is a landing, main's tip, or a
+	// fix's commit. Its last line of stdout is its reading.
 	Command string `json:"command"`
 	gaugeLine
 }
@@ -66,7 +66,8 @@ func number(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
 // a dot, so it is no build's tree.
 const gaugeTree = ".gauges"
 
-// baseVar names main's tip before the landing, which kiln gives each gauge's command.
+// baseVar names the commit a reading starts at, which kiln gives each gauge's command. After a landing, it is main's
+// tip before the landing. In a monitor's run, it is git's empty tree. In a fix's gate, it is where the fix left main.
 const baseVar = "KILN_BASE"
 
 // readGauges reads each gauge kiln.json names at main's tip, once the build has landed. It writes each reading to the
@@ -97,21 +98,26 @@ func (b *build) readEach(ctx context.Context) error {
 		return err
 	}
 
-	tree, treeErr := b.r.gaugeTree(ctx, b.landed)
+	tree, treeErr := b.r.scratchTree(ctx, gaugeTree, b.landed)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 
 	for _, g := range gauges {
 		// A landing kiln could not check out reads unknown on each gauge, never as missing.
-		value, why := (*float64)(nil), fmt.Sprintf(", since kiln could not check out the landing: %v", treeErr)
+		rd := gaugeRead{why: fmt.Sprintf("kiln could not check out the landing: %v", treeErr)}
 		if treeErr == nil {
-			if value, why, err = b.r.readGauge(ctx, tree, g.Command, b.onto); err != nil {
+			if rd, err = b.r.readGauge(ctx, tree, g.Command, b.onto); err != nil {
 				return err
 			}
 		}
 
-		e := entry{Kind: gaugeKind, Gauge: g.Name, Landed: b.landed, Value: value, gaugeLine: g.gaugeLine}
+		why := ""
+		if rd.why != "" {
+			why = ", since " + rd.why
+		}
+
+		e := entry{Kind: gaugeKind, Gauge: g.Name, Landed: b.landed, Value: rd.value, gaugeLine: g.gaugeLine}
 		b.record(e)
 		b.say("gauge %s%s", shownReading(e), why)
 	}
@@ -119,11 +125,12 @@ func (b *build) readEach(ctx context.Context) error {
 	return nil
 }
 
-// gaugeTree checks out landed in the gauges' worktree. A gauge may leave a file git can't remove, such as one in a
-// read-only directory. Then the worktree is made anew, so one gauge can't stop every later reading.
-func (r *Repo) gaugeTree(ctx context.Context, landed git.Rev) (git.Worktree, error) {
-	tree := git.Worktree(filepath.Join(r.trees, gaugeTree))
-	err := r.git.Detached(ctx, tree, landed)
+// scratchTree checks out at in the worktree name, under the cache directory, where a check or a gauge runs. A command
+// may leave a file git can't remove, such as one in a read-only directory. Then the worktree is made anew. So one
+// command can't stop every later run there.
+func (r *Repo) scratchTree(ctx context.Context, name string, at git.Rev) (git.Worktree, error) {
+	tree := git.Worktree(filepath.Join(r.trees, name))
+	err := r.git.Detached(ctx, tree, at)
 	if err == nil || ctx.Err() != nil {
 		return tree, err
 	}
@@ -132,7 +139,7 @@ func (r *Repo) gaugeTree(ctx context.Context, landed git.Rev) (git.Worktree, err
 		return tree, err
 	}
 
-	return tree, r.git.Detached(ctx, tree, landed)
+	return tree, r.git.Detached(ctx, tree, at)
 }
 
 // removeTree removes dir and all it holds, though a directory in it be read-only.
@@ -159,28 +166,55 @@ func (r *Repo) gauges(ctx context.Context) ([]gauge, error) {
 	return c.Gauges, err
 }
 
-// readGauge runs command in tree, with base in $KILN_BASE. It answers its reading, or nil and why kiln could not take
-// it. It answers an error only once kiln is interrupted.
-func (r *Repo) readGauge(ctx context.Context, tree git.Worktree, command string, base git.Rev) (*float64, string,
-	error) {
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-	cmd.Dir = string(tree)
-	cmd.Env = append(slices.Clone(proc.Shell.Env(r.env)), baseVar+"="+string(base))
-	proc.OwnGroup(cmd)
-	out, err := cmd.Output()
+// gaugeRead is what one run of a gauge's command read.
+type gaugeRead struct {
+	// value is the reading, or nil when kiln could not take it. why then says why.
+	value *float64
+	why   string
+	// failed is whether the command failed, and last the last line of its stderr, or of its stdout.
+	failed bool
+	last   string
+	// printed is the command's stdout, which a monitor's hold compares, and found what it printed above its number.
+	printed, found string
+	// both is all the command wrote, to stdout and stderr.
+	both string
+}
+
+// readGauge runs command in tree, with base in $KILN_BASE, and answers what it read. It answers an error only once
+// kiln is interrupted.
+func (r *Repo) readGauge(ctx context.Context, tree git.Worktree, command string, base git.Rev) (gaugeRead, error) {
+	env := append(slices.Clone(proc.Shell.Env(r.env)), baseVar+"="+string(base))
+	out, err := runShell(ctx, tree, command, env)
+	if ctx.Err() != nil {
+		return gaugeRead{}, ctx.Err()
+	}
+
+	rd := gaugeRead{last: out.why(), printed: out.stdout, both: out.both}
+	_, rd.found = lastOf(out.stdout)
+	value, ok := readingOf(out.stdout)
 	switch {
-	case ctx.Err() != nil:
-		return nil, "", ctx.Err()
 	case err != nil:
-		return nil, fmt.Sprintf(", since its command failed: %v", err), nil
+		rd.failed, rd.why = true, "its command failed: "+cmpOr(rd.last, err.Error())
+	case !ok:
+		rd.why = "its command's last line is no number"
+	default:
+		rd.value = &value
 	}
 
-	value, ok := readingOf(string(out))
-	if !ok {
-		return nil, ", since its command's last line is no number", nil
+	return rd, nil
+}
+
+// summary is a monitor's summary of rd, the reading e. A failed command's summary is its last line, or its exit
+// status.
+func (rd gaugeRead) summary(e entry) string {
+	switch {
+	case rd.failed && rd.last != "":
+		return rd.last
+	case rd.value == nil:
+		return e.Gauge + ": " + rd.why
 	}
 
-	return &value, "", nil
+	return shownReading(e)
 }
 
 var decimal = regexp.MustCompile(`^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$`)

@@ -1,0 +1,80 @@
+# 6. A fix that left the gauge as it was runs once.
+
+env KILN_OPEN=true
+
+# Given: a monitor that names a gauge that crossed. The agent's turn changes only a file the gauge never reads.
+
+# When: kiln monitor run runs.
+env KILN_NOW=2026-11-14T10:00:00Z
+exec kiln monitor run
+
+# Then: the first run's fix lands.
+exec git show main:notes.md
+stdout '^looked$'
+exec kiln status
+stdout '^lows: landed'
+
+# When: the monitor is due again, and kiln monitor run runs.
+env KILN_NOW=2026-11-15T10:30:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: the second run starts no fix, and kiln status shows the monitor held by its landed fix.
+! exists .claude-calls/fixer/2
+exec kiln status
+stdout '^lows: held: landed'
+
+# When: then a commit to main changes what the gauge prints, the monitor is due once more, and kiln monitor run
+# runs.
+cp $WORK/_given/c.txt c.txt
+exec git add c.txt
+exec git commit -q -m 'add c.txt'
+env KILN_NOW=2026-11-16T11:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: the third run starts a fix.
+exists .claude-calls/fixer/2/1/prompt
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "rounds": 2, "gauges": [
+ {"name": "count", "command": "sh .kiln/gauges/count", "max": 0}
+], "monitors": [
+ {"name": "lows", "every": "24h", "gauge": "count", "agent": ".kiln/agents/fixer.md", "prompt": "Make each file the gauge names say fine."}
+]}
+-- .kiln/gauges/count --
+n=0
+read=
+for f in $(git diff --name-only --diff-filter=d "$KILN_BASE" HEAD -- '*.txt'); do
+  read=yes
+  if grep -q low "$f"; then
+    echo "low: $f"
+    n=$((n + 1))
+  fi
+done
+if [ -n "$read" ]; then
+  echo "$n"
+fi
+-- .kiln/agents/fixer.md --
+Fix the files the gauge names.
+-- ok.txt --
+fine
+-- a.txt --
+low a
+-- _given/c.txt --
+low c
+-- claude.json --
+{
+  "fixer": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "echo looked >notes.md"}}},
+      {"result": {"result": "Wrote notes.md."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "echo 'looked again' >notes.md"}}},
+      {"result": {"result": "Wrote notes.md."}}
+    ]}
+  },
+  "audit": {
+    "1": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
+    "2": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}
+  }
+}

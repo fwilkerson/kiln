@@ -31,11 +31,15 @@ func TestMonitorConfig(t *testing.T) {
 		"the audit as its agent":      {monitors: `{"name": "deps", "every": "24h", "agent": "audit.md"}`, refused: true},
 		"tests kiln could not guard":  {monitors: `{"name": "deps", "every": "24h", "command": "true"}`, acceptance: "{spec}_test/", refused: true},
 		"tests the monitor may write": {monitors: `{"name": "deps", "every": "24h", "command": "true", "tests": true}`, acceptance: "{spec}_test/"},
+		"a gauge":                     {monitors: `{"name": "deps", "every": "24h", "gauge": "health", "agent": "triage.md"}`},
+		"a gauge gauges lacks":        {monitors: `{"name": "deps", "every": "24h", "gauge": "size", "agent": "triage.md"}`, refused: true},
+		"a check and a gauge":         {monitors: `{"name": "deps", "every": "24h", "check": "true", "gauge": "health", "agent": "triage.md"}`, refused: true},
+		"gates beside a gauge":        {monitors: `{"name": "deps", "every": "24h", "gauge": "health", "gates": true, "agent": "triage.md"}`, refused: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			acceptance := cmpOr(tc.acceptance, "acceptance/{spec}/")
-			raw := `{"gate": ["true"], "rounds": 1, "acceptance": "` + acceptance + `", "monitors": [` +
-				tc.monitors + `]}`
+			raw := `{"gate": ["true"], "rounds": 1, "acceptance": "` + acceptance + `", "gauges": [{"name": ` +
+				`"health", "command": "true", "min": 10}], "monitors": [` + tc.monitors + `]}`
 			if _, err := parseConfig([]byte(raw)); (err != nil) != tc.refused {
 				t.Errorf("refused %v, want %v", err, tc.refused)
 			}
@@ -88,11 +92,12 @@ func TestDue(t *testing.T) {
 }
 
 // TestHold holds what releases a monitor its last fix holds. That is a change to main's tip, its entry, or what its
-// check printed. The fix's outcome and the monitor's check say which.
+// check or gauge printed. The fix's outcome and the monitor's check or gauge say which.
 func TestHold(t *testing.T) {
 	gated := monitor{Name: "m", Every: "1h", Check: "c", Command: "x"}
 	outside := monitor{Name: "m", Every: "1h", Check: "c", Agent: "a.md", Gates: new(false)}
 	unchecked := monitor{Name: "m", Every: "1h", Agent: "a.md"}
+	gauged := monitor{Name: "m", Every: "1h", Gauge: "g", Agent: "a.md"}
 	for name, tc := range map[string]struct {
 		m                    monitor
 		outcome              string
@@ -120,6 +125,11 @@ func TestHold(t *testing.T) {
 		"a usage limit":                      {m: gated, outcome: outLimit},
 		"cut short":                          {m: gated, outcome: outDropped},
 		"its gated check couldn't run":       {m: gated, outcome: outCouldNot},
+		"landed, its gauge printed the same": {m: gauged, outcome: outLanded, main: true, held: true},
+		"landed, its gauge printed another":  {m: gauged, outcome: outLanded, main: true, printed: true},
+		"landed, its gauge's entry changed":  {m: gauged, outcome: outLanded, main: true, entry: true},
+		"unchanged, its gauge the same":      {m: gauged, outcome: outUnchanged, main: true, held: true},
+		"asked, its gauge the same":          {m: gauged, outcome: outNeedsYou, main: true, held: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			was := entry{Kind: monitorKind, Monitor: "m", Found: foundFix, Build: "b", Main: "a", Entry: "e",
@@ -166,8 +176,12 @@ func TestCheck(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			got := checked{ran: c.ran, fix: c.fix, summary: c.summary, found: c.found}
-			want := checked{ran: tc.ran, fix: tc.fix, summary: tc.summary, found: tc.found}
+			type found struct {
+				ran, fix       bool
+				summary, found string
+			}
+			got := found{ran: c.ran, fix: c.fix, summary: c.summary, found: c.found}
+			want := found{ran: tc.ran, fix: tc.fix, summary: tc.summary, found: tc.found}
 			if got != want {
 				t.Errorf("got %+v, want %+v", got, want)
 			}

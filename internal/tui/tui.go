@@ -20,10 +20,11 @@
 // the builds that know it. Below it is a bar for each build, oldest first, with the newest in cyan. A number kiln
 // could not read shows as ?, never as zero.
 //
-// Once a build has a gauge's reading, a gauges panel spans the width below the trend. It holds a row per gauge: its
-// name and its newest line. Its readings follow, oldest first, each beside the spec that landed it. A row too narrow
-// for them all keeps the newest. A reading that crossed its line is red beside ✗. One read against another line
-// shows that line too. An unknown reading shows as ?.
+// Once a build or a monitor has a gauge's reading, a gauges panel spans the width below the trend. It holds a row per
+// gauge: its name and its newest line. Its readings of landings follow, oldest first, each beside the spec that landed
+// it. Below it, a gauge that monitors name has a row of their readings of the whole repository, named "repository".
+// A row too narrow for them all keeps the newest. A reading that crossed its line is red beside ✗. One read against
+// another line shows that line too. An unknown reading shows as ?.
 package tui
 
 import (
@@ -71,6 +72,9 @@ type Monitor struct {
 	// Last is when it last ran, or zero if it never ran. Next is when it is due again, and Due is whether it is now.
 	Last, Next time.Time
 	Due        bool
+	// Readings are its gauge's readings of the whole repository, one per run, oldest first. They are none for a
+	// monitor that names no gauge.
+	Readings []Reading
 }
 
 // State is where a spec stands, in the words the view shows.
@@ -120,7 +124,7 @@ type Build struct {
 	Readings []Reading
 }
 
-// Reading is one gauge's reading of a build's landing.
+// Reading is one gauge's reading of a build's landing, or of the whole repository in a monitor's run.
 type Reading struct {
 	Gauge string
 	// At is when kiln wrote it, which orders the readings of one gauge as their landings were.

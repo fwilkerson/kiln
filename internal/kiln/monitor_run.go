@@ -156,21 +156,22 @@ func (run *monitorRunning) monitor(ctx context.Context, m monitor) error {
 	return run.check(ctx, m, h, k.find(m.Name))
 }
 
-// check runs m's check at main's tip, and writes its monitor line. A finding starts a fix, unless the monitor is
-// held. h is m's history, and rec its fix's record, if it has one.
+// check runs m's check, or reads its gauge, at main's tip, and writes its monitor line. A finding starts a fix,
+// unless the monitor is held. h is m's history, and rec its fix's record, if it has one.
 func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec *record) error {
 	main, err := run.r.git.Tip(ctx, mainBranch)
 	if err != nil {
 		return err
 	}
 
-	found, err := run.r.firstCheck(ctx, m, main)
+	found, err := run.r.firstCheck(ctx, run.c, m, main)
 	if err != nil {
 		return err
 	}
 
 	line := entry{Kind: monitorKind, Monitor: m.Name, At: run.r.now(), Main: main, Entry: m.hash(),
-		Printed: hashOf(found.printed), Summary: found.summary, Found: foundOf(found)}
+		Printed: hashOf(found.printed), Summary: found.summary, Found: foundOf(found), Gauge: found.reading.Gauge,
+		Value: found.reading.Value, gaugeLine: found.reading.gaugeLine}
 	if line.Found == foundFix && run.held(m, h, rec, line) {
 		line.Found = foundHeld
 	}

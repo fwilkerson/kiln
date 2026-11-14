@@ -218,3 +218,51 @@ func TestStateOf(t *testing.T) {
 		})
 	}
 }
+
+// TestMonitorReadings holds that the view reads a monitor's readings of its gauge from its monitor lines, oldest
+// first. A line from before the monitor named the gauge is no reading, nor is one of another monitor.
+func TestMonitorReadings(t *testing.T) {
+	r, repo := scratchRepo(t)
+	config := `{"gate": ["true"], "rounds": 1, "acceptance": "acceptance/{spec}/", "gauges": [{"name": "count", ` +
+		`"command": "true", "max": 0}], "monitors": [{"name": "m", "every": "24h", "gauge": "count", ` +
+		`"command": "true"}, {"name": "other", "every": "24h", "command": "true"}]}`
+	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json && git add . && git commit --quiet -m start")
+	at, zero, two := time.Now().Add(-time.Hour), 0.0, 2.0
+	for i, e := range []entry{
+		{Monitor: "m", Found: foundHealthy},
+		{Monitor: "m", Found: foundFix, Gauge: "count", Value: &two},
+		{Monitor: "other", Found: foundHealthy, Gauge: "count", Value: &zero},
+		{Monitor: "m", Found: foundCouldNot, Gauge: "count"},
+		{Monitor: "m", Found: foundHealthy, Gauge: "count", Value: &zero},
+	} {
+		e.Kind, e.At, e.Max = monitorKind, at.Add(time.Duration(i)*time.Minute), &zero
+		if err := r.store.write(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	monitors, err := view{r}.Monitors(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var read []string
+	for _, rd := range monitors[0].Monitor.Readings {
+		read = append(read, fmt.Sprintf("%s %s %s crossed %v", rd.Gauge, valueOf(rd.Value), rd.Line, rd.Crossed))
+	}
+
+	want := "count 2 ≤ 0 crossed true\ncount ? ≤ 0 crossed false\ncount 0 ≤ 0 crossed false"
+	if got := strings.Join(read, "\n"); got != want || len(monitors[1].Monitor.Readings) > 0 {
+		t.Errorf("m's readings are\n%s\nwant\n%s\nand other's are %v, want none", got, want,
+			monitors[1].Monitor.Readings)
+	}
+}
+
+// valueOf is a reading's value, or ? where kiln could not take it.
+func valueOf(v *float64) string {
+	if v == nil {
+		return "?"
+	}
+
+	return fmt.Sprint(*v)
+}

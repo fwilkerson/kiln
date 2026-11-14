@@ -529,6 +529,12 @@ func (g *Git) Shortstat(ctx context.Context, from, to Rev) (Shortstat, error) {
 	return s, err
 }
 
+// EmptyTree is the ID of the tree that holds no file, in the repository's own hash. A diff from it names every file.
+func (g *Git) EmptyTree(ctx context.Context) (Rev, error) {
+	id, err := g.line(ctx, g.repo, "hash-object", "-t", "tree", "/dev/null")
+	return Rev(id), err
+}
+
 // MergeBase is the newest commit that both a and b descend from.
 func (g *Git) MergeBase(ctx context.Context, a, b Rev) (Rev, error) {
 	base, err := g.line(ctx, g.repo, "merge-base", string(a), string(b))

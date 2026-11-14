@@ -208,7 +208,8 @@ type area struct{ w, h int }
 // inside is the area within the panel's border.
 func (p panel) inside() area { return area{p.w - 2, p.h - 2} }
 
-// box draws the panel, with its rows inside it from the top.
+// box draws the panel, with its rows inside it from the top. A panel too short for its rows says in its title how
+// many it cut, as +2. So no row goes unseen without a mark.
 func (p panel) box(rows []row) *lipgloss.Layer {
 	if p.h < 2 {
 		return lipgloss.NewLayer("").X(p.x).Y(p.y)
@@ -220,7 +221,12 @@ func (p panel) box(rows []row) *lipgloss.Layer {
 	}
 
 	inner := max(0, p.w-2)
-	title := ansi.Truncate(p.title, max(0, inner-2), "…")
+	cut := ""
+	if n := len(rows) - max(0, p.h-2); n > 0 {
+		cut = fmt.Sprintf(" +%d", n)
+	}
+
+	title := ansi.Truncate(p.title, max(0, inner-2-len(cut)), "…") + cut
 	lines := []string{edge.Render("╭ ") + name.Render(title) + edge.Render(" "+
 		strings.Repeat("─", max(0, inner-ansi.StringWidth(title)-2))+"╮")}
 	for range max(0, p.h-2) {

@@ -148,7 +148,8 @@ func fixText(b *tui.Build) string {
 	return text.String()
 }
 
-// Monitors answers each monitor kiln.json names at main's tip, where it stands, and its fixes, oldest first.
+// Monitors answers each monitor kiln.json names at main's tip, where it stands, and its fixes, oldest first. A
+// monitor that names a gauge holds its readings of the whole repository, oldest first.
 func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
 	main, err := v.r.git.Tip(ctx, mainBranch)
 	if err != nil {
@@ -175,10 +176,37 @@ func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
 		h := all[m.Name]
 		s := h.standing(m)
 		shown[i] = tui.Spec{Name: string(m.Name), State: s.state(), Builds: fixes[m.Name],
-			Monitor: &tui.Monitor{Result: s.result, Summary: s.summary, Last: s.last, Next: s.next, Due: h.due(m, now)}}
+			Monitor: &tui.Monitor{Result: s.result, Summary: s.summary, Last: s.last, Next: s.next, Due: h.due(m, now),
+				Readings: repositoryReadings(entries, m)}}
 	}
 
 	return shown, nil
+}
+
+// repositoryReadings are the readings of m's gauge in m's monitor lines, as kiln wrote them. A line from before m
+// named that gauge names none, and is no reading.
+func repositoryReadings(entries []entry, m monitor) []tui.Reading {
+	if m.Gauge == "" {
+		return nil
+	}
+
+	var readings []tui.Reading
+	for _, e := range entries {
+		if e.Kind != monitorKind || e.Monitor != m.Name {
+			continue
+		}
+
+		if e.Gauge == m.Gauge {
+			readings = append(readings, e.tuiReading())
+		}
+	}
+
+	return readings
+}
+
+// tuiReading is the gauge's reading of the line e, as the TUI shows it.
+func (e entry) tuiReading() tui.Reading {
+	return tui.Reading{Gauge: e.Gauge, At: e.At, Value: e.Value, Line: e.text(), Crossed: e.crossed(e.Value)}
 }
 
 // fixStates are a monitor's states in the view, by its last fix's outcome. A fix with no outcome yet is running.
@@ -233,8 +261,7 @@ func (s *buildStats) shown() *tui.Build {
 
 	b.Steps = append(b.Steps, gateSteps(s.gates[gates:])...)
 	for _, e := range s.readings {
-		b.Readings = append(b.Readings, tui.Reading{Gauge: e.Gauge, At: e.At, Value: e.Value, Line: e.text(),
-			Crossed: e.crossed(e.Value)})
+		b.Readings = append(b.Readings, e.tuiReading())
 	}
 
 	return b

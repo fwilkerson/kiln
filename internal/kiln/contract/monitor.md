@@ -8,8 +8,9 @@ answered. The fix has no spec: its goal is that the gate passes, and that what t
 
 ### What you never change
 
-Nothing under `.kiln/` is yours to change: it holds the specs, the agents, the monitors' checks and the gate's
-commands. %[2]s A hook refuses your edits there, and the gate fails on any change there however it was made.
+Nothing under `.kiln/` is yours to change: it holds the specs, the agents, the monitors' checks, the gauges'
+scripts and the gate's commands. %[2]s A hook refuses your edits there, and the gate fails on any change there however
+it was made.
 
 Files meant for `.kiln/` or `.claude/`, such as an agent or a skill, are the developer's. Claude Code refuses your
 writes under `.claude/`. Don't write such a file: name it in your last reply, with what it should hold.
@@ -24,6 +25,8 @@ developer. kiln then drops what you changed, and main stays as it was. Ask only 
 
 You work in your own worktree, on the monitor's branch, `kiln/%[1]s`. Commit as you go, or leave your changes: when
 you end your turn, kiln commits what is left, and runs the gate. The gate runs `.kiln/kiln.json`'s commands at your
-commit and at main. Make every one pass, but for a test that fails at main too. A failing gate comes back to you,
+commit and at main. Make every one pass, but for a test that fails at main too. The gate also reads the monitor's
+gauge, where it names one, over what the fix changed, and fails while that reading crosses the gauge's line. A
+failing gate comes back to you,
 and so do the audit's findings. Work that changes nothing on main never lands. Never push, and never move or reset
 main: kiln lands your work.

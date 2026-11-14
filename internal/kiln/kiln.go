@@ -51,6 +51,7 @@
 //	                            the MCP servers a session calls, the gauges, the workflow, where the acceptance
 //	                            tests live, the harness, the paths the audit reads again, and the monitors
 //	.kiln/monitors/             the scripts a monitor's check runs, out of a fix's reach
+//	.kiln/gauges/               the scripts a gauge's command runs, which a monitor may name in place of a check
 //	.kiln/agents/build.md       the build agent
 //	.kiln/agents/verify.md      how the acceptance tests are written, and a split build's verify agent
 //	.kiln/agents/audit.md       the audit
@@ -111,9 +112,10 @@
 //
 // kiln.json refuses a monitor with no name, a name another has, or one no spec could have. It refuses an interval
 // under an hour, or not in whole hours. It refuses a monitor with no command and no agent. It refuses one that may
-// not write the tests while acceptance has no part before {spec}. A monitor is due when it never ran, its check
-// couldn't run, or a usage limit ended its fix. It is due when its fix was cut short. Otherwise it is due once its
-// last run started its interval, less 30 minutes, ago. $KILN_NOW, as RFC 3339, stands for the clock.
+// not write the tests while acceptance has no part before {spec}. It refuses a gauge that gauges lacks. It refuses a
+// gauge beside a check, or beside gates. A monitor is due when it never ran, or its check or gauge couldn't run. It
+// is due when a usage limit ended its fix, or its fix was cut short. Otherwise it is due once its last run started
+// its interval, less 30 minutes, ago. $KILN_NOW, as RFC 3339, stands for the clock.
 //
 // Its check runs with sh -c in a worktree of its own at main's tip. Its last line of stdout is {"fix": true|false,
 // "summary": "..."}. A check that exits non-zero, or prints no such line, couldn't run. kiln then keeps its last
@@ -125,10 +127,20 @@
 // unchanged. An agent's reply whose last line is {"ask": true, "summary": "..."} ends the fix needs you, with its
 // report. A failed session ends it session failed, and a usage limit ends it at once, never waiting for the reset.
 //
+// A monitor may name a gauge in place of a check, as "gauge": "health". Its run reads the gauge over the whole
+// repository. It reads in the check's worktree at main's tip, with git's empty tree in $KILN_BASE. A reading that
+// crossed its line starts a fix, and one on its line is healthy. A failed command, or no number, couldn't run. The
+// reading is the monitor's summary, and its ledger line holds it. The agent reads what the gauge printed above its
+// number. At each gate of the fix, kiln reads the gauge again, by kiln.json at main's tip. It reads in the check's
+// worktree at the fix's commit, never the fix's own worktree. $KILN_BASE is then the fix's merge base with main. The
+// gate fails while that reading crosses the line, or the command fails. Either goes back to the agent. A reading of
+// no number never crossed, so a fix that deletes what crossed lands.
+//
 // A monitor is held, and starts no fix, when its last fix stopped, asked, was rejected, or changed nothing. A change
-// since releases it: to main's tip, its entry, or what its check printed, as the outcome says. One fix per
-// monitor builds, waits or lands at a time. The next kiln monitor run drops a fix whose kiln is gone. Then it lands
-// each accepted landing that is queued.
+// since releases it, as the outcome says: to main's tip, its entry, or what it printed. A landed fix holds a monitor
+// whose check is out of the gate, until what the check printed changes. A landed fix holds a monitor with a gauge,
+// until its entry or what its gauge printed changes. One fix per monitor builds, waits or lands at a time. The next
+// kiln monitor run drops a fix whose kiln is gone. Then it lands each accepted landing that is queued.
 //
 // Each queue is a new build, with its own ID. kiln's ledger records every build, session run and gate, and how
 // each build ended. A build's time is its session runs' time plus its gates'. A pause for a usage limit adds nothing.
@@ -141,11 +153,15 @@
 //
 // Once kiln run or kiln accept lands a build on main, kiln reads each gauge kiln.json names at main's tip. It
 // runs each command in turn with sh -c, in a worktree of its own at the landed commit. $KILN_BASE holds main's tip
-// before the landing, so a command can measure one build's work alone. The reading is the last line of stdout,
-// trimmed, as a decimal number. A command that fails, or prints no number last, reads unknown. kiln writes each
-// reading to its ledger with its line, and judges it against that line wherever it shows. A reading below min, or
-// above max, crossed its line. An unknown one never did. kiln run prints the readings after the build's summary, and
-// only then starts the next build. A gauge never blocks a landing, and nothing reads a landing kiln missed.
+// before the landing, so a command can measure one build's work alone. In a monitor's run, $KILN_BASE is git's empty
+// tree. There git diff "$KILN_BASE" HEAD names every file, and git log "$KILN_BASE"..HEAD fails. A command reads
+// only the files the commit still holds, as git diff --diff-filter=d lists them. A change that only deletes files
+// then reads no number. The reading is the last line of stdout, trimmed, as a decimal number. A command that fails,
+// or prints no number last, reads unknown. kiln says why, by the last line of its stderr, or of its stdout.
+// kiln writes each reading to its ledger with its line, and judges it against that line wherever it shows. A
+// reading below min, or above max, crossed its line. An unknown one never did. kiln run prints the readings after
+// the build's summary, and only then starts the next build. A gauge never blocks a landing, and nothing reads a
+// landing kiln missed.
 //
 // A fix that lands, stops or waits, an agent that asks, or a session that fails opens a Ghostty window. kiln runs
 // open -gna Ghostty --args ... -e kiln monitor show <name>, or $KILN_OPEN in place of open. That window notifies the
