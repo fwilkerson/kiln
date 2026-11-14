@@ -62,5 +62,7 @@ organize current work by stories, then reorganize it by functional area. A story
 ## Mechanical checks
 
 - `gofmt`, and `go tool style`: blank lines, and the 20-word and 120-column limits. A hook runs it after each edit.
+- `go tool health .`: each Go file's score by the guide's "Inside a function". The `code-health` monitor in
+  `.kiln/kiln.json` refactors the files with the lowest scores.
 - `arch_test.go` and `style_test.go`: import rules, modern Go, and doc names.
 - `go test ./...`, which the pre-commit hook runs on each commit to main.

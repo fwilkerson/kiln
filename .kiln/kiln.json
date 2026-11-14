@@ -51,7 +51,7 @@
       "every": "24h",
       "check": ".kiln/monitors/code-health 3",
       "agent": ".kiln/agents/refactor.md",
-      "prompt": "Refactor each file the check listed to Code Health 10.0, as your instructions say."
+      "prompt": "Refactor each file the check listed until go tool health finds nothing in it, as your instructions say."
     }
   ]
 }
