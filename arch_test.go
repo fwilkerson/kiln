@@ -44,8 +44,10 @@ func violation(pkg, imp string) string {
 // outside lists the modules from outside the standard library that each package may import. A key is a package path
 // within kiln.
 var outside = map[string][]string{
-	"internal/proc":   {"golang.org/x/sys"},
-	"internal/claude": {"golang.org/x/sys"},
+	// The root holds only tests, which take the checks of a whole repository from repotest.
+	"github.com/fwilkerson/kiln": {"github.com/fwilkerson/practices/repotest"},
+	"internal/proc":              {"golang.org/x/sys"},
+	"internal/claude":            {"golang.org/x/sys"},
 	// claim holds the checks tests share, so only a test imports it.
 	"internal/kiln": {"github.com/fwilkerson/practices/claim"},
 	"internal/scenariotest": {"github.com/rogpeppe/go-internal", "github.com/charmbracelet/x/ansi",
