@@ -17,9 +17,10 @@ for macOS.
 - `internal/kiln/defaults/`: what `kiln init` writes, for any project. No line there names kiln's own repository.
 - `internal/kiln/presets/`: each preset's `kiln.json`, and its text for the "Tailor this" sections of the defaults'
   prompts. `kiln init` writes them with `internal/kiln/defaults/`.
-- The guide: how Go code is written and judged across the developer's projects. `go tool guide` prints it, from the
-  practices module that `go.mod` names. `docs/practices.md` adds kiln's own rules. Read both before adding a package
-  or an exported name.
+- `docs/guide.md`: the guide, how Go code is written and judged across the developer's projects, loaded at the end
+  of this file. It is what `go tool guide` prints, from the practices module that `go.mod` names: never edit it here.
+  `TestGuide` fails while the two differ, and `go tool guide > docs/guide.md` brings it up to date.
+- `docs/practices.md`: kiln's own rules, which add to the guide. Read it before adding a package or an exported name.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
 - `uat/<spec>/`: the test code for each acceptance test of a spec not yet accepted, one Go test named `TestAT<N>`
   for test N.
@@ -65,3 +66,7 @@ When its tools are available:
 - To explain why Code Health matters, use `explain_code_health` and `explain_code_health_productivity`.
 - `analyze_change_set` checks a branch against its base before a pull request. kiln commits on main and never pushes,
   so it has no use here.
+
+## The guide
+
+@docs/guide.md

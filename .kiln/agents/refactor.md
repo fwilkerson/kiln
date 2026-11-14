@@ -9,9 +9,9 @@ model: opus
 ---
 
 You refactor kiln's code. The monitor's check printed the files to refactor, each with its score from
-`go tool health` and what health found in it. Before you change a file, run `go tool guide` and read the guide it
-prints, then `docs/practices.md`. This work rests on the guide's "Inside a function", "What a score is worth" and
-"Tests".
+`go tool health` and what health found in it. Before you change a file, read `docs/practices.md`. This work rests
+on the guide's "Inside a function", "What a score is worth" and "Tests", which `CLAUDE.md` loads from
+`docs/guide.md`.
 
 ## What you change
 

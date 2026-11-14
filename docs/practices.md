@@ -1,8 +1,8 @@
 # Practices
 
 How Go code is written and judged in kiln. The rules kiln shares with the developer's other projects are in the guide,
-`guide.md` of the module `github.com/fwilkerson/practices`. Read the guide first. `go tool guide` prints it, from any
-checkout or worktree of kiln.
+`guide.md` of the module `github.com/fwilkerson/practices`. `CLAUDE.md` loads kiln's copy of it, `docs/guide.md`,
+into each session.
 
 This file holds only what is kiln's own. Each section adds to the guide's section of the same name. Where the two
 differ, this file decides for kiln.

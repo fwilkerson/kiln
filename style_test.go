@@ -1,6 +1,7 @@
 package kiln_test
 
 import (
+	"bytes"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -20,6 +21,20 @@ func TestStyle(t *testing.T) {
 	out, err := exec.Command("go", "tool", "style", "-l", ".").CombinedOutput()
 	if err != nil {
 		t.Errorf("%s%v", out, err)
+	}
+}
+
+// TestGuide fails while docs/guide.md differs from what go tool guide prints. CLAUDE.md loads that file, so a session
+// reads the guide of the practices module that go.mod names. Run go tool guide > docs/guide.md to bring it up to date.
+func TestGuide(t *testing.T) {
+	want, err := exec.Command("go", "tool", "guide").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := os.ReadFile("docs/guide.md")
+	if err != nil || !bytes.Equal(got, want) {
+		t.Errorf("docs/guide.md differs from the guide, %v: run go tool guide > docs/guide.md", err)
 	}
 }
 
