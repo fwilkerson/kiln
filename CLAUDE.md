@@ -51,22 +51,6 @@ working tree, and never write to either.
 - Commits: [Conventional Commits](https://www.conventionalcommits.org), `type(scope): summary`, imperative and under
   72 characters. The body says why. `go test ./...` passes at each commit. Never push.
 
-## Code Health
-
-The CodeScene MCP server, registered as `codescene`, scores how maintainable a file is as Code Health, from 1 to 10.
-When its tools are available:
-
-- Each file a change touches reaches Code Health 10.0. A score of 9 is not done. Leave files the change doesn't touch
-  alone.
-- To refactor, start from `code_health_review`, change the code in small steps, and after each one run
-  `code_health_score` to confirm the score rose.
-- Before each commit, run `pre_commit_code_health_safeguard` on the uncommitted files. Where it reports a regression,
-  or a touched file stays below 10.0, run `code_health_review` on that file and refactor it. Don't call the work done
-  while either stands, unless the developer accepted it.
-- To explain why Code Health matters, use `explain_code_health` and `explain_code_health_productivity`.
-- `analyze_change_set` checks a branch against its base before a pull request. kiln commits on main and never pushes,
-  so it has no use here.
-
 ## The guide
 
 @docs/guide.md

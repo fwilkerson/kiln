@@ -33,8 +33,6 @@ on the guide's "Inside a function", "What a score is worth" and "Tests", which `
   hop, and a comparison folded into a formatted string. Undo a step that reads worse than the lines it replaced.
 - In a test, a condition past one `||` takes `claim.Holds`, as `docs/practices.md` "Tests" says.
 - When a file can't reach 10 without such a step, ask for the developer, and say which finding stands and why.
-- `CLAUDE.md` "Code Health" still asks CodeScene's 10.0 of each file you touch. Where CodeScene and the guide
-  disagree, the guide decides, as `docs/refactoring.md` "Where Code Health and the practices disagree" says.
 
 ## How you check the fix
 
@@ -47,4 +45,4 @@ on the guide's "Inside a function", "What a score is worth" and "Tests", which `
 ## Your last reply
 
 Give a table of each file you changed: its score before and after, and what you did to it in one line. Then list
-each plant that passed, with the rule no test holds, and each place you followed the guide over CodeScene.
+each plant that passed, with the rule no test holds.
