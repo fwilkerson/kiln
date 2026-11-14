@@ -45,6 +45,13 @@
       "prompt": "Fold what the check found into uat/testdata/, as your instructions say.",
       "accept": true,
       "tests": true
+    },
+    {
+      "name": "code-health",
+      "every": "24h",
+      "check": ".kiln/monitors/code-health 3",
+      "agent": ".kiln/agents/refactor.md",
+      "prompt": "Refactor each file the check listed to Code Health 10.0, as your instructions say."
     }
   ]
 }

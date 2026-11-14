@@ -1,0 +1,83 @@
+#!/bin/sh
+# The check of kiln's code-health monitor. It asks for a fix while a file scores below CodeScene Code Health 10.0.
+#
+#   .kiln/monitors/code-health 3
+#
+# At main, it prints the files with the lowest scores, as many as its argument names, for the monitor's agent to
+# refactor. In a fix's gate, where the commit differs from main, it judges the fix instead: each file the fix changed
+# scores 10.0, as CLAUDE.md "Code Health" asks of any change. Its last line is the JSON object kiln reads.
+set -eu
+
+n=${1:?name how many files one fix refactors, such as 3}
+export CS_DISABLE_VERSION_CHECK=1 LC_ALL=C
+
+# The CLI ships inside the CodeScene MCP server's cache when it isn't installed on its own.
+cs=$(command -v cs || ls -t "$HOME"/Library/Caches/codehealth-mcp/*/cs 2>/dev/null | head -n 1 || true)
+if [ -z "$cs" ]; then
+  echo "code-health: no CodeScene CLI, cs, on PATH or in the MCP server's cache" >&2
+  exit 1
+fi
+
+# The MCP server's wrapper, cs-mcp-auth, keeps the token in this file, so the key lives in one place.
+if [ -z "${CS_ACCESS_TOKEN:-}" ]; then
+  conf="${CODESCENE_CONF:-$HOME/.config/trial/codescene.toml}"
+  CS_ACCESS_TOKEN=$(sed -nE 's/^[[:space:]]*api_key[[:space:]]*=[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/p' "$conf")
+  export CS_ACCESS_TOKEN
+fi
+
+# scores prints "<score> <file>" for each file named on stdin that CodeScene scores. It ends the pipeline it closes
+# non-zero when a file has no score, so nothing follows it there.
+scores() {
+  while read -r f; do
+    out=$("$cs" review "$f" --output-format json 2>&1 || true)
+    case $out in
+      Unsupported\ file-type*) continue ;;
+    esac
+    score=$(printf '%s\n' "$out" | sed -nE 's/^\{"score":([0-9.]+).*/\1/p' | head -n 1)
+    if [ -z "$score" ]; then
+      # A missing token or a CLI error must not read as a healthy file.
+      printf 'code-health: no score for %s:\n%s\n' "$f" "$out" >&2
+      exit 1
+    fi
+    echo "$score $f"
+  done
+}
+
+# lowest sorts the scores in the file it is given, the lowest first.
+lowest() {
+  sort -k1,1n -k2,2 -o "$1" "$1"
+}
+
+scored=$(mktemp)
+trap 'rm -f "$scored"' EXIT
+
+changed=$(git diff --name-only --diff-filter=d main...HEAD)
+if [ -n "$changed" ]; then
+  echo "$changed" | scores >"$scored"
+  lowest "$scored"
+  total=$(wc -l <"$scored" | tr -d ' ')
+  low=$(awk '$1 < 10' "$scored" | wc -l | tr -d ' ')
+  if [ "$total" -eq 0 ]; then
+    echo '{"fix": true, "summary": "the fix changed no file CodeScene scores"}'
+  elif [ "$low" -eq 0 ]; then
+    echo '{"fix": false, "summary": "each file the fix changed scores 10.0"}'
+  else
+    awk '$1 < 10 { print $2 " scores " $1 ": each file a fix changes reaches 10.0." }' "$scored"
+    echo "{\"fix\": true, \"summary\": \"files the fix changed that score below 10.0: $low of $total\"}"
+  fi
+  exit 0
+fi
+
+# A fix writes nothing under .kiln/ or uat/, so a file there is none it could refactor.
+git ls-files -- . ':!.kiln' ':!.claude' ':!uat' | scores >"$scored"
+lowest "$scored"
+total=$(wc -l <"$scored" | tr -d ' ')
+low=$(awk '$1 < 10' "$scored" | wc -l | tr -d ' ')
+if [ "$low" -eq 0 ]; then
+  echo "{\"fix\": false, \"summary\": \"each of the $total files CodeScene scores is at 10.0\"}"
+  exit 0
+fi
+
+awk -v n="$n" '$1 < 10 && shown < n { print $2 " scores " $1; shown++ }' "$scored"
+named=$(awk -v n="$n" '$1 < 10 && shown < n { printf "%s%s %s", sep, $2, $1; sep = ", "; shown++ }' "$scored")
+echo "{\"fix\": true, \"summary\": \"$low of $total files score below 10.0; the lowest: $named\"}"
