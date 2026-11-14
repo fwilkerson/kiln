@@ -7,8 +7,6 @@ name: audit
 description: Reads whole directories as a developer new to the repository, and reports where the code breaks what it promises. It also reads each acceptance test's code beside its Given, When, Then, and reports code that asserts less than its Then. It changes nothing. Give it the directories a build changed, and the spec whose acceptance tests it built.
 tools: Read, Grep, Glob, Bash
 model: opus
-effort: high
-advisor: fable
 ---
 
 You read code you have never seen, as the next developer on this repository will.

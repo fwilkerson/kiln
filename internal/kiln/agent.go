@@ -25,9 +25,10 @@ var efforts = []string{"low", "medium", "high", "xhigh", "max"}
 
 // parseAgent reads an agent's file. A file with no frontmatter is all body. A tools key names its tools on its own
 // line, separated by commas, as Claude Code's agent files write them. It refuses a list in any other form. Without
-// model or effort, the agent runs Opus at medium effort; without advisor, Fable advises it.
+// model, the agent runs Opus. Without effort or advisor, kiln names none, and each is Claude Code's own. The project
+// says which a session runs with, never kiln.
 func parseAgent(raw string) (agent, error) {
-	a := agent{model: "opus", effort: "medium", advisor: "fable"}
+	a := agent{model: "opus"}
 	front, body, err := frontmatter(raw)
 	if err != nil {
 		return a, err
@@ -35,25 +36,38 @@ func parseAgent(raw string) (agent, error) {
 
 	a.body = strings.TrimSpace(body)
 	for line := range strings.Lines(front) {
-		key, value, ok := strings.Cut(line, ":")
-		if !ok || strings.HasPrefix(strings.TrimSpace(key), "#") {
-			continue
+		if err := a.read(line); err != nil {
+			return a, err
 		}
-
-		key, value = strings.TrimSpace(key), strings.Trim(strings.TrimSpace(value), `"'`)
-		// A YAML list would read as no tools, which gives every tool: the opposite of what its writer meant.
-		if key == "tools" && (value == "" || strings.HasPrefix(value, "[")) {
-			return a, fmt.Errorf("its tools are not tool names, separated by commas, on the line of tools:")
-		}
-
-		a.set(key, value)
 	}
 
-	if !slices.Contains(efforts, a.effort) {
-		return a, fmt.Errorf("its effort, %q, is none of %s", a.effort, strings.Join(efforts, ", "))
+	return a, a.badEffort()
+}
+
+// read reads one line of the frontmatter into a. It skips a # line, and a line with no colon.
+func (a *agent) read(line string) error {
+	key, value, ok := strings.Cut(line, ":")
+	key, value = strings.TrimSpace(key), strings.Trim(strings.TrimSpace(value), `"'`)
+	// A YAML list would read as no tools, which gives every tool: the opposite of what its writer meant.
+	noNames := value == "" || strings.HasPrefix(value, "[")
+	switch {
+	case !ok, strings.HasPrefix(key, "#"):
+		return nil
+	case key == "tools" && noNames:
+		return fmt.Errorf("its tools are not tool names, separated by commas, on the line of tools:")
 	}
 
-	return a, nil
+	a.set(key, value)
+	return nil
+}
+
+// badEffort refuses an effort Claude Code does not take. An agent that names none runs at Claude Code's own.
+func (a *agent) badEffort() error {
+	if a.effort == "" || slices.Contains(efforts, a.effort) {
+		return nil
+	}
+
+	return fmt.Errorf("its effort, %q, is none of %s", a.effort, strings.Join(efforts, ", "))
 }
 
 // set sets the field key names to value, unless value is empty.

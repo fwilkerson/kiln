@@ -45,8 +45,9 @@
 // kiln queue reads the build, verify and audit agents' files at the commit it queues. It refuses one it can't use.
 // It refuses a kiln.json that names no acceptance path. It refuses a build agent that says how to write the tests.
 // Every session of the build runs with them as they stood there. An agent's file names the session's tools, model,
-// effort and advisor in its frontmatter. Without tools, it has every tool. Without model or effort, it runs Opus at
-// medium effort. Without advisor, Fable advises it. Its body comes first in the session's system prompt. Then comes
+// effort and advisor in its frontmatter. Without tools, it has every tool. Without model, it runs Opus. Without
+// effort or advisor, kiln names none, and each is Claude Code's own. Its body comes first in the session's system
+// prompt. Then comes
 // kiln's contract with the agent, which names where the tests live. In build then audit, the build session writes
 // the tests too. Its prompt then holds the verify agent's body after the build agent's. No file changes the
 // contract, the denied commands, the forbidden actions, or the guard on .kiln/. The hosts, writable paths and MCP

@@ -22,12 +22,12 @@ grep '^--effort\nmax$' .claude-calls/audit/1/1/args
 # and advisor.
 grep '"advisorModel": "haiku"' .claude-calls/audit/1/1/settings.json
 
-# The build agent's file names none of them, so it runs as every session ran before: every tool, Opus at medium
-# effort, with Fable as its advisor.
+# The build agent's file names none of them, so it has every tool and runs Opus, and kiln names no effort and no
+# advisor for it.
 ! grep '^--tools$' .claude-calls/build/1/1/args
 grep '^--model\nopus$' .claude-calls/build/1/1/args
-grep '^--effort\nmedium$' .claude-calls/build/1/1/args
-grep '"advisorModel": "fable"' .claude-calls/build/1/1/settings.json
+! grep '^--effort$' .claude-calls/build/1/1/args
+! grep 'advisorModel' .claude-calls/build/1/1/settings.json
 
 -- .kiln/kiln.json --
 {"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}

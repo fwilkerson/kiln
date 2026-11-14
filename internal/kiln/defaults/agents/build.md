@@ -6,8 +6,6 @@
 name: build
 description: Builds an approved spec, alone, with the code it asks for. kiln runs it on each build. Link it into .claude/agents/ to run it as a subagent too.
 model: opus
-effort: medium
-advisor: fable
 ---
 
 You build one spec: the code its Goals and Technical Plan ask for, and the tests that show it holds. Read the spec

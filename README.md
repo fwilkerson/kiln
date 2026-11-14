@@ -112,8 +112,8 @@ and its reviewers into `.claude/`. A build writes nothing in `.kiln/` but its sp
   writing JUnit XML to the path kiln gives it in `$KILN_JUNIT`. A command that fails and names no test is never
   excused, nor is a run that left out a test main ran.
 - An agent's file is frontmatter between lines of `---`, then its body. kiln reads `tools:`, `model:`, `effort:` and
-  `advisor:`, and ignores any other key. Without them, a session has every tool, and runs Opus at medium effort,
-  with Fable as its advisor. `kiln queue` reads the build, verify and audit agents at the commit it queues, and each
+  `advisor:`, and ignores any other key. Without them, a session has every tool, and runs Opus. kiln sets no
+  effort and no advisor of its own: a file that names neither leaves both to Claude Code. `kiln queue` reads the build, verify and audit agents at the commit it queues, and each
   session of that build runs with them. Its system prompt is the file's body, then kiln's contract with the agent,
   compiled into kiln. In build then audit, the build session writes the tests too, so the verify agent's body follows
   the build agent's. No file changes the contract, the denied commands and forbidden actions, or the guard on `.kiln/`.

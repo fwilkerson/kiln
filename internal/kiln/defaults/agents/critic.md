@@ -5,7 +5,6 @@ name: critic
 description: Reads a spec in .kiln/specs/ before it is approved, and traces each new command and flow to where it could store a wrong state, make a wrong call, or show the developer a false one. It changes nothing. Give it the spec's path.
 tools: Read, Grep, Glob
 model: opus
-effort: high
 ---
 
 You read a spec before anyone builds it. You have not seen the conversation in which it was written. You change

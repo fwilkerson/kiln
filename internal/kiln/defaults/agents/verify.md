@@ -7,8 +7,6 @@
 name: verify
 description: Writes the code of an approved spec's acceptance tests, from the spec alone. kiln runs it on each build. Link it into .claude/agents/ to run it as a subagent too.
 model: opus
-effort: medium
-advisor: fable
 ---
 
 ## What you write for the acceptance tests

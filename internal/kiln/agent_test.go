@@ -19,21 +19,21 @@ func TestAgentFile(t *testing.T) {
 		file, want string
 		refused    bool
 	}{
-		"a file with no frontmatter is all body, run as every session ran before": {
+		"a file with no frontmatter is all body, and names no effort or advisor": {
 			file: "Build it.\n",
-			want: `"Build it." [] opus medium fable`,
+			want: `"Build it." [] "opus" "" ""`,
 		},
 		"the frontmatter names the tools, model, effort and advisor": {
 			file: "---\ntools: Read, Grep\nmodel: sonnet\neffort: high\nadvisor: opus\n---\n\nAudit it.\n",
-			want: `"Audit it." ["Read" "Grep"] sonnet high opus`,
+			want: `"Audit it." ["Read" "Grep"] "sonnet" "high" "opus"`,
 		},
 		"other keys and # lines are ignored, and a value may be quoted": {
 			file: "---\n# model: haiku\nname: audit\ndescription: reads: packages\neffort: \"max\"\n---\nAudit.\n",
-			want: `"Audit." [] opus max fable`,
+			want: `"Audit." [] "opus" "max" ""`,
 		},
 		"an empty frontmatter names nothing": {
 			file: "---\n---\nBuild.",
-			want: `"Build." [] opus medium fable`,
+			want: `"Build." [] "opus" "" ""`,
 		},
 		"a frontmatter with no closing line is refused":  {file: "---\nmodel: opus\nBuild it.\n", refused: true},
 		"an effort Claude Code does not take is refused": {file: "---\neffort: huge\n---\nBuild.\n", refused: true},
@@ -56,7 +56,7 @@ func TestAgentFile(t *testing.T) {
 				tools = fmt.Sprintf("%q", a.tools)
 			}
 
-			if got := fmt.Sprintf("%q %s %s %s %s", a.body, tools, a.model, a.effort, a.advisor); got != tc.want {
+			if got := fmt.Sprintf("%q %s %q %q %q", a.body, tools, a.model, a.effort, a.advisor); got != tc.want {
 				t.Errorf("got %s, want %s", got, tc.want)
 			}
 		})
