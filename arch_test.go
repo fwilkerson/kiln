@@ -32,7 +32,7 @@ func TestArchitecture(t *testing.T) {
 func violation(pkg, imp string) string {
 	impTop := locate(imp)
 	switch {
-	case impTop == "" && strings.Contains(strings.Split(imp, "/")[0], ".") && !allowed(pkg, imp):
+	case foreign(imp) && !allowed(pkg, imp):
 		return "list its module for this package in outside"
 	case impTop == "cmd" || impTop == "uat":
 		return "nothing imports " + impTop
@@ -57,6 +57,11 @@ var outside = map[string][]string{
 		"github.com/charmbracelet/x/vt"},
 	"internal/termtest": {"github.com/creack/pty", "github.com/charmbracelet/x/vt",
 		"github.com/charmbracelet/ultraviolet", "golang.org/x/image"},
+}
+
+// foreign reports whether imp is from outside kiln and the standard library, whose first path element has no dot.
+func foreign(imp string) bool {
+	return locate(imp) == "" && strings.Contains(strings.Split(imp, "/")[0], ".")
 }
 
 // allowed reports whether pkg may import imp, a package from outside the standard library.

@@ -83,7 +83,8 @@ func TestGuard(t *testing.T) {
 				worktree = "/tmp/w"
 			}
 
-			if err := Hook(bytes.NewReader(in), &out, "x", worktree, tc.side); err != nil {
+			opt := HookOptions{Spec: "x", Place: worktree, Side: tc.side}
+			if err := Hook(bytes.NewReader(in), &out, opt); err != nil {
 				t.Fatal(err)
 			}
 
@@ -585,15 +586,12 @@ func TestNextStep(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			tc.rec.Name = "x"
 			next := nextStep(tc.rec, "/cache/kiln/a b/x", "1a2b3c4d5e6f7a8b")
+			b := book{Specs: []*record{&tc.rec}}
 			var named []string
 			for _, m := range regexp.MustCompile(`kiln (\w+) x\b`).FindAllStringSubmatch(next, -1) {
 				named = append(named, m[1])
-			}
-
-			b := book{Specs: []*record{&tc.rec}}
-			for _, c := range named {
-				if err := b.may(c, "x", func(git.Rev) (bool, error) { return true, nil }); err != nil {
-					t.Errorf("%q names kiln %s, which the book refuses: %v", next, c, err)
+				if err := b.may(m[1], "x", func(git.Rev) (bool, error) { return true, nil }); err != nil {
+					t.Errorf("%q names kiln %s, which the book refuses: %v", next, m[1], err)
 				}
 			}
 

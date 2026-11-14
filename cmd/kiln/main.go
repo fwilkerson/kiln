@@ -275,7 +275,8 @@ func hook(args []string, stdin io.Reader, stdout io.Writer) error {
 		return errUsage
 	}
 
-	if err := kiln.Hook(stdin, stdout, kiln.Spec(*spec), git.Worktree(*place), side); err != nil {
+	opt := kiln.HookOptions{Spec: kiln.Spec(*spec), Place: git.Worktree(*place), Side: side}
+	if err := kiln.Hook(stdin, stdout, opt); err != nil {
 		fmt.Fprintf(os.Stderr, "kiln hook: %v\n", err)
 		os.Exit(2)
 	}

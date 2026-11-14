@@ -46,15 +46,17 @@ func (s Side) refusal(rel, folded string, spec Spec) string {
 	}
 
 	tests := within(folded, s.Acceptance) || folded == fold(spec.amendPath())
-	switch {
-	case s.Role == buildRole && tests:
-		return fmt.Sprintf("%s is the verify session's: in a split build, it alone writes %s and %s", rel,
-			s.Acceptance, spec.amendPath())
-	case s.Role == verifyRole && !tests && !slices.ContainsFunc(s.Harness, func(h string) bool {
-		return within(folded, h)
-	}):
-		return fmt.Sprintf("%s is the build session's: in a split build, the verify session writes only %s, %s "+
-			"and the harness", rel, s.Acceptance, spec.amendPath())
+	switch s.Role {
+	case buildRole:
+		if tests {
+			return fmt.Sprintf("%s is the verify session's: in a split build, it alone writes %s and %s", rel,
+				s.Acceptance, spec.amendPath())
+		}
+	case verifyRole:
+		if !tests && !slices.ContainsFunc(s.Harness, func(h string) bool { return within(folded, h) }) {
+			return fmt.Sprintf("%s is the build session's: in a split build, the verify session writes only %s, "+
+				"%s and the harness", rel, s.Acceptance, spec.amendPath())
+		}
 	}
 
 	return ""
@@ -117,17 +119,27 @@ type hookCall struct {
 	} `json:"tool_input"`
 }
 
-// Hook answers the PreToolUse call on in, for a session building spec in the worktree at place. It refuses a write
-// outside place, and one to a path that guard.guarded names. In a split build, side is the session's: it refuses a
-// write outside it too. It writes its refusal to out, as Claude Code reads it. It reads no shell command: the gate's
+// HookOptions name the session whose PreToolUse calls Hook answers.
+type HookOptions struct {
+	// Spec is the spec the session builds.
+	Spec Spec
+	// Place is the build's worktree.
+	Place git.Worktree
+	// Side is the session's part of a split build, or the zero Side outside one.
+	Side Side
+}
+
+// Hook answers the PreToolUse call on in, for a session building opt.Spec in the worktree at opt.Place. It refuses
+// a write outside opt.Place, and one to a path that guard.guarded names. In a split build, it refuses a write
+// outside opt.Side too. It writes its refusal to out, as Claude Code reads it. It reads no shell command: the gate's
 // own check finds a guarded path a command changed.
-func Hook(in io.Reader, out io.Writer, spec Spec, place git.Worktree, side Side) error {
+func Hook(in io.Reader, out io.Writer, opt HookOptions) error {
 	var c hookCall
 	if err := json.NewDecoder(in).Decode(&c); err != nil {
 		return fmt.Errorf("the hook's input: %w", err)
 	}
 
-	why := guard{spec: spec, place: place, side: side}.denial(c)
+	why := guard{spec: opt.Spec, place: opt.Place, side: opt.Side}.denial(c)
 	if why == "" {
 		return nil
 	}

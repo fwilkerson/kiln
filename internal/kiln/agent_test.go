@@ -230,7 +230,8 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 			switch {
 			case tc.refusal == "" && err != nil:
 				t.Errorf("kiln queue answered %v; want it queued", err)
-			case tc.refusal != "" && (!errors.Is(err, errRefused) || !strings.Contains(err.Error(), tc.refusal)):
+			case tc.refusal != "" &&
+				!claim.Holds(errors.Is(err, errRefused), strings.Contains(fmt.Sprint(err), tc.refusal)):
 				t.Errorf("kiln queue answered %v; want a refusal that says %q", err, tc.refusal)
 			}
 		})

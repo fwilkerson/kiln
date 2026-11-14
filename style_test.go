@@ -25,15 +25,11 @@ func TestHealth(t *testing.T) { repotest.Health(t, held) }
 // held is the score of each file under 10. The code-health monitor refactors them, and a line goes once its file
 // scores 10.
 var held = map[string]string{
-	"arch_test.go":                 "9",
-	"internal/kiln/agent_test.go":  "9",
 	"internal/kiln/build.go":       "9",
 	"internal/kiln/form.go":        "9",
-	"internal/kiln/guard.go":       "8",
 	"internal/kiln/junit_test.go":  "9",
 	"internal/kiln/kiln.go":        "9",
 	"internal/kiln/preset_test.go": "9",
-	"internal/kiln/rules_test.go":  "9",
 	"internal/kiln/split.go":       "9",
 	"internal/kiln/view_test.go":   "9",
 }
