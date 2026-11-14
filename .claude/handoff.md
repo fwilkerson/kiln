@@ -5,59 +5,100 @@ no file holds. Git holds what was done, so drop each item once it lands.
 
 ## Where things stand, on 2026-11-14
 
-- `~/github.com/fwilkerson/practices` is new, local and never pushed. It holds the guide, `claim`, and the commands
-  `guide`, `health`, `size` and `style`, copied from odh at `8bc3289`. Its README says how a project uses it.
-- kiln builds on practices. `go.mod` names the checkout by its full path, with no version. `CLAUDE.md` loads
-  `docs/guide.md`, and `TestGuide` holds that copy to `go tool guide`.
+- `~/github.com/fwilkerson/practices` is local and never pushed. It holds the guide, `claim`, `repotest`, and the
+  commands `guide`, `health`, `inspect`, `size` and `style`. Its README says how a project uses it.
+- kiln and odh both build on practices. Each `go.mod` names the checkout by its full path, with no version. Each
+  `CLAUDE.md` loads `docs/guide.md`, and `TestGuide` holds that copy to the module. Each root test file calls
+  `repotest`.
+- odh took practices in `0664f73` and `fa37584`. Its `docs/practices.md` keeps only odh's own rules. `tools/layout`
+  stays odh's, since the layout knows odh's framework. Its Dockerfile drops the practices lines from `go.mod`, since
+  the checkout is outside the image.
+- CodeScene left kiln in `b784746`. kiln has no gauge until `measures` lands.
 - kiln's `code-health` monitor scores with `go tool health`, three files a day, and lands without `kiln accept`.
-  CodeScene stays as the gauge, and in `CLAUDE.md` "Code Health".
 - The launchd job `dev.kiln.monitor.56fea50276d3ef5d` runs `kiln monitor run` at minute 24 of each hour.
-- `~/github.com/fwilkerson/odh-trial` is a clone of odh at `6541e13`, with no remote. `kiln init` ran there, and its
-  `.kiln/` is tailored. No session has written to odh itself.
+- `~/github.com/fwilkerson/odh-trial` is a clone of odh at `6541e13`, with no remote. So it holds odh's old tools,
+  and not practices. Its `354ebb0` tailors `/shape`, its three reviewers and the build agent to odh.
+- A session shapes `measures` in the worktree `.claude/worktrees/measure`. It was told on 2026-11-14 that CodeScene
+  is gone.
 
 ## Next
 
-1. **Read the two monitor runs of 2026-11-15.** `uat` is due at 12:24. It folds `uat/split/`, and its fix waits
-   for `kiln accept uat`. `code-health` is due at 13:24, its first run on `go tool health`. Its first files are
-   `internal/kiln/guard.go`, `arch_test.go` and `internal/kiln/agent_test.go`. Both are the first sandboxed sessions
-   to build against the practices checkout: one that can't read it fails `go test`, and that is a kiln gap. Read
-   the refactor against the guide's "What a score is worth". Then spec 11, monitors, is yours to accept.
-2. **Trial odh on kiln**, in `odh-trial`. Run `/shape hand-over`, approve the spec, then
+1. **Read the two monitor runs of 2026-11-15.** `uat` is due at 12:24. It folds `uat/split/` and `uat/monitors/`,
+   and its fix waits for `kiln accept uat`. `code-health` is due at 13:24, its first run on `go tool health`. Its
+   first files are `internal/kiln/guard.go`, `arch_test.go` and `internal/kiln/agent_test.go`. Both are the first
+   sandboxed sessions to build against the practices checkout: one that can't read it fails `go test`, and that is a
+   kiln gap. It would fail odh's builds the same way. Read the refactor against the guide's "What a score is worth".
+2. **Trial odh on kiln**, in `odh-trial`. The developer runs `/shape hand-over` there, approves the spec, then runs
    `kiln queue hand-over && kiln run`. The slice is the counter's hand-over control: `order.HandOver` exists, and
-   nothing in `web` calls it. Watch for these, none of which has run yet:
+   nothing in `web` calls it. After UAT, read the build's streams against the criteria and the list below.
+
+   The developer settled these criteria on 2026-11-14:
+    - Must: the build lands, and asks nothing outside the spec.
+    - Must: the docs land with the code, as the spec's Where It Lands names.
+    - Must: odh's bar holds at the landed commit, by the gate and by `go tool inspect`.
+    - Must: staff hand over a pickup at the counter, in a browser.
+    - Weighed: the audit finds what odh's own `audit` agent finds on the same packages.
+    - Weighed: the tests catch a bug planted in the handler and one in the rule, and test no rule twice.
+    - Weighed: `prose` and the two designs ran in the build.
+    - Recorded only: cost, time and rounds. The subscription is use it or lose it.
+    - One slice is enough to adopt, if the musts hold. A second slice in odh, one that crosses modules, confirms it.
+    - A step the sandbox refuses does not fail the trial. It becomes a kiln starter spec. Adoption waits only if the
+      step has no place outside the build.
+    - Not yet confirmed: count the developer's turns in `/shape` that were toil, with no cap. odh's collaboration
+      report defines a toil turn. The guest-cart design took 25 turns.
+
+   Watch for these, none of which has run yet:
     - whether the build session can spawn `prose` and `judge` as subagents;
     - whether its two designers can write their clones under `~/Library/Caches/odh-trial-designs`;
     - whether odh's hook, `go run ./tools/style` after each edit, runs in the session;
-    - which agent the audit ran, and whether its findings read as odh's own audit's would.
+    - which agent the audit ran, and whether its findings read as odh's own audit's would;
+    - what the build does with a line meant for `.claude/handoff.md`, which no build can write.
 3. **Write a kiln starter spec for each gap** the trial could not close by configuration. The developer wants kiln
-   to stay at build, verify and audit, and a project to add its own steps as subagents.
-4. **Convert odh**, in a session in odh:
-    - Take practices: the `require`, `replace` and `tool` lines, then `internal/claim` gives way to
-      `practices/claim`, and `tools/health`, `tools/size` and `tools/style` to `go tool`. `style_test.go`, the hook
-      in `.claude/settings.json`, `CLAUDE.md` and the `judge` agent name those tools.
-    - Load the guide as the practices README says. `docs/practices.md` keeps only odh's own rules, such as its
-      Traps, as kiln's does.
-    - Run `kiln init --preset go`, and carry over what the trial settled in `odh-trial/.kiln/`.
-    - `/shape` replaces `/slice`. `/slice` reads `docs/decisions.md` "Not yet built" and `docs/research`, and
-      `/shape` must be told to.
-5. **Shape `measures`** in kiln, the starter that joins gauges and monitors. Today's check has two modes, one for
-   main and one for the gate, only because a monitor can't name a gauge as its gate.
-6. **Publish practices** once it stops churning. Each project then drops its `replace` line. A scratch install at
-   `v0.1.0` from a local proxy already ran `go tool guide`, `style`, `health` and a test on `claim`.
+   to stay at build, verify and audit, and a project to add its own steps as subagents. Two gaps are known before
+   the run. The inspection needs GoLand and the main checkout, so the trial's build skips it. odh keeps its open
+   work in `.claude/handoff.md`, which no build can write.
+4. **Finish odh's conversion**, once the developer adopts kiln, in a session in odh:
+    - Run `kiln init --preset go`, and carry over `odh-trial/.kiln/`. Its build agent names `go run ./tools/style`,
+      and odh now runs `go run ./tools/layout`, then `go tool style`. Its verify agent names `internal/claim`, which
+      is now the practices module's `claim`.
+    - `/shape` replaces `/slice`, and `.kiln/specs/` replaces `docs/designs/`. odh's `CLAUDE.md` "Review agents" and
+      "Designs", and its `docs/practices.md` "Designs", then say what kiln does.
+    - Link `/shape`'s reviewers into `.claude/agents/` in place of odh's three, as the trial did.
+    - Add odh's own sections to the spec's template: Non-Functional Requirements, and the judge's table. Where It
+      Lands is in the trial's template.
+    - Then write each behavior of the system odh replaces as a spec with Status Proposed. Accepted specs show what
+      odh covers, and Proposed ones show the gaps. Only the developer knows those behaviors.
+5. **Shape `measures`** in kiln, the starter that joins gauges and monitors. A session has it in the `measure`
+   worktree.
+6. **Bring the rest of practices into kiln.** The developer asked for this plan on 2026-11-14, and has approved none
+   of it:
+    - Hold each file's score in `go test`, with `repotest.Health` and a map of the 12 files under 10. Today a build
+      can land a file under 10, and only the next day's monitor repairs it. The refactor agent then drops a file's
+      line from the map once the file scores 10. `measures` plans a `health` gauge for the same score. A gauge never
+      blocks a landing, and the test does, so the developer picks one or both.
+    - Run `go tool inspect`. On 2026-11-14 it found about 300 things in kiln under GoLand's default profile: 113 in
+      grammar, 76 mixed receivers and 72 unhandled errors. So kiln first needs a profile and a dictionary of its
+      own, as odh's `.idea/inspectionProfiles` is. A monitor could then run it, if a check can run GoLand.
+    - Run `prose` on a build's comments, as a subagent of the build. The trial shows whether a build can spawn one.
+      `prose` and `judge` are odh's until then. They then move to practices, with a command that writes them.
+    - The two designs and the judge stay deferred, as `docs/later.md` says, until the trial shows a build can run
+      them.
+    - Keep a friction log for `/shape` sessions, as the guide now says.
+    - kiln's one research report opens as odh's do, and lacks "What would overturn this". When kiln gains a second
+      topic, move odh's `TestReports` into `repotest`.
+7. **Publish practices** once it stops churning. Each project then drops its `replace` line, and odh's Dockerfile
+   its `go mod edit`. A scratch install at `v0.1.0` from a local proxy already ran `go tool guide`, `style`,
+   `health` and a test on `claim`.
 
 ## Found, and not yet settled
 
-- **Agent names clash in odh.** odh has its own `audit`, `comprehension`, `critic` and `zoom-out` in
-  `.claude/agents/`, so `kiln init` kept them. `/shape` runs odh's reviewers, and a build's audit runs kiln's
-  `.kiln/agents/audit.md`.
 - **Test names collide in odh.** The trial puts a spec's tests in `cmd/odh/at_<spec>_test.go`, beside the flow
   tests. Two specs would both define `TestAT1` in that package.
-- **kiln's `docs/refactoring.md` argues with the guide.** Its recipes include the `case` list and the comparison
-  as a struct, which the guide calls gaming a score. The refactor agent no longer reads it for recipes.
 - **kiln's Go preset does not know practices.** A new project takes the guide and the commands by hand, from the
-  practices README. Whether the preset should name the developer's module is undecided.
-- **`cmd/style/layout.go` holds odh's module layout.** It acts only on paths under `modules/`.
+  practices README. Other codebases will adopt kiln, so the preset should not name the developer's module.
+- **The guide trips GoLand's grammar check in odh**, five times, each at a sound sentence. odh's inspection profile
+  skips its copy of the guide. practices has no profile of its own.
+- **A change to the guide fails `TestGuide` in each project** until its copy is refreshed. So an older commit of kiln
+  or odh fails that test against today's practices checkout.
 - **`kiln status` says "never run, never ran"** for a monitor that has not run.
-- **CodeScene may go.** The developer is not sure of paying for it. Its rule is in `CLAUDE.md` "Code Health", its
-  gauge in `.kiln/kiln.json`, and its recipes in `docs/refactoring.md`.
-- `languages` and `monitors` wait for UAT in kiln, and `talk` is a starter.
+- `languages` waits for UAT in kiln, and `talk` is a starter.
