@@ -113,6 +113,18 @@ audit cost $3 to $9.
 
 - **Build it when:** a fix lands a defect that a second audit would have caught.
 
+## A crossing that runs a monitor early
+
+`.kiln/specs/measures.md` lets a monitor name a gauge. The monitor reads that gauge over the whole repository when
+its interval has passed, and a crossed reading starts a fix. A landing's own reading of the gauge starts nothing. A
+third trigger was weighed: a monitor that names a gauge would be due at the next `kiln monitor run` once a landing's
+reading of it crossed.
+
+- **Why it was left out:** the developer sets a monitor's schedule, and the monitor's run finds what a landing left.
+  On 2026-11-14, 12 Go files scored below 10, so most landings would cross, and each would start a fix within the
+  hour.
+- **Build it when:** a crossing waits longer for its monitor than the developer wants.
+
 ## A project's own workflow
 
 Spec 7 lets a project set each role's prompt, tools, model and effort. Spec 10 added a second fixed workflow, split,
