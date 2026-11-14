@@ -46,6 +46,8 @@ func violation(pkg, imp string) string {
 var outside = map[string][]string{
 	"internal/proc":   {"golang.org/x/sys"},
 	"internal/claude": {"golang.org/x/sys"},
+	// claim holds the checks tests share, so only a test imports it.
+	"internal/kiln": {"github.com/fwilkerson/practices/claim"},
 	"internal/scenariotest": {"github.com/rogpeppe/go-internal", "github.com/charmbracelet/x/ansi",
 		"github.com/charmbracelet/x/vt"},
 	"internal/tui": {"charm.land/bubbletea/v2", "charm.land/bubbles/v2", "charm.land/lipgloss/v2",

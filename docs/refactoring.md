@@ -7,7 +7,7 @@ was tried on kiln's code and scored. `internal/git` at `76b405c` shows most of t
 
 1. Run `code_health_review` on the file. Note each finding and its function.
 2. Change one function. Keep the change small enough to explain in one sentence.
-3. Run `go run ./tools/style -l <file>`, `go vet` and the package's tests.
+3. Run `go tool style -l <file>`, `go vet` and the package's tests.
 4. Run `code_health_score`. The score must rise or hold. If it falls, undo the step.
 5. When every file in the package scores 10.0, run `go test ./...` and `pre_commit_code_health_safeguard`. Commit
    the package.
@@ -114,4 +114,4 @@ commit message with its reason. Breaks to watch for:
 - A file split with no seam in git history, made only to raise cohesion.
 - A shallow pass-through added only to lower a function's complexity.
 - A new package made only to hold extracted helpers.
-- A comment over 20 words, or a line over 120 columns. `tools/style` refuses both.
+- A comment over 20 words, or a line over 120 columns. `go tool style` refuses both.

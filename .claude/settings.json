@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/style-hook.sh",
-            "statusMessage": "Running tools/style"
+            "statusMessage": "Running go tool style"
           }
         ]
       }
@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/style-hook.sh",
-            "statusMessage": "Running tools/style"
+            "statusMessage": "Running go tool style"
           }
         ]
       }

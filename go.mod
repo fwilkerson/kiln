@@ -1,6 +1,6 @@
 module github.com/fwilkerson/kiln
 
-go 1.27
+go 1.27.2
 
 require (
 	charm.land/bubbles/v2 v2.2.1
@@ -12,6 +12,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/charmbracelet/x/vt v0.1.0
 	github.com/creack/pty v1.1.24
+	github.com/fwilkerson/practices v0.0.0
 	github.com/rogpeppe/go-internal v1.16.0
 	golang.org/x/image v0.47.0
 	golang.org/x/sys v0.49.0
@@ -26,6 +27,7 @@ require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/dlclark/regexp2 v1.11.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
@@ -34,4 +36,12 @@ require (
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
+)
+
+replace github.com/fwilkerson/practices => /Users/dev/github.com/fwilkerson/practices
+
+tool (
+	github.com/fwilkerson/practices/cmd/health
+	github.com/fwilkerson/practices/cmd/size
+	github.com/fwilkerson/practices/cmd/style
 )

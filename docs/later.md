@@ -76,7 +76,7 @@ Spec 1 refuses a build's write to `specs/`. A finer table was drafted:
 ## Two designers and a judge
 
 odh has two agents design apart from the same brief, and a fresh judge scores both by the five measures in
-`docs/practices.md`. Spec 1 leaves this to the builder: it may spawn its own subagents.
+the guide. Spec 1 leaves this to the builder: it may spawn its own subagents.
 
 - **Open:** each designer needs its own checkout, and a session can't write outside its checkout. Spec 10, split,
   solved it for the verify session: kiln makes each session a clone of main, and denies it reads of the other's. A

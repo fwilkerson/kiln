@@ -17,7 +17,9 @@ for macOS.
 - `internal/kiln/defaults/`: what `kiln init` writes, for any project. No line there names kiln's own repository.
 - `internal/kiln/presets/`: each preset's `kiln.json`, and its text for the "Tailor this" sections of the defaults'
   prompts. `kiln init` writes them with `internal/kiln/defaults/`.
-- `docs/practices.md`: how Go code is written and judged here. Read it before adding a package or an exported name.
+- The guide: `guide.md` of the practices module, which says how Go code is written and judged across the developer's
+  projects. `docs/practices.md` adds kiln's own rules, and says how to print the guide. Read both before adding a
+  package or an exported name.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
 - `uat/<spec>/`: the test code for each acceptance test of a spec not yet accepted, one Go test named `TestAT<N>`
   for test N.
@@ -34,7 +36,7 @@ working tree, and never write to either.
 
 ## Rules
 
-- Tests: as `docs/practices.md` "Tests" says. Each test costs time and care; write the ones a Then, a domain rule or
+- Tests: as the guide's "Tests" says. Each test costs time and care; write the ones a Then, a domain rule or
   the wiring needs, and no more. An acceptance test's code tests what its Then says, through the command line. Don't
   write a test that only restates the code, pins a name no caller sees, or exists to raise coverage.
 - Folded scenarios: as `docs/practices.md` "Acceptance tests" says. A build changes a scenario under `uat/testdata/`
@@ -44,7 +46,7 @@ working tree, and never write to either.
   model's `Update` and `View` in a test of `internal/tui`, and read a failing terminal test from the gate's report.
   Before a key, wait for a screen it acts on. `kiln tui`'s monitors are checked that way alone: no acceptance test
   drives them in a pseudo-terminal.
-- Comments: as `docs/practices.md` "Comments" says. A comment inside a body says why, never what.
+- Comments: as the guide's "Comments" says. A comment inside a body says why, never what.
 - Commits: [Conventional Commits](https://www.conventionalcommits.org), `type(scope): summary`, imperative and under
   72 characters. The body says why. `go test ./...` passes at each commit. Never push.
 

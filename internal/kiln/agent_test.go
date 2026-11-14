@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/practices/claim"
 )
 
 func TestAgentFile(t *testing.T) {
@@ -107,8 +108,8 @@ func TestSpecBeforeKiln(t *testing.T) {
 	moved := git.Rev(shell(t, repo, "git rev-parse HEAD"))
 	for at, want := range map[git.Rev]string{old: "old\n", moved: "new\n"} {
 		spec, found, err := r.specAt(t.Context(), at, "x")
-		if got := fmt.Sprintf("%q, %v, %v", spec, found, err); got != fmt.Sprintf("%q, true, <nil>", want) {
-			t.Errorf("at %s, the spec is %s; want %q", short(at), got, want)
+		if err != nil || !claim.Holds(found, string(spec) == want) {
+			t.Errorf("at %s, the spec is %q, %v, %v; want %q", short(at), spec, found, err, want)
 		}
 	}
 }
@@ -155,7 +156,7 @@ func wantConfigKept(t *testing.T, repo string) {
 		t.Fatal(err)
 	}
 
-	if fmt.Sprint(c.Gate, c.Rounds, c.Hosts == nil, c.Writable == nil) != "[true] 1 true true" {
+	if !claim.Holds(fmt.Sprint(c.Gate, c.Rounds) == "[true] 1", c.Hosts == nil, c.Writable == nil) {
 		t.Errorf("kiln.json is %s; want its gate and rounds kept, with no hosts or writable added", raw)
 	}
 }

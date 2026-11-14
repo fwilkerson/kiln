@@ -9,7 +9,7 @@ cd "$CLAUDE_PROJECT_DIR" || exit 0
 # TestStyle still fails it.
 if [ "$(printf '%s' "$in" | jq -r '.hook_event_name')" = Stop ]; then
   [ "$(printf '%s' "$in" | jq -r '.stop_hook_active')" = true ] && exit 0
-  out=$(go run ./tools/style -l . 2>&1 | grep -v '^exit status')
+  out=$(go tool style -l . 2>&1 | grep -v '^exit status')
   [ -z "$out" ] && exit 0
   printf 'Fix these before you end your turn; gofmt fixes the formatting:\n%s\n' "$out" >&2
   exit 2
@@ -23,7 +23,7 @@ case "$f" in
 esac
 
 # One gofmt at the end fixes the formatting.
-out=$(go run ./tools/style -l "$f" 2>&1 | grep -v -e 'not formatted as gofmt' -e '^exit status')
+out=$(go tool style -l "$f" 2>&1 | grep -v -e 'not formatted as gofmt' -e '^exit status')
 [ -z "$out" ] && exit 0
 echo "$out" >&2
 exit 2

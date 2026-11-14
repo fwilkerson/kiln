@@ -14,10 +14,10 @@ import (
 	"testing"
 )
 
-// TestStyle fails while tools/style finds a problem. Running the tool fixes blank lines and the layout in place. It
-// only reports wide lines and long comment sentences, so fix those by hand.
+// TestStyle fails while the practices module's style command finds a problem. Run go tool style . to fix blank lines
+// in place. It only reports wide lines and long comment sentences, so fix those by hand.
 func TestStyle(t *testing.T) {
-	out, err := exec.Command("go", "run", "./tools/style", "-l", ".").CombinedOutput()
+	out, err := exec.Command("go", "tool", "style", "-l", ".").CombinedOutput()
 	if err != nil {
 		t.Errorf("%s%v", out, err)
 	}
