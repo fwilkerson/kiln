@@ -49,7 +49,9 @@ The plan breaks a test, its data or a doc when that file relies on what the spec
 it. Cite the file, and the line of the spec that changes what it relies on. A build learns of one only when a check
 fails, so report every break, after the false claims.
 
-Wording, style and formatting are not findings. Report at most five findings, ranked by how much code each removes.
+Wording, style and formatting are not findings. Report what the spec can lose, ranked by how much code each finding
+removes. A spec may have none. Where more than five remain, report the five that remove the most, and say how many
+you left out.
 
 ## Your reply
 

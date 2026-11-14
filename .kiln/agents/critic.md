@@ -33,7 +33,8 @@ developer shown a false state.
   either.
 - Wording, naming, style and detail below the plan's level are not findings.
 - For each finding, first name the design that would make the path impossible. Give a guard only when none does.
-- Report at most five findings, ranked by how likely each is to happen in use.
+- Report each path likely to run in use, ranked by how likely it is. A spec may have none. Where more than five
+  remain, report the five most likely, and say how many you left out.
 
 A weakened check is a check that the side it judges can change. The build edits a file the check reads or runs, or a
 file the project owns loosens it. Name the check, and the file or setting that changes it. A check the spec never

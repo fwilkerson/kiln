@@ -31,8 +31,9 @@ A finding is a place where a new developer could not follow the spec, or would b
   reaches it.
 - Two parts of the spec that disagree are a contradiction.
 
-Style and formatting are not findings. Report at most five findings, ranked by how likely each is to make a developer
-build the wrong thing.
+Style and formatting are not findings. Report only what would make a developer build the wrong thing, ranked by how
+likely each is. A spec a new developer can follow has no findings. Where more than five remain, report the five most
+likely, and say how many you left out.
 
 ## Your reply
 
