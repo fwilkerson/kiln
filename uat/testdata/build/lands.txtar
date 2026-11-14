@@ -1,13 +1,21 @@
-# 1. An approved spec lands.
+# An approved spec lands, and kiln says so.
 
 # Given: an approved spec whose build makes its acceptance tests pass.
+# Its session costs $0.30, and one of its calls reads a file that is not there. Its first audit ends with no result,
+# and runs again, for $0.12. Its finding goes back to the session, which fixes it.
 exec kiln queue x
 
 # When: the developer runs kiln run.
 exec kiln run
+cp stdout .tmp/run
 stdout '^x: landed on main'
 
-# Then: main holds the build's work,
+# Then: its output holds one notification, which names the spec and the state kiln status shows for it, waiting for
+# UAT.
+stdout -count=1 '\x1b\]9;'
+stdout '^\x1b\]9;kiln: x waiting for UAT\x07'
+
+# main holds the build's work,
 exec git log -1 --format=%s main
 stdout '^feat\(x\): land the approved spec$'
 exec git diff --quiet main
@@ -30,6 +38,21 @@ grep 'x.go:3  false comment' .claude-calls/build/1/2/prompt
 exec git show main:x.go
 stdout '^// X answers 42.$'
 
+# After the line that says the build landed, the output shows the build's time, cost, turns and failed calls, its
+# rounds, the files it changed, and the command that accepts the spec.
+exec cat .tmp/run
+stdout '(?s)^x: landed on main at [0-9a-f]{12}, and waits for UAT$\n\x1b\]9;[^\x07]*\x07  [^·\n]+ · \$0\.42 · 3 turns · 1 failed call$'
+stdout '(?s)^x: landed on main at .*^  0 of 1 round · the audit sent findings back$'
+stdout '(?s)^x: landed on main at .*^  2 files changed, 18 insertions, 0 deletions$'
+stdout '(?s)^x: landed on main at .*^  next: .*kiln accept x\b'
+exec git diff --shortstat main^ main
+stdout '^ 2 files changed, 18 insertions\(\+\)$'
+
+# The landing commit's message holds the build's time, cost, turns and failed calls.
+exec git log -1 --format=%B main
+stdout '^feat\(x\): land the approved spec$'
+stdout '^Build: (\d+s|[\d.]+ min) · \$0\.42 · 3 turns · 1 failed call$'
+
 -- .kiln/specs/x.md --
 ### 1. X answers
 
@@ -40,8 +63,9 @@ stdout '^// X answers 42.$'
 {
   "build": {"1": {
     "1": [
+      {"tool": {"name": "Read", "input": {"file_path": "missing.go"}}},
       {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
-      {"result": {"result": "Built x."}}
+      {"result": {"result": "Built x.", "cost_usd": 0.30}}
     ],
     "2": [
       {"tool": {"name": "Edit", "input": {"file_path": "x.go", "old_string": "answers 41", "new_string": "answers 42"}}},
@@ -51,7 +75,7 @@ stdout '^// X answers 42.$'
   "audit": {
     "1": {"1": [{"result": {"is_error": true, "api_error_status": 529, "result": "API Error: 529 Overloaded"}}]},
     "2": {"1": [
-      {"result": {"result": "1. x.go:3  false comment\nreaches    the doc says 41\n\nread 2 packages, found 1"}}
+      {"result": {"result": "1. x.go:3  false comment\nreaches    the doc says 41\n\nread 2 packages, found 1", "cost_usd": 0.12}}
     ]}
   }
 }

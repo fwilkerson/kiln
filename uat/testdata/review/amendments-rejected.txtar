@@ -1,12 +1,58 @@
-# 2. Rejecting amendments drops the build.
+# An amended spec is delivered whole, and waits. The developer turns the amendments away, and revises the spec.
 
-# Given: a spec waiting on its branch with amendments.
+# Given: a build that finds a Given, When, Then can't hold, amends it, and finishes the work under the amendment.
 exec kiln queue x
-exec kiln run
-stdout '^x: waits on kiln/x'
 exec git rev-parse main
-cp stdout .tmp/main
+cp stdout .tmp/approved
+
+# When: its gate passes.
+exec kiln run
+cp stdout .tmp/run
+stdout '^x: waits on kiln/x'
+! stdout 'the gate failed|stopped'
+
+# Then: kiln run's output holds one notification, which names the spec and the state kiln status shows for it,
+# waiting on its branch with amendments.
+stdout -count=1 '\x1b\]9;'
+stdout '^\x1b\]9;kiln: x waiting on its branch with amendments\x07'
+
+# main is unchanged,
+exec git rev-parse main
+cmp stdout .tmp/approved
+
+# the finished work waits on the spec's branch,
+exec git show kiln/x:x.go
+stdout 'return 43'
+exec git show kiln/x:acceptance/x/x_test.go
+stdout 'TestAT1'
 exec git rev-parse --verify --quiet refs/heads/kiln/x
+
+# and kiln status shows the amendment.
+exec kiln status
+stdout '^x: waiting on its branch with amendments, kiln/x$'
+stdout '^  ### Old$'
+stdout '^  - \*\*Then\*\*: it answers 43.$'
+stdout '^  42 is taken.$'
+
+# After the line that says the build waits, kiln run's output shows the build's time, cost, turns and failed calls,
+# the amendments, and the commands that accept and reject them.
+exec cat .tmp/run
+stdout '(?s)^x: waits on kiln/x, with amendments for UAT$\n\x1b\]9;[^\x07]*\x07  [^·\n]+ · \$\d+\.\d\d · 1 turn · 0 failed calls$'
+stdout '(?s)^x: waits on kiln/x, .*^  # Amendments to .kiln/specs/x\.md$\n.*^  - \*\*Then\*\*: it answers 43\.$\n.*^  42 is taken\.$'
+stdout '(?s)^x: waits on kiln/x, .*^  next: .*kiln accept x\b.*kiln reject x\b'
+
+# When: the developer runs kiln queue on it.
+! exec kiln queue x
+
+# Then: kiln refuses,
+stderr '^kiln queue: refused: '
+stderr 'accept or reject them first'
+
+# and kiln status still shows it waiting on its branch with the amendments.
+exec kiln status
+stdout '^x: waiting on its branch with amendments, kiln/x$'
+stdout '^  - \*\*Then\*\*: it answers 43.$'
+stdout '^  42 is taken.$'
 
 # When: the developer runs kiln reject on it.
 exec kiln reject x
@@ -21,12 +67,30 @@ stdout '^kiln holds no approved spec$'
 
 # and main's spec and code are as they were.
 exec git rev-parse main
-cmp stdout .tmp/main
+cmp stdout .tmp/approved
 exec git diff --quiet main
 exec git show main:.kiln/specs/x.md
 cmp stdout .kiln/specs/x.md
 stdout 'it answers 42'
 ! exists x.go .kiln/specs/x.amend.md
+
+# When: the developer writes their own wording into the spec, and queues it again.
+exec sed -i '' 's/it answers 42\./it answers 44./' .kiln/specs/x.md
+exec git commit --quiet -am 'docs(x): revise the spec'
+exec kiln queue x
+exec kiln run
+
+# Then: a new build starts from the revised spec,
+exec kiln status
+stdout '^x: waiting for UAT$'
+cmp .tmp/seen.md .kiln/specs/x.md
+grep 'it answers 44' .tmp/seen.md
+exists revised.go
+
+# and the amended work never reaches main.
+! exists x.go
+exec git log --format=%H main -- x.go .kiln/specs/x.amend.md
+! stdout .
 
 -- .kiln/specs/x.md --
 ### 1. X answers
@@ -36,11 +100,20 @@ stdout 'it answers 42'
 - **Then**: it answers 42.
 -- claude.json --
 {
-  "build": {"1": {"1": [
-    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
-    {"result": {"result": "Built x, under an amendment."}}
-  ]}},
-  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+      {"result": {"result": "Built x, under an amendment."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp .kiln/specs/x.md \"$WORK/.tmp/seen.md\" && cp -R \"$WORK/_given/revised/.\" ."}}},
+      {"result": {"result": "Built x, as revised."}}
+    ]}
+  },
+  "audit": {
+    "1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]},
+    "2": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}
+  }
 }
 -- _given/x/x.go --
 // Package scratch is where kiln's builds land.
@@ -78,3 +151,23 @@ func TestAT1(t *testing.T) {
 ### Reason
 
 42 is taken.
+-- _given/revised/revised.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 44.
+func X() int { return 44 }
+-- _given/revised/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 44 {
+		t.Fatalf("X answers %d, want 44", got)
+	}
+}

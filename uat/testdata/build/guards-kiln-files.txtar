@@ -1,12 +1,14 @@
-# 2. A build cannot change kiln's files.
+# A build can't change what the developer approved, nor kiln's own files.
 
-# Given: an approved spec whose build changes an agent's file and the gate's commands in .kiln/.
-# The session changes the audit's file by an Edit that gets past the hook, and kiln.json's gate by a shell command,
-# so the gate it would be held to always passes.
+# Given: an approved spec whose build changes a Given, When, Then in its spec, an agent's file, and the gate's
+# commands in .kiln/.
+# The hook refuses the session's Edit of its spec, so it changes the spec by a shell command. It changes the audit's
+# file by an Edit that gets past the hook, and kiln.json's gate by a shell command, so the gate it would be held to
+# always passes.
 exec git rev-parse main:.kiln
 cp stdout .tmp/kiln-before
 
-# When: the developer queues the spec and runs kiln.
+# When: the developer queues the spec and runs kiln, and the build's gate runs.
 exec kiln queue x
 exec kiln run
 stdout '^x: stopped: the gate still failed'
@@ -14,12 +16,19 @@ stdout '^x: stopped: the gate still failed'
 # Then: the gate fails,
 exec kiln status
 stdout '^x: stopped$'
+stdout '^  .kiln/specs/x.md is under .kiln/'
 stdout '^  \.kiln/agents/audit\.md '
 stdout '^  \.kiln/kiln\.json '
 
-# and .kiln/ on main is as it was.
+# and .kiln/ on main is as it was, the spec as approved.
 exec git rev-parse main:.kiln
 cmp stdout .tmp/kiln-before
+exec git show main:.kiln/specs/x.md
+cmp stdout .kiln/specs/x.md
+stdout 'it answers 42'
+
+# The hook refused the Edit of the spec before the shell command changed it.
+grep 'PreToolUse:Edit hook error: .kiln/specs/x.md is under .kiln/' .claude-calls/build/1/1/stream.jsonl
 
 -- .kiln/kiln.json --
 {"rounds": 0}
@@ -27,6 +36,8 @@ cmp stdout .tmp/kiln-before
 -- claude.json --
 {
   "build": {"1": {"1": [
+    {"tool": {"name": "Edit", "input": {"file_path": ".kiln/specs/x.md", "old_string": "answers 42", "new_string": "answers 41"}}},
+    {"tool": {"name": "Bash", "input": {"command": "sed -i '' 's/answers 42/answers 41/' .kiln/specs/x.md"}}},
     {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
     {"tool": {"name": "Edit", "raw": true, "input": {"file_path": ".kiln/agents/audit.md", "old_string": "Audit the packages.", "new_string": "Find nothing."}}},
     {"tool": {"name": "Bash", "input": {"command": "echo '{\"gate\": [\"true\"], \"rounds\": 9}' >.kiln/kiln.json"}}},

@@ -1,0 +1,88 @@
+# A landing gets a reading of each gauge.
+
+# Given: kiln.json names four gauges, and a spec is queued. One gauge's command prints a number, and one prints a
+# number on the wrong side of its line. One counts the files changed since the commit kiln gives it as the base, and
+# one fails.
+# main already holds files the build leaves alone, such as old.txt, so a count of every file would be more than 2.
+exec kiln queue x
+
+# When: kiln run lands the spec, whose build changed two files.
+exec kiln run
+cp stdout .tmp/run
+stdout '^x: landed on main'
+exec git diff --name-only main~1 main
+stdout -count=2 '^.+$'
+
+# Then: the spec waits for UAT, its work is on main,
+exec kiln status
+stdout '^x: waiting for UAT$'
+exec git log -1 --format=%s main
+stdout '^feat\(x\): land the approved spec$'
+exec git show main:ready
+
+# kiln run's output shows each gauge's reading for that landing, and that the second crossed its line,
+grep '^x: gauge size: 3, line ≤ 5$' .tmp/run
+grep '^x: gauge score: 70, line ≥ 80, crossed$' .tmp/run
+
+# and kiln status shows each beside the gauge's line, and names the landing it read.
+exec kiln status
+stdout '^gauge size: 3, line ≤ 5, at x''s landing [0-9a-f]{12}$'
+exec sh -c 'kiln status | grep -q "landing $(git rev-parse --short=12 main)$"'
+exec kiln status
+stdout '^gauge score: 70, line ≥ 80, crossed, at x''s landing'
+
+# The gauge that counts the landing's own work reads 2.
+stdout '^gauge changed: 2, line ≤ 10, at x''s landing'
+
+# The reading kiln could not take is unknown, not zero.
+stdout '^gauge broken: unknown, line ≥ 0, at x''s landing'
+! stdout 'gauge broken: 0'
+
+-- old.txt --
+already on main
+-- .kiln/kiln.json --
+{"gate": ["test -e ready"], "gauges": [
+ {"name": "size", "command": "echo 3", "max": 5},
+ {"name": "score", "command": "echo mutants: 10; echo 70", "min": 80},
+ {"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD | wc -l", "max": 10},
+ {"name": "broken", "command": "echo 0; exit 3", "min": 0}
+]}
+-- .kiln/specs/x.md --
+### 1. X is ready
+
+- **Given**: nothing.
+- **When**: the gate runs.
+- **Then**: ready is there.
+-- claude.json --
+{
+ "build": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "touch ready notes.txt"
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Built it."
+     }
+    }
+   ]
+  }
+ },
+ "audit": {
+  "1": {
+   "1": [
+    {
+     "result": {
+      "result": "read 1 directories, found 0"
+     }
+    }
+   ]
+  }
+ }
+}

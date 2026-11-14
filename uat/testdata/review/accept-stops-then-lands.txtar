@@ -1,4 +1,4 @@
-# 4. An accepted landing that stops can land again.
+# An accepted landing that stops says so, and can land again.
 
 # Given: a spec waiting on its branch, whose landing stops once accepted.
 # Main's checkout holds an uncommitted PRODUCT.md, which the landing writes, so main can't move to it.
@@ -7,8 +7,20 @@ exec kiln run
 stdout '^x: waits on kiln/x'
 cp _given/PRODUCT.md PRODUCT.md
 ! exec kiln accept x
+cp stdout .tmp/accept
 stdout '^x: stopped: '
 stderr '^kiln accept: the landing of x stopped'
+
+# kiln accept's output holds one notification, which names the spec and the state kiln status shows for it, stopped,
+# landing accepted amendments.
+stdout -count=1 '\x1b\]9;'
+stdout '^\x1b\]9;kiln: x stopped, landing accepted amendments\x07'
+
+# After the line that says the build stopped, the output names kiln accept and kiln reject as what to run next, and
+# doesn't name kiln queue.
+exec cat .tmp/accept
+stdout '(?s)^x: stopped: .*^  next: .*kiln accept x\b.*kiln reject x\b'
+! stdout 'kiln queue'
 exec git log --format=%H main -- x.go
 ! stdout .
 

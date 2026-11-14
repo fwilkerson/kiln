@@ -1,4 +1,4 @@
-# 3. Builds are grouped by spec.
+# Builds are grouped by spec, newest first.
 
 # Given: two specs, one of them approved twice, so it has two builds.
 # a lands. b's first build fails its gate with no round left, and stops. Approved again, b lands. Each run costs as
@@ -19,6 +19,16 @@ term 120 30 kiln tui b
 screen 'builds of b · approved 2 times'
 screen ' #1 +✗ stopped .*\$0\.10 '
 screen ' #2 +✓ landed .*\$0\.21 '
+
+# The second build is listed above the first,
+screen ' #2 +✓ landed .*\$0\.21 .*\n.* #1 +✗ stopped .*\$0\.10 '
+
+# and is the one Enter opens. Home's keys stay on the spec.
+keys enter
+screen '^b · build 2 · '
+screen '^1 +build +first run +\S+ +1 +\$0\.20 '
+keys esc
+screen 'builds of b · approved 2 times'
 
 # When: then each of its builds.
 # Tab gives the builds panel the keys, with the newest build selected.
