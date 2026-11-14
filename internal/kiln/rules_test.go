@@ -99,6 +99,11 @@ func TestGate(t *testing.T) {
 	const other = "--- FAIL: TestNew (0.00s)\nFAIL\nFAIL\texample.com/s\t0.1s\n"
 	const broken = "# example.com/s\n./s.go:3:1: syntax error\nFAIL\texample.com/s [build failed]\n"
 	const hung = "panic: test timed out after 10m0s\nFAIL\texample.com/t\t600.0s\n"
+	const flaky = "TestFlaky (example.com/s)"
+	goTest := func(exit int, output string) []check {
+		return []check{{Command: "go test ./...", Exit: exit, Output: output}}
+	}
+
 	for name, tc := range map[string]struct {
 		tip, main []check
 		refused   map[string]string
@@ -109,51 +114,36 @@ func TestGate(t *testing.T) {
 		// mentions is what the report must hold.
 		mentions string
 	}{
-		"every command exits 0": {
-			tip: []check{{Command: "go test ./...", Exit: 0}}, passed: true,
-		},
+		"every command exits 0": {tip: goTest(0, ""), passed: true},
 		"a command fails": {
 			tip:     []check{{Command: "go vet ./...", Exit: 1, Output: "vet: x"}},
 			main:    []check{{Command: "go vet ./...", Exit: 0}},
 			failing: []string{"`go vet ./...`"},
 		},
 		"a test fails that passes at main": {
-			tip:     []check{{Command: "go test ./...", Exit: 1, Output: other}},
-			main:    []check{{Command: "go test ./...", Exit: 0}},
-			failing: []string{"TestNew (example.com/s)"},
+			tip: goTest(1, other), main: goTest(0, ""), failing: []string{"TestNew (example.com/s)"},
 		},
 		"a test fails that fails at main too": {
-			tip:    []check{{Command: "go test ./...", Exit: 1, Output: failing}},
-			main:   []check{{Command: "go test ./...", Exit: 1, Output: failing}},
-			passed: true, atMain: []string{"TestFlaky (example.com/s)"},
+			tip: goTest(1, failing), main: goTest(1, failing), passed: true, atMain: []string{flaky},
 		},
 		"a test fails at main, and another fails only at the tip": {
-			tip:     []check{{Command: "go test ./...", Exit: 1, Output: failing + other}},
-			main:    []check{{Command: "go test ./...", Exit: 1, Output: failing}},
-			atMain:  []string{"TestFlaky (example.com/s)"},
-			failing: []string{"TestNew (example.com/s)"},
+			tip: goTest(1, failing+other), main: goTest(1, failing),
+			atMain: []string{flaky}, failing: []string{"TestNew (example.com/s)"},
 		},
 		"a test that fails at main is named though the tip passes": {
-			tip:    []check{{Command: "go test ./...", Exit: 0}},
-			main:   []check{{Command: "go test ./...", Exit: 1, Output: failing}},
-			passed: true, atMain: []string{"TestFlaky (example.com/s)"},
+			tip: goTest(0, ""), main: goTest(1, failing), passed: true, atMain: []string{flaky},
 		},
 		"a build that fails at main too still fails": {
-			tip:     []check{{Command: "go test ./...", Exit: 1, Output: broken}},
-			main:    []check{{Command: "go test ./...", Exit: 1, Output: broken}},
-			failing: []string{"`go test ./...`"},
+			tip: goTest(1, broken), main: goTest(1, broken), failing: []string{"`go test ./...`"},
 		},
 		"a package that hangs, while a test fails at main too": {
-			tip:     []check{{Command: "go test ./...", Exit: 1, Output: failing + hung}},
-			main:    []check{{Command: "go test ./...", Exit: 1, Output: failing}},
-			atMain:  []string{"TestFlaky (example.com/s)"},
-			failing: []string{"`go test ./...`"},
+			tip: goTest(1, failing+hung), main: goTest(1, failing),
+			atMain: []string{flaky}, failing: []string{"`go test ./...`"},
 		},
 		"a test that fails at main under another command": {
-			tip:     []check{{Command: "go test -race ./...", Exit: 1, Output: failing}},
-			main:    []check{{Command: "go test ./...", Exit: 1, Output: failing}},
-			atMain:  []string{"TestFlaky (example.com/s)"},
-			failing: []string{"TestFlaky (example.com/s)"},
+			tip:    []check{{Command: "go test -race ./...", Exit: 1, Output: failing}},
+			main:   goTest(1, failing),
+			atMain: []string{flaky}, failing: []string{flaky},
 		},
 		"a command that names no test fails at main too": {
 			tip:     []check{{Command: "./check", Exit: 1, Output: "no"}},
@@ -167,7 +157,7 @@ func TestGate(t *testing.T) {
 			failing: []string{"`pytest`"}, mentions: "not here: u.",
 		},
 		"a guarded path changed": {
-			tip:     []check{{Command: "go test ./...", Exit: 0}},
+			tip:     goTest(0, ""),
 			refused: map[string]string{".kiln/specs/x.md": ".kiln/specs/x.md is under .kiln/"},
 			failing: []string{".kiln/specs/x.md"},
 		},
@@ -175,10 +165,7 @@ func TestGate(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			readOutputs(tc.tip, tc.main)
 			v := judge(tc.tip, tc.main, tc.refused)
-			got := judgment{
-				v.passed, fmt.Sprintf("%q", v.atMain), fmt.Sprintf("%q", v.failing), v.report != "",
-				strings.Contains(v.report, "KILN_JUNIT"), strings.Contains(v.report, tc.mentions),
-			}
+			got := judgmentOf(v, tc.mentions)
 			want := judgment{
 				tc.passed, fmt.Sprintf("%q", tc.atMain), fmt.Sprintf("%q", tc.failing), !tc.passed, tc.hinted, true,
 			}
@@ -195,6 +182,14 @@ type judgment struct {
 	passed                      bool
 	atMain, failing             string
 	reported, hinted, mentioned bool
+}
+
+// judgmentOf is what TestGate compares of v, where mentions is what its report must hold.
+func judgmentOf(v verdict, mentions string) judgment {
+	return judgment{
+		v.passed, fmt.Sprintf("%q", v.atMain), fmt.Sprintf("%q", v.failing), v.report != "",
+		strings.Contains(v.report, "KILN_JUNIT"), strings.Contains(v.report, mentions),
+	}
 }
 
 // readOutputs reads each check's output for the Go tests that failed, as runChecks does. It reads only go test's
@@ -716,10 +711,11 @@ func TestGaugeRules(t *testing.T) {
 		})
 	}
 
-	for out, want := range map[string]struct {
+	type reading struct {
 		value float64
 		ok    bool
-	}{
+	}
+	for out, want := range map[string]reading{
 		"12\n":                    {12, true},
 		"mutants: 152\n  82.5 \n": {82.5, true},
 		"      2\n":               {2, true},
@@ -732,8 +728,9 @@ func TestGaugeRules(t *testing.T) {
 		"Inf\n":                   {},
 		"82.5\ndone\n":            {},
 	} {
-		if value, ok := readingOf(out); ok != want.ok || value != want.value {
-			t.Errorf("%q reads as %v, %v, want %v, %v", out, value, ok, want.value, want.ok)
+		var got reading
+		if got.value, got.ok = readingOf(out); got != want {
+			t.Errorf("%q reads as %v, %v, want %v, %v", out, got.value, got.ok, want.value, want.ok)
 		}
 	}
 
@@ -780,6 +777,14 @@ func TestGaugeTree(t *testing.T) {
 		}
 	}
 
+	if read := gaugeReadings(t, r); len(read) != 2 {
+		t.Errorf("the landings read %v, want a reading of 1 for each of 2", read)
+	}
+}
+
+// gaugeReadings is each reading of a gauge the store holds, as the landing it read and its value.
+func gaugeReadings(t *testing.T, r *Repo) []string {
+	t.Helper()
 	entries, err := r.store.entries()
 	if err != nil {
 		t.Fatal(err)
@@ -792,9 +797,7 @@ func TestGaugeTree(t *testing.T) {
 		}
 	}
 
-	if len(read) != 2 {
-		t.Errorf("the landings read %v, want a reading of 1 for each of 2", read)
-	}
+	return read
 }
 
 // TestBugsLine holds how kiln reads the verify session's bugs line. A line it can't read never passes as none.

@@ -66,6 +66,9 @@ type turn struct {
 	first bool
 }
 
+// none is whether t tells neither session anything, and gives no reason.
+func (t turn) none() bool { return t.build == "" && t.verify == "" && t.why.Why == "" }
+
 // splitRun runs a split build until it lands, waits on its branch, or stops.
 func (b *build) splitRun(ctx context.Context) error {
 	if err := b.splitGoOn(ctx); err != nil {
@@ -78,7 +81,7 @@ func (b *build) splitRun(ctx context.Context) error {
 		}
 
 		t, err := b.splitStep(ctx)
-		if err != nil || t.build == "" && t.verify == "" && t.why.Why == "" {
+		if err != nil || t.none() {
 			return err
 		}
 
@@ -129,10 +132,8 @@ func (b *build) splitStart(ctx context.Context) error {
 		return err
 	}
 
-	for _, role := range []string{buildRole, verifyRole} {
-		if err := b.r.git.Clone(ctx, b.r.clone(name, role), mainBranch, name.sideBranch(role)); err != nil {
-			return err
-		}
+	if err := b.cloneSides(ctx); err != nil {
+		return err
 	}
 
 	old, err := b.removeOldTests(ctx, s.acceptance)
@@ -163,6 +164,18 @@ func (b *build) splitStart(ctx context.Context) error {
 		why:    reason{Why: whyFirst},
 		first:  true,
 	})
+}
+
+// cloneSides makes each session's clone from main's tip, on its side's branch.
+func (b *build) cloneSides(ctx context.Context) error {
+	name := b.rec.Name
+	for _, role := range []string{buildRole, verifyRole} {
+		if err := b.r.git.Clone(ctx, b.r.clone(name, role), mainBranch, name.sideBranch(role)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // removeOldTests commits, on the build side, the removal of the spec's acceptance tests main holds. It answers
@@ -204,24 +217,28 @@ func (b *build) fetchSides(ctx context.Context) error {
 // session. Then a test the build session can't meet goes to the verify session. Each reply stays in the record until
 // its session's turn ends. The verify session answers the build session with commits alone, so its reply goes nowhere.
 func (b *build) passOn(ctx context.Context) error {
-	if bug := b.now().ForBuild; bug != "" {
-		why := reason{Why: whyBug, Round: b.now().Rounds, Rounds: b.limit()}
-		if err := b.both(ctx, turn{build: bug, why: why}); err != nil {
-			return err
-		}
-
-		b.set(func(r *record) { r.ForBuild = "" })
+	bug := b.now().ForBuild
+	why := reason{Why: whyBug, Round: b.now().Rounds, Rounds: b.limit()}
+	if err := b.pass(ctx, bug, turn{build: bug, why: why}, func(r *record) { r.ForBuild = "" }); err != nil {
+		return err
 	}
 
-	if reply := b.now().ForVerify; reply != "" {
-		t := turn{verify: fmt.Sprintf(cannotHold, reply), why: reason{Why: whyCannotHold}}
-		if err := b.both(ctx, t); err != nil {
-			return err
-		}
+	reply := b.now().ForVerify
+	t := turn{verify: fmt.Sprintf(cannotHold, reply), why: reason{Why: whyCannotHold}}
+	return b.pass(ctx, reply, t, func(r *record) { r.ForVerify = "" })
+}
 
-		b.set(func(r *record) { r.ForVerify = "" })
+// pass runs t when reply is not "", and then clears the reply from the record as passed.
+func (b *build) pass(ctx context.Context, reply string, t turn, passed func(*record)) error {
+	if reply == "" {
+		return nil
 	}
 
+	if err := b.both(ctx, t); err != nil {
+		return err
+	}
+
+	b.set(passed)
 	return nil
 }
 
@@ -298,11 +315,18 @@ func (b *build) gateBuild(ctx context.Context) (verdict, error) {
 	}
 
 	v, err := b.gated(ctx, false, without, g)
-	if err == nil && b.now().FailingAtMain == nil && len(v.atMain) > 0 {
-		b.set(func(r *record) { r.FailingAtMain = v.atMain })
+	if err == nil {
+		b.keepFailingAtMain(v.atMain)
 	}
 
 	return v, err
+}
+
+// keepFailingAtMain records the tests that fail at main, the first time a gate of the build side names any.
+func (b *build) keepFailingAtMain(atMain []string) {
+	if b.now().FailingAtMain == nil && len(atMain) > 0 {
+		b.set(func(r *record) { r.FailingAtMain = atMain })
+	}
 }
 
 // gateStack gates the stack, and checks the verify session's own work stays on its side. A failure goes to the
@@ -453,21 +477,22 @@ func (b *build) splitLand(ctx context.Context, head git.Rev) (turn, error) {
 		return turn{build: unchanged, why: why}, err
 	}
 
-	t := turn{why: why}
-	for _, role := range []string{buildRole, verifyRole} {
-		prompt, err := b.mergeMain(ctx, role)
-		if err != nil {
-			return turn{}, err
-		}
+	return b.mergeMains(ctx, why)
+}
 
-		if role == buildRole {
-			t.build = prompt
-		} else {
-			t.verify = prompt
-		}
+// mergeMains merges main into both clones, and answers the turn that has each session merge what conflicted.
+func (b *build) mergeMains(ctx context.Context, why reason) (turn, error) {
+	build, err := b.mergeMain(ctx, buildRole)
+	if err != nil {
+		return turn{}, err
 	}
 
-	return t, nil
+	verify, err := b.mergeMain(ctx, verifyRole)
+	if err != nil {
+		return turn{}, err
+	}
+
+	return turn{build: build, verify: verify, why: why}, nil
 }
 
 // mergeMain fetches main into role's clone, and merges it in a commit of kiln's when the merge is clean. On a
@@ -490,26 +515,9 @@ func (b *build) mergeMain(ctx context.Context, role string) (string, error) {
 
 // both runs each session that t tells something, at once, and waits for both to end.
 func (b *build) both(ctx context.Context, t turn) error {
-	var launches []claude.Launch
-	for _, role := range []string{buildRole, verifyRole} {
-		prompt := map[string]string{buildRole: t.build, verifyRole: t.verify}[role]
-		if prompt == "" {
-			continue
-		}
-
-		if role == buildRole {
-			var err error
-			if prompt, err = b.told(ctx, prompt); err != nil {
-				return err
-			}
-		}
-
-		l, err := b.sessionLaunch(ctx, role, !t.first, prompt)
-		if err != nil {
-			return err
-		}
-
-		launches = append(launches, l)
+	launches, err := b.launches(ctx, t)
+	if err != nil {
+		return err
 	}
 
 	roles := make([]string, len(launches))
@@ -533,6 +541,40 @@ func (b *build) both(ctx context.Context, t turn) error {
 
 	wg.Wait()
 	return errors.Join(errs...)
+}
+
+// launches is a run of each session that t tells something.
+func (b *build) launches(ctx context.Context, t turn) ([]claude.Launch, error) {
+	var launches []claude.Launch
+	for _, role := range []string{buildRole, verifyRole} {
+		prompt, err := b.promptOf(ctx, t, role)
+		if err != nil {
+			return nil, err
+		}
+
+		if prompt == "" {
+			continue
+		}
+
+		l, err := b.sessionLaunch(ctx, role, !t.first, prompt)
+		if err != nil {
+			return nil, err
+		}
+
+		launches = append(launches, l)
+	}
+
+	return launches, nil
+}
+
+// promptOf is what t tells role's session, or "" for nothing. The build session's prompt adds what told adds.
+func (b *build) promptOf(ctx context.Context, t turn, role string) (string, error) {
+	prompt := map[string]string{buildRole: t.build, verifyRole: t.verify}[role]
+	if prompt == "" || role != buildRole {
+		return prompt, nil
+	}
+
+	return b.told(ctx, prompt)
 }
 
 // told adds to prompt, for the build session, the verify session's amendments, when they changed since kiln last
@@ -636,13 +678,29 @@ func (b *build) converse(ctx context.Context, l claude.Launch, why reason) error
 	}
 
 	l.Resume = true
+	if err := b.rerun(ctx, l, ended); err != nil {
+		return err
+	}
+
+	return b.askBugsLine(ctx, l)
+}
+
+// rerun runs the verify session again while it owes a bugs line and its last run ended with no result. It stops
+// after auditTries runs in all.
+func (b *build) rerun(ctx context.Context, l claude.Launch, ended claude.Ended) error {
+	l.Prompt = interrupted
 	for try := 2; b.now().Asked && ended.Failed && try <= auditTries; try++ {
-		l.Prompt = interrupted
+		var err error
 		if ended, err = b.talk(ctx, l, reason{Why: whyNoResult, Try: try}); err != nil {
 			return err
 		}
 	}
 
+	return nil
+}
+
+// askBugsLine resumes the verify session once to ask for the bugs line it still owes. A second miss stops the build.
+func (b *build) askBugsLine(ctx context.Context, l claude.Launch) error {
 	if !b.now().Asked {
 		return nil
 	}
@@ -674,19 +732,26 @@ func (b *build) heard(ctx context.Context, l claude.Launch, ended claude.Ended) 
 			b.set(func(r *record) { r.ForVerify = strings.TrimSpace(ended.Text) })
 		}
 	case l.Role == verifyRole && rec.Asked:
-		line, found := lastLine(ended.Text, "bugs:")
-		if !found {
-			return nil
-		}
-
-		report, read, err := b.bugReport(ctx, ended.Text, line)
-		if err != nil || !read {
-			return err
-		}
-
-		b.set(func(r *record) { r.Asked, r.ForBuild = false, report })
+		return b.heardBugs(ctx, ended.Text)
 	}
 
+	return nil
+}
+
+// heardBugs reads the verify session's reply to a failing stack. A bugs line kiln reads keeps its report for the
+// build session, and stops kiln asking for the line.
+func (b *build) heardBugs(ctx context.Context, reply string) error {
+	line, found := lastLine(reply, "bugs:")
+	if !found {
+		return nil
+	}
+
+	report, read, err := b.bugReport(ctx, reply, line)
+	if err != nil || !read {
+		return err
+	}
+
+	b.set(func(r *record) { r.Asked, r.ForBuild = false, report })
 	return nil
 }
 

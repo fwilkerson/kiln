@@ -107,8 +107,8 @@ func TestSpecBeforeKiln(t *testing.T) {
 	moved := git.Rev(shell(t, repo, "git rev-parse HEAD"))
 	for at, want := range map[git.Rev]string{old: "old\n", moved: "new\n"} {
 		spec, found, err := r.specAt(t.Context(), at, "x")
-		if err != nil || !found || string(spec) != want {
-			t.Errorf("at %s, the spec is %q, %v, %v; want %q", short(at), spec, found, err, want)
+		if got := fmt.Sprintf("%q, %v, %v", spec, found, err); got != fmt.Sprintf("%q, true, <nil>", want) {
+			t.Errorf("at %s, the spec is %s; want %q", short(at), got, want)
 		}
 	}
 }
@@ -125,20 +125,7 @@ func TestInitKeeps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	raw, err := os.ReadFile(filepath.Join(repo, configFile))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var c config
-	if err := json.Unmarshal(raw, &c); err != nil {
-		t.Fatal(err)
-	}
-
-	if fmt.Sprint(c.Gate, c.Rounds) != "[true] 1" || c.Hosts != nil || c.Writable != nil {
-		t.Errorf("kiln.json is %s; want its gate and rounds kept, with no hosts or writable added", raw)
-	}
-
+	wantConfigKept(t, repo)
 	for p, want := range map[string]string{".kiln/agents/build.md": "mine\n", ".claude/agents/critic.md": "mine\n"} {
 		if got, err := os.ReadFile(filepath.Join(repo, p)); err != nil || string(got) != want {
 			t.Errorf("%s holds %q, %v; want %q", p, got, err, want)
@@ -152,6 +139,24 @@ func TestInitKeeps(t *testing.T) {
 	link, err := os.Readlink(filepath.Join(repo, ".claude/agents/zoom-out.md"))
 	if link != "../../.kiln/agents/zoom-out.md" {
 		t.Errorf(".claude/agents/zoom-out.md links to %q, %v", link, err)
+	}
+}
+
+// wantConfigKept holds that kiln.json keeps the gate and rounds TestInitKeeps wrote, with no hosts or writable added.
+func wantConfigKept(t *testing.T, repo string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(repo, configFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var c config
+	if err := json.Unmarshal(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+
+	if fmt.Sprint(c.Gate, c.Rounds, c.Hosts == nil, c.Writable == nil) != "[true] 1 true true" {
+		t.Errorf("kiln.json is %s; want its gate and rounds kept, with no hosts or writable added", raw)
 	}
 }
 
