@@ -192,8 +192,13 @@ func (b *build) agentLaunch(ctx context.Context, role string, l claude.Launch) (
 		body += "\n\n" + v.body
 	}
 
+	contract := s.contract(role, b.rec.Name)
+	if b.fix != nil {
+		contract = fmt.Sprintf(monitorAuditContract, b.rec.Name)
+	}
+
 	l.Role = role
-	l.System = strings.TrimSpace(body + "\n\n" + s.contract(role, b.rec.Name))
+	l.System = strings.TrimSpace(body + "\n\n" + contract)
 	l.Tools, l.Model, l.Effort, l.Advisor = a.tools, a.model, a.effort, a.advisor
 	return b.sandboxed(ctx, l)
 }

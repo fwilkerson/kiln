@@ -1,0 +1,284 @@
+package kiln
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"slices"
+	"time"
+)
+
+// MonitorRun runs, at main's tip, each monitor kiln.json names that is due, one at a time. With a name, it runs that
+// monitor alone, due or not, and held or not. It refuses while another kiln builds in the repository, and while kiln
+// is being reinstalled. First it drops each fix a kiln cut short, and lands each accepted landing that is queued.
+func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {
+	unlock, err := r.lockRun(monitorHolder)
+	if err != nil {
+		return err
+	}
+
+	defer unlock()
+	unshare, err := shareBuilds()
+	if err != nil {
+		return err
+	}
+
+	defer unshare()
+	if err := r.recover(ctx, out); err != nil {
+		return err
+	}
+
+	run, monitors, err := r.monitorRun(ctx, name, out)
+	if err != nil {
+		return err
+	}
+
+	for _, m := range monitors {
+		if err := run.monitor(ctx, m); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// monitorRun is one kiln monitor run, as kiln.json at main's tip says. It answers the monitors it runs: each, or the
+// one named name.
+func (r *Repo) monitorRun(ctx context.Context, name Spec, out io.Writer) (*monitorRunning, []monitor, error) {
+	main, err := r.git.Tip(ctx, mainBranch)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	c, err := r.config(ctx, main)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	run := &monitorRunning{r: r, out: out, c: c, named: name != ""}
+	if name == "" {
+		return run, c.Monitors, nil
+	}
+
+	m, ok := c.monitorNamed(name)
+	if !ok {
+		return nil, nil, fmt.Errorf("%w: %s at main's tip names no monitor %s", errRefused, configFile, name)
+	}
+
+	return run, []monitor{m}, nil
+}
+
+// recover takes the repository up where kilns left it. It ends their lost runs, and drops each fix cut short that the
+// developer hadn't accepted. Then it lands each accepted landing that is queued, a spec's or a fix's.
+func (r *Repo) recover(ctx context.Context, out io.Writer) error {
+	r.recount(ctx, out)
+	var lost []record
+	err := r.store.update(func(b *book) error {
+		b.requeue()
+		lost = b.dropLost()
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, rec := range lost {
+		if err := r.dropLost(ctx, rec, out); err != nil {
+			return err
+		}
+	}
+
+	return r.buildEach(ctx, out, landings, func() {})
+}
+
+// dropLost drops from the book each fix left building, which requeue left there, and answers them.
+func (b *book) dropLost() []record {
+	var lost []record
+	b.Specs = slices.DeleteFunc(b.Specs, func(s *record) bool {
+		if s.Monitor && s.State == building {
+			lost = append(lost, *s)
+			return true
+		}
+
+		return false
+	})
+
+	return lost
+}
+
+// dropLost ends the build of rec, a fix a kiln cut short, dropped, and removes its branch and checkouts.
+func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
+	r.dropped(rec.Name, rec.Build, out)
+	if err := r.dropCheckouts(ctx, rec.Name); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(out, "%s: dropped its fix, which a kiln cut short\n", rec.Name)
+	return nil
+}
+
+// monitorRunning is what one kiln monitor run runs its monitors with.
+type monitorRunning struct {
+	r   *Repo
+	out io.Writer
+	// c is kiln.json at main's tip when the run started.
+	c config
+	// named is a run of one monitor by its name, which runs due or not.
+	named bool
+}
+
+// monitor runs m, if it is due or named. It runs its check, and records what it found. A finding starts a fix,
+// unless the monitor is held.
+func (run *monitorRunning) monitor(ctx context.Context, m monitor) error {
+	r := run.r
+	k, err := r.store.read()
+	if err != nil {
+		return err
+	}
+
+	if rec := k.find(m.Name); rec != nil && !rec.Monitor {
+		fmt.Fprintf(run.out, "%s: refused: kiln holds a spec of that name, and one name is never both\n", m.Name)
+		return nil
+	}
+
+	entries, err := r.store.entries()
+	if err != nil {
+		return err
+	}
+
+	h := histories(entries)[m.Name]
+	if !run.named && !h.due(m, r.now()) {
+		fmt.Fprintf(run.out, "%s: not due until %s\n", m.Name, shownTime(h.next(m)))
+		return nil
+	}
+
+	return run.check(ctx, m, h, k.find(m.Name))
+}
+
+// check runs m's check at main's tip, and writes its monitor line. A finding starts a fix, unless the monitor is
+// held. h is m's history, and rec its fix's record, if it has one.
+func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec *record) error {
+	main, err := run.r.git.Tip(ctx, mainBranch)
+	if err != nil {
+		return err
+	}
+
+	found, err := run.r.firstCheck(ctx, m, main)
+	if err != nil {
+		return err
+	}
+
+	line := entry{Kind: monitorKind, Monitor: m.Name, At: run.r.now(), Main: main, Entry: m.hash(),
+		Printed: hashOf(found.printed), Summary: found.summary, Found: foundOf(found)}
+	if line.Found == foundFix && run.held(m, h, rec, line) {
+		line.Found = foundHeld
+	}
+
+	if line.Found != foundFix {
+		return run.write(line)
+	}
+
+	line.Build = newBuild()
+	if err := run.write(line); err != nil {
+		return err
+	}
+
+	return run.fix(ctx, newFixing(run.c, m, found), line, h)
+}
+
+// fix runs the fix f that the monitor line started. It opens a window when the developer should see how it ended. h
+// is the monitor's history before this run.
+func (run *monitorRunning) fix(ctx context.Context, f *fixing, line entry, h *history) error {
+	b, err := run.r.startFix(ctx, run.out, f, line)
+	if b == nil || ctx.Err() != nil {
+		return err
+	}
+
+	if notifies(f.outcome, h) {
+		run.open(ctx, line.Monitor)
+	}
+
+	return errors.Join(err, b.readGauges(ctx))
+}
+
+// foundOf is what a check found: couldn't run, healthy, or a fix to make.
+func foundOf(c checked) string {
+	switch {
+	case !c.ran:
+		return foundCouldNot
+	case !c.fix:
+		return foundHealthy
+	}
+
+	return foundFix
+}
+
+// held is whether m, whose check asks for a fix, is held. h is its history, rec its fix's record, and line its
+// monitor line. A run by name ignores the hold, but never starts a second fix.
+func (run *monitorRunning) held(m monitor, h *history, rec *record, line entry) bool {
+	return fixHeld(rec) || !run.named && h.holds(m, line) != ""
+}
+
+// fixHeld is whether rec, the record of a monitor's fix, holds the monitor. One fix of a monitor builds, waits or
+// lands at a time. Only a stopped fix gives way to a new one.
+func fixHeld(rec *record) bool {
+	if rec == nil {
+		return false
+	}
+
+	return rec.State != stopped || rec.Accepted
+}
+
+// write writes the monitor line e to the ledger, and says what the run found.
+func (run *monitorRunning) write(e entry) error {
+	if err := run.r.store.write(e); err != nil {
+		return err
+	}
+
+	said := e.Found
+	if e.Found == foundFix {
+		said = "found a fix to make"
+	}
+
+	if e.Summary != "" {
+		said += ": " + e.Summary
+	}
+
+	fmt.Fprintf(run.out, "%s: %s\n", e.Monitor, said)
+	return nil
+}
+
+// notified are the outcomes that open a window.
+var notified = []string{outLanded, outStopped, outWaits, outNeedsYou, outFailed}
+
+// notifies is whether a fix that ended with outcome opens a window. h is its monitor's history before this run. A
+// session that failed as the monitor's last run did opens none. An expired sign-in then opens one window per monitor.
+func notifies(outcome string, h *history) bool {
+	if !slices.Contains(notified, outcome) {
+		return false
+	}
+
+	return outcome != outFailed || h.lastResult() != outFailed
+}
+
+// lastResult is what the monitor's last run came to, or "" if it never ran.
+func (h *history) lastResult() string {
+	if h == nil || h.last.Kind == "" {
+		return ""
+	}
+
+	return h.result(h.last)
+}
+
+// open opens a window that shows how the last run of the monitor name ended. An opener that fails changes no result.
+func (run *monitorRunning) open(ctx context.Context, name Spec) {
+	if err := run.r.open(ctx, name); err != nil {
+		fmt.Fprintf(run.out, "%s: kiln could not open a window: %v\n", name, err)
+	}
+}
+
+// shownTime shows t as kiln status does.
+func shownTime(t time.Time) string {
+	return t.Format("2006-01-02 15:04")
+}

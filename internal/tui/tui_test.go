@@ -86,6 +86,52 @@ func TestTrend(t *testing.T) {
 	}
 }
 
+// TestMonitors holds that home lists the monitors beside the specs, each with its last run's result. Selected, a
+// monitor shows when it last ran and runs next, and its summary. Its fixes open as a spec's builds do.
+func TestMonitors(t *testing.T) {
+	now := time.Now().Truncate(time.Minute)
+	fix := &Build{Spec: "deps", Started: now.Add(-time.Hour), Outcome: "stopped", Fix: true, Steps: []Step{
+		&Gate{Start: now.Add(-time.Hour), End: now.Add(-time.Hour)},
+	}}
+	src := source{specs: []Spec{{Name: "x", State: UAT}}, monitors: []Spec{
+		{Name: "deps", State: Stopped, Builds: []*Build{fix}, Monitor: &Monitor{Result: "stopped",
+			Summary: "3 modules to update", Last: now.Add(-time.Hour), Next: now.Add(22 * time.Hour)}},
+		{Name: "docs", State: Waits, Monitor: &Monitor{Result: "held: waiting on the developer"}},
+		{Name: "vulns", State: "never run", Monitor: &Monitor{Result: "never run", Due: true}},
+	}}
+	// At 80 columns, the specs panel is a third of the width, and each monitor's name still shows.
+	m := drive(t, src, "", sized(80, 30))
+	shows(t, m, `│◆ x +UAT *│`, `│✗ deps +stopped *│`, `│◆ docs +waits *│`, `│◌ vulns +never run *│`)
+
+	// A monitor that waits on the developer is marked as a spec that waits is. A stopped fix is marked as a stopped
+	// spec is.
+	for text, want := range map[string]color.Color{"◆ docs": ansi.Cyan, "✗ deps": ansi.Red} {
+		if got := colorOf(t, m, text); !sameColor(got, want) {
+			t.Errorf("%q is drawn in %v, want %v", text, got, want)
+		}
+	}
+
+	m = drive(t, src, "deps", sized(140, 30))
+	last := now.Add(-time.Hour).Local().Format("Jan 02 15:04")
+	shows(t, m, `fixes of deps · stopped · ran `+last+` · next `, `│3 modules to update *│`, `#1 +✗ stopped`)
+
+	m = sendAll(m, tea.KeyPressMsg{Code: tea.KeyTab}, tea.KeyPressMsg{Code: tea.KeyTab},
+		tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.top().kind != buildScreen || m.top().spec != "deps" {
+		t.Errorf("enter on a fix opens screen %v of %q, want its build:\n%s", m.top().kind, m.top().spec, screenOf(m))
+	}
+}
+
+// shows checks that m's screen matches each pattern.
+func shows(t *testing.T, m model, patterns ...string) {
+	t.Helper()
+	for _, want := range patterns {
+		if !regexp.MustCompile(want).MatchString(screenOf(m)) {
+			t.Errorf("the screen shows no %s:\n%s", want, screenOf(m))
+		}
+	}
+}
+
 // TestRoundsUnknown holds that a build's rounds are unknown when a run does not say why it started. The trend
 // leaves it out of the median, and the builds panel shows its rounds as unknown, never as 0.
 func TestRoundsUnknown(t *testing.T) {
@@ -209,7 +255,7 @@ func sameColor(a, b color.Color) bool {
 
 // source is a Source that answers what a test gives it.
 type source struct {
-	specs []Spec
+	specs, monitors []Spec
 	// calls are each session's stretch of its stream.
 	calls map[string]claude.Recounted
 	text  string
@@ -218,6 +264,7 @@ type source struct {
 func (s source) Specs(context.Context) ([]Spec, error)        { return slices.Clone(s.specs), nil }
 func (s source) Recount(r *Run) (claude.Recounted, error)     { return s.calls[r.Session], nil }
 func (s source) Text(context.Context, *Build) (string, error) { return s.text, nil }
+func (s source) Monitors(context.Context) ([]Spec, error)     { return slices.Clone(s.monitors), nil }
 
 // drive starts a model on src, opened on the spec name, and sends it each message in turn. It carries out each
 // command the model answers. Its first message is the terminal's size, from sized.

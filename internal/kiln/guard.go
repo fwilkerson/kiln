@@ -33,11 +33,18 @@ type Side struct {
 	Acceptance string
 	// Harness holds the paths both sessions may write, such as the code the acceptance tests run through.
 	Harness []string
+	// Fix is a monitor's fix, which has no spec. It writes nothing under .kiln/. With Role "build", Acceptance is the
+	// acceptance path's fixed part, and guards each path that starts with it.
+	Fix bool
 }
 
 // refusal says why the session of s may not write folded, a path folded as APFS reads it, or "". The build session
 // writes neither the acceptance tests nor the amendments. The verify session writes only those, and the harness.
 func (s Side) refusal(rel, folded string, spec Spec) string {
+	if s.Fix {
+		return s.fixRefusal(rel, folded)
+	}
+
 	tests := within(folded, s.Acceptance) || folded == fold(spec.amendPath())
 	switch {
 	case s.Role == buildRole && tests:
@@ -51,6 +58,17 @@ func (s Side) refusal(rel, folded string, spec Spec) string {
 	}
 
 	return ""
+}
+
+// fixRefusal says why a monitor's fix may not write folded, or "". It writes the acceptance tests only when its
+// monitor says it may, and then Acceptance is "".
+func (s Side) fixRefusal(rel, folded string) string {
+	if s.Acceptance == "" || !strings.HasPrefix(folded, fold(s.Acceptance)) {
+		return ""
+	}
+
+	return fmt.Sprintf("%s is under the acceptance tests, %s, which judge a monitor's fix: it writes them only when "+
+		"its monitor says \"tests\": true", rel, s.Acceptance)
 }
 
 // within is whether folded is side or under it. A side that ends in a slash is a directory, and holds only what is
@@ -76,6 +94,9 @@ func (g guard) guarded(rel string) string {
 		return ""
 	case slices.Contains(names, fold(".git")):
 		return rel + " is in a git directory, which only git and kiln write"
+	case names[0] == fold(kilnDir) && g.side.Fix:
+		return rel + " is under .kiln/, which holds what the developer approved, the agents and the gate: a " +
+			"monitor's fix writes nothing there"
 	case names[0] == fold(kilnDir) && folded != fold(g.spec.amendPath()):
 		return fmt.Sprintf("%s is under .kiln/, which holds what the developer approved, the agents and the gate: a "+
 			"build writes there only %s", rel, g.spec.amendPath())

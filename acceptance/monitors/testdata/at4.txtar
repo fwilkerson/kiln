@@ -1,0 +1,56 @@
+# 4. The agent fixes what the command left failing.
+
+env KILN_OPEN=true
+
+# Given: a monitor whose check prints a finding above its last line, whose command leaves a gate command failing, and
+# whose agent makes it pass.
+
+# When: the developer runs kiln monitor run.
+exec kiln monitor run
+
+# Then: the agent's session was told the finding and what the gate printed,
+exec sh -c 'for p in .claude-calls/*/1/1/prompt; do grep -q "finding: deps.txt is missing" "$p" && grep -q "the gate: deps.txt needs fix.txt" "$p" && echo told; done; true'
+stdout '^told$'
+
+# and main holds the command's work and the agent's.
+exec git show main:deps.txt
+stdout '^bumped$'
+exec git show main:fix.txt
+stdout '^fixed$'
+
+-- .kiln/kiln.json --
+{"acceptance": "acceptance/{spec}/", "gate": ["sh .kiln/gate"], "rounds": 1, "monitors": [
+ {"name": "deps", "every": "24h", "check": "sh .kiln/monitors/deps", "command": "echo bumped >deps.txt", "agent": ".kiln/agents/deps.md", "prompt": "Make the gate pass."}
+]}
+-- .kiln/gate --
+if [ -e deps.txt ] && [ ! -e fix.txt ]; then
+  echo 'the gate: deps.txt needs fix.txt'
+  exit 1
+fi
+-- .kiln/monitors/deps --
+if [ -e deps.txt ]; then
+  echo '{"fix": false, "summary": "deps.txt is there"}'
+else
+  echo 'finding: deps.txt is missing'
+  echo '{"fix": true, "summary": "deps.txt is missing"}'
+fi
+-- .kiln/agents/deps.md --
+Fix what the bump broke.
+-- claude.json --
+{
+ "build": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "echo fixed >fix.txt"}}},
+  {"result": {"result": "Wrote fix.txt."}}
+ ]}},
+ "monitor": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "echo fixed >fix.txt"}}},
+  {"result": {"result": "Wrote fix.txt."}}
+ ]}},
+ "deps": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "echo fixed >fix.txt"}}},
+  {"result": {"result": "Wrote fix.txt."}}
+ ]}},
+ "audit": {"1": {"1": [
+  {"result": {"result": "read 1 directories, found 0"}}
+ ]}}
+}

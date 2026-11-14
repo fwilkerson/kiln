@@ -22,17 +22,17 @@ import (
 const unknownReset = 5 * time.Minute
 
 // Run builds each queued spec, one at a time, until none is queued. A build that was building when kiln last stopped
-// goes on first, in the same session. Run refuses while another kiln run builds in the repository, and while kiln
-// is being reinstalled.
+// goes on first, in the same session. Run refuses while another kiln run or kiln monitor run builds in the
+// repository, and while kiln is being reinstalled. It skips a monitor's fix.
 func (r *Repo) Run(ctx context.Context, out io.Writer) error {
 	return r.run(ctx, out, "")
 }
 
-var errRunning = fmt.Errorf("%w: another kiln run is building in this repository", errRefused)
+var errRunning = fmt.Errorf("%w: another kiln builds in this repository", errRefused)
 
 // run builds the queued specs, or only the one named only, if it is not "".
 func (r *Repo) run(ctx context.Context, out io.Writer, only Spec) error {
-	unlock, err := r.lockRun()
+	unlock, err := r.lockRun(runHolder)
 	if err != nil {
 		return err
 	}
@@ -74,21 +74,39 @@ func (r *Repo) buildEach(ctx context.Context, out io.Writer, only Spec, unlock f
 	}
 }
 
-// lockRun takes the run lock, which one kiln run in the repository holds at a time.
-func (r *Repo) lockRun() (unlock func(), err error) {
+// lockRun takes the run lock, which one kiln run or kiln monitor run in the repository holds at a time. holder
+// names which, for a kiln accept that finds it held.
+func (r *Repo) lockRun(holder string) (unlock func(), err error) {
 	unlock, err = r.store.lock(runLock, syscall.LOCK_EX|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
 		return nil, errRunning
 	}
 
+	if err == nil {
+		err = os.WriteFile(filepath.Join(r.store.dir, runLock), []byte(holder), 0o600)
+	}
+
 	return unlock, err
+}
+
+// The kilns that hold the run lock, as lockRun writes them into it.
+const (
+	runHolder     = "kiln run"
+	monitorHolder = "kiln monitor run"
+)
+
+// runHeld is the kiln that holds the run lock, or last held it.
+func (r *Repo) runHeld() string {
+	held, _ := os.ReadFile(filepath.Join(r.store.dir, runLock))
+	return string(held)
 }
 
 // take marks the next spec building, as book.next picks it. Once none is left, it unlocks the run.
 func (r *Repo) take(only Spec, unlock func()) (rec record, found bool, err error) {
 	err = r.store.update(func(b *book) error {
 		rec, found = b.next(only, os.Getpid())
-		// A landing queued after this update finds the run lock free, so no kiln accept counts on this run.
+		// A landing queued after this update finds the run lock free, so no kiln accept counts on this run. kiln
+		// monitor run never unlocks here: it lands queued landings only as it starts.
 		if !found {
 			unlock()
 		}
@@ -102,6 +120,10 @@ func (r *Repo) take(only Spec, unlock func()) (rec record, found bool, err error
 // settle stops the build for err, the error its run ended with. It answers the context's error once kiln is
 // interrupted, which ends kiln run. A build out of rounds is stopped first, and answers nil even then.
 func (b *build) settle(ctx context.Context, err error) error {
+	if b.rec.Monitor {
+		return b.fixSettle(ctx, err)
+	}
+
 	if s, ok := errors.AsType[*outOfRounds](err); ok {
 		b.stop(s.why, s.failing)
 		return nil
@@ -155,6 +177,8 @@ type build struct {
 	side *sides
 	// mu guards rec while a split build's two sessions run at once. set, now, record and say hold it.
 	mu sync.Mutex
+	// fix is a monitor's fix, or nil for a spec's build.
+	fix *fixing
 }
 
 // now is the build's record, as its last set left it.
@@ -173,6 +197,10 @@ type outOfRounds struct {
 func (s *outOfRounds) Error() string { return s.why }
 
 func (b *build) run(ctx context.Context) error {
+	if b.rec.Monitor {
+		return b.landFix(ctx)
+	}
+
 	s, err := b.sides(ctx)
 	if err != nil {
 		return err
@@ -403,9 +431,9 @@ func (b *build) onMain(at git.Rev) error {
 }
 
 // allowed are the paths under .kiln/ that an accepted spec's landing changes: it folds the amendments, and retires
-// the spec.
+// the spec. A fix changes none.
 func (b *build) allowed() []string {
-	if b.rec.Accepted {
+	if b.rec.Accepted && !b.rec.Monitor {
 		return []string{b.rec.Name.file(), b.rec.Name.amendPath()}
 	}
 
@@ -490,6 +518,10 @@ func (b *build) talk(ctx context.Context, l claude.Launch, why reason) (claude.E
 
 		if ended.Limit == nil {
 			return ended, b.heard(ctx, l, ended)
+		}
+
+		if b.fix != nil {
+			return ended, errLimitEnded
 		}
 
 		if err := b.pause(ctx, ended.Limit.Resets); err != nil {
@@ -615,6 +647,11 @@ func (b *build) say(format string, args ...any) {
 }
 
 func (b *build) message(what string) string {
+	if b.rec.Monitor {
+		return fmt.Sprintf("fix(%s): %s\n\nkiln fixed it for the monitor %s, from main at %s.\n", b.rec.Name, what,
+			b.rec.Name, short(b.rec.Approved))
+	}
+
 	return fmt.Sprintf("feat(%s): %s\n\nkiln built %s, approved at %s, in session %s.\n", b.rec.Name, what,
 		b.rec.Name.file(), short(b.rec.Approved), b.rec.Session)
 }
@@ -622,13 +659,23 @@ func (b *build) message(what string) string {
 // landing is the message of the commit that lands the build. It holds the build's time, cost, turns and failed calls,
 // so git log shows what each landed build cost.
 func (b *build) landing() string {
-	return b.message("land the approved spec") + "\nBuild: " + b.r.summary(b.rec.Build) + "\n"
+	what := "land the approved spec"
+	if b.rec.Monitor {
+		what = "land the monitor's fix"
+	}
+
+	return b.message(what) + "\nBuild: " + b.r.summary(b.rec.Build) + "\n"
 }
 
 // gate runs the gate on the build's worktree, and writes it to the ledger. landing is the gate on the work rebased
-// onto main.
+// onto main. A fix's gate keeps it to its side.
 func (b *build) gate(ctx context.Context, landing bool, allowed ...string) (verdict, error) {
-	return b.gated(ctx, landing, "", guard{spec: b.rec.Name, place: b.tree, allowed: allowed})
+	g := guard{spec: b.rec.Name, place: b.tree, allowed: allowed}
+	if b.fix != nil {
+		g.side = b.fix.side
+	}
+
+	return b.gated(ctx, landing, "", g)
 }
 
 // gated runs the gate as Repo.gate does, and writes it to the ledger. landing is the gate on the work rebased onto
@@ -636,6 +683,10 @@ func (b *build) gate(ctx context.Context, landing bool, allowed ...string) (verd
 func (b *build) gated(ctx context.Context, landing bool, without string, guards ...guard) (verdict, error) {
 	start := time.Now()
 	v, err := b.r.gate(ctx, without, guards...)
+	if err == nil {
+		v, err = b.gatedCheck(ctx, v)
+	}
+
 	b.record(entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed, Landing: landing})
 	if err == nil {
 		b.set(func(r *record) { r.Limit = &v.rounds })

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/fwilkerson/kiln/internal/claude"
@@ -25,8 +26,9 @@ type view struct {
 	r *Repo
 }
 
-// Specs answers each spec in the book. A spec the ledger holds and the book no longer does was accepted or rejected.
-// Its last build's outcome says which. The newest build comes first, and a spec with no build yet before them all.
+// Specs answers each spec in the book. A spec the ledger holds and the book no longer does was accepted or
+// rejected. Its last build's outcome says which. The newest build comes first, and a spec with no build yet before
+// them all. A monitor's fixes are no spec's builds, and Monitors answers them.
 func (v view) Specs(context.Context) ([]tui.Spec, error) {
 	b, err := v.r.store.read()
 	if err != nil {
@@ -39,17 +41,9 @@ func (v view) Specs(context.Context) ([]tui.Spec, error) {
 	}
 
 	var l lineup
-	for _, rec := range b.Specs {
-		l.spec(rec.Name).State = stateOf(rec)
-	}
-
+	l.records(b)
 	for _, s := range collect(entries) {
-		spec := l.spec(s.Spec)
-		if b.find(s.Spec) == nil {
-			spec.State = s.gone()
-		}
-
-		spec.Builds = append(spec.Builds, s.shown())
+		l.build(b, s)
 	}
 
 	shown := make([]tui.Spec, len(l.specs))
@@ -65,6 +59,29 @@ func (v view) Specs(context.Context) ([]tui.Spec, error) {
 type lineup struct {
 	specs []*tui.Spec
 	named map[Spec]*tui.Spec
+}
+
+// records adds each spec b holds a record of, where it stands. A monitor's fix is no spec.
+func (l *lineup) records(b book) {
+	for _, rec := range b.Specs {
+		if !rec.Monitor {
+			l.spec(rec.Name).State = stateOf(rec)
+		}
+	}
+}
+
+// build adds the build s to its spec. A spec b no longer holds was accepted or rejected. A fix is no spec's build.
+func (l *lineup) build(b book, s *buildStats) {
+	if s.Monitor != "" {
+		return
+	}
+
+	spec := l.spec(s.Spec)
+	if b.find(s.Spec) == nil {
+		spec.State = s.gone()
+	}
+
+	spec.Builds = append(spec.Builds, s.shown())
 }
 
 // spec is the lineup's spec named name. It adds one, with no state and no build, if the lineup holds none.
@@ -98,8 +115,12 @@ func (v view) Recount(r *tui.Run) (claude.Recounted, error) {
 }
 
 // Text reads the spec as the build's approval held it. A spec main no longer holds shows as the build saw it. Its
-// amendments follow it.
+// amendments follow it. A fix has no spec, so its text is how it ended.
 func (v view) Text(ctx context.Context, b *tui.Build) (string, error) {
+	if b.Fix {
+		return fixText(b), nil
+	}
+
 	spec, found, err := v.r.specAt(ctx, git.Rev(b.Approved), Spec(b.Spec))
 	switch {
 	case err != nil:
@@ -111,6 +132,68 @@ func (v view) Text(ctx context.Context, b *tui.Build) (string, error) {
 	}
 
 	return string(spec) + "\n\n---\n\n" + b.Amendments, nil
+}
+
+// fixText is how the fix b ended, as Markdown.
+func fixText(b *tui.Build) string {
+	var text strings.Builder
+	fmt.Fprintf(&text, "# The fix of the monitor %s\n\nFrom main at %s: %s.", b.Spec, short(git.Rev(b.Approved)),
+		cmpOr(fixResult(b.Outcome), "fix building"))
+	for _, part := range []string{b.Summary, b.Report} {
+		if part != "" {
+			text.WriteString("\n\n" + part)
+		}
+	}
+
+	return text.String()
+}
+
+// Monitors answers each monitor kiln.json names at main's tip, where it stands, and its fixes, oldest first.
+func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
+	main, err := v.r.git.Tip(ctx, mainBranch)
+	if err != nil {
+		return nil, err
+	}
+
+	// A main with no kiln.json kiln can read names no monitor, and the specs still show.
+	c, _ := v.r.config(ctx, main)
+	entries, err := v.r.store.entries()
+	if err != nil {
+		return nil, err
+	}
+
+	fixes := map[Spec][]*tui.Build{}
+	for _, s := range collect(entries) {
+		if s.Monitor != "" {
+			fixes[s.Monitor] = append(fixes[s.Monitor], s.shown())
+		}
+	}
+
+	all, now := histories(entries), v.r.now()
+	shown := make([]tui.Spec, len(c.Monitors))
+	for i, m := range c.Monitors {
+		h := all[m.Name]
+		s := h.standing(m)
+		shown[i] = tui.Spec{Name: string(m.Name), State: s.state(), Builds: fixes[m.Name],
+			Monitor: &tui.Monitor{Result: s.result, Summary: s.summary, Last: s.last, Next: s.next, Due: h.due(m, now)}}
+	}
+
+	return shown, nil
+}
+
+// fixStates are a monitor's states in the view, by its last fix's outcome. A fix with no outcome yet is running.
+var fixStates = map[string]tui.State{outLanded: tui.Landed, outStopped: tui.Stopped, outWaits: tui.Waits,
+	outNeedsYou: tui.NeedsYou, outFailed: tui.Failed, outLimit: "usage limit", outCouldNot: foundCouldNot,
+	outUnchanged: outUnchanged, outRejected: tui.Rejected, outDropped: "cut short", "": tui.Running}
+
+// state is where the monitor of s stands, as the view words it. It stands as its last fix ended, or as its check
+// found. A held monitor stands where the fix that holds it ended.
+func (s standing) state() tui.State {
+	if s.fixed {
+		return fixStates[s.outcome]
+	}
+
+	return tui.State(s.result)
 }
 
 // stateOf is where a spec stands. A build is building only while the kiln run that marked it so lives. A kiln run
@@ -140,7 +223,7 @@ func (s *buildStats) gone() tui.State {
 // shown is the build as the TUI shows it: its runs and gates in the order they ran.
 func (s *buildStats) shown() *tui.Build {
 	b := &tui.Build{Spec: string(s.Spec), Approved: string(s.Approved), Started: s.At, Size: s.Size,
-		Outcome: s.outcome, Amendments: s.amendments}
+		Outcome: s.outcome, Amendments: s.amendments, Fix: s.Monitor != "", Summary: s.summary, Report: s.report}
 	gates := 0
 	for _, r := range s.runs {
 		before := max(gates, min(r.gates, len(s.gates)))

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"time"
@@ -135,6 +136,8 @@ func (m model) load() tea.Cmd {
 
 	return func() tea.Msg {
 		specs, err := src.Specs(context.Background())
+		monitors, monitorsErr := src.Monitors(context.Background())
+		specs, err = append(specs, monitors...), errors.Join(err, monitorsErr)
 		_, live, _ := running(specs)
 		msg := loaded{at: time.Now(), specs: specs, err: err, live: recount(src, live), opened: opened}
 		if open {

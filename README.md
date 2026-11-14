@@ -18,8 +18,12 @@ kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds i
 kiln run                 build each queued spec, one at a time, until none is queued
 kiln status              show where each spec stands, and each gauge's latest reading
 kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
-kiln accept <name>       take the work: retire the spec, or land its amendments first
-kiln reject <name>       turn the amendments away: drop the build, and its branch
+kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
+kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
+kiln monitor install     set up a launchd job that runs kiln monitor run in the repository each hour
+kiln monitor run [<name>]
+                         run each monitor kiln.json names that is due; or run one now, due or not
+kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
 ```
 
 1. Write `.kiln/specs/<name>.md` with the `/shape` skill, in an interactive Claude Code session, and commit it on
@@ -51,6 +55,32 @@ kiln reject <name>       turn the amendments away: drop the build, and its branc
 6. Run `kiln tui` in a terminal of its own, beside `kiln run`, to watch the running session and look back over each
    build run by run. It only reads.
 
+### Monitors
+
+A monitor is a job named in `kiln.json` that kiln runs on its schedule, in the background, with no terminal open. It
+looks for a problem, and when it finds one, it fixes it. You come back to a fix already gated and landed.
+
+1. Name the monitor in `kiln.json`'s `monitors`, and commit its check's script under `.kiln/monitors/`, where a fix
+   can't change it.
+2. Run `kiln monitor install` once. A launchd job then runs `kiln monitor run` in the repository each hour, and on
+   wake after a missed hour. It runs each monitor that is due, at main's tip: one that never ran, whose check
+   couldn't run, or whose last run started its interval, less half an hour, ago. `kiln monitor run <name>` runs one
+   now. `kiln monitor run` refuses while `kiln run` builds, and `kiln run` while it does.
+3. A fix is a build with no spec, on `kiln/<name>`. Its command runs first. Its agent runs when the command left the
+   gate failing, or when the monitor has none, and gets `kiln.json`'s rounds and the audit. The gate holds the fix,
+   with the check added when it joins the gate. A fix that passes lands, or waits on its branch for
+   `kiln accept <name>` or `kiln reject <name>`. A fix that can't pass stops. An agent may ask for you instead, with
+   a report: kiln then drops what it changed.
+4. When a fix lands, stops or waits on you, an agent asks for you, or a session fails, kiln opens a Ghostty window
+   in the background. It sends Ghostty's notification, and a click on it brings the window forward, with the summary,
+   the agent's report or the session's error, and the command to run next.
+5. Read `kiln status`: each monitor's result, when it last ran and runs next, and its summary. `kiln tui` lists the
+   monitors beside the specs, and opens each fix as it opens a build.
+
+A monitor is held, and starts no fix, while nothing changed since its last fix stopped, asked for you, was rejected,
+or changed nothing. Its check still runs when due. An unattended session needs a long-lived sign-in: run
+`claude setup-token` for one, since an interactive sign-in expires within days.
+
 To reinstall kiln from main's tip, with its zsh completion, run `go run ./tools/install` in this repository. It
 builds main, never the working tree, and refuses while any kiln drives a build session. `go install` puts kiln in
 `GOBIN`, and `_kiln` goes to `$XDG_DATA_HOME/zsh/completions`, which `fpath` must hold. The completion asks
@@ -70,11 +100,12 @@ and its reviewers into `.claude/`. A build writes nothing in `.kiln/` but its sp
 ```text
 .kiln/
   kiln.json                    the gate, its rounds, reachable hosts, commands that print writable paths, MCP
-                               servers, gauges
+                               servers, gauges, monitors
   gauges/                      the scripts a gauge's command runs, out of a build's reach
   agents/build.md              the build agent: frontmatter for its tools, model, effort and advisor, then its prompt
   agents/verify.md             how the acceptance tests' code is written, and the verify agent of a split build
   agents/audit.md              the audit, which reads the work once the gate passes
+  monitors/                    the scripts a monitor's check runs, out of a fix's reach
   agents/zoom-out.md           the reviewers /shape runs
   agents/comprehension.md
   agents/critic.md
@@ -117,13 +148,23 @@ and its reviewers into `.claude/`. A build writes nothing in `.kiln/` but its sp
   session of that build runs with them. Its system prompt is the file's body, then kiln's contract with the agent,
   compiled into kiln. In build then audit, the build session writes the tests too, so the verify agent's body follows
   the build agent's. No file changes the contract, the denied commands and forbidden actions, or the guard on `.kiln/`.
+- A monitor in `kiln.json`'s `monitors` has a `name`, as a spec's name, and `every`, a Go duration in whole hours,
+  at least `1h`. It names a `command`, an `agent` or both. Its `agent` is a file under `.kiln/agents/`, such as
+  `"triage.md"`, which names its session's role, and its `prompt` follows the check's and the gate's output in the
+  session's first message. Its optional `check` prints, as its last line, `{"fix": true|false, "summary": "..."}`.
+  The rest of its stdout goes to the agent. A check that exits non-zero, or prints no such line, couldn't run, and
+  starts no fix. `"gates": false` keeps the check out of the gate, for a check that reads something a fix can't
+  change until it is deployed. `"accept": true` keeps each fix waiting for `kiln accept`. A fix never writes under
+  `.kiln/`, nor under `acceptance`'s part before `{spec}`, unless the monitor says `"tests": true`.
+  An agent asks for the developer with the last line of its reply: `{"ask": true, "summary": "..."}`.
 - A file such as an agent or a skill, meant for `.kiln/` or `.claude/`, is the developer's. A build names it in its
   last reply instead of writing it.
 
 ## Where things are
 
 - `cmd/kiln`: the command line.
-- `internal/kiln`: queuing, building, gating, landing, accepting and rejecting a spec. `go doc ./internal/kiln` shows how.
+- `internal/kiln`: queuing, building, gating, landing, accepting and rejecting a spec, and running monitors and
+  their fixes. `go doc ./internal/kiln` shows how.
 - `internal/tui`: the full-screen view of `kiln tui`, on Bubble Tea. `internal/kiln` feeds it what kiln wrote.
 - `internal/claude`, `internal/git`, `internal/proc`: Claude Code sessions, git, and child processes, from Eidos.
 - `internal/scenariotest`: the scripted claude and the harness the acceptance tests run on.

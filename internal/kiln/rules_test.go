@@ -26,6 +26,9 @@ func TestGuard(t *testing.T) {
 	const place = "/Users/dev/Library/Caches/kiln/repo/x"
 	builds := Side{Role: buildRole, Acceptance: "acceptance/x/", Harness: []string{"harness/"}}
 	verifies := Side{Role: verifyRole, Acceptance: "acceptance/x/", Harness: []string{"harness/"}}
+	fixes := Side{Role: buildRole, Acceptance: "acceptance/", Fix: true}
+	fixesTests := Side{Fix: true}
+	fixesPython := Side{Role: buildRole, Acceptance: "tests/acceptance/test_", Fix: true}
 	for name, tc := range map[string]struct {
 		tool, cwd, file string
 		side            Side
@@ -58,6 +61,12 @@ func TestGuard(t *testing.T) {
 		"but not code":                               {tool: "Write", file: place + "/x.go", side: verifies, refused: true},
 		"nor another spec's tests":                   {tool: "Write", file: place + "/acceptance/y/y_test.go", side: verifies, refused: true},
 		"nor a path that only starts like its tests": {tool: "Write", file: place + "/acceptance/xy/t.go", side: verifies, refused: true},
+		"a fix writes code":                          {tool: "Write", file: place + "/x.go", side: fixes},
+		"but no test under the acceptance path":      {tool: "Write", file: place + "/acceptance/y/y_test.go", side: fixes, refused: true},
+		"nor the amendment file":                     {tool: "Write", file: place + "/.kiln/specs/x.amend.md", side: fixesTests, refused: true},
+		"a fix whose monitor says tests writes them": {tool: "Write", file: place + "/acceptance/y/y_test.go", side: fixesTests},
+		"a fixed part with no slash guards a prefix": {tool: "Write", file: place + "/tests/acceptance/test_x.py", side: fixesPython, refused: true},
+		"and leaves what only shares its directory":  {tool: "Write", file: place + "/tests/acceptance/conftest.py", side: fixesPython},
 	} {
 		t.Run(name, func(t *testing.T) {
 			input := map[string]string{"file_path": tc.file}
@@ -255,17 +264,30 @@ var specStates = map[string]specState{
 	"reject a queued landing":                  {given: "queued landing", command: "reject"},
 	"reject a building landing":                {given: "building landing", command: "reject"},
 	"reject a stopped landing":                 {given: "stopped landing", command: "reject", then: none},
+	"queue a monitor's fix":                    {given: "fix waiting on its branch", command: "queue"},
+	"queue a monitor's stopped fix":            {given: "fix stopped", command: "queue"},
+	"accept a building fix":                    {given: "fix building", command: "accept"},
+	"accept a stopped fix":                     {given: "fix stopped", command: "accept"},
+	"accept a waiting fix":                     {given: "fix waiting on its branch", command: "accept", then: "fix waiting on its branch"},
+	"accept a fix's queued landing":            {given: "fix queued landing", command: "accept"},
+	"accept a fix's stopped landing":           {given: "fix stopped landing", command: "accept", then: "fix queued landing"},
+	"reject a building fix":                    {given: "fix building", command: "reject"},
+	"reject a stopped fix":                     {given: "fix stopped", command: "reject"},
+	"reject a waiting fix":                     {given: "fix waiting on its branch", command: "reject", then: none},
+	"reject a fix's stopped landing":           {given: "fix stopped landing", command: "reject", then: none},
 }
 
-// givenBook is a book that holds the spec x in the state given words, as a row's given does.
+// givenBook is a book that holds the spec x in the state given words, as a row's given does. "fix " starts a
+// monitor's fix.
 func givenBook(given string) book {
 	if given == "" {
 		return book{}
 	}
 
 	given, landing := strings.CutSuffix(given, " landing")
+	given, fix := strings.CutPrefix(given, "fix ")
 	return book{Specs: []*record{{Name: "x", State: state(given), Accepted: landing, Approved: "old", Session: "s",
-		Build: "b", Rounds: 2, Audited: "read", Why: "w", FailingAtMain: []string{"TestF"}}}}
+		Build: "b", Rounds: 2, Audited: "read", Why: "w", FailingAtMain: []string{"TestF"}, Monitor: fix}}}
 }
 
 // commanded is what a command left of the spec x. It holds x's state, as a row's then words it, its error and
@@ -319,7 +341,7 @@ func (tc specState) carries() (carried, bool) {
 		return carried{}, false
 	case tc.command == "queue":
 		return carried{approved: "new"}, true
-	case tc.then == "queued landing":
+	case strings.HasSuffix(tc.then, "queued landing"):
 		return carried{approved: "old", session: "s", oldBuild: true, audited: true}, true
 	}
 
@@ -346,11 +368,16 @@ func thenOf(r *record) string {
 		return none
 	}
 
+	then := string(r.State)
 	if r.Accepted {
-		return string(r.State) + " landing"
+		then += " landing"
 	}
 
-	return string(r.State)
+	if r.Monitor {
+		then = "fix " + then
+	}
+
+	return then
 }
 
 // errKind is "" for no error, "refused" for a refusal, and the error's text for any other.
@@ -437,6 +464,34 @@ func TestNext(t *testing.T) {
 	}
 }
 
+// TestNextFix holds that a fix's record is taken only as an accepted landing. A run started for its name or for the
+// landings takes it. kiln run takes none, so a monitor's fix is never a spec's build.
+func TestNextFix(t *testing.T) {
+	for name, tc := range map[string]struct {
+		only Spec
+		want []Spec
+	}{
+		"kiln run":                  {only: "", want: []Spec{"s", "y"}},
+		"a kiln accept of the fix":  {only: "f", want: []Spec{"f", "y"}},
+		"a kiln accept of a spec":   {only: "s", want: []Spec{"s", "y"}},
+		"kiln monitor run, landing": {only: landings, want: []Spec{"f", "y"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := book{Specs: []*record{{Name: "f", State: queued, Accepted: true, Monitor: true},
+				{Name: "g", State: queued, Monitor: true}, {Name: "s", State: queued},
+				{Name: "y", State: queued, Accepted: true}}}
+			var took []Spec
+			for r, found := b.next(tc.only, 1); found; r, found = b.next(tc.only, 1) {
+				took = append(took, r.Name)
+			}
+
+			if !slices.Equal(took, tc.want) {
+				t.Errorf("took %q, want %q", took, tc.want)
+			}
+		})
+	}
+}
+
 // TestAcceptDuringReinstall holds that an accept the reinstall refuses changes nothing.
 func TestAcceptDuringReinstall(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
@@ -499,6 +554,8 @@ func TestNextStep(t *testing.T) {
 		rec      record
 		commands []string
 		resume   bool
+		// rerun is a step that runs the monitor again, by name.
+		rerun bool
 	}{
 		"waiting for UAT": {rec: record{State: landed}, commands: []string{"accept", "queue"}},
 		"waiting on its branch with amendments": {
@@ -519,6 +576,16 @@ func TestNextStep(t *testing.T) {
 			rec:      record{State: stopped, Accepted: true, Session: "s", Why: couldNotGoOn + "main's checkout"},
 			commands: []string{"accept", "reject"},
 		},
+		"a fix waiting on its branch": {
+			rec: record{State: waiting, Monitor: true}, commands: []string{"accept", "reject"},
+		},
+		"a fix's landing stopped": {
+			rec: record{State: stopped, Accepted: true, Monitor: true}, commands: []string{"accept", "reject"},
+		},
+		// The book has no command for kiln monitor run x, so the step's text names it.
+		"a fix stopped": {
+			rec: record{State: stopped, Monitor: true, Session: "s"}, commands: nil, rerun: true,
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tc.rec.Name = "x"
@@ -537,6 +604,10 @@ func TestNextStep(t *testing.T) {
 
 			slices.Sort(named)
 			resume := strings.HasPrefix(next, "cd '/cache/kiln/a b/x' && claude --resume s, ")
+			if rerun := strings.HasSuffix(next, "kiln monitor run x"); rerun != tc.rerun {
+				t.Errorf("%q runs the monitor again %v, want %v", next, rerun, tc.rerun)
+			}
+
 			if !slices.Equal(named, tc.commands) || resume != tc.resume {
 				t.Errorf("%q names kiln %q, and resumes the session %v; want %q, %v", next, named, resume,
 					tc.commands, tc.resume)

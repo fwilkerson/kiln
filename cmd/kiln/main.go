@@ -7,8 +7,12 @@
 //	kiln run                 build each queued spec, one at a time, until none is queued
 //	kiln status              show where each spec stands, and each gauge's latest reading
 //	kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
-//	kiln accept <name>       take the work: retire the spec, or land its amendments first
-//	kiln reject <name>       turn the amendments away: drop the build, and its branch
+//	kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
+//	kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
+//	kiln monitor install     set up a launchd job that runs kiln monitor run in the repository each hour
+//	kiln monitor run [<name>]
+//	                         run each monitor kiln.json names that is due; or run one now, due or not
+//	kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
 //
 // Each refuses a spec in a state it does not take, as go doc ./internal/kiln shows.
 //
@@ -19,7 +23,8 @@
 //
 // kiln runs three commands of its own. A build's session runs kiln hook before each file it writes. The pre-commit
 // hook runs kiln precommit. The zsh completion in _kiln runs kiln complete, which lists kiln's commands, one per line.
-// kiln complete <command> lists the spec names that command would not refuse.
+// kiln complete <command> lists the spec names that command would not refuse, and the waiting fixes for accept and
+// reject. kiln complete monitor run lists the monitors.
 //
 // kiln exits 0 when the command did what it says, and 1 when it refused or failed. A usage error exits 2.
 package main
@@ -32,6 +37,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/fwilkerson/kiln/internal/git"
@@ -46,22 +52,56 @@ const usage = `usage:
   kiln run                 build each queued spec, one at a time, until none is queued
   kiln status              show where each spec stands, and each gauge's latest reading
   kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
-  kiln accept <name>       take the work: retire the spec, or land its amendments first
-  kiln reject <name>       turn the amendments away: drop the build, and its branch
+  kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
+  kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
+  kiln monitor install     set up a launchd job that runs kiln monitor run in the repository each hour
+  kiln monitor run [<name>]
+                           run each monitor kiln.json names that is due; or run one now, due or not
+  kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
 `
 
 // commands are the developer's commands, as kiln complete lists them.
-var commands = []string{"init", "queue", "run", "status", "tui", "accept", "reject"}
+var commands = []string{"init", "queue", "run", "status", "tui", "accept", "reject", "monitor"}
 
 // onRepo holds each of the developer's commands, which act on the repository in the working directory.
 var onRepo = map[string]repoCommand{
-	"init":   initRepo,
-	"run":    noArgs((*kiln.Repo).Run),
-	"status": noArgs((*kiln.Repo).Status),
-	"tui":    tui,
-	"queue":  oneName((*kiln.Repo).Queue),
-	"accept": oneName((*kiln.Repo).Accept),
-	"reject": oneName((*kiln.Repo).Reject),
+	"init":    initRepo,
+	"run":     noArgs((*kiln.Repo).Run),
+	"status":  noArgs((*kiln.Repo).Status),
+	"tui":     tui,
+	"queue":   oneName((*kiln.Repo).Queue),
+	"accept":  oneName((*kiln.Repo).Accept),
+	"reject":  oneName((*kiln.Repo).Reject),
+	"monitor": monitor,
+}
+
+// monitor is kiln monitor install, kiln monitor run [<name>], or kiln monitor show <name>.
+func monitor(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
+	usage := strings.Join(args[:min(1, len(args))], "") + "/" + fmt.Sprint(len(args))
+	do, ok := monitorCommands[usage]
+	if !ok {
+		return errUsage
+	}
+
+	name := kiln.Spec(strings.Join(args[min(1, len(args)):], ""))
+	return do(ctx, r, name, out)
+}
+
+// monitorRun is kiln monitor run, for every monitor that is due, or for the one named.
+func monitorRun(ctx context.Context, r *kiln.Repo, name kiln.Spec, out *os.File) error {
+	return r.MonitorRun(ctx, name, out)
+}
+
+// monitorCommands holds kiln monitor's commands, by their name and their count of arguments, the name included.
+var monitorCommands = map[string]func(context.Context, *kiln.Repo, kiln.Spec, *os.File) error{
+	"install/1": func(ctx context.Context, r *kiln.Repo, _ kiln.Spec, out *os.File) error {
+		return r.MonitorInstall(ctx, out)
+	},
+	"run/1": monitorRun,
+	"run/2": monitorRun,
+	"show/2": func(ctx context.Context, r *kiln.Repo, name kiln.Spec, out *os.File) error {
+		return r.MonitorShow(ctx, name, os.Stdin, out)
+	},
 }
 
 // repoCommand runs one command on r, with the arguments that follow the command's name.
@@ -179,9 +219,10 @@ func tui(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
 	return r.TUI(ctx, name, os.Stdin, out)
 }
 
-// complete lists kiln's commands, or with a command, the spec names it takes.
+// complete lists kiln's commands, or with a command, the names it takes. kiln monitor takes its own commands, and
+// kiln monitor run and show take the monitors' names.
 func complete(ctx context.Context, args []string, out io.Writer) error {
-	if len(args) > 1 {
+	if len(args) > 2 {
 		return errUsage
 	}
 
@@ -199,8 +240,11 @@ func complete(ctx context.Context, args []string, out io.Writer) error {
 
 // takes is kiln's commands, or with a command, the spec names it takes.
 func takes(ctx context.Context, args []string) ([]string, error) {
-	if len(args) == 0 {
+	switch {
+	case len(args) == 0:
 		return commands, nil
+	case len(args) == 1 && args[0] == "monitor":
+		return []string{"install", "run", "show"}, nil
 	}
 
 	r, err := kiln.Open(ctx, ".", os.Environ())
@@ -208,7 +252,7 @@ func takes(ctx context.Context, args []string) ([]string, error) {
 		return nil, err
 	}
 
-	return r.Takes(ctx, args[0])
+	return r.Takes(ctx, strings.Join(args, " "))
 }
 
 // hook answers Claude Code's PreToolUse call. A hook that cannot read its call exits 2, which Claude Code reads as a
@@ -220,6 +264,7 @@ func hook(args []string, stdin io.Reader, stdout io.Writer) error {
 	var side kiln.Side
 	flags.StringVar(&side.Role, "role", "", "the session's role in a split build: build or verify")
 	flags.StringVar(&side.Acceptance, "acceptance", "", "the spec's acceptance path, in a split build")
+	flags.BoolVar(&side.Fix, "fix", false, "the session is a monitor's fix, which writes nothing under .kiln/")
 	flags.Func("harness", "a path both sessions of a split build write; given once for each", func(p string) error {
 		side.Harness = append(side.Harness, p)
 		return nil

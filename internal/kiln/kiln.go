@@ -1,6 +1,7 @@
 // Package kiln builds the specs a developer approved, and lands them on main.
 //
 //	r, err := kiln.Open(ctx, ".", os.Environ())
+//	err = r.MonitorRun(ctx, "", os.Stdout)  // runs each monitor kiln.json names that is due
 //	err = r.Init(ctx, os.Stdout, kiln.InitOptions{})  // .kiln/, as Go's preset, and the pre-commit hook
 //	err = r.Queue(ctx, "x", os.Stdout)    // queues .kiln/specs/x.md, as main holds it
 //	err = r.Run(ctx, os.Stdout)           // builds each queued spec, one at a time
@@ -27,7 +28,19 @@
 //	                                                                           └─ accept ──▶ landing again
 //
 // A spec landing accepted amendments is queued, building or stopped, as the build that lands it stands. Every other
-// command refuses. kiln queue takes only a spec whose Status, at main's tip, is Approved. Its form follows /shape's
+// command refuses. A monitor's fix lives in the book under the monitor's name:
+//
+//	(no record) ─fix─▶ building ├─ lands, changes nothing, asks, fails or meets a limit ──▶ (no record)
+//	                            ├─ stops ──▶ stopped, until its next fix replaces it
+//	                            └─ passes, accept in kiln.json ──▶ waiting on its branch
+//	                                                               ├─ reject ──▶ (no record)
+//	                                                               └─ accept ──▶ landing an accepted fix
+//	                                                                             ├─ lands ──▶ (no record)
+//	                                                                             └─ stops ──▶ accept or reject again
+//
+// kiln queue refuses a fix's record, and a spec kiln.json names a monitor of.
+//
+// kiln queue takes only a spec whose Status, at main's tip, is Approved. Its form follows /shape's
 // template, as kiln embeds it. Its ## sections all appear, in the template's order, with any of the spec's
 // own between them. Each ### N. Title under Acceptance tests holds a Given, a When and a Then, numbered from 1.
 //
@@ -36,7 +49,8 @@
 //
 //	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
 //	                            the MCP servers a session calls, the gauges, the workflow, where the acceptance
-//	                            tests live, the harness, and the paths the audit reads again
+//	                            tests live, the harness, the paths the audit reads again, and the monitors
+//	.kiln/monitors/             the scripts a monitor's check runs, out of a fix's reach
 //	.kiln/agents/build.md       the build agent
 //	.kiln/agents/verify.md      how the acceptance tests are written, and a split build's verify agent
 //	.kiln/agents/audit.md       the audit
@@ -84,10 +98,37 @@
 // Nor is a run cut short: each test the command ran at main must run at the build's commit too. The gate also
 // fails on any path the work changed under .kiln/ but .kiln/specs/<name>.amend.md. It fails on a split session's
 // write outside its side too. It does so however the path was
-// written. A session's hook refuses an Edit or a Write there before it happens.
+// written. A session's hook refuses an Edit or a Write there before it happens. A monitor's fix writes nothing under
+// .kiln/. Nor does it write a path that starts with acceptance's part before {spec}, unless its monitor says tests.
 //
 // A usage limit pauses the build until the limit resets, and then resumes the same session. A limit with no reset
 // pauses it for 5 minutes.
+//
+// A monitor is a job kiln.json names, which kiln monitor run runs at main's tip once its interval has passed:
+//
+//	{"name": "deps", "every": "24h", "check": ".kiln/monitors/deps", "command": "go get -u ./... && go mod tidy",
+//	 "agent": "deps.md", "prompt": "Make the gate pass."}
+//
+// kiln.json refuses a monitor with no name, a name another has, or one no spec could have. It refuses an interval
+// under an hour, or not in whole hours. It refuses a monitor with no command and no agent. It refuses one that may
+// not write the tests while acceptance has no part before {spec}. A monitor is due when it never ran, its check
+// couldn't run, or a usage limit ended its fix. It is due when its fix was cut short. Otherwise it is due once its
+// last run started its interval, less 30 minutes, ago. $KILN_NOW, as RFC 3339, stands for the clock.
+//
+// Its check runs with sh -c in a worktree of its own at main's tip. Its last line of stdout is {"fix": true|false,
+// "summary": "..."}. A check that exits non-zero, or prints no such line, couldn't run. kiln then keeps its last
+// line of stdout and stderr. A finding starts a fix, a build with no spec on kiln/<name>. The command runs first,
+// outside the sandbox. The agent runs when the gate still fails, or when there is no command. Its session reads what
+// the check printed above its last line, what the gate printed, then the prompt. The agent's file names its role. It
+// gets kiln.json's rounds, and the audit. The gate adds the check, unless gates is false, and fails while it asks
+// for a fix. A fix that passes lands, or waits for kiln accept when accept is true. Work that changes nothing ends
+// unchanged. An agent's reply whose last line is {"ask": true, "summary": "..."} ends the fix needs you, with its
+// report. A failed session ends it session failed, and a usage limit ends it at once, never waiting for the reset.
+//
+// A monitor is held, and starts no fix, when its last fix stopped, asked, was rejected, or changed nothing. A change
+// since releases it: to main's tip, its entry, or what its check printed, as the outcome says. One fix per
+// monitor builds, waits or lands at a time. The next kiln monitor run drops a fix whose kiln is gone. Then it lands
+// each accepted landing that is queued.
 //
 // Each queue is a new build, with its own ID. kiln's ledger records every build, session run and gate, and how
 // each build ended. A build's time is its session runs' time plus its gates'. A pause for a usage limit adds nothing.
@@ -105,6 +146,11 @@
 // reading to its ledger with its line, and judges it against that line wherever it shows. A reading below min, or
 // above max, crossed its line. An unknown one never did. kiln run prints the readings after the build's summary, and
 // only then starts the next build. A gauge never blocks a landing, and nothing reads a landing kiln missed.
+//
+// A fix that lands, stops or waits, an agent that asks, or a session that fails opens a Ghostty window. kiln runs
+// open -gna Ghostty --args ... -e kiln monitor show <name>, or $KILN_OPEN in place of open. That window notifies the
+// developer, and shows the summary, report or error, and the next command. A session that failed as the last run did
+// opens none.
 //
 // A build that ends waiting on the developer notifies them, in kiln run's output or kiln accept's. It ends stopped,
 // waiting for UAT, or waiting on its branch. kiln prints an OSC 9 sequence, which a terminal such as Ghostty shows as
@@ -138,6 +184,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -225,8 +272,8 @@ func cacheDir() (string, error) {
 }
 
 // HoldBuilds keeps every kiln on the machine from starting to drive a build session, until release. It refuses while
-// one drives one: a kiln run, or a kiln accept that lands. A build's session runs kiln hook by its path, so the
-// reinstall holds it while it swaps the binary.
+// one drives one: a kiln run, a kiln monitor run, or a kiln accept that lands. A build's session runs kiln hook by
+// its path, so the reinstall holds it while it swaps the binary.
 func HoldBuilds() (release func(), err error) {
 	release, err = lockBuilds(syscall.LOCK_EX | syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
@@ -358,6 +405,13 @@ func (r *Repo) queueable(ctx context.Context, main git.Rev, name Spec) ([]byte, 
 		return nil, err
 	}
 
+	if c, err := r.config(ctx, main); err == nil {
+		if _, ok := c.monitorNamed(name); ok {
+			return nil, fmt.Errorf("%w: %s names a monitor %s, and one name is never both a spec's and a "+
+				"monitor's: rename one", errRefused, configFile, name)
+		}
+	}
+
 	if err := formOf(string(spec)); err != nil {
 		return nil, fmt.Errorf("%w: %s leaves /shape's template: %w", errRefused, name.file(), err)
 	}
@@ -451,7 +505,12 @@ func (r *Repo) specAt(ctx context.Context, at git.Rev, name Spec) (spec []byte, 
 
 // dropped writes to the ledger that the build of name ended, dropped.
 func (r *Repo) dropped(name Spec, build string, out io.Writer) {
-	if err := r.store.write(entry{Kind: outcomeKind, Build: build, Outcome: outDropped}); err != nil {
+	r.ended(name, build, outDropped, out)
+}
+
+// ended writes to the ledger that the build of name ended with outcome.
+func (r *Repo) ended(name Spec, build, outcome string, out io.Writer) {
+	if err := r.store.write(entry{Kind: outcomeKind, Build: build, Outcome: outcome}); err != nil {
 		fmt.Fprintf(out, "%s: kiln could not write its ledger: %v\n", name, err)
 	}
 }
@@ -468,7 +527,12 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 		return err
 	}
 
-	r.dropped(name, rec.Build, out)
+	if rec.Monitor {
+		r.ended(name, rec.Build, outRejected, out)
+	} else {
+		r.dropped(name, rec.Build, out)
+	}
+
 	if err := r.dropCheckouts(ctx, name); err != nil {
 		return err
 	}
@@ -487,6 +551,8 @@ func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 		return r.taking(command)
 	case queueCommand:
 		return r.queueNames(ctx)
+	case "monitor run", "monitor show":
+		return r.monitorNames(ctx)
 	}
 
 	return nil, nil
@@ -511,6 +577,22 @@ func (r *Repo) taking(command string) ([]string, error) {
 		if b.may(command, s.Name, nil) == nil {
 			names = append(names, string(s.Name))
 		}
+	}
+
+	return names, err
+}
+
+// monitorNames answers the monitors kiln.json names at main's tip.
+func (r *Repo) monitorNames(ctx context.Context) ([]string, error) {
+	main, err := r.git.Tip(ctx, mainBranch)
+	if err != nil {
+		return nil, err
+	}
+
+	c, err := r.config(ctx, main)
+	names := make([]string, len(c.Monitors))
+	for i, m := range c.Monitors {
+		names[i] = string(m.Name)
 	}
 
 	return names, err
@@ -568,15 +650,20 @@ func (r *Repo) Status(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	if len(b.Specs) == 0 {
+	specs := slices.DeleteFunc(slices.Clone(b.Specs), func(s *record) bool { return s.Monitor })
+	if len(specs) == 0 {
 		fmt.Fprintln(out, "kiln holds no approved spec")
 	}
 
-	for _, s := range b.Specs {
+	for _, s := range specs {
 		s.status(out)
 	}
 
-	return r.gaugeStatus(ctx, out)
+	if err := r.gaugeStatus(ctx, out); err != nil {
+		return err
+	}
+
+	return r.monitorStatus(ctx, out)
 }
 
 // status shows where the spec of r stands, as kiln status does.
@@ -605,7 +692,12 @@ func (r *record) status(out io.Writer) {
 // the commit that last held it. The commit that moves main is gated first, on main as it stands.
 //
 // A spec waiting on its branch first folds its amendments into the spec, and lands as a build does. A conflict or a
-// failing gate goes back to its build's session. While another kiln run builds, that run lands it instead. A stopped
+// failing gate goes back to its build's session. While another kiln run builds, that run lands it instead. While a
+// kiln monitor run builds, the next kiln run or kiln monitor run lands it.
+//
+// A monitor's fix waiting on its branch is rebased onto main, and gated again, check included. Then main moves onto
+// it if main hasn't moved. It retires nothing. While another kiln holds the run lock, the next kiln
+// monitor run lands it. A landing that stops waits for kiln accept again. A stopped
 // landing lands again afresh, its rounds at 0, with no second fold. An accepted landing that stops fails Accept.
 func (r *Repo) Accept(ctx context.Context, name Spec, out io.Writer) error {
 	// Accept takes the lock before it changes anything, so a reinstall that refuses it leaves the spec as it was.
@@ -628,6 +720,8 @@ func (r *Repo) Accept(ctx context.Context, name Spec, out io.Writer) error {
 	switch {
 	case rec.Accepted:
 		return r.landAccepted(ctx, b)
+	case rec.Monitor:
+		return r.acceptFix(ctx, b)
 	case rec.State == amended:
 		return r.acceptAmended(ctx, b)
 	}
@@ -692,12 +786,23 @@ func (r *Repo) acceptAmended(ctx context.Context, b *build) error {
 	return r.landAccepted(ctx, b)
 }
 
-// landAccepted lands the queued landing of b's accepted spec, unless another kiln run builds, which lands it then.
+// acceptFix queues the landing of b's fix, which waits on its branch, and lands it.
+func (r *Repo) acceptFix(ctx context.Context, b *build) error {
+	err := r.store.set(b.rec.Name, func(s *record) { s.State, s.Accepted, s.Rounds = queued, true, 0 })
+	if err != nil {
+		return err
+	}
+
+	return r.landAccepted(ctx, b)
+}
+
+// landAccepted lands the queued landing of b's accepted spec or fix, unless another kiln holds the run lock. A kiln
+// run that holds it lands a spec's then. Otherwise the next kiln monitor run lands it, or for a spec, a kiln run.
 func (r *Repo) landAccepted(ctx context.Context, b *build) error {
 	name := b.rec.Name
 	err := r.run(ctx, b.out, name)
 	if errors.Is(err, errRunning) {
-		fmt.Fprintf(b.out, "%s: accepted; the kiln run that is building lands it\n", name)
+		fmt.Fprintf(b.out, "%s: accepted; %s lands it\n", name, r.landsAccepted(b.rec))
 		return nil
 	}
 
@@ -716,6 +821,18 @@ func (r *Repo) landAccepted(ctx context.Context, b *build) error {
 	}
 
 	return err
+}
+
+// landsAccepted names the kiln that lands the accepted landing of rec, while another kiln holds the run lock.
+func (r *Repo) landsAccepted(rec record) string {
+	switch {
+	case rec.Monitor:
+		return "the next kiln monitor run"
+	case r.runHeld() == monitorHolder:
+		return "the next kiln run or kiln monitor run"
+	}
+
+	return "the kiln run that is building"
 }
 
 func (r *Repo) tree(name Spec) git.Worktree {

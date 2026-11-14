@@ -611,3 +611,9 @@ func clip(s string) string {
 
 	return s[:cut] + "..."
 }
+
+// Stderr is the end of what the session wrote to its standard error, in its last run. It is "" when kiln kept none.
+func (c Claude) Stderr(session string) string {
+	raw, _ := os.ReadFile(filepath.Join(c.c.Sessions, session, stderrFile))
+	return string(raw)
+}

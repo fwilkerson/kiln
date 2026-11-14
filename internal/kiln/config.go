@@ -34,6 +34,8 @@ type config struct {
 	Harness []string `json:"harness,omitempty"`
 	// Reaudit holds paths the audit reads again whenever the work's own change to them differs from what it read.
 	Reaudit []string `json:"reaudit,omitempty"`
+	// Monitors are the jobs kiln monitor run runs on their schedule, each of which may start a fix.
+	Monitors []monitor `json:"monitors,omitempty"`
 }
 
 // splitWorkflow is the workflow whose build session writes the code, and whose verify session writes the tests.
@@ -72,7 +74,11 @@ func parseConfig(raw []byte) (config, error) {
 			splitWorkflow)
 	}
 
-	return c, c.checkGauges()
+	if err := c.checkGauges(); err != nil {
+		return c, err
+	}
+
+	return c, c.checkMonitors()
 }
 
 // checkGauges refuses a gauge with no name, a name another gauge has, or not exactly one of min and max.

@@ -21,14 +21,7 @@ func (b *build) sandboxed(ctx context.Context, l claude.Launch) (claude.Launch, 
 	l.Deny = append([]string{"Bash(git push)", "Bash(git push *)", "Bash(git update-ref *)", "Bash(git branch -f *)",
 		"Bash(git branch -D *)", "Bash(git checkout main)", "Bash(git switch main)", "Bash(git reset * main)"},
 		l.Deny...)
-	kept := fmt.Sprintf("Changing anything under .kiln/ but %s, by a file tool or a shell command.",
-		b.rec.Name.amendPath())
-	// A split build's amendments are the verify session's.
-	if s.split && l.Role == buildRole {
-		kept = fmt.Sprintf("Changing anything under .kiln/, or under %s, by a file tool or a shell command.",
-			s.acceptance)
-	}
-
+	kept := b.kept(s, l.Role)
 	l.Forbidden = []string{
 		"Pushing to any remote, in any form.",
 		"Writing, moving, resetting or deleting any ref but the branch checked out in the working directory, " +
@@ -37,6 +30,21 @@ func (b *build) sandboxed(ctx context.Context, l claude.Launch) (claude.Launch, 
 		"Changing .claude/settings.json or .claude/settings.local.json.",
 	}
 	return b.r.reached(ctx, l)
+}
+
+// kept is the forbidden action that keeps role's session off .kiln/, and off what is not its own.
+func (b *build) kept(s sides, role string) string {
+	switch {
+	case b.fix != nil:
+		return b.fix.kept()
+	case s.split && role == buildRole:
+		// A split build's amendments are the verify session's.
+		return fmt.Sprintf("Changing anything under .kiln/, or under %s, by a file tool or a shell command.",
+			s.acceptance)
+	}
+
+	return fmt.Sprintf("Changing anything under .kiln/ but %s, by a file tool or a shell command.",
+		b.rec.Name.amendPath())
 }
 
 // reached adds to l what kiln.json at main's tip says a session reaches. Those are the hosts its commands reach, the

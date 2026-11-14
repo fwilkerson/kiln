@@ -7,6 +7,8 @@ for macOS.
 
 - `.kiln/specs/<name>.md`: a spec. With Status Proposed it is a plan, a starter `/shape` takes up later; build only
   the approved spec kiln names. Its Given, When, Then text is the developer's: never change it.
+- `.kiln/monitors/`: the scripts kiln's monitors' checks run, out of a fix's reach. A build names a new one in its
+  last reply, for the developer to commit.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.
 - `.kiln/`: kiln's own settings, agents and specs, as `kiln init` wrote them, tailored to kiln. `.claude/agents` and
   `.claude/skills` link to `/shape` and its reviewers there. A build changes nothing here but its amendment file.
@@ -33,7 +35,8 @@ working tree, and never write to either.
 - Terminal UI: `acceptance/stats-tui/`, `acceptance/tui-reading/` and `acceptance/gauges/` `TestAT7` drive `kiln tui`
   in a pseudo-terminal, which no sandboxed session can open, so `go test ./...` fails there inside a session and
   passes in kiln's gate. Check a screen through the model's `Update` and `View` in a test of `internal/tui`, and read a
-  failing terminal test from the gate's report. Before a key, wait for a screen it acts on.
+  failing terminal test from the gate's report. Before a key, wait for a screen it acts on. `kiln tui`'s monitors are
+  checked that way alone: no acceptance test drives them in a pseudo-terminal.
 - Comments: as `docs/practices.md` "Comments" says. A comment inside a body says why, never what.
 - Commits: [Conventional Commits](https://www.conventionalcommits.org), `type(scope): summary`, imperative and under
   72 characters. The body says why. `go test ./...` passes at each commit. Never push.

@@ -1,0 +1,35 @@
+# 1. kiln shows what a check found.
+
+env KILN_OPEN=true
+
+# Given: a monitor whose check prints that nothing needs a fix, with a summary; and a second monitor whose check
+# prints a line and exits non-zero.
+exec git rev-parse main
+cp stdout $WORK/_given/main-before
+
+# When: the developer runs kiln monitor run.
+exec sh -c 'kiln monitor run || true'
+
+# Then: main is unchanged,
+exec git rev-parse main
+cmp stdout $WORK/_given/main-before
+
+# and kiln status shows the first monitor healthy, with its summary, and the second monitor couldn't run, with that
+# line.
+exec kiln status
+stdout 'tidy.*healthy'
+stdout 'every module is current'
+stdout 'net.*couldn''t run'
+stdout 'the network is down'
+
+-- .kiln/kiln.json --
+{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1, "monitors": [
+ {"name": "tidy", "every": "24h", "check": "sh .kiln/monitors/tidy", "command": "true"},
+ {"name": "net", "every": "24h", "check": "sh .kiln/monitors/net", "command": "true"}
+]}
+-- .kiln/monitors/tidy --
+echo '{"fix": false, "summary": "every module is current"}'
+-- .kiln/monitors/net --
+echo 'the network is down'
+exit 3
+-- _given/main-before --

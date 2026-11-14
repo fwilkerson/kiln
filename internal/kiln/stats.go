@@ -18,8 +18,10 @@ type buildStats struct {
 	entry
 	outcome    string
 	amendments string
-	runs       []run
-	gates      []entry
+	// summary and report are a fix's, as its outcome line holds them.
+	summary, report string
+	runs            []run
+	gates           []entry
 	// readings are the build's gauge lines, as they were written.
 	readings []entry
 }
@@ -82,6 +84,7 @@ func (c *collector) add(e entry) {
 	case e.Kind == outcomeKind:
 		s.outcome = e.Outcome
 		s.amendments = cmpOr(e.Amendments, s.amendments)
+		s.summary, s.report = e.Summary, e.Report
 	}
 }
 
@@ -304,13 +307,7 @@ func roundsOf(rec record) string {
 func auditDid(audited bool, runs []run, known bool) string {
 	audits := slices.ContainsFunc(runs, func(r run) bool { return r.role == auditRole })
 	findings := slices.ContainsFunc(runs, func(r run) bool { return r.why.Why == whyFindings })
-	again := ""
-	if reads := len(slices.DeleteFunc(slices.Clone(runs), func(r run) bool {
-		return r.role != auditRole || r.why.Try > 1
-	})); reads > 1 {
-		again = fmt.Sprintf(", and read the work %d times", reads)
-	}
-
+	again := readAgain(runs)
 	switch {
 	case !known:
 		return "what the audit did is unknown"
@@ -325,6 +322,18 @@ func auditDid(audited bool, runs []run, known bool) string {
 	}
 
 	return "the build changed nothing kiln audits, so no audit ran"
+}
+
+// readAgain says how many times the audit read the work, when it read it more than once. A retry is no new read.
+func readAgain(runs []run) string {
+	reads := len(slices.DeleteFunc(slices.Clone(runs), func(r run) bool {
+		return r.role != auditRole || r.why.Try > 1
+	}))
+	if reads < 2 {
+		return ""
+	}
+
+	return fmt.Sprintf(", and read the work %d times", reads)
 }
 
 // filesChanged counts the files, insertions and deletions from the commit from to the commit to.
@@ -344,6 +353,8 @@ func (r *Repo) filesChanged(ctx context.Context, from, to git.Rev) string {
 func nextStep(rec record, tree git.Worktree, landedAt git.Rev) string {
 	name := rec.Name
 	switch {
+	case rec.Monitor:
+		return fixStep(rec)
 	case rec.State == landed:
 		return fmt.Sprintf("read it with git show %s, then run kiln accept %s, or change the spec and run "+
 			"kiln queue %s", short(landedAt), name, name)
@@ -365,6 +376,18 @@ func nextStep(rec record, tree git.Worktree, landedAt git.Rev) string {
 	}
 
 	return fmt.Sprintf("read kiln status, fix main or the spec, then run kiln queue %s", name)
+}
+
+// fixStep is what the developer runs next on the monitor's fix of rec. A landed fix leaves no record.
+func fixStep(rec record) string {
+	switch {
+	case rec.Accepted:
+		return fmt.Sprintf("fix main, and run kiln accept %s to land it again, or kiln reject %s", rec.Name, rec.Name)
+	case rec.State == waiting:
+		return fixNext(rec.Name, outWaits)
+	}
+
+	return fixNext(rec.Name, outStopped)
 }
 
 // kilnFix is what the developer runs on the build of rec, stopped for an error of kiln's.

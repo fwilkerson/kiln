@@ -1,10 +1,14 @@
 // Package tui draws kiln's builds in one full-screen view, live and past. It reads, and changes nothing.
 //
 //	home ──enter──▶ build ──enter──▶ run ──s──▶ the spec, as the build's approval held it
-//	  │  side panel: specs, newest first, / filters; the one selected narrows home's builds to its own
+//	  │  side panel: specs, newest first, then monitors; / filters; the one selected narrows home's builds to its own
 //	  └──── the "now" line, enter ────▲   esc goes back one screen at every step
 //
 //	err := tui.Show(ctx, source, "", tui.Terminal{In: os.Stdin, Out: os.Stdout})  // a name selects its spec
+//
+// A monitor's row shows where it stands in a word, marked as a spec's state is. Selected, the builds panel's title
+// says its last run's result in full, and when it last ran and runs next. Its summary heads the panel. Its builds
+// are its fixes, which open as a spec's builds do.
 //
 // It reads its [Source] again once a second, so a running run grows as its session writes. A run lists its calls
 // newest first, below its answer. Keys and the mouse both work, and ? lists every key a screen takes. A click opens
@@ -41,15 +45,32 @@ type Source interface {
 	Specs(ctx context.Context) ([]Spec, error)
 	// Recount reads the run's stretch of its session's stream.
 	Recount(r *Run) (claude.Recounted, error)
-	// Text reads the spec as the build's approval held it, followed by the build's amendments, as Markdown.
+	// Text reads the spec as the build's approval held it, followed by the build's amendments, as Markdown. For a
+	// fix, it reads how the fix ended.
 	Text(ctx context.Context, b *Build) (string, error)
+	// Monitors reads each monitor kiln.json names, as a Spec whose Monitor is set and whose builds are its fixes.
+	Monitors(ctx context.Context) ([]Spec, error)
 }
 
-// Spec is one spec, with its builds, oldest first.
+// Spec is one spec, with its builds, oldest first. Or it is a monitor, with its fixes. A monitor's State is short, as
+// a spec's is, and its Result says the rest.
 type Spec struct {
 	Name   string
 	State  State
 	Builds []*Build
+	// Monitor is set for a monitor.
+	Monitor *Monitor
+}
+
+// Monitor is where a monitor stands, as kiln status shows it.
+type Monitor struct {
+	// Result is its last run's result in full, such as "held: waiting on the developer".
+	Result string
+	// Summary is its check's summary, the report's summary, the session's error, or why its check couldn't run.
+	Summary string
+	// Last is when it last ran, or zero if it never ran. Next is when it is due again, and Due is whether it is now.
+	Last, Next time.Time
+	Due        bool
 }
 
 // State is where a spec stands, in the words the view shows.
@@ -70,6 +91,16 @@ const (
 	Rejected State = "rejected"
 )
 
+// A monitor's states, beside Running, Stopped, Waits and Rejected, which its last fix may stand at. A held monitor
+// stands where the fix that holds it ended.
+const (
+	Healthy  State = "healthy"
+	Landed   State = "landed"
+	NeedsYou State = "needs you"
+	// Failed is a fix whose session failed.
+	Failed State = "failed"
+)
+
 // Build is one build of a spec, from one approval.
 type Build struct {
 	Spec     string
@@ -80,6 +111,9 @@ type Build struct {
 	// Outcome is how the build ended, as its ledger says, or "" while it has not ended.
 	Outcome    string
 	Amendments string
+	// Fix is a monitor's fix, whose Spec names the monitor. Its Summary and Report say how it ended.
+	Fix             bool
+	Summary, Report string
 	// Steps are its session runs and gates, in the order they ran.
 	Steps []Step
 	// Readings are the gauges' readings of its landing.

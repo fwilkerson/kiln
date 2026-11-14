@@ -1,0 +1,29 @@
+# 9. A fix that waits for accept.
+
+env KILN_OPEN=true
+
+# Given: a monitor whose fixes wait for kiln accept, and whose command makes a change that passes.
+exec git rev-parse main
+cp stdout $WORK/_given/main-before
+
+# When: the developer runs kiln monitor run,
+exec sh -c 'kiln monitor run || true'
+
+# Then: after the run, main is unchanged and kiln status shows the fix waiting on the developer.
+exec git rev-parse main
+cmp stdout $WORK/_given/main-before
+exec kiln status
+stdout 'docs.*waiting'
+
+# When: and then kiln accept with the monitor's name.
+exec sh -c 'kiln accept docs || true'
+
+# Then: after the accept, main holds the change.
+exec git show main:docs.txt
+stdout '^the docs, brought up to date$'
+
+-- .kiln/kiln.json --
+{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1, "monitors": [
+ {"name": "docs", "every": "168h", "command": "echo 'the docs, brought up to date' >docs.txt", "accept": true}
+]}
+-- _given/main-before --

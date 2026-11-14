@@ -29,9 +29,15 @@ import (
 //	gate      after each gate: when it ended, whether it passed, and whether it gated a landing
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
 //	gauge     after a landing, one per gauge: its name, the landed commit, its value or none, and its line and side
+//	monitor   when kiln monitor run runs a monitor: its name, main's tip, a hash of its entry and one of what its
+//	          check printed, and what it found: healthy, couldn't run, held, or a fix, which names its build
 //
-// Each line names its build, and At is when it was written, or when its run or gate started. A run is the bytes of
-// its session's stream from its start line's length to its end line's.
+// A fix's build writes a build's lines, under its monitor's name, and its build line names the monitor. It ends
+// landed, stopped, waits on its branch, needs you, session failed, or usage limit. Or it ends couldn't run, unchanged,
+// rejected or dropped. It holds a summary or a report where it has one.
+//
+// Each line names its build, but a monitor line that started no fix. At is when it was written, or when its run or
+// gate started. A run is the bytes of its session's stream from its start line's length to its end line's.
 const ledgerFile = "ledger.jsonl"
 
 // kind is the kind of a ledger's line.
@@ -44,6 +50,7 @@ const (
 	gateKind    kind = "gate"
 	outcomeKind kind = "outcome"
 	gaugeKind   kind = "gauge"
+	monitorKind kind = "monitor"
 )
 
 // How a session run ended, in an end line.
@@ -60,6 +67,21 @@ const (
 	outWaits    = "waits on its branch"
 	outDropped  = "dropped"
 	outAccepted = "accepted"
+	// A fix's outcomes, beside landed, stopped, waits on its branch and dropped.
+	outNeedsYou  = "needs you"
+	outFailed    = "session failed"
+	outLimit     = "usage limit"
+	outCouldNot  = "couldn't run"
+	outUnchanged = "unchanged"
+	outRejected  = "rejected"
+)
+
+// What a monitor's run found, in a monitor line. A run that started a fix names its build.
+const (
+	foundHealthy  = "healthy"
+	foundCouldNot = "couldn't run"
+	foundHeld     = "held"
+	foundFix      = "fix"
 )
 
 // entry is one line of the ledger. Its kind says which of its fields it holds.
@@ -96,6 +118,17 @@ type entry struct {
 	Landed git.Rev  `json:"landed,omitempty"`
 	Value  *float64 `json:"value,omitempty"`
 	gaugeLine
+	// A monitor line's, and Monitor a fix's build line's too. Main is main's tip when the run started. Entry and
+	// Printed hash the monitor's entry in kiln.json and what its check printed. Found is what the run found.
+	Monitor Spec    `json:"monitor,omitempty"`
+	Main    git.Rev `json:"main,omitempty"`
+	Entry   string  `json:"entry,omitempty"`
+	Printed string  `json:"printed,omitempty"`
+	Found   string  `json:"found,omitempty"`
+	// Summary is a monitor line's check's summary, or why it couldn't run. A fix's outcome line holds the report's
+	// summary, the session's error, or why its gated check couldn't run. Report is the rest of an agent's report.
+	Summary string `json:"summary,omitempty"`
+	Report  string `json:"report,omitempty"`
 }
 
 // reason is why a session run started, in its start line. Round and Rounds are set when kiln sent the work back,
@@ -162,12 +195,17 @@ func (s store) entries() ([]entry, error) {
 	lines.Buffer(nil, 64<<20)
 	for lines.Scan() {
 		var e entry
-		if json.Unmarshal(lines.Bytes(), &e) == nil && e.Build != "" {
+		if json.Unmarshal(lines.Bytes(), &e) == nil && e.named() {
 			entries = append(entries, e)
 		}
 	}
 
 	return entries, lines.Err()
+}
+
+// named is whether e names its build, or is a monitor line, which may start none.
+func (e entry) named() bool {
+	return e.Build != "" || e.Kind == monitorKind
 }
 
 // newBuild returns a new build's ID.

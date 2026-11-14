@@ -1,0 +1,31 @@
+# 10. A fix writes the tests only when its monitor says it may.
+
+env KILN_OPEN=true
+
+# Given: a monitor that doesn't say its fixes may write the tests, whose command changes a file under the acceptance
+# path; and a second monitor that says they may, and whose command does the same.
+
+# When: the developer runs kiln monitor run.
+exec sh -c 'kiln monitor run || true'
+
+# Then: the first monitor's fix stops
+exec kiln status
+stdout 'guarded.*stopped'
+
+# and its change is not on main,
+exec git show main:acceptance/a/note.txt
+! stdout 'changed by guarded'
+
+# and main holds the second monitor's change.
+exec git show main:acceptance/b/note.txt
+stdout '^changed by trusted$'
+
+-- .kiln/kiln.json --
+{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1, "monitors": [
+ {"name": "guarded", "every": "168h", "command": "echo 'changed by guarded' >>acceptance/a/note.txt"},
+ {"name": "trusted", "every": "168h", "command": "echo 'changed by trusted' >>acceptance/b/note.txt", "tests": true}
+]}
+-- acceptance/a/note.txt --
+a's tests
+-- acceptance/b/note.txt --
+b's tests

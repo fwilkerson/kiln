@@ -43,16 +43,6 @@ Spec 1 runs one session per spec. If a spec is too large for one:
 - The audit reads the packages a build changed, so its cost grows with the packages touched, not the spec.
 - **Build it when:** spec 1's report shows a session ran out of context, or lost track, on a whole spec.
 
-## Repairs
-
-A failure that isn't the build's doing still needs fixing: a broken script, a test harness, a setting.
-
-- A repair is a session with no Given, When, Then. Its goal is that one failing command passes.
-- It may change tests, scripts and the code under other specs' acceptance tests, never a Given, When, Then.
-- A failure that needs a settings change, a login or a tool is outside the repository, and reaches the developer as
-  the exact action.
-- **Build it when:** a build stalls on a failure it didn't cause.
-
 ## Telling an assertion from a crash
 
 A test that fails because its Then didn't hold differs from one that crashed, timed out or couldn't start. The first
@@ -126,7 +116,10 @@ audit cost $3 to $9.
 ## A project's own workflow
 
 Spec 7 lets a project set each role's prompt, tools, model and effort. Spec 10 added a second fixed workflow, split,
-whose verify role writes the tests apart from the build. A project could name its own roles, their order, and which
-role a role's findings go back to.
+whose verify role writes the tests apart from the build. Spec 11's monitors gave a project roles of its own: a
+monitor's agent is one, named by its file under `.kiln/agents/`, in a workflow of one role with the audit. A project
+could name a workflow of several roles, their order, and which role a role's findings go back to, such as a triage
+agent that hands to a separate fix agent.
 
-- **Build it when:** a project needs a role other than build, verify and audit, or another order of them.
+- **Build it when:** a project needs a workflow of several roles of its own, or another order of build, verify and
+  audit.

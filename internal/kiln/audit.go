@@ -26,7 +26,11 @@ func (b *build) audit(ctx context.Context) (string, error) {
 
 	b.say("the audit reads %s", strings.Join(dirs, " "))
 	prompt := fmt.Sprintf(auditing, "`"+strings.Join(dirs, "`, `")+"`", b.rec.Name.file(), strings.Join(files, ", "))
-	harness, err := b.harnessChanged(ctx)
+	if b.fix != nil {
+		prompt = fmt.Sprintf(auditingFix, "`"+strings.Join(dirs, "`, `")+"`", b.rec.Name, strings.Join(files, ", "))
+	}
+
+	harness, err := b.auditedHarness(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -158,3 +162,12 @@ func (b *build) heldDir(ctx context.Context, head git.Rev, dir string) (string, 
 }
 
 const auditTries = 3
+
+// auditedHarness lists each harness file the build session changed, for the audit. A fix has no split sides.
+func (b *build) auditedHarness(ctx context.Context) ([]string, error) {
+	if b.fix != nil {
+		return nil, nil
+	}
+
+	return b.harnessChanged(ctx)
+}

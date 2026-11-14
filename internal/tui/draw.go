@@ -279,6 +279,8 @@ func (m model) recentTitle() string {
 	switch {
 	case !ok:
 		return "recent builds"
+	case s.Monitor != nil:
+		return monitorTitle(s)
 	case len(s.Builds) == 0:
 		return "builds of " + s.Name
 	}
@@ -341,7 +343,7 @@ func stated(s State) string {
 	return string(s)
 }
 
-// marked is a state's glyph, in its color.
+// marked is a state's glyph, in its color, a spec's or a monitor's.
 func marked(s State) string {
 	switch s {
 	case Running:
@@ -350,11 +352,11 @@ func marked(s State) string {
 		return yellow.Render("‖")
 	case Halted:
 		return yellow.Render("!")
-	case Stopped:
+	case Stopped, Failed:
 		return red.Render("✗")
-	case UAT, Waits:
+	case UAT, Waits, NeedsYou:
 		return heading.Render("◆")
-	case Accepted:
+	case Accepted, Landed, Healthy:
 		return green.Render("✓")
 	case Rejected:
 		return dim.Render("✗")
@@ -410,9 +412,44 @@ func (m model) liveFacts(r *Run, c *claude.Recounted) []string {
 // idleWarned is how long a session may write nothing, with no call open, before the view marks it.
 const idleWarned = time.Minute
 
+// monitorTitle names a monitor's fixes, and says when it last ran and runs next.
+func monitorTitle(s Spec) string {
+	mon, when := s.Monitor, "never ran"
+	if !mon.Last.IsZero() {
+		when = "ran " + mon.Last.Local().Format("Jan 02 15:04")
+	}
+
+	next := "due"
+	if !mon.Due {
+		next = "next " + mon.Next.Local().Format("Jan 02 15:04")
+	}
+
+	return fmt.Sprintf("fixes of %s · %s · %s · %s", s.Name, mon.Result, when, next)
+}
+
 // recentRows lists the builds panel's builds, newest first, in an area, below its columns' names. A narrow terminal
 // drops the date, then each build's turns, failed calls and rounds. A wide one draws each cost as a bar.
 func (m model) recentRows(in area) []row {
+	summary := m.pickedSummary()
+	if summary == "" {
+		return m.buildRows(in)
+	}
+
+	in.h--
+	return append([]row{{text: summary}}, m.buildRows(in)...)
+}
+
+// pickedSummary is the summary of the monitor selected in the specs panel, or "".
+func (m model) pickedSummary() string {
+	if s, ok := m.picked(); ok && s.Monitor != nil {
+		return s.Monitor.Summary
+	}
+
+	return ""
+}
+
+// buildRows lists the builds panel's builds, newest first, in an area, below its columns' names.
+func (m model) buildRows(in area) []row {
 	all := m.recent()
 	if len(all) == 0 {
 		return []row{{text: dim.Render("no build yet")}}
