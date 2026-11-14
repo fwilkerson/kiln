@@ -23,16 +23,15 @@ no file holds. Git holds what was done, so drop each item once it lands.
 - The launchd job `dev.kiln.monitor.56fea50276d3ef5d` runs `kiln monitor run` at minute 24 of each hour.
 - `~/github.com/fwilkerson/odh-trial` is a clone of odh at `6541e13`, with no remote. So it holds odh's old tools,
   and not practices. Its `354ebb0` tailors `/shape`, its three reviewers and the build agent to odh.
+- The developer ran `code-health` by hand on 2026-11-14, and its fix landed as `436d3dd`. It was the first fix
+  under `TestHealth`, and its agent deleted the four lines of `held`. Its sandboxed session ran `go test` and
+  `go tool health` against the practices checkout, so a session can read it.
 
 ## Next
 
-1. **Read the two monitor runs of 2026-11-15.** `uat` is due at 12:24. It folds `uat/split/`, `uat/monitors/` and
-   `uat/measures/`, and its fix waits for `kiln accept uat`. `code-health` is due at 13:24, its first run on the
-   gauge `health`, whose gate reads the gauge over what the fix changed. Its first
-   files are `internal/kiln/guard.go`, `arch_test.go` and `internal/kiln/agent_test.go`. Both are the first sandboxed
-   sessions to build against the practices checkout: one that can't read it fails `go test`, and that is a kiln gap. It
-   would fail odh's builds the same way. Read the refactor against the guide's "What a score is worth". It is also the
-   first fix under `TestHealth`: a fix that leaves a refactored file's line in `held` fails its gate.
+1. **Read the `uat` monitor's run of 2026-11-15**, due at 12:24. It folds `uat/split/`, `uat/monitors/` and
+   `uat/measures/`, and its fix waits for `kiln accept uat`. Its agent may run `.kiln/monitors/uat-lost`, whose
+   temp files now honor `TMPDIR`. No sandboxed session has run that script since.
 2. **Trial odh on kiln**, in `odh-trial`. The developer runs `/shape hand-over` there, approves the spec, then runs
    `kiln queue hand-over && kiln run`. The slice is the counter's hand-over control: `order.HandOver` exists, and
    nothing in `web` calls it. After UAT, read the build's streams against the criteria and the list below.

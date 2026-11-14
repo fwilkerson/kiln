@@ -14,8 +14,9 @@ checks() {
   awk '/^-- .* --$/ { exit } /^(! )?(stdout|stderr|grep|screen|color|exists|cmp) / { print }'
 }
 
-before=$(mktemp)
-now=$(mktemp)
+# A bare mktemp ignores TMPDIR on macOS, and a session's sandbox lets it write nowhere else.
+before=$(mktemp "${TMPDIR:-/tmp}/uat-lost.XXXXXX")
+now=$(mktemp "${TMPDIR:-/tmp}/uat-lost.XXXXXX")
 trap 'rm -f "$before" "$now"' EXIT
 
 git ls-tree -r --name-only "$rev" -- uat | grep '\.txtar$' | while read -r f; do

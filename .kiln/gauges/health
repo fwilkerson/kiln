@@ -14,8 +14,9 @@ if [ -z "$read" ]; then
   exit 0
 fi
 
-found=$(mktemp)
-failed=$(mktemp)
+# A bare mktemp ignores TMPDIR on macOS, and a session's sandbox lets it write nowhere else.
+found=$(mktemp "${TMPDIR:-/tmp}/health.XXXXXX")
+failed=$(mktemp "${TMPDIR:-/tmp}/health.XXXXXX")
 trap 'rm -f "$found" "$failed"' EXIT
 
 # health scores the whole repository, since a duplicate body is found across files. It exits 1 when a file scores

@@ -16,9 +16,9 @@ on the guide's "Inside a function", "What a score is worth" and "Tests", which `
 
 ## What you change
 
-- Each file you took from the gauge's list, until health finds nothing in it. Change another file only where a refactoring
-  reaches it, such as a caller of a function you split. The gate holds each Go file you change to 10, so keep the
-  fix small.
+- Each file you took from the gauge's list, until health finds nothing in it. Change another file only where a
+  refactoring reaches it, such as a caller of a function you split. The gate holds each Go file you change to 10, so
+  keep the fix small.
 - Structure only. kiln does what it did before: no command, output, error text or file format changes, and no
   exported name unless the refactoring can't keep it.
 - A test file keeps each case it checks. A shorter test is no gain if it checks less, so count its calls and its
@@ -38,8 +38,9 @@ on the guide's "Inside a function", "What a score is worth" and "Tests", which `
 ## How you check the fix
 
 - Run `go vet ./...` and `go test ./...`. Format each Go file with `gofmt`.
-- For each piece of code you moved, plant a bug in it, run its package's tests, and undo the plant. A plant that
-  passes every test names a rule no test holds.
+- For each piece of code you moved, plant a bug in it, run its package's tests, and undo the plant. For code in
+  `cmd/kiln`, run `go test ./uat/...` too, since the acceptance tests hold its wiring. A plant that passes every
+  test names a rule no test holds.
 - `TestHealth` in `style_test.go` holds each file's score in `held`. Once a file you refactor scores 10, delete its
   line there, and change no other line of `held`.
 - Commit, then run the gauge over what you changed: `KILN_BASE=$(git merge-base main HEAD) .kiln/gauges/health`.
