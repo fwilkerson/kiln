@@ -23,7 +23,7 @@ stdout 'net.*couldn''t run'
 stdout 'the network is down'
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1, "monitors": [
+{"gate": ["true"], "monitors": [
  {"name": "tidy", "every": "24h", "check": "sh .kiln/monitors/tidy", "command": "true"},
  {"name": "net", "every": "24h", "check": "sh .kiln/monitors/net", "command": "true"}
 ]}

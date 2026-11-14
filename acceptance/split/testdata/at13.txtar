@@ -17,7 +17,7 @@ exec git show main:harness/h.go
 stdout 'Checked = true'
 
 -- .kiln/kiln.json --
-{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 3, "harness": ["harness/"], "reaudit": ["harness/"]}
+{"workflow": "split", "rounds": 3, "harness": ["harness/"], "reaudit": ["harness/"]}
 -- claude.json --
 {
  "build": {
@@ -101,10 +101,6 @@ stdout 'Checked = true'
   }
  }
 }
--- go.mod --
-module example.com/scratch
-
-go 1.27
 -- .kiln/specs/x.md --
 # Spec 1: x
 

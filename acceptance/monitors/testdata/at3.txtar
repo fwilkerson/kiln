@@ -17,7 +17,7 @@ exec kiln status
 stdout 'bump.*landed'
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1, "monitors": [
+{"gate": ["true"], "monitors": [
  {"name": "bump", "every": "24h", "check": "sh .kiln/monitors/bump", "gates": true, "command": "echo current >>state.txt"}
 ]}
 -- .kiln/monitors/bump --

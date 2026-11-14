@@ -38,7 +38,7 @@ exec sh -c 'kiln monitor run || true'
 grep -count=2 'ran' $WORK/_given/command.log
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1, "monitors": [
+{"gate": ["true"], "monitors": [
  {"name": "bump", "every": "1h", "check": "sh .kiln/monitors/bump", "command": "sh .kiln/monitors/bump-command"}
 ]}
 -- .kiln/monitors/bump --

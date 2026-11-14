@@ -21,7 +21,7 @@ exec git show main:acceptance/b/note.txt
 stdout '^changed by trusted$'
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1, "monitors": [
+{"gate": ["true"], "monitors": [
  {"name": "guarded", "every": "168h", "command": "echo 'changed by guarded' >>acceptance/a/note.txt"},
  {"name": "trusted", "every": "168h", "command": "echo 'changed by trusted' >>acceptance/b/note.txt", "tests": true}
 ]}

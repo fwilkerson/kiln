@@ -38,60 +38,20 @@ screen '^2 +audit +audit, try 1 '
 ! screen '\$0\.10'
 ! screen '\$0\.30'
 
--- go.mod --
-module example.com/scratch
-
-go 1.27
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 0}
+{"rounds": 0}
 -- .kiln/specs/a.md --
-# Spec 1: a
-
-Status: Approved, 2026-11-09
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. A answers
 
 - **Given**: nothing.
 - **When**: A is called.
 - **Then**: it answers 1.
-
-## Technical Plan
-
-## Alternatives Considered
 -- .kiln/specs/b.md --
-# Spec 2: b
-
-Status: Approved, 2026-11-09
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. B answers
 
 - **Given**: nothing.
 - **When**: B is called.
 - **Then**: it answers 2.
-
-## Technical Plan
-
-## Alternatives Considered
 -- claude.json --
 {
   "build": {

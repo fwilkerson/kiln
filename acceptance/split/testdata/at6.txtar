@@ -20,7 +20,7 @@ grep 'PreToolUse:Write hook error: [^"]*y\.go is the build session''s' .claude-c
 exec git show main:acceptance/x/x_test.go
 
 -- .kiln/kiln.json --
-{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 3, "harness": ["harness/"]}
+{"workflow": "split", "rounds": 3, "harness": ["harness/"]}
 -- claude.json --
 {
  "build": {
@@ -100,10 +100,6 @@ exec git show main:acceptance/x/x_test.go
   }
  }
 }
--- go.mod --
-module example.com/scratch
-
-go 1.27
 -- .kiln/specs/x.md --
 # Spec 1: x
 

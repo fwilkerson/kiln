@@ -11,28 +11,10 @@ exec kiln queue x
 stderr 'terminal'
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1}
+{"gate": ["true"]}
 -- .kiln/specs/x.md --
-# Spec 1: x
-
-Status: Approved, 2026-11-09
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. X answers
 
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
-
-## Technical Plan
-
-## Alternatives Considered

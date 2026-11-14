@@ -25,36 +25,12 @@ stdout '(?s)^x: landed on main at .*^  next: .*kiln accept x\b'
 exec git diff --shortstat main^ main
 stdout '^ 2 files changed, 18 insertions\(\+\)$'
 
--- go.mod --
-module example.com/scratch
-
-go 1.27
--- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- .kiln/specs/x.md --
-# Spec 1: x
-
-Status: Approved, 2026-11-09
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. X answers
 
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
-
-## Technical Plan
-
-## Alternatives Considered
 -- claude.json --
 {
   "build": {"1": {

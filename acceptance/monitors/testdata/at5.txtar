@@ -13,7 +13,7 @@ exec git show main:change.txt
 stdout '^changed$'
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1, "monitors": [
+{"gate": ["true"], "monitors": [
  {"name": "errors", "every": "1h", "check": "sh .kiln/monitors/errors", "gates": false, "command": "echo changed >change.txt"}
 ]}
 -- .kiln/monitors/errors --

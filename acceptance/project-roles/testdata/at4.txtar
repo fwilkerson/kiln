@@ -20,8 +20,6 @@ grep 'PreToolUse:Edit hook error: \.kiln/agents/audit\.md ' .claude-calls/build/
 exec git show main:.kiln/agents/audit.md
 stdout '^Audit the packages\.$'
 
--- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- .kiln/agents/build.md --
 ---
 tools: Agent, Bash, Edit, Glob, Grep, NotebookEdit, Read, WebFetch, WebSearch, Write
@@ -39,34 +37,12 @@ Audit the packages.
   ]}},
   "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
 }
--- go.mod --
-module example.com/scratch
-
-go 1.27
 -- .kiln/specs/x.md --
-# Spec 1: x
-
-Status: Approved, 2026-11-10
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. X answers
 
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
-
-## Technical Plan
-
-## Alternatives Considered
 -- _given/x/x.go --
 // Package scratch is where kiln's builds land.
 package scratch

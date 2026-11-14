@@ -18,8 +18,6 @@ grep 'Never push, and never move or reset main: kiln lands your work\.' .claude-
 grep '\AAudit the packages\.\n\n## kiln''s contract\n' .claude-calls/audit/1/1/system
 grep 'End your reply with one line: `read N directories, found M`' .claude-calls/audit/1/1/system
 
--- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- .kiln/agents/build.md --
 ---
 model: opus
@@ -36,34 +34,12 @@ Audit the packages.
   ]}},
   "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
 }
--- go.mod --
-module example.com/scratch
-
-go 1.27
 -- .kiln/specs/x.md --
-# Spec 1: x
-
-Status: Approved, 2026-11-10
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. X answers
 
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
-
-## Technical Plan
-
-## Alternatives Considered
 -- _given/x/x.go --
 // Package scratch is where kiln's builds land.
 package scratch

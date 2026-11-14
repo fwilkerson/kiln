@@ -25,36 +25,12 @@ exists new.go
 exec git log --format=%H main -- old.go .kiln/specs/x.amend.md
 ! stdout .
 
--- go.mod --
-module example.com/scratch
-
-go 1.27
--- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- .kiln/specs/x.md --
-# Spec 1: x
-
-Status: Approved, 2026-11-09
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. X answers
 
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
-
-## Technical Plan
-
-## Alternatives Considered
 -- claude.json --
 {
   "build": {

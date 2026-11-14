@@ -21,7 +21,7 @@ exec git show main:acceptance/x/x_test.go
 stdout 'func TestAT1'
 
 -- .kiln/kiln.json --
-{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+{"workflow": "split"}
 -- claude.json --
 {
   "build": {"1": {"1": [
@@ -34,10 +34,6 @@ stdout 'func TestAT1'
   ]}},
   "audit": {"1": {"1": [{"result": {"result": "read 2 directories, found 0"}}]}}
 }
--- go.mod --
-module example.com/scratch
-
-go 1.27
 -- .kiln/specs/x.md --
 # Spec 1: x
 

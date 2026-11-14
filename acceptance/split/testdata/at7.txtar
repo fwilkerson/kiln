@@ -22,7 +22,7 @@ exec git branch --list 'kiln/*'
 ! stdout .
 
 -- .kiln/kiln.json --
-{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 3}
+{"workflow": "split", "rounds": 3}
 -- claude.json --
 {
  "build": {
@@ -75,10 +75,6 @@ exec git branch --list 'kiln/*'
   }
  }
 }
--- go.mod --
-module example.com/scratch
-
-go 1.27
 -- .kiln/specs/x.md --
 # Spec 1: x
 

@@ -21,36 +21,12 @@ stdout '(?s)^x: waits on kiln/x, with amendments for UAT$\n\x1b\]9;[^\x07]*\x07 
 stdout '(?s)^x: waits on kiln/x, .*^  # Amendments to .kiln/specs/x\.md$\n.*^  - \*\*Then\*\*: it answers 43\.$\n.*^  42 is taken\.$'
 stdout '(?s)^x: waits on kiln/x, .*^  next: .*kiln accept x\b.*kiln reject x\b'
 
--- go.mod --
-module example.com/scratch
-
-go 1.27
--- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- .kiln/specs/x.md --
-# Spec 1: x
-
-Status: Approved, 2026-11-09
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. X answers
 
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
-
-## Technical Plan
-
-## Alternatives Considered
 -- claude.json --
 {
   "build": {"1": {"1": [

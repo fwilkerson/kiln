@@ -21,31 +21,13 @@ exec kiln status
 stdout '^gauge changed: 2, line ≤ 10, at a''s landing'
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD -- . ':!.kiln' ':!PRODUCT.md' | wc -l", "max": 10}]}
+{"gate": ["test -e ready"], "gauges": [{"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD -- . ':!.kiln' ':!PRODUCT.md' | wc -l", "max": 10}]}
 -- .kiln/specs/a.md --
-# Spec 1: a
-
-Status: Approved, 2026-11-12
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. A is ready
 
 - **Given**: nothing.
 - **When**: the gate runs.
 - **Then**: ready is there.
-
-## Technical Plan
-
-## Alternatives Considered
 -- claude.json --
 {
  "build": {

@@ -14,31 +14,13 @@ stdout '^  failing: `if \['
 ! stdout 'landed on main'
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["if [ \"$(git rev-parse HEAD)\" = \"$(git rev-parse main)\" ]; then cp _junit/main.xml \"$KILN_JUNIT\"; else cp _junit/build.xml \"$KILN_JUNIT\"; fi; exit 1"], "rounds": 0}
+{"gate": ["if [ \"$(git rev-parse HEAD)\" = \"$(git rev-parse main)\" ]; then cp _junit/main.xml \"$KILN_JUNIT\"; else cp _junit/build.xml \"$KILN_JUNIT\"; fi; exit 1"], "rounds": 0}
 -- .kiln/specs/t.md --
-# Spec 1: t
-
-Status: Approved, 2026-11-11
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. T is built
 
 - **Given**: nothing.
 - **When**: the gate runs.
 - **Then**: the work is there.
-
-## Technical Plan
-
-## Alternatives Considered
 -- _junit/main.xml --
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Written by pytest 9.2.0 under uv 0.13.7: test_a fails, test_b passes. -->

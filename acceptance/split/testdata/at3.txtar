@@ -24,7 +24,7 @@ grep -count=1 '"role":"audit"' .git/kiln/ledger.jsonl
 grep '"kind":"gate"[^\n]*\n(?:[^\n]*\n)*?[^\n]*"kind":"gate"[^\n]*"passed":true[^\n]*\n[^\n]*"role":"audit"' .git/kiln/ledger.jsonl
 
 -- .kiln/kiln.json --
-{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 3}
+{"workflow": "split", "rounds": 3}
 -- claude.json --
 {
  "build": {
@@ -92,10 +92,6 @@ grep '"kind":"gate"[^\n]*\n(?:[^\n]*\n)*?[^\n]*"kind":"gate"[^\n]*"passed":true[
   }
  }
 }
--- go.mod --
-module example.com/scratch
-
-go 1.27
 -- .kiln/specs/x.md --
 # Spec 1: x
 

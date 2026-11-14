@@ -17,31 +17,13 @@ stdout '^gauge changed: 2, line ≤ 10, at x''s landing'
 -- old.txt --
 already on main
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD | wc -l", "max": 10}]}
+{"gate": ["test -e ready"], "gauges": [{"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD | wc -l", "max": 10}]}
 -- .kiln/specs/x.md --
-# Spec 1: x
-
-Status: Approved, 2026-11-12
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. X is ready
 
 - **Given**: nothing.
 - **When**: the gate runs.
 - **Then**: ready is there.
-
-## Technical Plan
-
-## Alternatives Considered
 -- claude.json --
 {
  "build": {

@@ -39,12 +39,6 @@ keys end
 screen 'b answers 3'
 screen 'This line ends the amendment of spec b\.'
 
--- go.mod --
-module example.com/scratch
-
-go 1.27
--- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
 -- .kiln/specs/a.md --
 # Spec 1: a
 

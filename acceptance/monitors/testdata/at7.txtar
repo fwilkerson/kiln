@@ -42,7 +42,7 @@ exec sh -c 'ls .claude-calls/*/*/1/call.json | grep -cv "^.claude-calls/audit/"'
 stdout '^2$'
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1, "monitors": [
+{"gate": ["true"], "monitors": [
  {"name": "errors", "every": "1h", "check": "sh .kiln/monitors/errors", "gates": false, "agent": ".kiln/agents/errors.md", "prompt": "Fix the error, or ask for the developer."}
 ]}
 -- .kiln/monitors/errors --

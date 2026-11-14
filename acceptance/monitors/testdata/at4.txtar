@@ -19,7 +19,7 @@ exec git show main:fix.txt
 stdout '^fixed$'
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["sh .kiln/gate"], "rounds": 1, "monitors": [
+{"gate": ["sh .kiln/gate"], "monitors": [
  {"name": "deps", "every": "24h", "check": "sh .kiln/monitors/deps", "command": "echo bumped >deps.txt", "agent": ".kiln/agents/deps.md", "prompt": "Make the gate pass."}
 ]}
 -- .kiln/gate --

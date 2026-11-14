@@ -23,7 +23,7 @@ exec git show main:docs.txt
 stdout '^the docs, brought up to date$'
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1, "monitors": [
+{"gate": ["true"], "monitors": [
  {"name": "docs", "every": "168h", "command": "echo 'the docs, brought up to date' >docs.txt", "accept": true}
 ]}
 -- _given/main-before --

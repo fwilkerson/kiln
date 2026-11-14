@@ -33,7 +33,7 @@ grep '"denyRead": \[\s*"[^"]*/Library/Caches/kiln/[^"/]*"' .claude-calls/build/1
 grep '"allowRead": \[\s*"[^"]*/\.build-x"\s*\]' .claude-calls/build/1/1/settings.json
 
 -- .kiln/kiln.json --
-{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 1}
+{"workflow": "split"}
 -- claude.json --
 {
   "build": {"1": {
@@ -60,10 +60,6 @@ grep '"allowRead": \[\s*"[^"]*/\.build-x"\s*\]' .claude-calls/build/1/1/settings
   }},
   "audit": {"1": {"1": [{"result": {"result": "1. x.go:5 false comment\n\nread 2 directories, found 1"}}]}}
 }
--- go.mod --
-module example.com/scratch
-
-go 1.27
 -- .kiln/specs/x.md --
 # Spec 1: x
 

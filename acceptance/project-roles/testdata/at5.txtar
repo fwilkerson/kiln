@@ -13,10 +13,7 @@ grep '"allowedDomains": \[\s*"example\.org"\s*\]' .claude-calls/audit/1/1/settin
 grep '"allowWrite": \[\s*"/tmp/kiln-writable/build"\s*\]' .claude-calls/audit/1/1/settings.json
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", 
-  "gate": ["go vet ./...", "go test ./..."],
-  "rounds": 1,
-  "hosts": ["example.org"],
+{"hosts": ["example.org"],
   "writable": ["echo /tmp/kiln-writable/build"]
 }
 -- claude.json --
@@ -27,34 +24,12 @@ grep '"allowWrite": \[\s*"/tmp/kiln-writable/build"\s*\]' .claude-calls/audit/1/
   ]}},
   "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
 }
--- go.mod --
-module example.com/scratch
-
-go 1.27
 -- .kiln/specs/x.md --
-# Spec 1: x
-
-Status: Approved, 2026-11-10
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. X answers
 
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
-
-## Technical Plan
-
-## Alternatives Considered
 -- _given/x/x.go --
 // Package scratch is where kiln's builds land.
 package scratch

@@ -19,7 +19,7 @@ grep 'undefined: nothing' .claude-calls/build/1/2/prompt
 stdout '^  1 of 3 rounds'
 
 -- .kiln/kiln.json --
-{"workflow": "split", "acceptance": "acceptance/{spec}/", "gate": ["go vet ./...", "go test ./..."], "rounds": 3}
+{"workflow": "split", "rounds": 3}
 -- claude.json --
 {
  "build": {
@@ -87,10 +87,6 @@ stdout '^  1 of 3 rounds'
   }
  }
 }
--- go.mod --
-module example.com/scratch
-
-go 1.27
 -- .kiln/specs/x.md --
 # Spec 1: x
 

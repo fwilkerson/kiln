@@ -13,55 +13,19 @@ stdout '^b: landed on main'
 stdout '(?s)a: landed on main.*\na: gauge one: 1, line ≥ 0\na: gauge two: 2, line ≤ 5\nb: building on .*b: landed on main.*\nb: gauge one: 1, line ≥ 0\nb: gauge two: 2, line ≤ 5\n'
 
 -- .kiln/kiln.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["test -e ready"], "rounds": 1, "gauges": [{"name": "one", "command": "echo 1", "min": 0}, {"name": "two", "command": "echo 2", "max": 5}]}
+{"gate": ["test -e ready"], "gauges": [{"name": "one", "command": "echo 1", "min": 0}, {"name": "two", "command": "echo 2", "max": 5}]}
 -- .kiln/specs/a.md --
-# Spec 1: a
-
-Status: Approved, 2026-11-12
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. A is ready
 
 - **Given**: nothing.
 - **When**: the gate runs.
 - **Then**: ready is there.
-
-## Technical Plan
-
-## Alternatives Considered
 -- .kiln/specs/b.md --
-# Spec 2: b
-
-Status: Approved, 2026-11-12
-
-## Overview
-
-## Goals
-
-## Non-goals
-
-## Open Questions
-
-## Acceptance tests
-
 ### 1. B is ready
 
 - **Given**: nothing.
 - **When**: the gate runs.
 - **Then**: ready is there.
-
-## Technical Plan
-
-## Alternatives Considered
 -- claude.json --
 {
  "build": {
