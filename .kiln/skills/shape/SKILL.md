@@ -17,24 +17,48 @@ idea to one the developer approves. Building it comes after: the developer runs 
 The developer's turns go to goals, taste, plans only they hold, and choices that are hard to undo. Settle the rest
 yourself, wherever a file, the code or a measurement settles it.
 
-## 1. Draft before the first point
+## 1. Draft before the first question
 
-Write the spec before you discuss anything. A draft ranks the points, so the developer answers them together, in any
-order, rather than one point a reply.
+Write the spec before you ask anything. A draft shows which questions are real, and what each answer changes.
 
 1. If `.kiln/specs/<name>.md` exists, resume it from its Open Questions. A spec with Status Approved is being
    revised: keep its Status Approved, and edit it in place. Otherwise, copy [`template.md`](template.md) to that path.
 2. Read `README.md`, the repository's practices, and its record of what was deferred, if it writes them down. Run
    `go doc` on each package the spec touches.
 3. A deferred topic that the spec takes up says what would show its need. Write in the spec what showed it.
-4. Fill every section you can. Where the spec could be cut smaller or grown, write the cut as an Open Question.
+4. Fill every section you can, under your lean for each Open Question. Where the spec could be cut smaller or grown,
+   write the cut as an Open Question.
 
-Then show the developer the Overview and the Open Questions.
+Then tell the developer in a few lines what the spec builds. Name each Open Question in one line, with no option
+and no lean, so the developer sees what is coming. Ask the first question in that same reply, as step 2 says.
 
-## 2. Settle the Open Questions
+## 2. Settle the Open Questions, one at a time
 
-An Open Question holds what only the developer can decide. Rank the questions, and give each your lean and the fact
-that decides it. The developer answers in any order. Move each answer into the spec, and drop its question.
+A shape session exists to get these questions answered. Each one blocks the spec, since the work cannot go on
+until the developer picks. So an Open Question is a choice to ask, never a point to discuss or an agenda to list.
+Until no Open Question remains, each reply to the developer ends with one question. Ask it as the session asks any
+choice that blocks its work, with these parts:
+
+- what the developer is deciding, in one line, and how many questions come after it
+- each option under a letter, with what the spec builds if they pick it
+- your lean, and the fact that decides it
+
+An Open Question holds what only the developer can decide. Rank the questions in the spec, and ask them in that
+order. A question comes before each question that its answer could change or drop. Among the rest, the question
+whose answer changes more of the spec comes first. The developer may answer with a letter. They may also answer a
+question you have named but not yet asked.
+
+When the developer answers:
+
+- Move the answer into the spec, and drop its question. Change each test, and each line of the plan, that rested on
+  another option.
+- Read each question that remains against the answer. Drop one that the answer settled, and add one that it opened.
+- Ask the next question in the same reply.
+
+When the developer replies with a question or an objection, they have not chosen. Check their point against the code
+and the docs, and answer it. Then ask the same question again, with the options as their point leaves them.
+
+Between questions, do the work that waits on no answer, such as research, a check, or a section an answer freed.
 
 - Check that a cost or a risk applies to the repository today before you raise it.
 - The size of a change is never a reason to cut a piece or keep one.
