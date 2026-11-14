@@ -184,7 +184,7 @@ gate refuse the rest.
   refuses a shell's write through a link under `.claude/`.
 - `cmd/kiln/_kiln`: the zsh completion, which `tools/install` copies.
 - `tools/install`: reinstalls kiln and its completion from main's tip.
-- `go tool style`, `go tool health` and `go tool size`: the commands of the module `github.com/fwilkerson/practices`,
-  which `go.mod` names by the path of its checkout. `style` holds the rules gofmt leaves out, and `style_test.go`
-  runs it in `go test ./...`. The module's `guide.md` says how Go code is written and judged, and
-  `docs/practices.md` adds kiln's own rules.
+- `go tool guide`, `go tool style`, `go tool health` and `go tool size`: the commands of the module
+  `github.com/fwilkerson/practices`, which `go.mod` names by the path of its checkout. `guide` prints how Go code is
+  written and judged, and `docs/practices.md` adds kiln's own rules. `style` holds the rules gofmt leaves out, and
+  `style_test.go` runs it in `go test ./...`.

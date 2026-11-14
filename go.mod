@@ -41,6 +41,7 @@ require (
 replace github.com/fwilkerson/practices => /Users/dev/github.com/fwilkerson/practices
 
 tool (
+	github.com/fwilkerson/practices/cmd/guide
 	github.com/fwilkerson/practices/cmd/health
 	github.com/fwilkerson/practices/cmd/size
 	github.com/fwilkerson/practices/cmd/style
