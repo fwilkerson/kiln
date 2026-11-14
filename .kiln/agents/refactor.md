@@ -39,6 +39,8 @@ on the guide's "Inside a function", "What a score is worth" and "Tests", which `
 - Run `go vet ./...` and `go test ./...`. Format each Go file with `gofmt`.
 - For each piece of code you moved, plant a bug in it, run its package's tests, and undo the plant. A plant that
   passes every test names a rule no test holds.
+- `TestHealth` in `style_test.go` holds each file's score in `held`. Once a file you refactor scores 10, delete its
+  line there, and change no other line of `held`.
 - Commit, then run the monitor's check as `.kiln/kiln.json` names it. Its last line says `"fix": false` once each
   file you changed scores 10.
 

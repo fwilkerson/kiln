@@ -13,21 +13,22 @@ no file holds. Git holds what was done, so drop each item once it lands.
 - odh took practices in `0664f73` and `fa37584`. Its `docs/practices.md` keeps only odh's own rules. `tools/layout`
   stays odh's, since the layout knows odh's framework. Its Dockerfile drops the practices lines from `go.mod`, since
   the checkout is outside the image.
-- CodeScene left kiln in `b784746`. kiln has no gauge until `measures` lands.
+- CodeScene left kiln in `b784746`. `measures` landed in `00d5e24` and waits for UAT. kiln has no gauge until the
+  developer commits the `health` gauge that spec names.
 - kiln's `code-health` monitor scores with `go tool health`, three files a day, and lands without `kiln accept`.
+  `TestHealth` holds each file's score, and the build and refactor agents delete a file's line from `held` at 10.
 - The launchd job `dev.kiln.monitor.56fea50276d3ef5d` runs `kiln monitor run` at minute 24 of each hour.
 - `~/github.com/fwilkerson/odh-trial` is a clone of odh at `6541e13`, with no remote. So it holds odh's old tools,
   and not practices. Its `354ebb0` tailors `/shape`, its three reviewers and the build agent to odh.
-- A session shapes `measures` in the worktree `.claude/worktrees/measure`. It was told on 2026-11-14 that CodeScene
-  is gone.
 
 ## Next
 
-1. **Read the two monitor runs of 2026-11-15.** `uat` is due at 12:24. It folds `uat/split/` and `uat/monitors/`,
-   and its fix waits for `kiln accept uat`. `code-health` is due at 13:24, its first run on `go tool health`. Its
-   first files are `internal/kiln/guard.go`, `arch_test.go` and `internal/kiln/agent_test.go`. Both are the first
-   sandboxed sessions to build against the practices checkout: one that can't read it fails `go test`, and that is a
-   kiln gap. It would fail odh's builds the same way. Read the refactor against the guide's "What a score is worth".
+1. **Read the two monitor runs of 2026-11-15.** `uat` is due at 12:24. It folds `uat/split/` and `uat/monitors/`, and
+   its fix waits for `kiln accept uat`. `code-health` is due at 13:24, its first run on `go tool health`. Its first
+   files are `internal/kiln/guard.go`, `arch_test.go` and `internal/kiln/agent_test.go`. Both are the first sandboxed
+   sessions to build against the practices checkout: one that can't read it fails `go test`, and that is a kiln gap. It
+   would fail odh's builds the same way. Read the refactor against the guide's "What a score is worth". It is also the
+   first fix under `TestHealth`: a fix that leaves a refactored file's line in `held` fails its gate.
 2. **Trial odh on kiln**, in `odh-trial`. The developer runs `/shape hand-over` there, approves the spec, then runs
    `kiln queue hand-over && kiln run`. The slice is the counter's hand-over control: `order.HandOver` exists, and
    nothing in `web` calls it. After UAT, read the build's streams against the criteria and the list below.
@@ -44,8 +45,8 @@ no file holds. Git holds what was done, so drop each item once it lands.
     - One slice is enough to adopt, if the musts hold. A second slice in odh, one that crosses modules, confirms it.
     - A step the sandbox refuses does not fail the trial. It becomes a kiln starter spec. Adoption waits only if the
       step has no place outside the build.
-    - Not yet confirmed: count the developer's turns in `/shape` that were toil, with no cap. odh's collaboration
-      report defines a toil turn. The guest-cart design took 25 turns.
+    - Weighed: how many of the developer's turns in `/shape` were toil, with no cap. odh's collaboration report
+      defines a toil turn. The guest-cart design took 25 turns.
 
    Watch for these, none of which has run yet:
     - whether the build session can spawn `prose` and `judge` as subagents;
@@ -68,14 +69,11 @@ no file holds. Git holds what was done, so drop each item once it lands.
       Lands is in the trial's template.
     - Then write each behavior of the system odh replaces as a spec with Status Proposed. Accepted specs show what
       odh covers, and Proposed ones show the gaps. Only the developer knows those behaviors.
-5. **Shape `measures`** in kiln, the starter that joins gauges and monitors. A session has it in the `measure`
-   worktree.
+5. **Decide on kiln's `health` gauge after `measures` passes UAT.** The test holds each score, and the monitor
+   brings each file to 10. The gauge then reads 10 at each landing. Whether `kiln.json` keeps it as a signal is the
+   developer's call, and cheap to undo.
 6. **Bring the rest of practices into kiln.** The developer asked for this plan on 2026-11-14, and has approved none
    of it:
-    - Hold each file's score in `go test`, with `repotest.Health` and a map of the 12 files under 10. Today a build
-      can land a file under 10, and only the next day's monitor repairs it. The refactor agent then drops a file's
-      line from the map once the file scores 10. `measures` plans a `health` gauge for the same score. A gauge never
-      blocks a landing, and the test does, so the developer picks one or both.
     - Run `go tool inspect`. On 2026-11-14 it found about 300 things in kiln under GoLand's default profile: 113 in
       grammar, 76 mixed receivers and 72 unhandled errors. So kiln first needs a profile and a dictionary of its
       own, as odh's `.idea/inspectionProfiles` is. A monitor could then run it, if a check can run GoLand.

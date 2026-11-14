@@ -18,6 +18,26 @@ func TestGuide(t *testing.T) { repotest.Guide(t, "docs/guide.md") }
 // apply its changes.
 func TestModern(t *testing.T) { repotest.Modern(t) }
 
+// TestHealth fails when a file's score from go tool health differs from its score in held. A file that held omits
+// must score 10.
+func TestHealth(t *testing.T) { repotest.Health(t, held) }
+
+// held is the score of each file under 10. The code-health monitor refactors them, and a line goes once its file
+// scores 10.
+var held = map[string]string{
+	"arch_test.go":                 "9",
+	"internal/kiln/agent_test.go":  "9",
+	"internal/kiln/build.go":       "9",
+	"internal/kiln/form.go":        "9",
+	"internal/kiln/guard.go":       "8",
+	"internal/kiln/junit_test.go":  "9",
+	"internal/kiln/kiln.go":        "9",
+	"internal/kiln/preset_test.go": "9",
+	"internal/kiln/rules_test.go":  "9",
+	"internal/kiln/split.go":       "9",
+	"internal/kiln/view_test.go":   "9",
+}
+
 // TestNames fails on a code span in a doc that names nothing declared in kiln's Go code. It skips lower-case words
 // and names in capitals. It also skips Markdown file names and names from packages outside kiln.
 func TestNames(t *testing.T) {
