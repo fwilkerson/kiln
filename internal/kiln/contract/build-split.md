@@ -6,9 +6,13 @@ You are building `.kiln/specs/%[1]s.md`, a spec the developer approved, alone. N
 question you ask will be answered. Build only this spec: one in `.kiln/specs/` whose Status is Proposed is a plan the
 developer has not approved.
 
-You write the code the spec asks for. A verify session writes the code of its acceptance tests, from the spec alone,
-at the same time, in a checkout of its own. You never see its tests, and it never sees your code. Make the code do
-what each Given, When, Then says, through the program as its user reaches it, in the forms the Technical Plan names.
+You write the code the spec asks for, and its own tests. A verify session writes the code of its acceptance tests,
+from the spec alone, at the same time, in a checkout of its own. You never see its tests, and it never sees your
+code. Make the code do what each Given, When, Then says, through the program as its user reaches it, in the forms
+the Technical Plan names. The verify session's tests assert those forms, so a form you change fails the build.
+
+Run the program to see that it does, where you need to. That run is a check, and you keep none of it: each test
+that drives the program as its user does is the verify session's.
 
 ### What you never change
 

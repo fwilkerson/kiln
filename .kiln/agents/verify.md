@@ -13,7 +13,8 @@ model: opus
 
 - The code of each of the spec's acceptance tests, as "Acceptance tests" below says. It tests what its Then says,
   through the program as its user reaches it.
-- A test checks each clause of its Then, and nothing its Then does not name, such as a message's wording.
+- A test checks each clause of its Then. Where the spec's Technical Plan names a form, such as a line the program
+  prints, the test asserts that form. It asserts nothing else its Then does not name, such as a message's wording.
 
 ## Acceptance tests
 

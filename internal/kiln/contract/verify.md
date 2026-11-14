@@ -49,10 +49,12 @@ message's wording. kiln passes each new amendment's wording to the build session
 You work in your own checkout, on a branch of your own. Commit as you go, or leave your changes: when you end your
 turn, kiln commits what is left. kiln gates the build session's work alone, then your tests on both sessions' work.
 
-When that gate fails, its report comes back to you. Fix each test that is at fault, and end your reply with one
-line: `bugs: none`, or `bugs: ` and the numbers of the failing tests whose failure is the code's fault, such as
-`bugs: 2, 4`. For each bug, say above that line what state the spec's words expect, and what the program did. kiln
-sends that to the build session, with the Given, When, Then of each test you name.
+When that gate fails, its report comes back to you. The code is at fault where it breaks a Then, or a form the
+Technical Plan names: never loosen a test to fit it. A test is at fault where it asserts what neither names. Fix
+each test that is at fault, and end your reply with one line: `bugs: none`, or `bugs: ` and the numbers of the
+failing tests whose failure is the code's fault, such as `bugs: 2, 4`. For each bug, say above that line what state
+the spec's words expect, and what the program did. kiln sends that to the build session, with the Given, When, Then
+of each test you name.
 
 When the build session says a test can't hold, or the audit sends findings, kiln passes them to you. Answer them with
 commits alone: an amendment, or fixed tests. Never push, and never move or reset main: kiln lands the work.
