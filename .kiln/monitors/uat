@@ -1,0 +1,36 @@
+#!/bin/sh
+# The check of kiln's uat monitor. It asks for a fix when the acceptance tests want folding, as docs/practices.md
+# "Acceptance tests" says: an accepted spec still has a folder under uat/, or two scenarios bring the same fixture.
+# Its last line is the JSON object kiln reads. What it prints above that line goes to the monitor's agent.
+set -eu
+
+found=0
+
+# kiln deletes a spec once the developer accepts it, so a folder under uat/ with no spec is an accepted spec's.
+for dir in uat/*/; do
+  name=$(basename "$dir")
+  if [ "$name" != testdata ] && [ ! -e ".kiln/specs/$name.md" ]; then
+    echo "uat/$name/ holds the tests of $name, a spec the developer accepted: fold them into uat/testdata/."
+    found=$((found + 1))
+  fi
+done
+
+# A scenario's fixture is the files it brings, from its first "-- name --" line on. One that brings none has none
+# to share.
+shared=$(for f in uat/testdata/*/*.txtar; do
+  fixture=$(sed -n '/^-- .* --$/,$p' "$f")
+  [ -n "$fixture" ] && printf '%s %s\n' "$(printf '%s' "$fixture" | shasum | cut -d' ' -f1)" "$f"
+done | awk '{ n[$1]++; files[$1] = files[$1] " " $2 } END { for (h in n) if (n[h] > 1) print files[h] }' | sort)
+
+if [ -n "$shared" ]; then
+  echo "$shared" | while read -r files; do
+    echo "These scenarios bring the same fixture, so one build can carry the checks of each: $files"
+  done
+  found=$((found + $(echo "$shared" | wc -l)))
+fi
+
+if [ "$found" -eq 0 ]; then
+  echo '{"fix": false, "summary": "each accepted spec is folded, and no two scenarios share a fixture"}'
+else
+  echo "{\"fix\": true, \"summary\": \"$found to fold in uat/\"}"
+fi

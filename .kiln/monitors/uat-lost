@@ -1,0 +1,26 @@
+#!/bin/sh
+# Lists each check a scenario under uat/ held at a commit that no scenario holds now.
+#
+#   .kiln/monitors/uat-lost main
+#
+# A fold keeps each check or says why it went, as docs/practices.md "Acceptance tests" says. Whoever folds answers
+# for each line this prints: its meaning moved to another check, or a unit test's row holds its rule.
+set -eu
+
+rev=${1:?name the commit to compare with, such as main}
+
+# A check is a line of a script, above the files it brings, that asserts: stdout, grep, screen and the like.
+checks() {
+  awk '/^-- .* --$/ { exit } /^(! )?(stdout|stderr|grep|screen|color|exists|cmp) / { print }'
+}
+
+before=$(mktemp)
+now=$(mktemp)
+trap 'rm -f "$before" "$now"' EXIT
+
+git ls-tree -r --name-only "$rev" -- uat | grep '\.txtar$' | while read -r f; do
+  git show "$rev:$f" | checks
+done | sort -u >"$before"
+find uat -name '*.txtar' | while read -r f; do checks <"$f"; done | sort -u >"$now"
+
+comm -23 "$before" "$now"
