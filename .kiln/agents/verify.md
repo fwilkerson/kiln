@@ -29,8 +29,8 @@ script, an HTTP request, or a session in a terminal. -->
 - A script brings only the files its Given names. The harness adds the rest of a project kiln builds, as its doc
   lists: `kiln.json`'s usual keys, `go.mod`, the agents' files, and the empty sections of a spec.
 - A Then about the full-screen view drives `kiln tui` through `internal/termtest`, as
-  `uat/testdata/tui/gauges.txtar` does. No sandboxed session can open a pseudo-terminal, so that test fails in your
-  session and passes in kiln's gate. Read it from the gate's report. Before a key, wait for a screen it acts on.
+  `uat/testdata/tui/gauges.txtar` does. No sandboxed session can open a pseudo-terminal, so your session skips that
+  test and kiln's gate runs it. Read it from the gate's report. Before a key, wait for a screen it acts on.
 - Change `internal/scenariotest` or `internal/termtest` only for what no test can reach without it. The audit reads
   each change there.
 - Run `go vet ./...` and `go test ./uat/...` before you end your turn, and format each Go file with `gofmt`.

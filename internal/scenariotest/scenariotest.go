@@ -29,7 +29,8 @@
 // files that [ClaudeCallFile] and the constants beside it name. Go runs offline, from the developer's caches.
 //
 // A script drives a full-screen program in a pseudo-terminal, such as kiln tui. Its commands are term, keys, click,
-// wheel, screen and color. No sandboxed session can open a pseudo-terminal, so such a script runs only outside one.
+// wheel, screen and color. No sandboxed session can open a pseudo-terminal, so term skips such a script inside one.
+// It skips only where SANDBOX_RUNTIME is set, as Claude Code's sandbox sets it. Elsewhere the script fails.
 package scenariotest
 
 import (
@@ -217,7 +218,7 @@ func setUp(env *testscript.Env) error {
 		return fmt.Errorf("scenariotest: making the scratch repository: %w\n%s", err, out)
 	}
 
-	t := &terminal{}
+	t := &terminal{skip: env.T().Skip}
 	for _, kv := range env.Vars {
 		name, _, _ := strings.Cut(kv, "=")
 		t.names = append(t.names, name)

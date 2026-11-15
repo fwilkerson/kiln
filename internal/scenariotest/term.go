@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
@@ -56,7 +58,12 @@ type terminalKey struct{}
 type terminal struct {
 	names []string
 	term  *termtest.Term
+	// skip ends the script as skipped, for the reason given.
+	skip func(reason ...any)
 }
+
+// sandboxEnv is the variable Claude Code's sandbox sets for each command it runs.
+const sandboxEnv = "SANDBOX_RUNTIME"
 
 func startTerm(ts *testscript.TestScript, neg bool, args []string) {
 	t := ts.Value(terminalKey{}).(*terminal)
@@ -78,6 +85,12 @@ func startTerm(ts *testscript.TestScript, neg bool, args []string) {
 	}
 
 	term, err := termtest.Start(cmd, termtest.Size{W: w, H: h})
+	// A failure here would fail the package in every session, and so hide what else fails there. Outside a sandbox
+	// the same error is a fault, so kiln's gate never skips.
+	if errors.Is(err, syscall.EPERM) && os.Getenv(sandboxEnv) != "" {
+		t.skip("term: a sandbox opens no pseudo-terminal, so this script runs only outside one, as in kiln's gate")
+	}
+
 	ts.Check(err)
 	t.term = term
 	ts.Defer(func() { _ = term.Close() })

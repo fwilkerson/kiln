@@ -13,7 +13,8 @@
 // A check reads the screen as it is, and the program draws in its own time. So after an input, wait for a fact the
 // input causes, never for one already on screen. Wait polls for 10 seconds.
 //
-// A sandboxed process cannot open a pseudo-terminal, so Start fails inside a Claude Code session's sandbox.
+// A sandboxed process cannot open a pseudo-terminal, so Start fails inside a Claude Code session's sandbox. Its
+// error is then syscall.EPERM.
 package termtest
 
 import (

@@ -31,7 +31,7 @@ no file holds. Git holds what was done, so drop each item once it lands.
 
 1. **Read the `uat` monitor's run of 2026-11-15**, due at 12:24. It folds `uat/split/`, `uat/monitors/` and
    `uat/measures/`, and its fix waits for `kiln accept uat`. Its agent may run `.kiln/monitors/uat-lost`, whose
-   temp files now honor `TMPDIR`. No sandboxed session has run that script since.
+   temp files now honor `TMPDIR`.
 2. **Trial odh on kiln**, in `odh-trial`. The developer runs `/shape hand-over` there, approves the spec, then runs
    `kiln queue hand-over && kiln run`. The slice is the counter's hand-over control: `order.HandOver` exists, and
    nothing in `web` calls it. After UAT, read the build's streams against the criteria and the list below.

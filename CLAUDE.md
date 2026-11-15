@@ -44,7 +44,7 @@ working tree, and never write to either.
 - Folded scenarios: as `docs/practices.md` "Acceptance tests" says. A build changes a scenario under `uat/testdata/`
   only where its spec changes what that scenario shows. It never folds, merges or drops one: the `uat` monitor does.
 - Terminal UI: the scenarios in `uat/testdata/tui/` drive `kiln tui` in a pseudo-terminal, which no sandboxed session
-  can open, so `go test ./...` fails there inside a session and passes in kiln's gate. Check a screen through the
+  can open, so `go test ./...` skips them inside a session and runs them in kiln's gate. Check a screen through the
   model's `Update` and `View` in a test of `internal/tui`, and read a failing terminal test from the gate's report.
   Before a key, wait for a screen it acts on. `kiln tui`'s monitors are checked that way alone: no acceptance test
   drives them in a pseudo-terminal.

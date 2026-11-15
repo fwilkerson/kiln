@@ -24,7 +24,7 @@ folder of a spec the developer accepted, or scenarios that bring the same fixtur
 - A scenario's comments say its Given, When and Then, each above the lines that make it hold. They follow the
   product now: take out the spec's test number, and a note that only says which spec changed a line.
 - A scenario that drives `kiln tui` in a pseudo-terminal goes in `uat/testdata/tui/`. Never merge it with one that
-  needs none. Your sandbox opens no pseudo-terminal, so it fails in your session and passes in kiln's gate.
+  needs none. Your sandbox opens no pseudo-terminal, so your session skips it and kiln's gate runs it.
 - Delete the spec's package under `uat/` once it holds no scenario.
 
 ## How you check the fold
