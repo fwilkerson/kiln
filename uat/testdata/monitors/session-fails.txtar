@@ -1,0 +1,62 @@
+# A session that fails.
+
+env KILN_OPEN=true
+
+# Given: a monitor with only an agent, whose session fails.
+
+# When: the developer runs kiln monitor run,
+env KILN_NOW=2026-11-14T10:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: after the first run, kiln status shows the monitor's session failed, with its error,
+exec kiln status
+stdout 'drift.*session failed'
+stdout 'Invalid API key'
+
+# When: and runs it again.
+env KILN_NOW=2026-11-14T11:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: and the second run starts the agent again.
+exec sh -c 'ls .claude-calls/*/*/1/call.json | grep -cv "^.claude-calls/audit/"'
+stdout '^2$'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "monitors": [
+ {"name": "drift", "every": "1h", "agent": ".kiln/agents/drift.md", "prompt": "Compare the docs with the code."}
+]}
+-- .kiln/agents/drift.md --
+Keep the docs true to the code.
+-- claude.json --
+{
+ "drift": {
+  "1": {
+   "1": [
+    {
+     "result": {
+      "is_error": true,
+      "result": "Invalid API key · Please run /login",
+      "api_error_status": 401
+     }
+    },
+    {
+     "exit": 1
+    }
+   ]
+  },
+  "2": {
+   "1": [
+    {
+     "result": {
+      "is_error": true,
+      "result": "Invalid API key · Please run /login",
+      "api_error_status": 401
+     }
+    },
+    {
+     "exit": 1
+    }
+   ]
+  }
+ }
+}

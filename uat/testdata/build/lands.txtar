@@ -53,6 +53,13 @@ exec git log -1 --format=%B main
 stdout '^feat\(x\): land the approved spec$'
 stdout '^Build: (\d+s|[\d.]+ min) · \$0\.42 · 3 turns · 1 failed call$'
 
+# The audit read the build's work, and git worktree list names no audit worktree.
+exec cat .tmp/run
+stdout '^x: the audit reads \. acceptance/x$'
+exists .claude-calls/audit/1/1/call.json
+exec git worktree list
+! stdout '\.audit-'
+
 -- .kiln/specs/x.md --
 ### 1. X answers
 

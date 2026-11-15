@@ -1,0 +1,20 @@
+# A check that stays out of the gate.
+
+env KILN_OPEN=true
+
+# Given: a monitor whose check doesn't join the gate, and asks for a fix whatever the repository holds, and whose
+# command makes a change the gate passes.
+
+# When: the developer runs kiln monitor run.
+exec kiln monitor run
+
+# Then: main holds the change.
+exec git show main:change.txt
+stdout '^changed$'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "monitors": [
+ {"name": "errors", "every": "1h", "check": "sh .kiln/monitors/errors", "gates": false, "command": "echo changed >change.txt"}
+]}
+-- .kiln/monitors/errors --
+echo '{"fix": true, "summary": "the service logged an error"}'

@@ -1,0 +1,45 @@
+# A gauge on its line starts no fix.
+
+env KILN_OPEN=true
+
+# Given: a monitor that names a gauge, and a main in which the gauge reads on its line over the whole repository.
+exec git rev-parse main
+cp stdout $WORK/_given/main-before
+
+# When: kiln monitor run runs.
+exec kiln monitor run
+
+# Then: no fix starts.
+! exists .claude-calls
+exec git rev-parse main
+cmp stdout $WORK/_given/main-before
+
+# kiln status shows the monitor healthy, with its reading beside the gauge's line.
+exec kiln status
+stdout '^lows: healthy'
+stdout '^\s*count: 0, line ≤ 0$'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "rounds": 2, "gauges": [
+ {"name": "count", "command": "sh .kiln/gauges/count", "max": 0}
+], "monitors": [
+ {"name": "lows", "every": "24h", "gauge": "count", "agent": ".kiln/agents/fixer.md", "prompt": "Make each file the gauge names say fine."}
+]}
+-- .kiln/gauges/count --
+n=0
+read=
+for f in $(git diff --name-only --diff-filter=d "$KILN_BASE" HEAD -- '*.txt'); do
+  read=yes
+  if grep -q low "$f"; then
+    echo "low: $f"
+    n=$((n + 1))
+  fi
+done
+if [ -n "$read" ]; then
+  echo "$n"
+fi
+-- .kiln/agents/fixer.md --
+Fix the files the gauge names.
+-- ok.txt --
+fine
+-- _given/main-before --

@@ -1,0 +1,98 @@
+# An agent asks for the developer once.
+
+env KILN_OPEN=true
+
+# Given: a monitor whose check finds an error, and whose agent changes a file, then asks for the developer, with a
+# report.
+exec git rev-parse main
+cp stdout $WORK/_given/main-before
+
+# When: the developer runs kiln monitor run three times: once,
+env KILN_NOW=2026-11-14T10:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: after the first run, main is unchanged and kiln status shows the monitor needs the developer, with the
+# report's summary.
+exec git rev-parse main
+cmp stdout $WORK/_given/main-before
+exec kiln status
+stdout 'errors.*needs you'
+stdout 'the payment provider refuses cards'
+
+# When: again once a commit lands on main,
+cp $WORK/_given/other.txt other.txt
+exec git add other.txt
+exec git commit -q -m 'land other work'
+env KILN_NOW=2026-11-14T11:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: after the second, it shows the monitor held, and no agent ran.
+exec kiln status
+stdout 'errors.*held'
+exec sh -c 'ls .claude-calls/*/*/1/call.json | grep -cv "^.claude-calls/audit/"'
+stdout '^1$'
+
+# When: and again once its check prints a different finding.
+cp $WORK/_given/finding-2 $WORK/_given/finding
+env KILN_NOW=2026-11-14T12:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: the third run starts the agent.
+exec sh -c 'ls .claude-calls/*/*/1/call.json | grep -cv "^.claude-calls/audit/"'
+stdout '^2$'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "monitors": [
+ {"name": "errors", "every": "1h", "check": "sh .kiln/monitors/errors", "gates": false, "agent": ".kiln/agents/errors.md", "prompt": "Fix the error, or ask for the developer."}
+]}
+-- .kiln/monitors/errors --
+cat "$WORK/_given/finding"
+echo '{"fix": true, "summary": "the service logged an error"}'
+-- .kiln/agents/errors.md --
+Triage the service's errors.
+-- _given/finding --
+error: card declined by the payment provider
+-- _given/finding-2 --
+error: the database refused a connection
+-- _given/main-before --
+-- _given/other.txt --
+other work
+-- claude.json --
+{
+ "errors": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "echo looked >notes.txt"
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "The payment provider declines the cards; nothing here fixes that.\n{\"ask\": true, \"summary\": \"the payment provider refuses cards\"}"
+     }
+    }
+   ]
+  },
+  "2": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "echo looked again >notes.txt"
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "The database is down; nothing here fixes that.\n{\"ask\": true, \"summary\": \"the database is down\"}"
+     }
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,32 @@
+# A reading kiln could not take starts no fix.
+
+env KILN_OPEN=true
+
+# Given: a monitor that names a gauge whose command fails, and a second monitor that names a gauge whose command
+# prints no number.
+
+# When: kiln monitor run runs.
+exec sh -c 'kiln monitor run || true'
+
+# Then: no fix starts.
+! exists .claude-calls
+
+# kiln status shows that each monitor couldn't run, with why, and that each runs at the next kiln monitor run.
+exec kiln status
+stdout '^broken: couldn''t run, .*runs at the next kiln monitor run$'
+stdout 'the tool is missing'
+stdout '^silent: couldn''t run, .*runs at the next kiln monitor run$'
+stdout 'quiet: its command''s last line is no number'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "gauges": [
+ {"name": "fails", "command": "echo 'the tool is missing' >&2; exit 3", "max": 0},
+ {"name": "quiet", "command": "echo 'nothing to count'", "max": 0}
+], "monitors": [
+ {"name": "broken", "every": "24h", "gauge": "fails", "agent": ".kiln/agents/fixer.md"},
+ {"name": "silent", "every": "24h", "gauge": "quiet", "agent": ".kiln/agents/fixer.md"}
+]}
+-- .kiln/agents/fixer.md --
+Fix the files the gauge names.
+-- ok.txt --
+fine
