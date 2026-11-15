@@ -9,9 +9,10 @@
 //
 // Each session runs the model, effort and advisor its Launch names. It runs in auto permission mode, with only the
 // project's settings and those Run writes. A question it would ask is refused instead, since no one answers it. Its
-// commands run in Claude Code's sandbox, which writes only in Dir and Writable, and reaches only Domains. It calls
-// only the MCP servers its Launch names, which run outside the sandbox. When it exits, Run kills every process it
-// left behind. It finds them by their process tree, their group, and their working directory.
+// commands run in Claude Code's sandbox, which writes only in Dir and Writable, and reaches only Domains. They may
+// listen on a local port, as a test that starts a server does. It calls only the MCP servers its Launch names, which
+// run outside the sandbox. When it exits, Run kills every process it left behind. It finds them by their process
+// tree, their group, and their working directory.
 //
 // A session's files are kept in Config.Sessions, under its ID. They are the system prompt, the settings, its MCP
 // servers, and the stream it wrote, across every resume. Beside them is the end of its standard error, from its last

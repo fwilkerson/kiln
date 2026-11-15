@@ -122,7 +122,8 @@ gate refuse the rest.
 ```
 
 - `kiln.json` holds the gate's commands, the rounds a failing gate goes back to the session, the hosts a session's
-  commands reach, and commands that print the paths beside its worktree they write. Its `mcp` names the only MCP
+  commands reach, and commands that print the paths beside its worktree they write. A session's commands may listen
+  on a local port, in every project, so a test that starts a server runs in a session. Its `mcp` names the only MCP
   servers a session calls, each as Claude Code's MCP server settings hold one, such as
   `{"codescene": {"command": "cs-mcp-auth"}}`. They run outside the sandbox. kiln reads it from main's tip, so a build
   cannot weaken its own gate. The pre-commit hook runs the gate's commands on a commit to main.

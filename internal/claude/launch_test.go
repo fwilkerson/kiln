@@ -40,3 +40,28 @@ func TestMCP(t *testing.T) {
 		})
 	}
 }
+
+// TestListens holds the rule that a session's commands may listen on a local port. Without it, the sandbox refuses
+// each test that starts a server.
+func TestListens(t *testing.T) {
+	dir := t.TempDir()
+	if err := write(dir, Launch{Session: "s", Role: "build"}); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, settingsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got struct {
+		Sandbox struct {
+			Network struct {
+				AllowLocalBinding bool `json:"allowLocalBinding"`
+			} `json:"network"`
+		} `json:"sandbox"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil || !got.Sandbox.Network.AllowLocalBinding {
+		t.Fatalf("%s lets no command listen on a local port: %v\n%s", settingsFile, err, raw)
+	}
+}
