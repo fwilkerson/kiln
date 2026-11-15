@@ -7,7 +7,7 @@
 exec kiln queue x
 
 # When: kiln run lands the spec, whose build changed two files.
-exec kiln run
+exec kiln fire
 cp stdout .tmp/run
 stdout '^x: landed on main'
 exec git diff --name-only main~1 main

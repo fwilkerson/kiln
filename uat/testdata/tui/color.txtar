@@ -3,7 +3,7 @@
 # Given: a build with a failed gate, a refused call and a passed gate.
 # Its first run writes to specs/, which kiln's hook refuses, and code the gate fails. Its second fixes the code.
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 
 # When: the developer opens that build.

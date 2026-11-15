@@ -15,7 +15,7 @@ import (
 
 // TestView holds what the view reads from the book and the ledger. A spec the book no longer holds was accepted, or
 // rejected when its last build was dropped. A
-// build, and a run with no end line, runs only while the kiln run that started it lives. An interrupt ends the run
+// build, and a run with no end line, runs only while the kiln fire that started it lives. An interrupt ends the run
 // but leaves the build building. Specs come newest build first, after any
 // with no build yet. Each run says why it started in the words of the spec's Terms. A build's gauge lines are its
 // readings, each judged against the line it holds.
@@ -188,20 +188,20 @@ func TestBeforeSpec3(t *testing.T) {
 	}
 }
 
-// TestStateOf holds where the view says a spec stands. A pause that a kiln run took ends with that run, so the next
-// kiln run's build runs. An accepted spec that waits for the kiln run building now is queued, not halted.
+// TestStateOf holds where the view says a spec stands. A pause that a kiln fire took ends with that run, so the next
+// kiln fire's build runs. An accepted spec that waits for the kiln fire building now is queued, not halted.
 func TestStateOf(t *testing.T) {
 	for name, tc := range map[string]struct {
 		given record
-		// next is true when a kiln run, this test's process, takes the spec from the queue.
+		// next is true when a kiln fire, this test's process, takes the spec from the queue.
 		next bool
 		want tui.State
 	}{
-		"a build paused by its own kiln run is paused": {given: record{State: building, Session: "s",
+		"a build paused by its own kiln fire is paused": {given: record{State: building, Session: "s",
 			runner: runner{PID: os.Getpid(), Paused: time.Now().Add(time.Hour)}}, want: tui.Paused},
-		"a pause ends with the kiln run that took it": {given: record{State: queued, Session: "s",
+		"a pause ends with the kiln fire that took it": {given: record{State: queued, Session: "s",
 			runner: runner{Paused: time.Now().Add(-time.Hour)}}, next: true, want: tui.Running},
-		"an accepted spec waits for the kiln run building now": {given: record{State: queued, Session: "s",
+		"an accepted spec waits for the kiln fire building now": {given: record{State: queued, Session: "s",
 			Accepted: true}, want: tui.Queued},
 	} {
 		t.Run(name, func(t *testing.T) {

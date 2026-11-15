@@ -14,12 +14,12 @@ exec git commit --quiet -m 'docs: approve x and y'
 # x builds in build then audit, as kiln init wrote kiln.json. Then main's kiln.json names the split workflow, and y
 # builds in it.
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 exec sh -c 'sed -i "" "s/^{/{\n  \"workflow\": \"split\",/" .kiln/kiln.json'
 exec git commit --quiet -am 'chore: build in the split workflow'
 exec kiln queue y
-exec kiln run
+exec kiln fire
 stdout '^y: landed on main'
 
 # Then: under build then audit, the build session's prompt says how to write the acceptance tests.

@@ -39,9 +39,9 @@ session, but `kiln queue <name>` then drops its branch and builds anew from main
    | c) b), plus a build that stops to ask a question about its spec                               | Waits for the notification, then as b)       | b) plus a fourth waiting state, a way to ask, and rules: its own spec |
 
    Lean b). It is the "exit, and kiln finishes" you asked for, and most of it is code kiln has:
-   - A queued build with a session already goes on in that session. `Run` puts it first, and `build.run` resumes it
+   - A queued build with a session already goes on in that session. `Fire` puts it first, and `build.run` resumes it
      with a prompt, as it does for an interrupted build.
-   - `kiln accept` already runs a build in place, through `acceptAmended`, or leaves it to the `kiln run` that is
+   - `kiln accept` already runs a build in place, through `acceptAmended`, or leaves it to the `kiln fire` that is
      building.
    - The new part is an interactive launch in `internal/claude`, with the developer's terminal attached. It keeps
      kiln's settings, so the hook still guards `specs/`.
@@ -52,7 +52,7 @@ session, but `kiln queue <name>` then drops its branch and builds anew from main
 
 2. **What is the command named?** For example `kiln talk <name>` or `kiln resume <name>`. Lean `kiln talk`: it says
    what the developer does. `kiln resume` could read as going on with a build interrupted by a usage limit or a
-   halted `kiln run`, which `kiln run` already does.
+   halted `kiln fire`, which `kiln fire` already does.
 
 3. **How many rounds does the build get once the developer exits?** The build stopped because its gate failed past
    its last round. Lean: start its rounds again at 0, so the gate's next failure goes back to the session, as in a

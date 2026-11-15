@@ -10,7 +10,7 @@ cp stdout .tmp/kiln-before
 
 # When: the developer queues the spec and runs kiln, and the build's gate runs.
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: stopped: the gate still failed'
 
 # Then: the gate fails,

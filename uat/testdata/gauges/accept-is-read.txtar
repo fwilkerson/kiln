@@ -3,7 +3,7 @@
 # Given: a spec waiting on its branch with amendments, whose build changed two files, and kiln.json names a gauge
 # whose command counts the files changed since the commit kiln gives it as the base, outside .kiln/ and PRODUCT.md.
 exec kiln queue a
-exec kiln run
+exec kiln fire
 stdout '^a: waits on kiln/a'
 ! stdout 'gauge'
 

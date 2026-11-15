@@ -15,7 +15,7 @@ import (
 )
 
 // TUI shows kiln's builds in a full-screen view, live and past, until the developer quits. It opens on the spec
-// name, or on home when name is "". It reads what kiln run writes, takes no lock, and writes nothing. It refuses an
+// name, or on home when name is "". It reads what kiln fire writes, takes no lock, and writes nothing. It refuses an
 // out that is not a terminal.
 func (r *Repo) TUI(ctx context.Context, name Spec, in, out *os.File) error {
 	return tui.Show(ctx, view{r}, string(name), tui.Terminal{In: in, Out: out})
@@ -224,8 +224,8 @@ func (s standing) state() tui.State {
 	return tui.State(s.result)
 }
 
-// stateOf is where a spec stands. A build is building only while the kiln run that marked it so lives. A kiln run
-// stopped by an interrupt, or killed, leaves the book saying building. A queued build waits for a kiln run, which may
+// stateOf is where a spec stands. A build is building only while the kiln fire that marked it so lives. A kiln fire
+// stopped by an interrupt, or killed, leaves the book saying building. A queued build waits for a kiln fire, which may
 // be running already.
 func stateOf(rec *record) tui.State {
 	switch {
@@ -288,7 +288,7 @@ func gateSteps(gates []entry) []tui.Step {
 	return steps
 }
 
-// alive reports whether the process pid lives. A run's start line names the kiln run that started it.
+// alive reports whether the process pid lives. A run's start line names the kiln fire that started it.
 func alive(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return pid > 0 && (err == nil || errors.Is(err, syscall.EPERM))

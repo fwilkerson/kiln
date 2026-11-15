@@ -5,7 +5,7 @@ exec kiln queue a
 exec kiln queue b
 
 # When: kiln run lands both.
-exec kiln run
+exec kiln fire
 stdout '^a: landed on main'
 stdout '^b: landed on main'
 

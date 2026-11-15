@@ -84,7 +84,7 @@ const (
 	Queued  State = "queued"
 	Running State = "running"
 	Paused  State = "paused"
-	// Halted is a build whose kiln run stopped mid-build. It goes on at the next kiln run.
+	// Halted is a build whose kiln fire stopped mid-build. It goes on at the next kiln fire.
 	Halted  State = "halted"
 	Stopped State = "stopped"
 	UAT     State = "UAT"
@@ -159,7 +159,7 @@ type Run struct {
 	Start         time.Time
 	// End is when it ended, or zero while it has not.
 	End time.Time
-	// Lost is a run with no end, whose kiln run is gone.
+	// Lost is a run with no end, whose kiln fire is gone.
 	Lost   bool
 	Totals claude.Totals
 	// Changed names the paths an audit run changed in the build's tree.

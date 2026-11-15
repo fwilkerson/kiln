@@ -4,7 +4,7 @@
 # x lands, and y waits on its branch with an amendment.
 exec kiln queue x
 exec kiln queue y
-exec kiln run
+exec kiln fire
 exec kiln status
 stdout '^x: waiting for UAT$'
 stdout '^y: waiting on its branch with amendments'

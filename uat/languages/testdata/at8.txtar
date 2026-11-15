@@ -6,7 +6,7 @@
 
 # When: a build reaches the gate.
 exec kiln queue t
-exec kiln run
+exec kiln fire
 
 # Then: the gate fails.
 stdout '^t: stopped'

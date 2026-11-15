@@ -12,7 +12,7 @@ disable-model-invocation: true
 
 A spec is what the developer wants built, and the acceptance tests that show it was. This skill takes a spec from an
 idea to one the developer approves. Building it comes after: the developer runs `kiln queue <name>`, then
-`kiln run`, and a build never asks the developer anything.
+`kiln fire`, and a build never asks the developer anything.
 
 The developer's turns go to goals, taste, plans only they hold, and choices that are hard to undo. Settle the rest
 yourself, wherever a file, the code or a measurement settles it.

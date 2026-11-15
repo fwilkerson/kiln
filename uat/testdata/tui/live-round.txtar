@@ -4,7 +4,7 @@
 # Its first run writes code the gate fails. Its second, round 1 of 3, writes to specs/, which kiln's hook refuses. Then
 # it runs a command that waits for go-on, and touches waiting first, so the script knows it is inside the call.
 exec kiln queue x
-exec kiln run &
+exec kiln fire &
 exec sh -c 'i=0; while [ ! -e waiting ] && [ $i -lt 900 ]; do sleep 0.1; i=$((i+1)); done; [ -e waiting ]'
 
 # When: the developer opens kiln tui, then the running run,

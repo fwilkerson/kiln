@@ -4,51 +4,51 @@
 # Spec t is built 12 times, each from a revision of its spec. Its first 2 builds each fail the gate once, fail a
 # call, and cost $5.00. The last 10 each pass at once, fail no call, and cost $1.00.
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 exec sh -c 'echo "Revision 2." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 exec sh -c 'echo "Revision 3." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 exec sh -c 'echo "Revision 4." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 exec sh -c 'echo "Revision 5." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 exec sh -c 'echo "Revision 6." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 exec sh -c 'echo "Revision 7." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 exec sh -c 'echo "Revision 8." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 exec sh -c 'echo "Revision 9." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 exec sh -c 'echo "Revision 10." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 exec sh -c 'echo "Revision 11." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 exec sh -c 'echo "Revision 12." >>.kiln/specs/t.md && git commit --quiet -am "docs(t): revise"'
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 
 # When: the developer opens kiln tui.

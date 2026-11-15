@@ -5,7 +5,7 @@ exec kiln queue x
 
 # When: the build session writes a file under the acceptance path and the spec's amendment file, and the verify
 # session writes one outside its side.
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 
 # Then: kiln refuses each of these writes,

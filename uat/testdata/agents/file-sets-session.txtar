@@ -7,7 +7,7 @@
 exec kiln queue x
 cp _given/later-audit.md .kiln/agents/audit.md
 exec git commit --quiet -am 'docs: change the audit after the queue'
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 
 # Then: the audit runs with that file's prompt,

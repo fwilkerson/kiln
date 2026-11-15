@@ -33,7 +33,7 @@ type run struct {
 	ended         string
 	totals        claude.Totals
 	why           reason
-	// pid is the kiln run's that started it.
+	// pid is the kiln fire's that started it.
 	pid int
 	// from and to are its bytes of the session's stream. A to below 0 reads to the stream's end.
 	from, to int64
@@ -225,7 +225,7 @@ func plural(n int, what string) string {
 	return fmt.Sprintf("%d %ss", n, what)
 }
 
-// sumUp sums up the build of rec, which waits on the developer. kiln run prints its lines under its last.
+// sumUp sums up the build of rec, which waits on the developer. kiln fire prints its lines under its last.
 // Each line comes from the record, the ledger and git, so the same build always sums up the same. A line kiln can't
 // read shows as unknown, and the others still show. tree is the build's worktree. landedAt is the commit the build
 // moved main to, if it landed.

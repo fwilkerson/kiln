@@ -195,7 +195,7 @@ func TestRunScreen(t *testing.T) {
 			"▶ " + call.At.Local().Format("15:04:05") + " Bash", ansi.Yellow},
 		{"an open call in an ended run was cut off", Run{End: now}, time.Second, []claude.Action{call}, "cut off",
 			ansi.Red},
-		{"a run whose kiln run is gone shows it", Run{Lost: true}, time.Second, []claude.Action{call},
+		{"a run whose kiln fire is gone shows it", Run{Lost: true}, time.Second, []claude.Action{call},
 			"! kiln stopped mid-run", ansi.Yellow},
 		{"idle past a minute with no call open is marked", Run{To: -1}, 2 * time.Minute, nil, "idle 2:00",
 			ansi.Yellow},

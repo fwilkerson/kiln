@@ -15,7 +15,7 @@ import (
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// TestRecount holds what kiln run does with each run that has a start line but no end line. kiln leaves one when it
+// TestRecount holds what kiln fire does with each run that has a start line but no end line. kiln leaves one when it
 // dies mid-run, in any session: an audit try's is never resumed. Before any build goes on, each lost run is totaled
 // from the stream it wrote. It ends as the stream shows: with a result only if the stream holds one.
 func TestRecount(t *testing.T) {

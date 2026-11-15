@@ -5,7 +5,7 @@ exec kiln queue x
 
 # When: the build session next runs.
 # The audit sends a finding back, so it runs again.
-exec kiln run
+exec kiln fire
 stdout '^x: waits on kiln/x, with amendments for UAT'
 exists .claude-calls/build/1/2/prompt
 

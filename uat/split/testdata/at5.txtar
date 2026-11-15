@@ -5,7 +5,7 @@
 exec kiln queue x
 
 # When: the audit runs.
-exec kiln run
+exec kiln fire
 stdout '^x: the audit reads \. acceptance/x harness$'
 stdout '^x: landed on main'
 

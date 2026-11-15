@@ -4,7 +4,7 @@
 exec kiln queue x
 
 # When: kiln run lands the spec.
-exec kiln run
+exec kiln fire
 stdout '^x: the audit reads \.$'
 stdout '^x: landed on main'
 exists .claude-calls/audit/1/1/call.json

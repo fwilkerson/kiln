@@ -4,7 +4,7 @@
 # Each build writes the count its gauge reads: a's is 1, and b's is 2.
 exec kiln queue a
 exec kiln queue b
-exec kiln run
+exec kiln fire
 stdout '^a: gauge count: 1, line ≤ 5$'
 stdout '^b: gauge count: 2, line ≤ 5$'
 

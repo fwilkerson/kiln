@@ -6,7 +6,7 @@
 # it is inside the call. Until its result event, its cost and turns are unknown, and so are the build's cost, turns
 # and time.
 exec kiln queue x
-exec kiln run &
+exec kiln fire &
 exec sh -c 'i=0; while [ ! -e waiting ] && [ $i -lt 900 ]; do sleep 0.1; i=$((i+1)); done; [ -e waiting ]'
 
 # When: the developer opens kiln tui,

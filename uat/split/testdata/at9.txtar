@@ -5,7 +5,7 @@
 exec kiln queue x
 
 # When: the build stops.
-exec kiln run
+exec kiln fire
 stdout '^x: stopped: the gate still failed after its last round'
 cp stdout .claude-calls/run.out
 

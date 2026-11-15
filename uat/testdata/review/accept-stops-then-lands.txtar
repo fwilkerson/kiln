@@ -3,7 +3,7 @@
 # Given: a spec waiting on its branch, whose landing stops once accepted.
 # Main's checkout holds an uncommitted PRODUCT.md, which the landing writes, so main can't move to it.
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: waits on kiln/x'
 cp _given/PRODUCT.md PRODUCT.md
 ! exec kiln accept x

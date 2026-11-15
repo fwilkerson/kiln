@@ -5,19 +5,19 @@
 # The terminal is 7 rows tall. The spec has 4 builds, the last build's first run answers in 3 lines, and the spec's
 # text is 14 lines.
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 exec sh -c 'echo "Revision 2." >>.kiln/specs/x.md && git commit --quiet -am "docs(x): revise"'
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 exec sh -c 'echo "Revision 3." >>.kiln/specs/x.md && git commit --quiet -am "docs(x): revise"'
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 exec sh -c 'echo "Revision 4." >>.kiln/specs/x.md && git commit --quiet -am "docs(x): revise"'
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 
 # When: the developer reads the footer of each of the four screens, and on each screen that scrolls, presses the

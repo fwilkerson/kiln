@@ -4,7 +4,7 @@
 exec kiln queue x
 
 # When: the limit resets.
-exec kiln run
+exec kiln fire
 stdout '^x: paused for a usage limit'
 
 # Then: the same session resumes,

@@ -5,7 +5,7 @@
 exec kiln queue x
 
 # When: kiln run gates the stack, and the verify session reports that the code is at fault.
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 
 # Then: the build session gets the verify session's report and the failing test's Given, When, Then,

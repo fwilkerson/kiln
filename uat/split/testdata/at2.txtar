@@ -7,7 +7,7 @@ exec kiln queue x
 # When: kiln run builds the spec, and each session lists the files and commits its checkout holds.
 # The verify session lists them once the stack failed, and the build session once the audit sent its findings. By
 # then kiln has fetched both sides into the repository, and stacked them.
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 exists .claude-calls/verify/1/2/call.json
 exists .claude-calls/build/1/2/call.json

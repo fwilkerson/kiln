@@ -6,7 +6,7 @@ exec git rev-parse main
 cp stdout .tmp/approved
 
 # When: its gate passes.
-exec kiln run
+exec kiln fire
 cp stdout .tmp/run
 stdout '^x: waits on kiln/x'
 ! stdout 'the gate failed|stopped'
@@ -78,7 +78,7 @@ stdout 'it answers 42'
 exec sed -i '' 's/it answers 42\./it answers 44./' .kiln/specs/x.md
 exec git commit --quiet -am 'docs(x): revise the spec'
 exec kiln queue x
-exec kiln run
+exec kiln fire
 
 # Then: a new build starts from the revised spec,
 exec kiln status

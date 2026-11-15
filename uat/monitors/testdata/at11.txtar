@@ -5,7 +5,7 @@ env KILN_OPEN=true
 # Given: a monitor that is due, while kiln run builds a spec.
 # The build's session touches waiting, then waits for done, so the script knows the build is running.
 exec kiln queue x
-exec kiln run &
+exec kiln fire &
 exec sh -c 'i=0; while [ ! -e waiting ] && [ $i -lt 900 ]; do sleep 0.1; i=$((i+1)); done; [ -e waiting ]'
 
 # When: the developer runs kiln monitor run,

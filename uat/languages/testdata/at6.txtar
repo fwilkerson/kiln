@@ -4,7 +4,7 @@
 
 # When: the build's gate passes.
 exec kiln queue t
-exec kiln run
+exec kiln fire
 stdout '^t: landed on main'
 
 # Then: the audit runs, and it is told to read app and . and no other directory.

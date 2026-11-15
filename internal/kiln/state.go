@@ -79,9 +79,9 @@ type record struct {
 	runner
 }
 
-// runner is what the kiln run that builds a spec holds of it. next replaces it whole, so no kiln run inherits it.
+// runner is what the kiln fire that builds a spec holds of it. next replaces it whole, so no kiln fire inherits it.
 type runner struct {
-	// PID is the process ID of the kiln run that marked the spec building. Once it is gone, the build has halted.
+	// PID is the process ID of the kiln fire that marked the spec building. Once it is gone, the build has halted.
 	PID int `json:"pid,omitempty"`
 	// Paused is when a usage limit that paused the build resets.
 	Paused time.Time `json:"paused,omitzero"`
@@ -287,9 +287,9 @@ func (b *book) retire(name Spec) {
 	b.Specs = slices.DeleteFunc(b.Specs, func(r *record) bool { return r.Name == name })
 }
 
-// next takes the first queued spec, and marks it building by the kiln run pid. With only, it takes the spec named only,
-// or a landing of accepted amendments. A kiln accept leaves such a landing for the kiln run that holds the lock. It
-// takes a fix's record only as an accepted landing, for a run started for its name or for landings.
+// next takes the first queued spec, and marks it building by the kiln fire pid. With only, it takes the spec named
+// only, or a landing of accepted amendments. A kiln accept leaves such a landing for the kiln fire that holds the lock.
+// It takes a fix's record only as an accepted landing, for a run started for its name or for landings.
 func (b *book) next(only Spec, pid int) (record, bool) {
 	for _, r := range b.Specs {
 		if r.State == queued && r.runsFor(only) {
@@ -301,7 +301,7 @@ func (b *book) next(only Spec, pid int) (record, bool) {
 	return record{}, false
 }
 
-// runsFor is whether a kiln run started for only builds the spec of r. Every run builds a landing of accepted
+// runsFor is whether a kiln fire started for only builds the spec of r. Every run builds a landing of accepted
 // amendments, and a run started for no spec builds every spec. A run started for landings builds only accepted
 // landings, a fix's too. A fix's accepted landing is built otherwise only by a run started for its name.
 func (r *record) runsFor(only Spec) bool {
@@ -319,7 +319,7 @@ func (r *record) runsFor(only Spec) bool {
 // name starts with a dot.
 const landings Spec = ".landings"
 
-// requeue queues again each spec a kiln run that stopped left building. A build that was building goes on first. It
+// requeue queues again each spec a kiln fire that stopped left building. A build that was building goes on first. It
 // queues a fix's accepted landing again, and leaves any other fix.
 func (b *book) requeue() {
 	for _, s := range b.Specs {
@@ -331,7 +331,7 @@ func (b *book) requeue() {
 	slices.SortStableFunc(b.Specs, func(x, y *record) int { return goesOn(y) - goesOn(x) })
 }
 
-// goesOnAfterKiln is whether a kiln run that stopped leaves the build of r to go on. A spec's does, and a fix's
+// goesOnAfterKiln is whether a kiln fire that stopped leaves the build of r to go on. A spec's does, and a fix's
 // accepted landing. Any other fix is dropped, by kiln monitor run.
 func (r *record) goesOnAfterKiln() bool {
 	return !r.Monitor || r.Accepted

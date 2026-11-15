@@ -32,7 +32,7 @@ exec sh -c 'sed -e "s/^Status: Proposed/Status: Approved, 2026-11-10/" -e "s/<Ti
 exec git add .kiln/specs/x.md
 exec git commit --quiet -m 'docs(x): approve spec 1'
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 
 # The build agent ran with its file's prompt, then kiln's contract; the audit with its tools, and no effort of kiln's.

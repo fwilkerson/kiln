@@ -3,7 +3,7 @@
 # Given: a spec with a build long enough to scroll.
 # Its gate fails twice before it passes, and the terminal is 14 rows tall.
 exec kiln queue mouse-spec
-exec kiln run
+exec kiln fire
 stdout '^mouse-spec: landed on main'
 
 # When: the developer clicks the spec,

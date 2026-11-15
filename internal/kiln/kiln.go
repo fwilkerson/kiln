@@ -4,7 +4,7 @@
 //	err = r.MonitorRun(ctx, "", os.Stdout)  // runs each monitor kiln.json names that is due
 //	err = r.Init(ctx, os.Stdout, kiln.InitOptions{})  // .kiln/, as Go's preset, and the pre-commit hook
 //	err = r.Queue(ctx, "x", os.Stdout)    // queues .kiln/specs/x.md, as main holds it
-//	err = r.Run(ctx, os.Stdout)           // builds each queued spec, one at a time
+//	err = r.Fire(ctx, os.Stdout)          // builds each queued spec, one at a time
 //	err = r.Status(ctx, os.Stdout)
 //	err = r.TUI(ctx, "", os.Stdin, os.Stdout)  // every build, live and past, in a full-screen view
 //	err = r.Accept(ctx, "x", os.Stdout)   // takes the work: lands its amendments, and retires the spec
@@ -13,19 +13,19 @@
 //
 // Where each command moves a spec:
 //
-//	(no record) ─queue─▶ queued ─run─▶ building
-//	                                   ├─ lands ──▶ waiting for UAT
-//	                                   │            ├─ accept ──▶ retired
-//	                                   │            └─ queue, once its spec on main changed ──▶ queued
-//	                                   ├─ stops ──▶ stopped
-//	                                   │            └─ queue ──▶ queued
-//	                                   └─ amends ─▶ waiting on its branch with amendments
-//	                                                ├─ reject ──▶ (no record)
-//	                                                └─ accept ──▶ landing accepted amendments
-//	                                                              ├─ lands ──▶ retired
-//	                                                              └─ stops ──▶ landing accepted amendments, stopped
-//	                                                                           ├─ reject ──▶ (no record)
-//	                                                                           └─ accept ──▶ landing again
+//	(no record) ─queue─▶ queued ─fire─▶ building
+//	                                    ├─ lands ──▶ waiting for UAT
+//	                                    │            ├─ accept ──▶ retired
+//	                                    │            └─ queue, once its spec on main changed ──▶ queued
+//	                                    ├─ stops ──▶ stopped
+//	                                    │            └─ queue ──▶ queued
+//	                                    └─ amends ─▶ waiting on its branch with amendments
+//	                                                 ├─ reject ──▶ (no record)
+//	                                                 └─ accept ──▶ landing accepted amendments
+//	                                                               ├─ lands ──▶ retired
+//	                                                               └─ stops ──▶ landing accepted amendments, stopped
+//	                                                                            ├─ reject ──▶ (no record)
+//	                                                                            └─ accept ──▶ landing again
 //
 // A spec landing accepted amendments is queued, building or stopped, as the build that lands it stands. Every other
 // command refuses. A monitor's fix lives in the book under the monitor's name:
@@ -151,7 +151,7 @@
 //
 //	{"name": "mutation", "command": ".kiln/gauges/mutation-score \"$KILN_BASE\"", "min": 80}
 //
-// Once kiln run or kiln accept lands a build on main, kiln reads each gauge kiln.json names at main's tip. It
+// Once kiln fire or kiln accept lands a build on main, kiln reads each gauge kiln.json names at main's tip. It
 // runs each command in turn with sh -c, in a worktree of its own at the landed commit. $KILN_BASE holds main's tip
 // before the landing, so a command can measure one build's work alone. In a monitor's run, $KILN_BASE is git's empty
 // tree. There git diff "$KILN_BASE" HEAD names every file, and git log "$KILN_BASE"..HEAD fails. A command reads
@@ -159,7 +159,7 @@
 // then reads no number. The reading is the last line of stdout, trimmed, as a decimal number. A command that fails,
 // or prints no number last, reads unknown. kiln says why, by the last line of its stderr, or of its stdout.
 // kiln writes each reading to its ledger with its line, and judges it against that line wherever it shows. A
-// reading below min, or above max, crossed its line. An unknown one never did. kiln run prints the readings after
+// reading below min, or above max, crossed its line. An unknown one never did. kiln fire prints the readings after
 // the build's summary, and only then starts the next build. A gauge never blocks a landing, and nothing reads a
 // landing kiln missed.
 //
@@ -168,7 +168,7 @@
 // developer, and shows the summary, report or error, and the next command. A session that failed as the last run did
 // opens none.
 //
-// A build that ends waiting on the developer notifies them, in kiln run's output or kiln accept's. It ends stopped,
+// A build that ends waiting on the developer notifies them, in kiln fire's output or kiln accept's. It ends stopped,
 // waiting for UAT, or waiting on its branch. kiln prints an OSC 9 sequence, which a terminal such as Ghostty shows as
 // a notification. Its body is "kiln: <name> <state>", with the state as kiln status words it. kiln prints it whether
 // or not the output is a terminal. A summary of the build follows, from kiln's record, its ledger and git:
@@ -288,7 +288,7 @@ func cacheDir() (string, error) {
 }
 
 // HoldBuilds keeps every kiln on the machine from starting to drive a build session, until release. It refuses while
-// one drives one: a kiln run, a kiln monitor run, or a kiln accept that lands. A build's session runs kiln hook by
+// one drives one: a kiln fire, a kiln monitor run, or a kiln accept that lands. A build's session runs kiln hook by
 // its path, so the reinstall holds it while it swaps the binary.
 func HoldBuilds() (release func(), err error) {
 	release, err = lockBuilds(syscall.LOCK_EX | syscall.LOCK_NB)
@@ -708,8 +708,8 @@ func (r *record) status(out io.Writer) {
 // the commit that last held it. The commit that moves main is gated first, on main as it stands.
 //
 // A spec waiting on its branch first folds its amendments into the spec, and lands as a build does. A conflict or a
-// failing gate goes back to its build's session. While another kiln run builds, that run lands it instead. While a
-// kiln monitor run builds, the next kiln run or kiln monitor run lands it.
+// failing gate goes back to its build's session. While another kiln fire builds, that run lands it instead. While a
+// kiln monitor run builds, the next kiln fire or kiln monitor run lands it.
 //
 // A monitor's fix waiting on its branch is rebased onto main, and gated again, check included. Then main moves onto
 // it if main hasn't moved. It retires nothing. While another kiln holds the run lock, the next kiln
@@ -813,7 +813,7 @@ func (r *Repo) acceptFix(ctx context.Context, b *build) error {
 }
 
 // landAccepted lands the queued landing of b's accepted spec or fix, unless another kiln holds the run lock. A kiln
-// run that holds it lands a spec's then. Otherwise the next kiln monitor run lands it, or for a spec, a kiln run.
+// fire that holds it lands a spec's then. Otherwise the next kiln monitor run lands it, or for a spec, a kiln fire.
 func (r *Repo) landAccepted(ctx context.Context, b *build) error {
 	name := b.rec.Name
 	err := r.run(ctx, b.out, name)
@@ -845,10 +845,10 @@ func (r *Repo) landsAccepted(rec record) string {
 	case rec.Monitor:
 		return "the next kiln monitor run"
 	case r.runHeld() == monitorHolder:
-		return "the next kiln run or kiln monitor run"
+		return "the next kiln fire or kiln monitor run"
 	}
 
-	return "the kiln run that is building"
+	return "the kiln fire that is building"
 }
 
 func (r *Repo) tree(name Spec) git.Worktree {

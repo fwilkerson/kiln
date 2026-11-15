@@ -2,7 +2,7 @@
 
 # Given: a build that has ended.
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 
 # When: on each screen of that build, the developer presses ?, then closes what it opened.

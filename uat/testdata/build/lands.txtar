@@ -6,7 +6,7 @@
 exec kiln queue x
 
 # When: the developer runs kiln run.
-exec kiln run
+exec kiln fire
 cp stdout .tmp/run
 stdout '^x: landed on main'
 

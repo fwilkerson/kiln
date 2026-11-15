@@ -4,7 +4,7 @@
 # with Status Proposed.
 # a lands and waits for UAT, b is queued, c has no record, and d is the starter.
 exec kiln queue a
-exec kiln run
+exec kiln fire
 stdout '^a: landed on main'
 exec kiln queue b
 exec kiln status

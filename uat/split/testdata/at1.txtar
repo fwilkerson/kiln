@@ -5,7 +5,7 @@ exec kiln queue x
 
 # When: kiln run builds the spec, the build session writes its code, and the verify session writes its acceptance
 # tests.
-exec kiln run
+exec kiln fire
 exists .claude-calls/build/1/1/call.json
 exists .claude-calls/verify/1/1/call.json
 

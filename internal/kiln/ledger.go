@@ -22,9 +22,9 @@ import (
 // The ledger is kiln's record of every build, session run and gate, one JSON line each, appended and never
 // rewritten. It is kept beside the book, so it lives and dies with the clone, as the sessions' streams do.
 //
-//	build     when kiln run starts a build: its spec, the commit it was approved at, its size
+//	build     when kiln fire starts a build: its spec, the commit it was approved at, its size
 //	start     before each session run: its role, its session, the length of the session's stream, why it started,
-//	          the process ID of the kiln run that started it, and the commit an audit run read
+//	          the process ID of the kiln fire that started it, and the commit an audit run read
 //	end       after each session run: how it ended, its totals, the stream's length, and what an audit changed
 //	gate      after each gate: when it ended, whether it passed, and whether it gated a landing
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
@@ -250,7 +250,7 @@ func size(spec string) int {
 // recount ends each run that has a start line but no end line. kiln leaves one when it dies mid-run. It totals the
 // run from its session's stream, past the length the start line holds. It ends the run as the stream shows: with a
 // result only if the stream holds one. A lost audit run's end line names what it changed in its worktree, as talk's
-// would. kiln run calls it under its lock, before any build goes on, so no run is still running.
+// would. kiln fire calls it under its lock, before any build goes on, so no run is still running.
 func (r *Repo) recount(ctx context.Context, out io.Writer) {
 	say := func(format string, args ...any) { fmt.Fprintf(out, "kiln: "+format+"\n", args...) }
 	entries, err := r.store.entries()

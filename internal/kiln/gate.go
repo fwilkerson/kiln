@@ -350,7 +350,7 @@ func (r *Repo) removed(ctx context.Context, head git.Rev, p, without string) (bo
 const checksVersion = 2
 
 // atMain runs commands at main's tip, less the path without, in a worktree of its own. It keeps the checks, and runs
-// them again only once main, without or the commands change. kiln run and kiln accept share the worktree, one at a
+// them again only once main, without or the commands change. kiln fire and kiln accept share the worktree, one at a
 // time.
 func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string, without string) ([]check, error) {
 	unlock, err := r.store.lock(mainLock, syscall.LOCK_EX)

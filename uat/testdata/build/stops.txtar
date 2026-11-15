@@ -7,7 +7,7 @@ exec git rev-parse main
 cp stdout .tmp/approved
 
 # When: the developer runs kiln run, and the round ends.
-exec kiln run
+exec kiln fire
 cp stdout .tmp/run
 stdout '^x: the gate failed; it goes back to the session, round 1 of 1$'
 stdout '^x: stopped'

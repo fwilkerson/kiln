@@ -20,7 +20,7 @@ import (
 // It answers the commit main moved to. Or it answers what kept the work from landing, for the session. That is a
 // conflict, work that changes nothing on main, or the gate. A landing that doesn't move main puts the branch back
 // where it stood, even after an error or an interrupt. Should kiln die mid-landing, the record keeps that commit,
-// and the next kiln run puts the branch back.
+// and the next kiln fire puts the branch back.
 func (b *build) land(ctx context.Context, from git.Rev, retire func(ctx context.Context, held git.Rev) error,
 	allowed ...string) (landed git.Rev, back setback, err error) {
 	before, err := b.r.git.Head(ctx, b.tree)

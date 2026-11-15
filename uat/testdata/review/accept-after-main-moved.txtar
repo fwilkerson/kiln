@@ -4,7 +4,7 @@
 # The gate notes each commit it runs on in .tmp/gated. Both builds write notes.txt, so a's work conflicts with b's.
 exec kiln queue a
 exec kiln queue b
-exec kiln run
+exec kiln fire
 stdout '^a: waits on kiln/a'
 stdout '^b: landed on main'
 exec git rev-parse main

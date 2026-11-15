@@ -15,7 +15,7 @@ kiln init [--preset go|python]
                          write a preset of kiln's defaults into .kiln/, Go's by default, and install the
                          pre-commit hook
 kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
-kiln run                 build each queued spec, one at a time, until none is queued
+kiln fire                build each queued spec, one at a time, until none is queued
 kiln status              show where each spec stands, and each gauge's latest reading
 kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
 kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
@@ -28,19 +28,19 @@ kiln monitor show <name> show how a monitor's last run ended, in the window kiln
 
 1. Write `.kiln/specs/<name>.md` with the `/shape` skill, in an interactive Claude Code session, and commit it on
    main.
-2. Run `kiln queue <name>`, then `kiln run`. kiln queues only a spec whose Status is Approved, and whose form follows
+2. Run `kiln queue <name>`, then `kiln fire`. kiln queues only a spec whose Status is Approved, and whose form follows
    `/shape`'s template, as kiln embeds it.
    Queue only once the spec reads as you want it, diagrams included. `kiln tui` shows each build's spec as the
    commit it was queued at held it, so a later fix on main shows only in a build queued after the fix.
-3. When a build waits on you, `kiln run` prints a terminal notification that names the spec and its state. Ghostty
+3. When a build waits on you, `kiln fire` prints a terminal notification that names the spec and its state. Ghostty
    shows it with `desktop-notifications` on, and a click on it brings forward the terminal. There, the build sums
    itself up: its time, cost, rounds and audit, what it changed or what failed, and the command to run next. A
    build stopped past its last round names the command that resumes its session in its worktree, to ask it why. A
    split build names one for each session, in its own clone. A fix a session makes there is lost to
    `kiln queue <name>`, which builds anew from main. kiln removes every checkout a build made once it lands, is
    accepted, is rejected or is queued anew. A build that stopped, or waits on its branch, keeps them.
-   Once a build lands, by `kiln run` or `kiln accept`, kiln reads each gauge `kiln.json` names. It prints each
-   reading after the landing, beneath `kiln run`'s summary, marked where it crossed its line. Only then does the next
+   Once a build lands, by `kiln fire` or `kiln accept`, kiln reads each gauge `kiln.json` names. It prints each
+   reading after the landing, beneath `kiln fire`'s summary, marked where it crossed its line. Only then does the next
    build start.
    Read `kiln status`. A spec waiting for UAT is on main. A spec waiting on its branch with amendments shows them.
    Each gauge shows its latest reading, the line it was read against, and the landing it measured.
@@ -53,7 +53,7 @@ kiln monitor show <name> show how a monitor's last run ended, in the window kiln
 5. Read a landed build's commit for its time, cost, turns and failed calls. The ledger is `.git/kiln/ledger.jsonl`,
    which holds each gauge's readings too. Each session's stream, for why a number is what it is, is
    `.git/kiln/sessions/<id>/stream.jsonl`.
-6. Run `kiln tui` in a terminal of its own, beside `kiln run`, to watch the running session and look back over each
+6. Run `kiln tui` in a terminal of its own, beside `kiln fire`, to watch the running session and look back over each
    build run by run. It only reads.
 
 ### Monitors
@@ -67,7 +67,7 @@ looks for a problem, and when it finds one, it fixes it. You come back to a fix 
    after a missed hour. It runs each monitor that is due, at main's tip: one that never ran, whose check or gauge
    couldn't run, or whose last run started its interval, less half an hour, ago. A monitor's gauge reads the whole
    repository there: a reading that crossed its line starts a fix, and one on its line is healthy. `kiln monitor run
-   <name>` runs one now. `kiln monitor run` refuses while `kiln run` builds, and `kiln run` while it does.
+   <name>` runs one now. `kiln monitor run` refuses while `kiln fire` builds, and `kiln fire` while it does.
 3. A fix is a build with no spec, on `kiln/<name>`. Its command runs first. Its agent runs when the command left the
    gate failing, or when the monitor has none, and gets `kiln.json`'s rounds and the audit. The gate holds the fix,
    with the check added when it joins the gate. A gauge always joins it, read over what the fix changed: the gate

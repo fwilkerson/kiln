@@ -5,7 +5,7 @@
 # Each run costs, takes turns and fails calls as claude.json scripts it. Only the first run fails a call: it reads a
 # file that is not there.
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: the gate failed; it goes back to the session, round 1 of 1$'
 stdout '^x: landed on main'
 

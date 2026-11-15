@@ -530,7 +530,7 @@ func (b *build) both(ctx context.Context, t turn) error {
 	var wg sync.WaitGroup
 	for i, l := range launches {
 		wg.Go(func() {
-			// A turn kiln cut short stays running, so the next kiln run resumes it.
+			// A turn kiln cut short stays running, so the next kiln fire resumes it.
 			if errs[i] = b.converse(ctx, l, t.why); errs[i] == nil {
 				b.set(func(r *record) {
 					r.Running = slices.DeleteFunc(r.Running, func(s string) bool { return s == l.Role })

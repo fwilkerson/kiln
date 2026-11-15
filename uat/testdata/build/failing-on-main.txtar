@@ -6,7 +6,7 @@ stdout '--- FAIL: TestFlaky'
 exec kiln queue x
 
 # When: a build's gate runs.
-exec kiln run
+exec kiln fire
 
 # Then: the build lands,
 stdout '^x: landed on main'

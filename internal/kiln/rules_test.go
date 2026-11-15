@@ -467,7 +467,7 @@ func TestBuildLock(t *testing.T) {
 	}
 
 	if _, err := HoldBuilds(); !errors.Is(err, errRefused) {
-		t.Errorf("the reinstall held builds while a kiln run drove one: %v", err)
+		t.Errorf("the reinstall held builds while a kiln fire drove one: %v", err)
 	}
 
 	unshare()
@@ -477,13 +477,13 @@ func TestBuildLock(t *testing.T) {
 	}
 
 	if _, err := lockBuilds(syscall.LOCK_SH | syscall.LOCK_NB); err == nil {
-		t.Error("a kiln run drove a build while the reinstall held builds")
+		t.Error("a kiln fire drove a build while the reinstall held builds")
 	}
 
 	release()
 }
 
-// TestNext holds which queued spec a kiln run takes. One started for a single spec, as kiln accept starts it, takes
+// TestNext holds which queued spec a kiln fire takes. One started for a single spec, as kiln accept starts it, takes
 // every landing of accepted amendments too. A kiln accept that found it holding the lock counts on it to.
 func TestNext(t *testing.T) {
 	b := book{Specs: []*record{{Name: "y", State: queued}, {Name: "x", State: queued, Accepted: true},
@@ -499,18 +499,18 @@ func TestNext(t *testing.T) {
 	}
 
 	if !slices.Equal(took, []Spec{"x", "z"}) {
-		t.Errorf("a kiln run for z took %q, want the accepted landings x and z", took)
+		t.Errorf("a kiln fire for z took %q, want the accepted landings x and z", took)
 	}
 }
 
 // TestNextFix holds that a fix's record is taken only as an accepted landing. A run started for its name or for the
-// landings takes it. kiln run takes none, so a monitor's fix is never a spec's build.
+// landings takes it. kiln fire takes none, so a monitor's fix is never a spec's build.
 func TestNextFix(t *testing.T) {
 	for name, tc := range map[string]struct {
 		only Spec
 		want []Spec
 	}{
-		"kiln run":                  {only: "", want: []Spec{"s", "y"}},
+		"kiln fire":                 {only: "", want: []Spec{"s", "y"}},
 		"a kiln accept of the fix":  {only: "f", want: []Spec{"f", "y"}},
 		"a kiln accept of a spec":   {only: "s", want: []Spec{"s", "y"}},
 		"kiln monitor run, landing": {only: landings, want: []Spec{"f", "y"}},

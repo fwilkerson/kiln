@@ -4,7 +4,7 @@
 //	                         write a preset of kiln's defaults into .kiln/, Go's by default, and install the
 //	                         pre-commit hook
 //	kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
-//	kiln run                 build each queued spec, one at a time, until none is queued
+//	kiln fire                build each queued spec, one at a time, until none is queued
 //	kiln status              show where each spec stands, and each gauge's latest reading
 //	kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
 //	kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
@@ -16,7 +16,7 @@
 //
 // Each refuses a spec in a state it does not take, as go doc ./internal/kiln shows.
 //
-// A build that ends stopped, waiting for UAT, or waiting on its branch prints a terminal notification. kiln run or
+// A build that ends stopped, waiting for UAT, or waiting on its branch prints a terminal notification. kiln fire or
 // kiln accept prints it, as OSC 9. Then it sums the build up, and says what to run next.
 //
 // kiln tui draws only on a terminal. With its output elsewhere, it draws nothing, and refuses.
@@ -48,7 +48,7 @@ const usage = `usage:
                            write a preset of kiln's defaults into .kiln/, Go's by default, and install the
                            pre-commit hook
   kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
-  kiln run                 build each queued spec, one at a time, until none is queued
+  kiln fire                build each queued spec, one at a time, until none is queued
   kiln status              show where each spec stands, and each gauge's latest reading
   kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
   kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
@@ -60,12 +60,12 @@ const usage = `usage:
 `
 
 // commands are the developer's commands, as kiln complete lists them.
-var commands = []string{"init", "queue", "run", "status", "tui", "accept", "reject", "monitor"}
+var commands = []string{"init", "queue", "fire", "status", "tui", "accept", "reject", "monitor"}
 
 // onRepo holds each of the developer's commands, which act on the repository in the working directory.
 var onRepo = map[string]repoCommand{
 	"init":    initRepo,
-	"run":     noArgs((*kiln.Repo).Run),
+	"fire":    noArgs((*kiln.Repo).Fire),
 	"status":  noArgs((*kiln.Repo).Status),
 	"tui":     tui,
 	"queue":   oneName((*kiln.Repo).Queue),

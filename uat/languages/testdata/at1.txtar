@@ -5,7 +5,7 @@
 
 # When: a build of an approved spec reaches the gate.
 exec kiln queue t
-exec kiln run
+exec kiln fire
 
 # Then: the gate passes, and the build lands.
 stdout '^t: landed on main'

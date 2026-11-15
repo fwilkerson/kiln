@@ -7,7 +7,7 @@
 exec kiln queue a
 exec sh -c 'echo "This line came after the approval." >>.kiln/specs/a.md && git commit --quiet -am "docs(a): edit"'
 exec kiln queue b
-exec kiln run
+exec kiln fire
 stdout '^a: landed on main'
 stdout '^b: waits on kiln/b'
 exec kiln accept a

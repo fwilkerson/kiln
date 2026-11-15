@@ -5,7 +5,7 @@
 # When: the developer queues a spec and runs kiln.
 # The session tries to change the audit's file, and then builds.
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 grep '^--tools\nAgent,Bash,Edit,Glob,Grep,NotebookEdit,Read,WebFetch,WebSearch,Write$' .claude-calls/build/1/1/args
 

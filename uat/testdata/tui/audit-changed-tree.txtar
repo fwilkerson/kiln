@@ -3,7 +3,7 @@
 # Given: a build whose audit wrote a file in the build's tree.
 # The audit writes shot.png with a shell command, and has a finding, so the build session runs again and commits.
 exec kiln queue x
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 grep 'Fix each finding' .claude-calls/build/1/2/prompt
 

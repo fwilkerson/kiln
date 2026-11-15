@@ -21,10 +21,10 @@ import (
 // unknownReset is how long a usage limit that names no reset pauses a build.
 const unknownReset = 5 * time.Minute
 
-// Run builds each queued spec, one at a time, until none is queued. A build that was building when kiln last stopped
-// goes on first, in the same session. Run refuses while another kiln run or kiln monitor run builds in the
+// Fire builds each queued spec, one at a time, until none is queued. A build that was building when kiln last stopped
+// goes on first, in the same session. Fire refuses while another kiln fire or kiln monitor run builds in the
 // repository, and while kiln is being reinstalled. It skips a monitor's fix.
-func (r *Repo) Run(ctx context.Context, out io.Writer) error {
+func (r *Repo) Fire(ctx context.Context, out io.Writer) error {
 	return r.run(ctx, out, "")
 }
 
@@ -74,7 +74,7 @@ func (r *Repo) buildEach(ctx context.Context, out io.Writer, only Spec, unlock f
 	}
 }
 
-// lockRun takes the run lock, which one kiln run or kiln monitor run in the repository holds at a time. holder
+// lockRun takes the run lock, which one kiln fire or kiln monitor run in the repository holds at a time. holder
 // names which, for a kiln accept that finds it held.
 func (r *Repo) lockRun(holder string) (unlock func(), err error) {
 	unlock, err = r.store.lock(runLock, syscall.LOCK_EX|syscall.LOCK_NB)
@@ -91,7 +91,7 @@ func (r *Repo) lockRun(holder string) (unlock func(), err error) {
 
 // The kilns that hold the run lock, as lockRun writes them into it.
 const (
-	runHolder     = "kiln run"
+	runHolder     = "kiln fire"
 	monitorHolder = "kiln monitor run"
 )
 
@@ -118,7 +118,7 @@ func (r *Repo) take(only Spec, unlock func()) (rec record, found bool, err error
 }
 
 // settle stops the build for err, the error its run ended with. It answers the context's error once kiln is
-// interrupted, which ends kiln run. A build out of rounds is stopped first, and answers nil even then.
+// interrupted, which ends kiln fire. A build out of rounds is stopped first, and answers nil even then.
 func (b *build) settle(ctx context.Context, err error) error {
 	if b.rec.Monitor {
 		return b.fixSettle(ctx, err)

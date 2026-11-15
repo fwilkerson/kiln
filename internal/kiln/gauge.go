@@ -231,7 +231,7 @@ func readingOf(out string) (float64, bool) {
 	return v, err == nil && !math.IsInf(v, 0)
 }
 
-// shownReading is a gauge line's reading beside the line it was read against. kiln run and kiln status show it.
+// shownReading is a gauge line's reading beside the line it was read against. kiln fire and kiln status show it.
 func shownReading(e entry) string {
 	value := "unknown"
 	if e.Value != nil {

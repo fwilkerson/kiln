@@ -5,11 +5,11 @@
 # claude.json scripts it, so each build's runs can be told apart.
 exec kiln queue a
 exec kiln queue b
-exec kiln run
+exec kiln fire
 stdout '^a: landed on main'
 stdout '^b: stopped'
 exec kiln queue b
-exec kiln run
+exec kiln fire
 stdout '^b: landed on main'
 
 # When: the developer opens the spec approved twice,

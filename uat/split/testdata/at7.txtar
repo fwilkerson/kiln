@@ -4,7 +4,7 @@
 exec kiln queue x
 
 # When: kiln run lands the spec.
-exec kiln run
+exec kiln fire
 stdout '^x: building on kiln/x\.build, in [^\n]*/\.build-x, and verifying on kiln/x\.verify, in [^\n]*/\.verify-x$'
 stdout '^x: landed on main'
 

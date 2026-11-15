@@ -5,7 +5,7 @@
 exec kiln queue x
 
 # When: kiln run gates the build session's work.
-exec kiln run
+exec kiln fire
 stdout '^x: landed on main'
 
 # Then: the build session gets the gate's report,
