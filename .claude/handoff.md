@@ -18,11 +18,18 @@ no file holds. Git holds what was done, so drop each item once it lands.
   landing that touches a file in `held` shows ✗ 9 until the monitor clears the file.
 - kiln's `code-health` monitor refactors three files a day, as its prompt says, and lands without `kiln accept`.
   `TestHealth` holds each file's score, and the build and refactor agents delete a file's line from `held` at 10.
-- The installed kiln is built at `eb188c8`. A key that `kiln.json` gains needs `go run ./tools/install` first, or
+- The installed kiln is built at `14cdf97`. A key that `kiln.json` gains needs `go run ./tools/install` first, or
   the launchd job's kiln refuses the file and every monitor fails.
 - The launchd job `dev.kiln.monitor.56fea50276d3ef5d` runs `kiln monitor run` at minute 24 of each hour.
 - `~/github.com/fwilkerson/odh-trial` is a clone of odh at `6541e13`, with no remote. So it holds odh's old tools,
   and not practices. Its `354ebb0` tailors `/shape`, its three reviewers and the build agent to odh.
+- The trial's first build, `hand-over` in `odh-trial`, stopped on 2026-11-14 after three rounds. Four checks in the
+  verify session's tests were inverted, and no session could run those tests on the build's code. `d6380b6` names
+  each failed test in a gate's report, and `4f9f705` lets a session listen on a local port. The developer chose to
+  build the command that `.kiln/specs/stack-gate.md` plans directly, with no spec. It is not built, and the stopped
+  build is as it was.
+- `~/.claude/friction.md` logs each reply that confused or slowed the developer, in any repo. Add an entry when it
+  happens, and read it before you change an instruction file.
 - The developer ran `code-health` by hand on 2026-11-14, and its fix landed as `436d3dd`. It was the first fix
   under `TestHealth`, and its agent deleted the four lines of `held`. Its sandboxed session ran `go test` and
   `go tool health` against the practices checkout, so a session can read it.
@@ -33,7 +40,7 @@ no file holds. Git holds what was done, so drop each item once it lands.
    `uat/measures/`, and its fix waits for `kiln accept uat`. Its agent may run `.kiln/monitors/uat-lost`, whose
    temp files now honor `TMPDIR`.
 2. **Trial odh on kiln**, in `odh-trial`. The developer runs `/shape hand-over` there, approves the spec, then runs
-   `kiln queue hand-over && kiln run`. The slice is the counter's hand-over control: `order.HandOver` exists, and
+   `kiln queue hand-over && kiln fire`. The slice is the counter's hand-over control: `order.HandOver` exists, and
    nothing in `web` calls it. After UAT, read the build's streams against the criteria and the list below.
 
    The developer settled these criteria on 2026-11-14:
@@ -57,10 +64,10 @@ no file holds. Git holds what was done, so drop each item once it lands.
     - whether odh's hook, `go run ./tools/style` after each edit, runs in the session;
     - which agent the audit ran, and whether its findings read as odh's own audit's would;
     - what the build does with a line meant for `.claude/handoff.md`, which no build can write.
-3. **Write a kiln starter spec for each gap** the trial could not close by configuration. The developer wants kiln
-   to stay at build, verify and audit, and a project to add its own steps as subagents. Two gaps are known before
-   the run. The inspection needs GoLand and the main checkout, so the trial's build skips it. odh keeps its open
-   work in `.claude/handoff.md`, which no build can write.
+3. **Close each gap** the trial could not close by configuration, by direct commit, once the developer picks its
+   fix. The developer wants kiln to stay at build, verify and audit, and a project to add its own steps as
+   subagents. Two gaps were known before the run. The inspection needs GoLand and the main checkout, so the trial's
+   build skips it. odh keeps its open work in `.claude/handoff.md`, which no build can write.
 4. **Finish odh's conversion**, once the developer adopts kiln, in a session in odh:
     - Run `kiln init --preset go`, and carry over `odh-trial/.kiln/`. Its build agent names `go run ./tools/style`,
       and odh now runs `go run ./tools/layout`, then `go tool style`. Its verify agent names `internal/claim`, which
@@ -81,7 +88,6 @@ no file holds. Git holds what was done, so drop each item once it lands.
       `prose` and `judge` are odh's until then. They then move to practices, with a command that writes them.
     - The two designs and the judge stay deferred, as `docs/later.md` says, until the trial shows a build can run
       them.
-    - Keep a friction log for `/shape` sessions, as the guide now says.
     - kiln's one research report opens as odh's do, and lacks "What would overturn this". When kiln gains a second
       topic, move odh's `TestReports` into `repotest`.
 6. **Publish practices** once it stops churning. Each project then drops its `replace` line, and odh's Dockerfile
@@ -99,4 +105,6 @@ no file holds. Git holds what was done, so drop each item once it lands.
 - **A change to the guide fails `TestGuide` in each project** until its copy is refreshed. So an older commit of kiln
   or odh fails that test against today's practices checkout.
 - **`kiln status` says "never run, never ran"** for a monitor that has not run.
-- `languages` waits for UAT in kiln. `talk` and `fire`, the rename of `kiln run`, are starters.
+- `languages` waits for UAT in kiln. Its spec names `kiln run` at two lines, and stays so until it is accepted: a
+  change to it would let `kiln queue` take it again. `talk` is a starter.
+- `odh-trial`'s copy of `/shape` still tells the developer to run `kiln run`, which is now `kiln fire`.

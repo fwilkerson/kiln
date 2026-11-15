@@ -23,6 +23,7 @@ for macOS.
   `TestGuide` fails while the two differ, and `go tool guide > docs/guide.md` brings it up to date.
 - `docs/practices.md`: kiln's own rules, which add to the guide. Read it before adding a package or an exported name.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
+- `.claude/handoff.md`: the open work, and the facts no file holds. Read it before the first edit of a session.
 - `uat/<spec>/`: the test code for each acceptance test of a spec not yet accepted, one Go test named `TestAT<N>`
   for test N.
 - `uat/testdata/<feature>/`: the scenarios of the specs the developer accepted, filed by feature. `TestUAT` in `uat/`
@@ -50,7 +51,10 @@ working tree, and never write to either.
   drives them in a pseudo-terminal.
 - Comments: as the guide's "Comments" says. A comment inside a body says why, never what.
 - Commits: [Conventional Commits](https://www.conventionalcommits.org), `type(scope): summary`, imperative and under
-  72 characters. The body says why. `go test ./...` passes at each commit. Never push.
+  72 characters. The body says why. `go test ./...` passes at each commit. Commit each change to main as soon as it
+  passes, without asking. Never push.
+- A change the developer asks for: make it in the session they ask in, by direct commit. A starter spec is for work
+  the developer defers, or asks to shape. Never write one in place of a change they asked for.
 
 ## The guide
 
