@@ -177,6 +177,28 @@ func TestGate(t *testing.T) {
 	}
 }
 
+// TestReportNamesLostFailure holds the rule that a gate's report names each failed test. A check keeps only the end
+// of a long output, so it may lose an early failure's line. The session would then read that the test passed.
+func TestReportNamesLostFailure(t *testing.T) {
+	const command = `printf -- '--- FAIL: TestLost (0.00s)\nFAIL\nFAIL\texample.com/s\t0.1s\n'; ` +
+		`head -c 20000 /dev/zero | tr '\0' x; exit 1`
+	tip, err := runChecks(t.Context(), git.Worktree(t.TempDir()), []string{command}, os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v := judge(tip, []check{{Command: command}}, nil)
+	for _, want := range []string{"These tests failed: TestLost (example.com/s).", "lacks its first"} {
+		if !strings.Contains(v.report, want) {
+			t.Errorf("the report lacks %q: %.300q", want, v.report)
+		}
+	}
+
+	if strings.Contains(tip[0].Output, "--- FAIL") {
+		t.Fatalf("the check kept the failure's line, so the test shows nothing: %.300q", tip[0].Output)
+	}
+}
+
 // judgment is what TestGate compares of a verdict. reported is whether it has a report. hinted is whether the report
 // points at KILN_JUNIT. mentioned is whether it holds what the row says it mentions.
 type judgment struct {

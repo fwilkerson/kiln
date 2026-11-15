@@ -23,6 +23,8 @@ type check struct {
 	Exit    int    `json:"exit"`
 	// Output is the end of what the command printed.
 	Output string `json:"output,omitempty"`
+	// Cut is how many bytes the command printed before Output, which the check dropped.
+	Cut int `json:"cut,omitempty"`
 	// Failed names each test that failed, as go test's output or the command's JUnit XML names it.
 	Failed tests `json:"failed,omitempty"`
 	// Ran names each test the command's JUnit XML lists. go test's output lists none.
@@ -69,7 +71,8 @@ func runCheck(ctx context.Context, dir git.Worktree, command string, env []strin
 	cmd.Env = append(slices.Clone(proc.Shell.Env(env)), junitVar+"="+junit)
 	proc.OwnGroup(cmd)
 	out, err := cmd.CombinedOutput()
-	c := check{Command: command, Output: string(out[max(0, len(out)-outputKept):])}
+	cut := max(0, len(out)-outputKept)
+	c := check{Command: command, Output: string(out[cut:]), Cut: cut}
 	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		c.Exit = exit.ExitCode()
 	} else if err != nil {
@@ -215,8 +218,18 @@ func (c check) excused(failing, notRun tests) bool {
 }
 
 // report says what failed in c. main is the check of c's command at main, and notRun the tests main ran but c did not.
+// It names each test that failed in c but not at main. The output c kept may have lost a failure.
 func (c check) report(main check, notRun tests) string {
-	report := fmt.Sprintf("`%s` exited %d:\n%s", c.Command, c.Exit, strings.TrimSpace(c.Output))
+	report := fmt.Sprintf("`%s` exited %d.", c.Command, c.Exit)
+	if failed, _ := c.against(main); len(failed) > 0 {
+		report += " These tests failed: " + strings.Join(failed, ", ") + "."
+	}
+
+	if c.Cut > 0 {
+		report += fmt.Sprintf(" The output below lacks its first %d bytes, so it may not show each failure.", c.Cut)
+	}
+
+	report += "\n" + strings.TrimSpace(c.Output)
 	if len(notRun) > 0 {
 		report += "\n\nThe run was cut short. These tests ran at main, but not here: " +
 			strings.Join(notRun, ", ") + "."
