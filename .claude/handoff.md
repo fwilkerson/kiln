@@ -60,9 +60,10 @@ no file holds. Git holds what was done, so drop each item once it lands.
 
 ## Found, and not yet settled
 
-- **Test names collide in odh.** A spec's tests are in `cmd/odh/at_<spec>_test.go`, beside the flow tests, and each
-  spec numbers them from `TestAT1`. So a second spec cannot wait beside the first, and nothing renames an accepted
-  spec's tests. The developer is weighing a `uat` folder in odh, with a package for each spec.
+- **odh's acceptance tests run on a booted odh.** Since odh's `7cd1608`, each spec's tests are a package under
+  `uat/`, on a node that `uat/uattest` builds and boots. So two specs' `TestAT1` no longer collide. No build has run
+  under that layout. Whether a session's sandbox can build and start the node is untried. Nothing folds an accepted
+  spec's tests there.
 - **A build's record of a rejected design does not reach main.** kiln lands a build as one commit, with a message
   of its own. odh's build agent runs two designs and a judge, and their verdict reaches only its last reply.
 - **A build cannot run `go tool inspect`**, which needs GoLand and the main checkout. In odh it found three sentences
