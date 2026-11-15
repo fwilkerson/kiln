@@ -10,7 +10,7 @@ exec sed -i '' 's/it answers 42\./it answers 43./' .kiln/specs/x.md
 exec git commit --quiet -am 'docs(x): revise test 1'
 exec kiln queue x
 
-# When: kiln run builds it.
+# When: kiln fire builds it.
 # kiln.json gives the build no round, so a gate that failed once would stop it.
 exec kiln fire
 

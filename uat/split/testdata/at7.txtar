@@ -3,7 +3,7 @@
 # Given: the project chooses the split workflow, and a spec is queued.
 exec kiln queue x
 
-# When: kiln run lands the spec.
+# When: kiln fire lands the spec.
 exec kiln fire
 stdout '^x: building on kiln/x\.build, in [^\n]*/\.build-x, and verifying on kiln/x\.verify, in [^\n]*/\.verify-x$'
 stdout '^x: landed on main'

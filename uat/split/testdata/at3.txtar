@@ -4,7 +4,7 @@
 # The verify session's test expects 41, where the spec and the code say 42.
 exec kiln queue x
 
-# When: kiln run gates the stack, and the verify session fixes its test.
+# When: kiln fire gates the stack, and the verify session fixes its test.
 exec kiln fire
 stdout '^x: landed on main'
 

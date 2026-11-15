@@ -16,9 +16,9 @@ screen '^  ```go\n  func X\(\) int \{ return 42 \}\n  ```\n\n  The text after th
 screen '^  \| X +\| 42 +\|\n\n  The text after the table\.$'
 
 # and inline code has no background color.
-screen '^The view shows `kiln tui` and `kiln run` as written\.$'
+screen '^The view shows `kiln tui` and `kiln fire` as written\.$'
 color background none '`kiln tui`'
-color background none '`kiln run`'
+color background none '`kiln fire`'
 
 -- .kiln/kiln.json --
 {"rounds": 0}
@@ -29,7 +29,7 @@ Status: Approved, 2026-11-09
 
 ## Overview
 
-The view shows `kiln tui` and `kiln run` as written.
+The view shows `kiln tui` and `kiln fire` as written.
 
 - **A code block.** Inside this item:
 

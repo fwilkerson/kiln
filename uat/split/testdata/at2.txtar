@@ -4,7 +4,7 @@
 # The verify session's first test expects 41, and the build's code answers 42.
 exec kiln queue x
 
-# When: kiln run builds the spec, and each session lists the files and commits its checkout holds.
+# When: kiln fire builds the spec, and each session lists the files and commits its checkout holds.
 # The verify session lists them once the stack failed, and the build session once the audit sent its findings. By
 # then kiln has fetched both sides into the repository, and stacked them.
 exec kiln fire

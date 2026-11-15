@@ -2,7 +2,7 @@
 
 env KILN_OPEN=true
 
-# Given: a monitor that is due, while kiln run builds a spec.
+# Given: a monitor that is due, while kiln fire builds a spec.
 # The build's session touches waiting, then waits for done, so the script knows the build is running.
 exec kiln queue x
 exec kiln fire &

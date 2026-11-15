@@ -4,7 +4,7 @@
 # The build session's code answers 41, where the spec says 42.
 exec kiln queue x
 
-# When: kiln run gates the stack, and the verify session reports that the code is at fault.
+# When: kiln fire gates the stack, and the verify session reports that the code is at fault.
 exec kiln fire
 stdout '^x: landed on main'
 

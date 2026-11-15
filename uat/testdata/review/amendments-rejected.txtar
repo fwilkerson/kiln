@@ -11,7 +11,7 @@ cp stdout .tmp/run
 stdout '^x: waits on kiln/x'
 ! stdout 'the gate failed|stopped'
 
-# Then: kiln run's output holds one notification, which names the spec and the state kiln status shows for it,
+# Then: kiln fire's output holds one notification, which names the spec and the state kiln status shows for it,
 # waiting on its branch with amendments.
 stdout -count=1 '\x1b\]9;'
 stdout '^\x1b\]9;kiln: x waiting on its branch with amendments\x07'
@@ -34,7 +34,7 @@ stdout '^  ### Old$'
 stdout '^  - \*\*Then\*\*: it answers 43.$'
 stdout '^  42 is taken.$'
 
-# After the line that says the build waits, kiln run's output shows the build's time, cost, turns and failed calls,
+# After the line that says the build waits, kiln fire's output shows the build's time, cost, turns and failed calls,
 # the amendments, and the commands that accept and reject them.
 exec cat .tmp/run
 stdout '(?s)^x: waits on kiln/x, with amendments for UAT$\n\x1b\]9;[^\x07]*\x07  [^·\n]+ · \$\d+\.\d\d · 1 turn · 0 failed calls$'

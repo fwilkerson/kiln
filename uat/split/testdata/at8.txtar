@@ -3,7 +3,7 @@
 # Given: the project chooses no workflow, and a spec is queued whose build the audit reads.
 exec kiln queue x
 
-# When: kiln run lands the spec.
+# When: kiln fire lands the spec.
 exec kiln fire
 stdout '^x: the audit reads \.$'
 stdout '^x: landed on main'

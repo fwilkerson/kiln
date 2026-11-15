@@ -4,7 +4,7 @@
 # Its first code does not compile.
 exec kiln queue x
 
-# When: kiln run gates the build session's work.
+# When: kiln fire gates the build session's work.
 exec kiln fire
 stdout '^x: landed on main'
 

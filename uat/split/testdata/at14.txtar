@@ -10,7 +10,7 @@ exec sh -c 'sed -e "s/^Status: Proposed/Status: Approved, 2026-11-12/" -e "s/<Ti
 exec git add .kiln/specs
 exec git commit --quiet -m 'docs: approve x and y'
 
-# When: kiln run builds each.
+# When: kiln fire builds each.
 # x builds in build then audit, as kiln init wrote kiln.json. Then main's kiln.json names the split workflow, and y
 # builds in it.
 exec kiln queue x

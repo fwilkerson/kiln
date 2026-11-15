@@ -19,7 +19,7 @@ exec git commit --quiet -am 'docs(x): change the spec'
 exec kiln queue x
 stdout '^x: queued'
 
-# Then: after the second, kiln run builds from the changed spec, starting from main with the first build's work on
+# Then: after the second, kiln fire builds from the changed spec, starting from main with the first build's work on
 # it. The second build's session saw the changed spec, and the first build's work, before it built.
 exec kiln fire
 stdout '^x: landed on main'

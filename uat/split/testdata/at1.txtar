@@ -3,7 +3,7 @@
 # Given: the project chooses the split workflow, and a spec is queued.
 exec kiln queue x
 
-# When: kiln run builds the spec, the build session writes its code, and the verify session writes its acceptance
+# When: kiln fire builds the spec, the build session writes its code, and the verify session writes its acceptance
 # tests.
 exec kiln fire
 exists .claude-calls/build/1/1/call.json

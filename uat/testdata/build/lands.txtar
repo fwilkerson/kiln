@@ -5,7 +5,7 @@
 # and runs again, for $0.12. Its finding goes back to the session, which fixes it.
 exec kiln queue x
 
-# When: the developer runs kiln run.
+# When: the developer runs kiln fire.
 exec kiln fire
 cp stdout .tmp/run
 stdout '^x: landed on main'

@@ -4,7 +4,7 @@
 # fix changes that path.
 exec kiln queue x
 
-# When: kiln run builds the spec, and the build session fixes the finding.
+# When: kiln fire builds the spec, and the build session fixes the finding.
 exec kiln fire
 stdout '^x: landed on main'
 grep 'harness/h\.go:5 weak test' .claude-calls/build/1/2/prompt

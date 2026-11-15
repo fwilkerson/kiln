@@ -6,7 +6,7 @@
 # main already holds files the build leaves alone, such as old.txt, so a count of every file would be more than 2.
 exec kiln queue x
 
-# When: kiln run lands the spec, whose build changed two files.
+# When: kiln fire lands the spec, whose build changed two files.
 exec kiln fire
 cp stdout .tmp/run
 stdout '^x: landed on main'
@@ -20,7 +20,7 @@ exec git log -1 --format=%s main
 stdout '^feat\(x\): land the approved spec$'
 exec git show main:ready
 
-# kiln run's output shows each gauge's reading for that landing, and that the second crossed its line,
+# kiln fire's output shows each gauge's reading for that landing, and that the second crossed its line,
 grep '^x: gauge size: 3, line ≤ 5$' .tmp/run
 grep '^x: gauge score: 70, line ≥ 80, crossed$' .tmp/run
 
