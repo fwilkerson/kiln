@@ -24,14 +24,14 @@ import (
 
 func TestGuard(t *testing.T) {
 	const place = "/Users/dev/Library/Caches/kiln/repo/x"
-	builds := Side{Role: buildRole, Acceptance: "acceptance/x/", Harness: []string{"harness/"}}
-	verifies := Side{Role: verifyRole, Acceptance: "acceptance/x/", Harness: []string{"harness/"}}
-	fixes := Side{Role: buildRole, Acceptance: "acceptance/", Fix: true}
-	fixesTests := Side{Fix: true}
-	fixesPython := Side{Role: buildRole, Acceptance: "tests/acceptance/test_", Fix: true}
+	builds := side{role: buildRole, acceptance: "acceptance/x/", harness: []string{"harness/"}}
+	verifies := side{role: verifyRole, acceptance: "acceptance/x/", harness: []string{"harness/"}}
+	fixes := side{role: fixRole, acceptance: "acceptance/"}
+	fixesTests := side{role: fixRole}
+	fixesPython := side{role: fixRole, acceptance: "tests/acceptance/test_"}
 	for name, tc := range map[string]struct {
 		tool, cwd, file string
-		side            Side
+		side            side
 		refused         bool
 	}{
 		"a build writes its code":                    {tool: "Write", file: place + "/x.go"},
@@ -83,13 +83,34 @@ func TestGuard(t *testing.T) {
 				worktree = "/tmp/w"
 			}
 
-			opt := HookOptions{Spec: "x", Place: worktree, Side: tc.side}
-			if err := Hook(bytes.NewReader(in), &out, opt); err != nil {
+			g := guard{spec: "x", place: worktree, side: tc.side}
+			if err := Hook(g.hookArgs(), bytes.NewReader(in), &out); err != nil {
 				t.Fatal(err)
 			}
 
 			if refused := strings.Contains(out.String(), `"permissionDecision":"deny"`); refused != tc.refused {
 				t.Errorf("refused %v, want %v: %s", refused, tc.refused, out.String())
+			}
+		})
+	}
+}
+
+// TestHookArguments holds that the hook refuses arguments kiln never writes, so no slip leaves a session unguarded.
+func TestHookArguments(t *testing.T) {
+	for name, args := range map[string][]string{
+		"no spec":                         {"--place", "/w"},
+		"no worktree":                     {"--spec", "x"},
+		"a role kiln never writes":        {"--spec", "x", "--place", "/w", "--role", "verfy", "--acceptance", "a/"},
+		"a split build's side, pathless":  {"--spec", "x", "--place", "/w", "--role", verifyRole},
+		"a flag kiln no longer writes":    {"--spec", "x", "--place", "/w", "--fix"},
+		"a flag with no value":            {"--spec", "x", "--place", "/w", "--role"},
+		"a word after the flags":          {"--spec", "x", "--place", "/w", "y"},
+		"an acceptance path with no role": {"--spec", "x", "--place", "/w", "--acceptance", "a/"},
+		"a harness in a fix":              {"--spec", "x", "--place", "/w", "--role", fixRole, "--harness", "h/"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := Hook(args, strings.NewReader("{}"), io.Discard); !errors.Is(err, ErrUsage) {
+				t.Errorf("Hook answered %v, want ErrUsage", err)
 			}
 		})
 	}

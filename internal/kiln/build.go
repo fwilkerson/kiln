@@ -493,14 +493,12 @@ func (b *build) start(ctx context.Context) error {
 
 // launch is a run of the build agent's session, which resume says resumes it.
 func (b *build) launch(ctx context.Context, resume bool, prompt string) (claude.Launch, error) {
-	name := b.rec.Name
-	hook := fmt.Sprintf("%s hook --spec %s --place %s", shellQuote(b.r.exe), name, shellQuote(string(b.tree)))
 	return b.agentLaunch(ctx, buildRole, claude.Launch{
 		Session: b.rec.Session,
 		Resume:  resume,
 		Prompt:  prompt,
 		Dir:     string(b.tree),
-		Hook:    hook,
+		Hook:    b.treeGuard().hookCommand(b.r.exe),
 	})
 }
 
@@ -670,12 +668,18 @@ func (b *build) landing() string {
 // gate runs the gate on the build's worktree, and writes it to the ledger. landing is the gate on the work rebased
 // onto main. A fix's gate keeps it to its side.
 func (b *build) gate(ctx context.Context, landing bool, allowed ...string) (verdict, error) {
+	return b.gated(ctx, landing, "", b.treeGuard(allowed...))
+}
+
+// treeGuard is the guard on the build's worktree, which lets the build change allowed. A fix's keeps it to its side.
+// The hook of a session in that worktree and the gate there both take it from here.
+func (b *build) treeGuard(allowed ...string) guard {
 	g := guard{spec: b.rec.Name, place: b.tree, allowed: allowed}
 	if b.fix != nil {
 		g.side = b.fix.side
 	}
 
-	return b.gated(ctx, landing, "", g)
+	return g
 }
 
 // gated runs the gate as Repo.gate does, and writes it to the ledger. landing is the gate on the work rebased onto

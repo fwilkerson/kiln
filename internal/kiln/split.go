@@ -297,8 +297,8 @@ func (b *build) splitAfter(ctx context.Context) (turn, error) {
 // sideGuard is the guard on role's session's own work, in its clone.
 func (b *build) sideGuard(ctx context.Context, role string) (guard, error) {
 	s, err := b.sides(ctx)
-	side := Side{Role: role, Acceptance: s.acceptance, Harness: s.harness}
-	return guard{spec: b.rec.Name, place: b.r.clone(b.rec.Name, role), allowed: b.allowed(), side: side}, err
+	own := side{role: role, acceptance: s.acceptance, harness: s.harness}
+	return guard{spec: b.rec.Name, place: b.r.clone(b.rec.Name, role), allowed: b.allowed(), side: own}, err
 }
 
 // gateBuild gates the build session's work alone. It holds none of the spec's acceptance tests. A revised spec's
@@ -311,7 +311,7 @@ func (b *build) gateBuild(ctx context.Context) (verdict, error) {
 
 	without := ""
 	if b.now().OldTests {
-		without = g.side.Acceptance
+		without = g.side.acceptance
 	}
 
 	v, err := b.gated(ctx, false, without, g)
@@ -337,7 +337,7 @@ func (b *build) gateStack(ctx context.Context) (turn, error) {
 		return turn{}, err
 	}
 
-	v, err := b.gated(ctx, false, "", guard{spec: b.rec.Name, place: b.tree, allowed: b.allowed()}, g)
+	v, err := b.gated(ctx, false, "", b.treeGuard(b.allowed()...), g)
 	if err != nil || v.passed {
 		return turn{}, err
 	}
@@ -618,25 +618,16 @@ func (b *build) amendedSpec(ctx context.Context, at git.Rev) (string, error) {
 // sessionLaunch is a run of role's session of the split build, in its own clone. Its hook keeps it to its side. Its
 // settings deny it reads of every checkout but its own, and of the other session's transcripts.
 func (b *build) sessionLaunch(ctx context.Context, role string, resume bool, prompt string) (claude.Launch, error) {
-	name := b.rec.Name
-	s, err := b.sides(ctx)
+	g, err := b.sideGuard(ctx, role)
 	if err != nil {
 		return claude.Launch{}, err
 	}
 
-	dir := b.r.clone(name, role)
-	flags := []string{shellQuote(b.r.exe), "hook", "--spec", string(name), "--place", shellQuote(string(dir)),
-		"--role", role, "--acceptance", shellQuote(s.acceptance)}
-	for _, h := range s.harness {
-		flags = append(flags, "--harness", shellQuote(h))
-	}
-
-	hook := strings.Join(flags, " ")
-
 	rec := b.now()
 	session := map[string]string{buildRole: rec.Session, verifyRole: rec.Verify}[role]
-	l := claude.Launch{Session: session, Resume: resume, Prompt: prompt, Dir: string(dir), Hook: hook}
-	l.DenyRead, l.AllowRead, l.Deny = b.r.blinds(name, role)
+	l := claude.Launch{Session: session, Resume: resume, Prompt: prompt, Dir: string(g.place),
+		Hook: g.hookCommand(b.r.exe)}
+	l.DenyRead, l.AllowRead, l.Deny = b.r.blinds(b.rec.Name, role)
 	return b.agentLaunch(ctx, role, l)
 }
 

@@ -40,19 +40,19 @@ type fixing struct {
 	// checked is what the run's first check, or its gauge, found. A landing kiln accept started has none.
 	checked checked
 	// side is what the fix may write.
-	side Side
+	side side
 	// outcome, summary and report say how the fix ended, once it has.
 	outcome, summary, report string
 }
 
 // newFixing is the fix of m, as c, kiln.json at main's tip when it started, says. found is what its check found.
 func newFixing(c config, m monitor, found checked) *fixing {
-	side := Side{Fix: true}
+	fixes := side{role: fixRole}
 	if !m.Tests {
-		side.Role, side.Acceptance = buildRole, c.fixedPart()
+		fixes.acceptance = c.fixedPart()
 	}
 
-	return &fixing{monitor: m, checked: found, side: side}
+	return &fixing{monitor: m, checked: found, side: fixes}
 }
 
 // end ends the fix with outcome.
@@ -439,12 +439,6 @@ func (b *build) fixEnded(ctx context.Context) error {
 // the acceptance tests unless the monitor says it may write them.
 func (b *build) fixLaunch(ctx context.Context, resume bool, prompt string) (claude.Launch, error) {
 	f, name := b.fix, b.rec.Name
-	flags := []string{shellQuote(b.r.exe), "hook", "--spec", string(name), "--place", shellQuote(string(b.tree)),
-		"--fix"}
-	if f.side.Acceptance != "" {
-		flags = append(flags, "--role", buildRole, "--acceptance", shellQuote(f.side.Acceptance))
-	}
-
 	role := f.monitor.role()
 	a, err := b.r.agent(ctx, b.rec.Approved, role, "commit it to main, or name another agent in the monitor's entry")
 	if err != nil {
@@ -452,27 +446,27 @@ func (b *build) fixLaunch(ctx context.Context, resume bool, prompt string) (clau
 	}
 
 	l := claude.Launch{Session: b.now().Session, Resume: resume, Prompt: prompt, Dir: string(b.tree),
-		Hook: strings.Join(flags, " "), Role: role, System: strings.TrimSpace(a.body + "\n\n" + f.contract(name))}
+		Hook: b.treeGuard().hookCommand(b.r.exe), Role: role, System: strings.TrimSpace(a.body + "\n\n" + f.contract(name))}
 	l.Tools, l.Model, l.Effort, l.Advisor = a.tools, a.model, a.effort, a.advisor
 	return b.sandboxed(ctx, l)
 }
 
 // kept is the forbidden action that keeps the fix's session off what it may not write.
 func (f *fixing) kept() string {
-	if f.side.Acceptance == "" {
+	if f.side.acceptance == "" {
 		return "Changing anything under .kiln/, by a file tool or a shell command."
 	}
 
 	return fmt.Sprintf("Changing anything under .kiln/, or under %s, by a file tool or a shell command.",
-		f.side.Acceptance)
+		f.side.acceptance)
 }
 
 // contract is kiln's contract with the agent of the monitor name.
 func (f *fixing) contract(name Spec) string {
 	tests := "The monitor says its fixes may write the acceptance tests."
-	if f.side.Acceptance != "" {
+	if f.side.acceptance != "" {
 		tests = fmt.Sprintf("Nor is anything under `%s`, the acceptance tests, which judge your fix.",
-			f.side.Acceptance)
+			f.side.acceptance)
 	}
 
 	return fmt.Sprintf(monitorContract, name, tests)

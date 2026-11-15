@@ -40,7 +40,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/kiln/internal/kiln"
 )
 
@@ -255,31 +254,14 @@ func takes(ctx context.Context, args []string) ([]string, error) {
 	return r.Takes(ctx, strings.Join(args, " "))
 }
 
-// hook answers Claude Code's PreToolUse call. A hook that cannot read its call exits 2, which Claude Code reads as a
-// refusal.
+// hook answers Claude Code's PreToolUse call, for the session its arguments name. A hook that cannot read its call
+// exits 2, which Claude Code reads as a refusal.
 func hook(args []string, stdin io.Reader, stdout io.Writer) error {
-	flags := flag.NewFlagSet("hook", flag.ContinueOnError)
-	spec := flags.String("spec", "", "the spec the session builds")
-	place := flags.String("place", "", "the build's worktree")
-	var side kiln.Side
-	flags.StringVar(&side.Role, "role", "", "the session's role in a split build: build or verify")
-	flags.StringVar(&side.Acceptance, "acceptance", "", "the spec's acceptance path, in a split build")
-	flags.BoolVar(&side.Fix, "fix", false, "the session is a monitor's fix, which writes nothing under .kiln/")
-	flags.Func("harness", "a path both sessions of a split build write; given once for each", func(p string) error {
-		side.Harness = append(side.Harness, p)
-		return nil
-	})
-
-	switch err := flags.Parse(args); {
-	case err != nil, *spec == "", *place == "", side.Role != "" && side.Acceptance == "":
-		return errUsage
-	}
-
-	opt := kiln.HookOptions{Spec: kiln.Spec(*spec), Place: git.Worktree(*place), Side: side}
-	if err := kiln.Hook(stdin, stdout, opt); err != nil {
+	err := kiln.Hook(args, stdin, stdout)
+	if err != nil && !errors.Is(err, errUsage) {
 		fmt.Fprintf(os.Stderr, "kiln hook: %v\n", err)
 		os.Exit(2)
 	}
 
-	return nil
+	return err
 }

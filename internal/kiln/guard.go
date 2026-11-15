@@ -2,6 +2,7 @@ package kiln
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"path"
@@ -14,75 +15,83 @@ import (
 )
 
 // guard is what a build of spec, in the worktree at place, may not change. The hook and the gate both ask it.
+// hookCommand writes it as the hook's command line, and Hook reads it back.
 type guard struct {
 	spec  Spec
 	place git.Worktree
 	// allowed are paths the build may change, though guarded names them. A landing of accepted amendments changes
-	// its spec.
+	// its spec. The hook's command line leaves them out.
 	allowed []string
-	// side is the part of a split build that one session may write, or the zero Side outside one.
-	side Side
+	// side is what one session may write, or the zero side where the build has one session.
+	side side
 }
 
-// Side is the part of a split build one session may write. The zero Side is a build then audit's session, which
-// writes anywhere but where every guard refuses.
-type Side struct {
-	// Role is "build" or "verify", or "" outside a split build.
-	Role string
-	// Acceptance is the spec's acceptance path, with its name filled in, such as "acceptance/x/".
-	Acceptance string
-	// Harness holds the paths both sessions may write, such as the code the acceptance tests run through.
-	Harness []string
-	// Fix is a monitor's fix, which has no spec. It writes nothing under .kiln/. With Role "build", Acceptance is the
-	// acceptance path's fixed part, and guards each path that starts with it.
-	Fix bool
+// side is the part of a build's worktree one session may write. The zero side is a build then audit's session,
+// which writes anywhere but where every guard refuses.
+type side struct {
+	// role is buildRole or verifyRole in a split build, fixRole in a monitor's fix, and "" otherwise.
+	role string
+	// acceptance is a split build's acceptance path, with the spec's name filled in, such as "acceptance/x/". In a
+	// fix it is that path's fixed part, and guards each path that starts with it. It is "" in a fix whose monitor
+	// says it may write the tests.
+	acceptance string
+	// harness holds the paths both sessions of a split build write, such as the code the tests run through.
+	harness []string
 }
 
-// refusal says why the session of s may not write folded, a path folded as APFS reads it, or "". The build session
-// writes neither the acceptance tests nor the amendments. The verify session writes only those, and the harness.
-func (s Side) refusal(rel, folded string, spec Spec) string {
-	if s.Fix {
-		return s.fixRefusal(rel, folded)
+// fixRole is the side of a monitor's fix, which has no spec. It writes nothing under .kiln/.
+const fixRole = "fix"
+
+// valid is whether s is a side kiln builds. Only a split build's has a harness, and it has an acceptance path.
+func (s side) valid() bool {
+	switch s.role {
+	case "":
+		return s.acceptance == "" && s.harness == nil
+	case fixRole:
+		return s.harness == nil
+	case buildRole, verifyRole:
+		return s.acceptance != ""
 	}
 
-	tests := within(folded, s.Acceptance) || folded == fold(spec.amendPath())
-	switch s.Role {
+	return false
+}
+
+// refusal says why the session of s may not write folded, a path folded as APFS reads it, or "". A split build's
+// build session writes neither the acceptance tests nor the amendments. Its verify session writes only those, and
+// the harness. A fix writes no acceptance test, unless its monitor says it may.
+func (s side) refusal(rel, folded string, spec Spec) string {
+	tests := within(folded, s.acceptance) || folded == fold(spec.amendPath())
+	switch s.role {
 	case buildRole:
 		if tests {
 			return fmt.Sprintf("%s is the verify session's: in a split build, it alone writes %s and %s", rel,
-				s.Acceptance, spec.amendPath())
+				s.acceptance, spec.amendPath())
 		}
 	case verifyRole:
-		if !tests && !slices.ContainsFunc(s.Harness, func(h string) bool { return within(folded, h) }) {
+		if !tests && !slices.ContainsFunc(s.harness, func(h string) bool { return within(folded, h) }) {
 			return fmt.Sprintf("%s is the build session's: in a split build, the verify session writes only %s, "+
-				"%s and the harness", rel, s.Acceptance, spec.amendPath())
+				"%s and the harness", rel, s.acceptance, spec.amendPath())
+		}
+	case fixRole:
+		if s.acceptance != "" && strings.HasPrefix(folded, fold(s.acceptance)) {
+			return fmt.Sprintf("%s is under the acceptance tests, %s, which judge a monitor's fix: it writes them "+
+				"only when its monitor says \"tests\": true", rel, s.acceptance)
 		}
 	}
 
 	return ""
 }
 
-// fixRefusal says why a monitor's fix may not write folded, or "". It writes the acceptance tests only when its
-// monitor says it may, and then Acceptance is "".
-func (s Side) fixRefusal(rel, folded string) string {
-	if s.Acceptance == "" || !strings.HasPrefix(folded, fold(s.Acceptance)) {
-		return ""
-	}
-
-	return fmt.Sprintf("%s is under the acceptance tests, %s, which judge a monitor's fix: it writes them only when "+
-		"its monitor says \"tests\": true", rel, s.Acceptance)
-}
-
-// within is whether folded is side or under it. A side that ends in a slash is a directory, and holds only what is
+// within is whether folded is root or under it. A root that ends in a slash is a directory, and holds only what is
 // under it.
-func within(folded, side string) bool {
-	if side == "" {
+func within(folded, root string) bool {
+	if root == "" {
 		return false
 	}
 
-	dir := strings.HasSuffix(side, "/")
-	side = fold(path.Clean(side))
-	return (!dir && folded == side) || strings.HasPrefix(folded, side+"/")
+	dir := strings.HasSuffix(root, "/")
+	root = fold(path.Clean(root))
+	return (!dir && folded == root) || strings.HasPrefix(folded, root+"/")
 }
 
 // guarded says why the build may not change rel, a path within the repository. It says "" if the build may. It reads
@@ -96,7 +105,7 @@ func (g guard) guarded(rel string) string {
 		return ""
 	case slices.Contains(names, fold(".git")):
 		return rel + " is in a git directory, which only git and kiln write"
-	case names[0] == fold(kilnDir) && g.side.Fix:
+	case names[0] == fold(kilnDir) && g.side.role == fixRole:
 		return rel + " is under .kiln/, which holds what the developer approved, the agents and the gate: a " +
 			"monitor's fix writes nothing there"
 	case names[0] == fold(kilnDir) && folded != fold(g.spec.amendPath()):
@@ -119,27 +128,71 @@ type hookCall struct {
 	} `json:"tool_input"`
 }
 
-// HookOptions name the session whose PreToolUse calls Hook answers.
-type HookOptions struct {
-	// Spec is the spec the session builds.
-	Spec Spec
-	// Place is the build's worktree.
-	Place git.Worktree
-	// Side is the session's part of a split build, or the zero Side outside one.
-	Side Side
+// hookArgs are the arguments of kiln hook that name g. hookGuard reads them back.
+func (g guard) hookArgs() []string {
+	args := []string{"--spec", string(g.spec), "--place", string(g.place)}
+	if g.side.role != "" {
+		args = append(args, "--role", g.side.role)
+	}
+
+	if g.side.acceptance != "" {
+		args = append(args, "--acceptance", g.side.acceptance)
+	}
+
+	for _, h := range g.side.harness {
+		args = append(args, "--harness", h)
+	}
+
+	return args
 }
 
-// Hook answers the PreToolUse call on in, for a session building opt.Spec in the worktree at opt.Place. It refuses
-// a write outside opt.Place, and one to a path that guard.guarded names. In a split build, it refuses a write
-// outside opt.Side too. It writes its refusal to out, as Claude Code reads it. It reads no shell command: the gate's
-// own check finds a guarded path a command changed.
-func Hook(in io.Reader, out io.Writer, opt HookOptions) error {
+// hookCommand is the command line of the hook that asks g, as the kiln at exe runs it.
+func (g guard) hookCommand(exe string) string {
+	words := []string{shellQuote(exe), "hook"}
+	for _, arg := range g.hookArgs() {
+		words = append(words, shellQuote(arg))
+	}
+
+	return strings.Join(words, " ")
+}
+
+// hookGuard reads back the guard that hookArgs wrote as args. Its error is ErrUsage for any that hookArgs never writes.
+func hookGuard(args []string) (guard, error) {
+	var g guard
+	flags := flag.NewFlagSet("hook", flag.ContinueOnError)
+	flags.StringVar((*string)(&g.spec), "spec", "", "the spec the session builds")
+	flags.StringVar((*string)(&g.place), "place", "", "the build's worktree")
+	flags.StringVar(&g.side.role, "role", "", "the session's side: build or verify in a split build, or fix")
+	flags.StringVar(&g.side.acceptance, "acceptance", "", "the acceptance path the side guards")
+	flags.Func("harness", "a path both sessions of a split build write; given once for each", func(p string) error {
+		g.side.harness = append(g.side.harness, p)
+		return nil
+	})
+
+	switch err := flags.Parse(args); {
+	case err != nil, flags.NArg() > 0, g.spec == "", g.place == "", !g.side.valid():
+		return guard{}, ErrUsage
+	}
+
+	return g, nil
+}
+
+// Hook answers the PreToolUse call on in, for the session that args name. args are what kiln wrote after "kiln hook"
+// in the session's settings. Hook refuses a write outside the session's worktree, and one to a path that
+// guard.guarded names. It writes its refusal to out, as Claude Code reads it. It reads no shell command: the gate's
+// own check finds a guarded path a command changed. Its error is ErrUsage for args that kiln never writes.
+func Hook(args []string, in io.Reader, out io.Writer) error {
+	g, err := hookGuard(args)
+	if err != nil {
+		return err
+	}
+
 	var c hookCall
 	if err := json.NewDecoder(in).Decode(&c); err != nil {
 		return fmt.Errorf("the hook's input: %w", err)
 	}
 
-	why := guard{spec: opt.Spec, place: opt.Place, side: opt.Side}.denial(c)
+	why := g.denial(c)
 	if why == "" {
 		return nil
 	}
