@@ -3,6 +3,8 @@
 kiln takes a spec the developer approved to code on main, with headless Claude Code sessions. It is one Go binary,
 for macOS.
 
+> You are the owner and long-term maintainer of this codebase, and its design is up to you.
+
 ## Where things are
 
 - `.kiln/specs/<name>.md`: a spec. With Status Proposed it is a plan, a starter `/shape` takes up later; build only
