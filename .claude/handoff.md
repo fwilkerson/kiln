@@ -57,11 +57,14 @@ no file holds. Git holds what was done, so drop each item once it lands.
 4. **Publish practices** once it stops churning. Each project then drops its `replace` line, and odh's Dockerfile
    its `go mod edit`. A scratch install at `v0.1.0` from a local proxy already ran `go tool guide`, `style`,
    `health` and a test on `claim`.
-5. **Read the `bugs` monitor's first fixes.** `ce08b9e` added it on 2026-11-16, as a trial, with three bugs in
-   `bugs/`. Each fix waits for `kiln accept bugs`. Two things are untried: whether the audit's sandbox can run the
-   new test against main's code through its `GOFLAGS` overlay, and how a bug that asks for the developer holds the
-   bugs behind it. In `bugs/2026-11-16-3-run-lock-names-kiln-fire.md`, "What should happen" is Claude's reading of
-   the developer's note.
+5. **Read the `bugs` monitor's next fixes.** `ce08b9e` added it on 2026-11-16, as a trial. Its first fix landed as
+   `c5b7352`, and two bugs wait in `bugs/`. Each fix waits for `kiln accept bugs`.
+    - The first fix's agent read neither `docs/practices.md` nor `build.md`, and its test gamed `TestHealth`.
+      `2cb3284` tells the agent to read both. Check that the next fix does.
+    - How a bug that asks for the developer holds the bugs behind it is untried.
+    - In `bugs/2026-11-16-3-run-lock-names-kiln-fire.md`, "What should happen" is Claude's reading of the
+      developer's note.
+    - The installed kiln predates `c3c960d`, so its window still names `git show kiln/<name>` for a waiting fix.
 
 ## Found, and not yet settled
 
