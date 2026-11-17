@@ -31,7 +31,7 @@ type Totals struct {
 	// for Agent calls.
 	Waiting   time.Duration `json:"waiting,omitempty"`
 	Subagents time.Duration `json:"subagents,omitempty"`
-	// Slowest are the run's slowest top-level calls but Agent, longest first, at most slowestKept of them.
+	// Slowest are the run's slowest top-level calls but Agent, longest first, at most 5 of them.
 	Slowest []Call `json:"slowest,omitempty"`
 	// Failed are the calls refused, or that returned an error, in the order they failed.
 	Failed []Failure `json:"failed,omitempty"`
@@ -118,7 +118,7 @@ type Action struct {
 }
 
 // Recount totals the session's stream from byte from up to byte to, as Run totals a run it reads. A to below 0
-// reads to the end. kiln recounts a run it lost track of, such as when it died mid-run. Its view
+// reads to the end. kiln recounts a run it lost track of, such as when it died mid-run. kiln's view
 // recounts a run to show it.
 func (c Claude) Recount(session string, from, to int64) (Recounted, error) {
 	f, err := os.Open(c.stream(session))

@@ -7,19 +7,44 @@
 //		ended, err = c.Run(ctx, claude.Launch{Session: id, Resume: true, Prompt: "Go on.", ...})
 //	}
 //
-// Each session runs the model, effort and advisor its Launch names. It runs in auto permission mode, with only the
-// project's settings and those Run writes. A question it would ask is refused instead, since no one answers it. Its
-// commands run in Claude Code's sandbox, which writes only in Dir and Writable, and reaches only Domains. They may
-// listen on a local port, as a test that starts a server does. It calls only the MCP servers its Launch names, which
-// run outside the sandbox. When it exits, Run kills every process it left behind. It finds them by their process
-// tree, their group, and their working directory.
+// Run starts claude in Launch.Dir, with Launch.Prompt on its standard input:
 //
-// A session's files are kept in Config.Sessions, under its ID. They are the system prompt, the settings, its MCP
-// servers, and the stream it wrote, across every resume. Beside them is the end of its standard error, from its last
-// run.
+//	claude -p --session-id <Session>                        or --resume <Session>, when Resume
+//	       --append-system-prompt-file <dir>/<Role>.md
+//	       --tools <Tools> --model <Model> --effort <Effort>  each only when set
+//	       --permission-mode auto --setting-sources project --settings <dir>/settings.json
+//	       --mcp-config <dir>/mcp.json --strict-mcp-config --output-format stream-json --verbose
+//
+// <dir> is Config.Sessions/<Session>, which holds the session's files across every resume:
+//
+//	<Role>.md      System, which Claude Code appends to its system prompt
+//	settings.json  the settings below, which Claude Code lays over the project's own
+//	mcp.json       Launch.MCP, the only MCP servers the session calls, which run outside the sandbox
+//	stream.jsonl   each line the session printed, across every run
+//	stderr         the last 64 KiB of its standard error, from its last run
+//
+// settings.json holds the session to what its Launch allows. No user setting reaches it:
+//
+//	permissions.deny        Deny, and denyInsteadOfPrompting: a question is refused, since no one answers it
+//	autoMode.hard_deny      Claude Code's defaults, and Forbidden
+//	autoMode.environment    no one is at the keyboard, and nothing is pushed to any remote
+//	sandbox                 on, with no unsandboxed command; writes in Dir and Writable alone
+//	sandbox.network         Domains alone, a listener on a local port, and trustd to check a TLS certificate
+//	sandbox.filesystem      denyRead DenyRead, allowRead AllowRead
+//	advisorModel            Advisor, when set
+//	hooks.PreToolUse        Hook, before each Edit, Write, MultiEdit and NotebookEdit, when set
+//
+// The session inherits what [proc.Session] keeps of Config.Env. Run adds CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 and
+// CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1. When the session exits, Run kills every process it left behind. It finds
+// them by their process tree, their group, and their working directory. Run waits at most 10 s for a child that holds
+// the session's output open.
+//
+// A usage limit ends a session with Ended.Limit. A limit is a rate_limit_event that rejects the session or bills
+// overage, or a result with API status 429. Overage bills beyond the plan, which no unattended session should do.
 //
 // Run totals what each run printed, in Ended.Totals: its turns, cost, context, tool calls, waits and failed calls.
-// Recount totals a run again from the stream, from the length Streamed answered before it ran, and lists its calls.
+// Totals keeps at most 200 bytes of a call's input, or of its cause. Recount totals a run again from the stream, from
+// the length Streamed answered before it ran, and lists its calls.
 package claude
 
 import (
