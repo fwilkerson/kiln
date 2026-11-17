@@ -1,0 +1,23 @@
+#!/bin/sh
+# The check of kiln's bugs monitor. It asks for a fix while bugs/ holds a bug, one Markdown file each.
+# It prints the first bug by name, for the monitor's agent. Its last line is the JSON object kiln reads.
+set -eu
+
+first=
+count=0
+for f in bugs/*.md; do
+  [ -e "$f" ] || continue
+  [ -n "$first" ] || first=$f
+  count=$((count + 1))
+done
+
+if [ "$count" -eq 0 ]; then
+  echo '{"fix": false, "summary": "bugs/ holds no bug"}'
+  exit 0
+fi
+
+echo "Fix this bug, $first, and no other:"
+echo
+cat "$first"
+echo
+echo "{\"fix\": true, \"summary\": \"$count in bugs/, first $first\"}"

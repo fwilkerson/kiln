@@ -49,6 +49,16 @@
       "gauge": "health",
       "agent": ".kiln/agents/refactor.md",
       "prompt": "Refactor the three files the gauge lists first until go tool health finds nothing in them, as your instructions say."
+    },
+    {
+      "name": "bugs",
+      "every": "1h",
+      "check": ".kiln/monitors/bugs",
+      "agent": ".kiln/agents/bugfix.md",
+      "prompt": "Fix the one bug the check printed, as your instructions say.",
+      "gates": false,
+      "accept": true,
+      "tests": true
     }
   ]
 }

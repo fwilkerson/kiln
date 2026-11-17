@@ -13,6 +13,8 @@ for macOS.
   build names a new one in its last reply, for the developer to commit. `monitors/uat` is the check of the monitor
   that folds an accepted spec's tests. `gauges/health` is the gauge of `code-health`, the monitor that refactors the
   files `go tool health` scores lowest.
+- `bugs/<name>.md`: a bug the developer filed, with what happened and what should happen. `bugs`, a monitor, takes
+  the first by name each hour, as `.kiln/agents/bugfix.md` says. A build never fixes one.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.
 - `.kiln/`: kiln's own settings, agents and specs, as `kiln init` wrote them, tailored to kiln. `.claude/agents` and
   `.claude/skills` link to `/shape`, its reviewers and the verify agent there. A build changes nothing here but its

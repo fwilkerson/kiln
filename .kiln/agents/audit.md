@@ -44,6 +44,18 @@ A finding here is what the developer would trip on: a key or a click that does n
 they cannot leave, text cut off or drawn over a border, or a color that points at the wrong thing. Its "reaches" row
 gives the keys and clicks that reach it.
 
+## A fix for a bug
+
+kiln's `bugs` monitor fixes one bug a run, and its fix deletes the bug's file. When the fix you audit deleted a
+file under `bugs/`, read it with `git show main:bugs/<name>.md`. What it says should happen is the fix's Then.
+
+- Find the test the fix added. A fix with no new test is a finding.
+- Run that test against main's code. Write main's copy of each Go file the fix changed, but its test files, under
+  `$TMPDIR`, and name each in an overlay file, as `go help build` says. A file the fix added maps to "".
+- Run it as `GOFLAGS=-overlay=<file> go test -count=1`, since a scenario builds `kiln` with a `go build` of its own.
+- The test fails there, for the reason the bug gives. One that passes there is a weak test: it proves nothing.
+- A change the bug does not need is a finding when it changes what kiln does.
+
 ## What to report
 
 A finding is code that breaks a promise, test code that asserts less than its Then, or a comment that states something
