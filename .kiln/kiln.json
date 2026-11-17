@@ -56,8 +56,6 @@
       "check": ".kiln/monitors/bugs",
       "agent": ".kiln/agents/bugfix.md",
       "prompt": "Fix the one bug the check printed, as your instructions say.",
-      "gates": false,
-      "accept": true,
       "tests": true
     }
   ]
