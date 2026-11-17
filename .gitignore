@@ -1,3 +1,5 @@
 /kiln
 *.test
 /NOTES.md
+/.claude/handoff.md
+/.claude/worktrees/

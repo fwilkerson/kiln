@@ -26,20 +26,15 @@ for macOS.
   of this file. It is what `go tool guide` prints, from the practices module that `go.mod` names: never edit it here.
   `TestGuide` fails while the two differ, and `go tool guide > docs/guide.md` brings it up to date.
 - `docs/practices.md`: kiln's own rules, which add to the guide. Read it before adding a package or an exported name.
+- `README.md`: what kiln is, and a quick start. `docs/reference.md`: each key of `kiln.json`, the agents' files, and
+  what kiln records. A fact about a setting goes in the reference, stated once.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
-- `.claude/handoff.md`: the open work, and the facts no file holds. Read it before the first edit of a session.
+- `.claude/handoff.md`: the open work, and the facts no file holds. Read it before the first edit of a session. It
+  is the developer's own, and git ignores it.
 - `uat/<spec>/`: the test code for each acceptance test of a spec not yet accepted, one Go test named `TestAT<N>`
   for test N.
 - `uat/testdata/<feature>/`: the scenarios of the specs the developer accepted, filed by feature. `TestUAT` in `uat/`
   runs each.
-
-## Sources
-
-Spec 1 copied code from two repositories, and `docs/later.md` still points at them. Read each at its commit, never its
-working tree, and never write to either.
-
-- Eidos at `07992d10`: `git -C ~/github.com/fwilkerson/eidos show 07992d10:<path>`.
-- odh at `b978d94`: `git -C ~/github.com/fwilkerson/odh show b978d94:<path>`.
 
 ## Rules
 

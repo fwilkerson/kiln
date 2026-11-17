@@ -59,7 +59,7 @@ file under `bugs/`, read it with `git show main:bugs/<name>.md`. What it says sh
 ## What to report
 
 A finding is code that breaks a promise, test code that asserts less than its Then, or a comment that states something
-false. A sentence in `README.md` that the packages you read contradict is a false comment.
+false. A sentence in `README.md` or `docs/reference.md` that the packages you read contradict is a false comment.
 
 - Give the path that reaches the finding today: the command or call, the state, and what goes wrong. Then follow it
   through the whole program, as `cmd/kiln` wires it. Say how often it runs, and what heals it.
