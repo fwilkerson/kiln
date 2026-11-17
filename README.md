@@ -99,11 +99,11 @@ you. In a second terminal, `kiln tui` shows each session live, and every past bu
 
 **4. Take the work, or send it back.** A build ends in one of three states, and `kiln status` shows each:
 
-| The build                 | Means                                            | You run                                 |
-|---------------------------|--------------------------------------------------|-----------------------------------------|
-| landed, and waits for UAT | The work is on main. Try it.                     | `kiln accept <name>`                    |
-| waits on its branch       | The build asks to amend the spec, and shows how. | `kiln accept <name>` or `kiln reject`   |
-| stopped                   | The gate still failed after the last round.      | fix main or the spec, then `kiln queue` |
+| The build                 | Means                                            | You run                               |
+|---------------------------|--------------------------------------------------|---------------------------------------|
+| landed, and waits for UAT | The work is on main. Try it.                     | `kiln accept <name>`                  |
+| waits on its branch       | The build asks to amend the spec, and shows how. | `kiln accept <name>` or `kiln reject` |
+| stopped                   | The gate still failed after the last round.      | fix main or the spec, `kiln queue`    |
 
 `kiln accept` retires the spec, and `PRODUCT.md` gains the `git show` command that prints it. When trying the work
 turns up a problem, change the spec with `/shape`, commit it, and queue it again: the new build starts from main,

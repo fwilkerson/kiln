@@ -128,45 +128,57 @@ type monitorRunning struct {
 	named bool
 }
 
-// monitor runs m, if it is due or named. It runs its check, and records what it found. A finding starts a fix,
-// unless the monitor is held.
+// monitor runs m, if it is due or named. A monitor that drains runs again, due or not, after each fix that landed.
+// So one run empties a queue that each fix takes one item from.
 func (run *monitorRunning) monitor(ctx context.Context, m monitor) error {
+	landed, err := run.pass(ctx, m, run.named)
+	for landed && m.Drain {
+		landed, err = run.pass(ctx, m, true)
+	}
+
+	return err
+}
+
+// pass runs m's check once, if m is due or dueOrNot, and records what it found. A finding starts a fix, unless the
+// monitor is held. It answers whether that fix landed, which it never did when err is not nil.
+func (run *monitorRunning) pass(ctx context.Context, m monitor, dueOrNot bool) (landed bool, err error) {
 	r := run.r
 	k, err := r.store.read()
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if rec := k.find(m.Name); rec != nil && !rec.Monitor {
 		fmt.Fprintf(run.out, "%s: refused: kiln holds a spec of that name, and one name is never both\n", m.Name)
-		return nil
+		return false, nil
 	}
 
 	entries, err := r.store.entries()
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	h := histories(entries)[m.Name]
-	if !run.named && !h.due(m, r.now()) {
+	if !dueOrNot && !h.due(m, r.now()) {
 		fmt.Fprintf(run.out, "%s: not due until %s\n", m.Name, shownTime(h.next(m)))
-		return nil
+		return false, nil
 	}
 
 	return run.check(ctx, m, h, k.find(m.Name))
 }
 
 // check runs m's check, or reads its gauge, at main's tip, and writes its monitor line. A finding starts a fix,
-// unless the monitor is held. h is m's history, and rec its fix's record, if it has one.
-func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec *record) error {
+// unless the monitor is held. h is m's history, and rec its fix's record, if it has one. It answers whether the
+// fix landed.
+func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec *record) (landed bool, err error) {
 	main, err := run.r.git.Tip(ctx, mainBranch)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	found, err := run.r.firstCheck(ctx, run.c, m, main)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	line := entry{Kind: monitorKind, Monitor: m.Name, At: run.r.now(), Main: main, Entry: m.hash(),
@@ -177,30 +189,31 @@ func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec
 	}
 
 	if line.Found != foundFix {
-		return run.write(line)
+		return false, run.write(line)
 	}
 
 	line.Build = newBuild()
 	if err := run.write(line); err != nil {
-		return err
+		return false, err
 	}
 
 	return run.fix(ctx, newFixing(run.c, m, found), line, h)
 }
 
 // fix runs the fix f that the monitor line started. It opens a window when the developer should see how it ended. h
-// is the monitor's history before this run.
-func (run *monitorRunning) fix(ctx context.Context, f *fixing, line entry, h *history) error {
+// is the monitor's history before this run. It answers whether the fix landed.
+func (run *monitorRunning) fix(ctx context.Context, f *fixing, line entry, h *history) (landed bool, err error) {
 	b, err := run.r.startFix(ctx, run.out, f, line)
 	if b == nil || ctx.Err() != nil {
-		return err
+		return false, err
 	}
 
 	if notifies(f.outcome, h) {
 		run.open(ctx, line.Monitor)
 	}
 
-	return errors.Join(err, b.readGauges(ctx))
+	err = errors.Join(err, b.readGauges(ctx))
+	return err == nil && f.outcome == outLanded, err
 }
 
 // foundOf is what a check found: couldn't run, healthy, or a fix to make.

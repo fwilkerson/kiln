@@ -175,6 +175,7 @@ A monitor looks for a problem on a schedule, and fixes it.
 | `gates`   | `false` keeps the check out of the fix's gate. Only beside a `check`.                              |
 | `accept`  | `true` keeps each fix on its branch until `kiln accept <name>`.                                    |
 | `tests`   | `true` lets a fix write under each `acceptance` path's part before `{spec}`.                       |
+| `drain`   | `true` checks again as soon as a fix lands, and fixes again, in the same run.                      |
 
 ```text
 kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ─────────────────────────▶ healthy
@@ -193,7 +194,11 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
   before `{spec}` either, so it cannot change a lasting suite.
 - An agent asks for you with the last line of its reply: `{"ask": true, "summary": "..."}`. kiln then drops what it
   changed.
-- `kiln monitor run` refuses while `kiln fire` builds, and `kiln fire` while it runs.
+- `"drain": true` is for a queue that each fix takes one item from, such as a folder of bug reports. After a fix
+  lands, kiln runs the check again at once, due or not, and starts the next fix. The run ends when the check asks
+  for no fix, when the monitor is held, or when a fix does not land. It needs a check or a gauge.
+- `kiln monitor run` refuses while `kiln fire` builds, or another `kiln monitor run` runs, and `kiln fire` while
+  it runs. So a long run, such as one that drains, is never joined by the next hour's.
 
 A monitor is held, and starts no fix, while nothing changed since its last fix stopped, asked for you, was
 rejected, or changed nothing. It is held after a landed fix too, while its check stays out of the gate and prints

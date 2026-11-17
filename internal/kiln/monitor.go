@@ -43,6 +43,8 @@ type monitor struct {
 	Accept bool `json:"accept,omitempty"`
 	// Tests says whether a fix may write under the acceptance path's fixed part.
 	Tests bool `json:"tests,omitempty"`
+	// Drain says whether a fix that lands starts the check again at once, in the same kiln monitor run.
+	Drain bool `json:"drain,omitempty"`
 }
 
 // interval is how often m runs.
@@ -169,6 +171,8 @@ func (c config) stepsRefusal(m monitor) string {
 		return "names an agent that is no file under .kiln/agents/, such as \"triage.md\""
 	case m.role() == auditRole:
 		return "names the audit as its agent, which changes nothing"
+	case m.Drain && !m.finds():
+		return "drains with no check and no gauge, so nothing says when its queue is empty"
 	case !m.Tests && c.unguarded():
 		return "may not write the tests, while acceptance names no path before {spec} for kiln to guard"
 	}
