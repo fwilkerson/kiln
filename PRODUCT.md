@@ -14,3 +14,4 @@ Each spec the developer accepted, and the command that shows it in the commit th
 - Spec 11: Monitors: `git show 9725342a4fbc:.kiln/specs/monitors.md`
 - Spec 12: A monitor that keeps a gauge's line: `git show eb188c84c125:.kiln/specs/measures.md`
 - Spec 13: A list of acceptance paths: `git show 5cd2d02f7698:.kiln/specs/acceptance-paths.md`
+- Spec 8: Projects in other languages: `git show 3189d8772be3:.kiln/specs/languages.md`
