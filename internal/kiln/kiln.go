@@ -74,6 +74,7 @@
 //	  <repo>-<8 hex>/              <trees>, the repository's checkouts, named for its directory and git common dir
 //	    <name>/                    a build's or a fix's worktree on kiln/<name>, or a split build's stack
 //	    .audit-<name>/             the audit's worktree, at the build's commit
+//	    .gate-<name>/              where the gate runs, at the build's commit
 //	    .build-<name>/             a split build's clone for its build session
 //	    .verify-<name>/            a split build's clone for its verify session
 //	    .main/                     where the gate runs at main
@@ -976,6 +977,11 @@ func (r *Repo) tree(name Spec) git.Worktree {
 // starts with a dot, so it is no build's tree.
 func (r *Repo) auditTree(name Spec) git.Worktree {
 	return git.Worktree(filepath.Join(r.trees, ".audit-"+string(name)))
+}
+
+// gateTree is the worktree where the gate of name's build runs, detached at the commit it judges.
+func (r *Repo) gateTree(name Spec) git.Worktree {
+	return git.Worktree(filepath.Join(r.trees, ".gate-"+string(name)))
 }
 
 func short(commit git.Rev) string { return string(commit[:min(12, len(commit))]) }

@@ -47,12 +47,13 @@ func other(role string) string {
 	return buildRole
 }
 
-// dropCheckouts removes every checkout and branch a build of name made: the stack, the audit's worktree, and each
-// session's clone. The .main worktree stays, since every gate shares it.
+// dropCheckouts removes every checkout and branch a build of name made. They are the stack, the audit's and the
+// gate's worktrees, and each session's clone. The .main worktree stays, since every gate shares it.
 func (r *Repo) dropCheckouts(ctx context.Context, name Spec) error {
 	return errors.Join(
 		r.git.Remove(ctx, r.tree(name), name.branch()),
 		r.git.Remove(ctx, r.auditTree(name), ""),
+		r.git.Remove(ctx, r.gateTree(name), ""),
 		r.git.Remove(ctx, r.clone(name, buildRole), name.sideBranch(buildRole)),
 		r.git.Remove(ctx, r.clone(name, verifyRole), name.sideBranch(verifyRole)),
 	)
@@ -646,7 +647,7 @@ func (b *build) sessionLaunch(ctx context.Context, role string, resume bool, pro
 // transcripts.
 func (r *Repo) blinds(name Spec, role string) (denyRead, allowRead, deny []string) {
 	others := []string{string(r.clone(name, other(role))), string(r.tree(name)), string(r.auditTree(name)),
-		filepath.Join(r.trees, mainTree), r.top, r.common}
+		string(r.gateTree(name)), filepath.Join(r.trees, mainTree), r.top, r.common}
 	denyRead = []string{r.trees, r.top, r.common}
 	if home, err := os.UserHomeDir(); err == nil {
 		transcripts := filepath.Join(home, ".claude", "projects", projectDir(string(r.clone(name, other(role)))))

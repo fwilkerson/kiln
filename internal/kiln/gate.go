@@ -282,7 +282,7 @@ func (r *Repo) gate(ctx context.Context, without []string, guards ...guard) (ver
 		maps.Copy(refused, found)
 	}
 
-	tip, err := runChecks(ctx, guards[0].place, c.Gate, r.env)
+	tip, err := r.atCommit(ctx, guards[0], c.Gate)
 	if err != nil {
 		return verdict{}, err
 	}
@@ -295,6 +295,22 @@ func (r *Repo) gate(ctx context.Context, without []string, guards ...guard) (ver
 	v := judge(tip, atMain, refused)
 	v.rounds = c.Rounds
 	return v, nil
+}
+
+// atCommit runs commands on the commit checked out at g's place, in the gate's own worktree. The gate then judges
+// what lands. It never sees a file the session left that the commit lacks. The session's worktree stays as it was.
+func (r *Repo) atCommit(ctx context.Context, g guard, commands []string) ([]check, error) {
+	head, err := r.git.Head(ctx, g.place)
+	if err != nil {
+		return nil, err
+	}
+
+	tree := r.gateTree(g.spec)
+	if err := r.git.Detached(ctx, tree, head); err != nil {
+		return nil, err
+	}
+
+	return runChecks(ctx, tree, commands, r.env)
 }
 
 // refused says, by path, why the build may not change each path its work changed since it left main. A path under

@@ -1,0 +1,76 @@
+# The gate judges what lands: a file git ignores, which the commit lacks, is not there when the gate runs.
+
+# Given: an approved spec, and a .gitignore that ignores *.golden. The build's session writes a test and the
+# fixture it reads, acceptance/x/want.golden, so git leaves the fixture out of the commit. In its second round the
+# session names the fixture in a way git keeps.
+exec kiln queue x
+
+# When: the developer runs kiln fire.
+exec kiln fire
+cp stdout .tmp/run
+
+# Then: the first gate fails, since the commit lacks the fixture, and the failure goes back to the session.
+stdout '^x: the gate failed; it goes back to the session, round 1 of 2$'
+grep 'open want.golden: no such file' .claude-calls/build/1/2/prompt
+
+# Once the session names the fixture, the build lands, and its test passes on main.
+stdout '^x: landed on main'
+exec git show main:acceptance/x/want.golden
+stdout '^42$'
+exec go test ./acceptance/x/
+stdout '^ok'
+
+-- .gitignore --
+*.golden
+-- .kiln/kiln.json --
+{"rounds": 2}
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers what want.golden holds.
+-- claude.json --
+{
+  "build": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+      {"result": {"result": "Built x."}}
+    ],
+    "2": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" . && git add --force acceptance/x/want.golden"}}},
+      {"result": {"result": "Kept want.golden."}}
+    ]
+  }},
+  "audit": {"1": {"1": [{"result": {"result": "read 1 directory, found 0"}}]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/want.golden --
+42
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"os"
+	"strconv"
+	"strings"
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	want, err := os.ReadFile("want.golden")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := strconv.Itoa(scratch.X()); got != strings.TrimSpace(string(want)) {
+		t.Fatalf("X answers %s, want %s", got, want)
+	}
+}
