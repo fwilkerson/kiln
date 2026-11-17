@@ -12,7 +12,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/charmbracelet/x/vt v0.1.0
 	github.com/creack/pty v1.1.24
-	github.com/fwilkerson/practices v0.0.0
+	github.com/fwilkerson/practices v0.1.0
 	github.com/rogpeppe/go-internal v1.16.0
 	golang.org/x/image v0.47.0
 	golang.org/x/sys v0.49.0
@@ -37,8 +37,6 @@ require (
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/tools v0.51.0 // indirect
 )
-
-replace github.com/fwilkerson/practices => /Users/dev/github.com/fwilkerson/practices
 
 tool (
 	github.com/fwilkerson/practices/cmd/guide
