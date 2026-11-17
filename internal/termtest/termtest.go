@@ -11,7 +11,7 @@
 // the modes the program asked for, such as SGR mouse reports. It also answers the program's queries about the terminal.
 //
 // A check reads the screen as it is, and the program draws in its own time. So after an input, wait for a fact the
-// input causes, never for one already on screen. Wait polls for 10 seconds.
+// input causes, never for one already on screen. Wait polls every 20 ms, until [Waited] has passed.
 //
 // A sandboxed process cannot open a pseudo-terminal, so Start fails inside a Claude Code session's sandbox. Its
 // error is then syscall.EPERM.
@@ -50,7 +50,7 @@ type Size struct{ W, H int }
 type Pos struct{ X, Y int }
 
 // Start runs cmd in a terminal of the given size. The terminal claims 256 colors and true color, whatever cmd's
-// environment says, and drops NO_COLOR.
+// environment says: it sets TERM=xterm-256color and COLORTERM=truecolor, and drops NO_COLOR.
 func Start(cmd *exec.Cmd, size Size) (*Term, error) {
 	env := cmd.Env
 	if env == nil {
@@ -98,8 +98,8 @@ func (term *Term) Close() error {
 }
 
 // Press sends each key, as the terminal would encode it in the program's current modes. A key is a character or one
-// of vt's keys, such as vt.KeyEnter. It pauses after each, as a person would. A program reads an Esc and the byte that
-// follows it at once as one key, Alt and that byte.
+// of vt's keys, such as vt.KeyEnter. Press pauses 100 ms after each, as a person would. A program reads an Esc and
+// the byte that follows it at once as one key, Alt and that byte.
 func (term *Term) Press(codes ...rune) {
 	for _, code := range codes {
 		term.emu.SendKey(vt.KeyPressEvent{Code: code})

@@ -27,8 +27,9 @@ var mono = func() *opentype.Font {
 	return f
 }()
 
-// PNG writes the screen as an image with each cell's colors. An agent that reads images then sees what a person would.
-// Go Mono lacks some glyphs a TUI draws. PNG fills a full block by hand, and draws other missing glyphs as a box.
+// PNG writes the screen as an image with each cell's colors, 10 by 20 pixels a cell. An agent that reads images then
+// sees what a person would. Go Mono lacks some glyphs a TUI draws. PNG fills a full block by hand, and draws other
+// missing glyphs as a box.
 func (term *Term) PNG(w io.Writer) error {
 	face, err := opentype.NewFace(mono, &opentype.FaceOptions{Size: 16, DPI: 72, Hinting: font.HintingFull})
 	if err != nil {
