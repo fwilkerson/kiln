@@ -14,7 +14,13 @@
 //	err = cmd.Run()
 //
 // Each adapter keeps its own policy: which program it runs, which [Child] that is, and how long it waits. Package
-// proc decides none of it.
+// proc decides only what each kind of child withholds of kiln's environment, marked ✗:
+//
+//	variable               Shell  Session  Git    why
+//	ANTHROPIC_API_KEY             ✗               would bill an account instead of the developer's login
+//	ANTHROPIC_AUTH_TOKEN          ✗               the same
+//	GIT_*                  ✗      ✗        ✗      GIT_DIR or GIT_INDEX_FILE would aim git at another repository
+//	CLAUDE*                       ✗               Claude Code's own, set by the session that may have started kiln
 //
 // kiln runs on macOS alone. The process table is read with sysctl(3), not /bin/ps, which is setuid and which a
 // session's sandbox refuses to exec. [WorkingDirs] asks lsof, which it gives 5 s.
