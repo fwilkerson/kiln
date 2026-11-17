@@ -607,6 +607,8 @@ func TestNextStep(t *testing.T) {
 		resume   bool
 		// rerun is a step that runs the monitor again, by name.
 		rerun bool
+		// says is text the step holds.
+		says string
 	}{
 		"waiting for UAT": {rec: record{State: landed}, commands: []string{"accept", "queue"}},
 		"waiting on its branch with amendments": {
@@ -633,6 +635,11 @@ func TestNextStep(t *testing.T) {
 		"a fix's landing stopped": {
 			rec: record{State: stopped, Accepted: true, Monitor: true}, commands: []string{"accept", "reject"},
 		},
+		"a fix's landing queued": {
+			rec: record{State: queued, Accepted: true, Monitor: true}, says: "the next kiln monitor run, which lands it",
+		},
+		"a fix's landing building": {rec: record{State: building, Accepted: true, Monitor: true}, says: "wait"},
+		"a fix building":           {rec: record{State: building, Monitor: true, Session: "s"}, says: "wait"},
 		// The book has no command for kiln monitor run x, so the step's text names it.
 		"a fix stopped": {
 			rec: record{State: stopped, Monitor: true, Session: "s"}, commands: nil, rerun: true,
@@ -652,13 +659,11 @@ func TestNextStep(t *testing.T) {
 
 			slices.Sort(named)
 			resume := strings.HasPrefix(next, "cd '/cache/kiln/a b/x' && claude --resume s, ")
-			if rerun := strings.HasSuffix(next, "kiln monitor run x"); rerun != tc.rerun {
-				t.Errorf("%q runs the monitor again %v, want %v", next, rerun, tc.rerun)
-			}
-
-			if !slices.Equal(named, tc.commands) || resume != tc.resume {
-				t.Errorf("%q names kiln %q, and resumes the session %v; want %q, %v", next, named, resume,
-					tc.commands, tc.resume)
+			rerun := strings.HasSuffix(next, "kiln monitor run x")
+			const shape = "names kiln %q, resumes the session %v, runs the monitor again %v, says %q %v"
+			got := fmt.Sprintf(shape, named, resume, rerun, tc.says, strings.Contains(next, tc.says))
+			if want := fmt.Sprintf(shape, tc.commands, tc.resume, tc.rerun, tc.says, true); got != want {
+				t.Errorf("%q: got %s; want %s", next, got, want)
 			}
 		})
 	}

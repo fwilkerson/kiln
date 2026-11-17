@@ -381,6 +381,10 @@ func nextStep(rec record, tree git.Worktree, landedAt git.Rev) string {
 // fixStep is what the developer runs next on the monitor's fix of rec. A landed fix leaves no record.
 func fixStep(rec record) string {
 	switch {
+	case rec.State == building:
+		return "wait for it to end"
+	case rec.State == queued:
+		return "wait for the next kiln monitor run, which lands it"
 	case rec.Accepted:
 		return fmt.Sprintf("fix main, and run kiln accept %s to land it again, or kiln reject %s", rec.Name, rec.Name)
 	case rec.State == waiting:
