@@ -174,7 +174,7 @@
 // an hour, or not in whole hours. It refuses a monitor with no command and no agent. It refuses an agent that is no
 // file directly under .kiln/agents/, or that is the audit. It refuses a monitor that may not write the tests while kiln
 // cannot guard them. acceptance then names no path, or one with no part before {spec}. It refuses a gauge that gauges
-// lacks. It refuses a gauge beside a check, or beside gates.
+// lacks. It refuses a gauge beside a check, or beside gates. It refuses drain with neither a check nor a gauge.
 //
 // One kiln monitor run:
 //
@@ -190,6 +190,7 @@
 //	  ends     landed, waits on its branch, unchanged, needs you, session failed, usage limit, stopped, couldn't run
 //	  window   a Ghostty window, when the fix landed, waits, stopped, needs you or session failed
 //	  gauges   read after a landing, as after a build's
+//	  again    with "drain": true, after a fix that landed: from check, due or not, until no fix lands
 //
 // A monitor is due when it never ran, or its check or gauge couldn't run. It is due when a usage limit ended its fix,
 // or its fix was cut short. Otherwise it is due once its last run started its interval, less 30 minutes, ago.
