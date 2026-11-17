@@ -383,7 +383,7 @@ func fixStep(rec record) string {
 	switch {
 	case rec.State == building:
 		return "wait for it to end"
-	case rec.State == queued:
+	case rec.landing():
 		return "wait for the next kiln monitor run, which lands it"
 	case rec.Accepted:
 		return fmt.Sprintf("fix main, and run kiln accept %s to land it again, or kiln reject %s", rec.Name, rec.Name)

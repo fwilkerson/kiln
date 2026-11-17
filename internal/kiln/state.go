@@ -153,7 +153,7 @@ func (b *book) refusal(command string, name Spec, changed func(since git.Rev) (b
 		return "", nil
 	case r == nil:
 		return "kiln holds no record of it", nil
-	case r.Accepted && r.State != stopped:
+	case r.landing():
 		return fmt.Sprintf("its landing is %s", r.State), nil
 	case r.Monitor:
 		return r.fixRefusal(command), nil
@@ -162,6 +162,11 @@ func (b *book) refusal(command string, name Spec, changed func(since git.Rev) (b
 	}
 
 	return r.takeRefusal(command), nil
+}
+
+// landing reports whether kiln has yet to land r, an accepted build. The book takes no command on it until it stops.
+func (r *record) landing() bool {
+	return r.Accepted && r.State != stopped
 }
 
 // queueRefusal says why kiln queue refuses the spec of r, or "" if it takes it.

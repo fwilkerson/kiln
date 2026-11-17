@@ -649,15 +649,7 @@ func TestNextStep(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			tc.rec.Name = "x"
 			next := nextStep(tc.rec, "/cache/kiln/a b/x", "1a2b3c4d5e6f7a8b")
-			b := book{Specs: []*record{&tc.rec}}
-			var named []string
-			for _, m := range regexp.MustCompile(`kiln (\w+) x\b`).FindAllStringSubmatch(next, -1) {
-				named = append(named, m[1])
-				if err := b.may(m[1], "x", func(git.Rev) (bool, error) { return true, nil }); err != nil {
-					t.Errorf("%q names kiln %s, which the book refuses: %v", next, m[1], err)
-				}
-			}
-
+			named := namedIn(t, next, &tc.rec)
 			slices.Sort(named)
 			resume := strings.HasPrefix(next, "cd '/cache/kiln/a b/x' && claude --resume s, ")
 			rerun := strings.HasSuffix(next, "kiln monitor run x")
@@ -668,6 +660,31 @@ func TestNextStep(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestFixStep holds a fix's next step to spec 4's table in every state, accepted or not. A new state needs no row.
+func TestFixStep(t *testing.T) {
+	for _, s := range []state{queued, building, stopped, landed, amended, waiting} {
+		for _, accepted := range []bool{false, true} {
+			rec := record{Name: "x", State: s, Accepted: accepted, Monitor: true}
+			namedIn(t, fixStep(rec), &rec)
+		}
+	}
+}
+
+// namedIn is each kiln command the step next names on x. It fails t for one the book refuses the record rec.
+func namedIn(t *testing.T, next string, rec *record) []string {
+	t.Helper()
+	b := book{Specs: []*record{rec}}
+	var named []string
+	for _, m := range regexp.MustCompile(`kiln (\w+) x\b`).FindAllStringSubmatch(next, -1) {
+		named = append(named, m[1])
+		if err := b.may(m[1], "x", func(git.Rev) (bool, error) { return true, nil }); err != nil {
+			t.Errorf("%s: %q names kiln %s, which the book refuses: %v", shownState(rec), next, m[1], err)
+		}
+	}
+
+	return named
 }
 
 // TestLandChanges holds that main moves only to work that changes it. A session that ended with no result can leave
