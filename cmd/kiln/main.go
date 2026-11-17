@@ -16,17 +16,23 @@
 //
 // Each refuses a spec in a state it does not take, as go doc ./internal/kiln shows.
 //
-// A build that ends stopped, waiting for UAT, or waiting on its branch prints a terminal notification. kiln fire or
-// kiln accept prints it, as OSC 9. Then it sums the build up, and says what to run next.
+// A build that ends stopped, waiting for UAT, or waiting on its branch prints a terminal notification. The kiln fire,
+// kiln accept or kiln monitor run that built it prints it, as OSC 9. Then it sums the build up, and says what to run
+// next.
 //
 // kiln tui draws only on a terminal. With its output elsewhere, it draws nothing, and refuses.
 //
-// kiln runs three commands of its own. A build's session runs kiln hook before each file it writes. The pre-commit
-// hook runs kiln precommit. The zsh completion in _kiln runs kiln complete, which lists kiln's commands, one per line.
-// kiln complete <command> lists the spec names that command would not refuse, and the waiting fixes for accept and
-// reject. kiln complete monitor run lists the monitors.
+// kiln runs three commands of its own, which the developer never types:
 //
-// kiln exits 0 when the command did what it says, and 1 when it refused or failed. A usage error exits 2.
+//	kiln hook --spec <name> --place <worktree> ...   a build's session runs it before each file it writes
+//	kiln precommit                                    the pre-commit hook runs it
+//	kiln complete [<command>]                         _kiln, the zsh completion, runs it
+//
+// kiln complete lists kiln's commands, one per line. With a command, it lists the names that command would not refuse.
+// For accept and reject, those include the waiting fixes. For monitor run and monitor show, they are the monitors.
+//
+// kiln exits 0 when the command did what it says, and 1 when it refused or failed. A usage error exits 2. So does a
+// kiln hook that cannot read its call, which Claude Code reads as a refusal. SIGINT and SIGTERM cancel the command.
 package main
 
 import (
