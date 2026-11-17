@@ -79,7 +79,11 @@ session ──▶ gate ──passes──▶ audit ──no findings──▶ la
 - A session's commands run in Claude Code's sandbox. They write only in the session's checkout and the paths
   `writable` prints, and reach only `hosts`.
 - They may listen on a local port, so a test that starts a server runs in a session.
-- An MCP server runs outside the sandbox.
+- An MCP server runs outside the sandbox. So do the gate's commands, a gauge, a monitor's check and its `command`,
+  each with the developer's environment. The gate runs the code a session wrote.
+- A session's file tools are held by kiln's hook, not by the sandbox. A session may read any file.
+- The paths `writable` prints are shared with whatever else uses them. Go's preset names the module cache and the
+  build cache, which every Go build on the machine reads.
 
 ### acceptance
 

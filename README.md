@@ -23,7 +23,8 @@ has a second session audit it, and lands it on main as one commit. It asks you a
 
 ## Install
 
-kiln needs macOS, git, and the `claude` command of Claude Code, signed in.
+kiln needs macOS, git 2.55 or newer, which Xcode's git may not be, and the `claude` command of Claude Code, signed
+in. It builds on the branch named `main`, and never pushes.
 
 ```sh
 go install github.com/fwilkerson/kiln/cmd/kiln@latest        # with Go 1.27 or newer
@@ -115,8 +116,8 @@ which holds the landed work.
 - **Acceptance tests written apart from the code.** With `"workflow": "split"`, one session writes the code and
   another writes the tests, from the spec alone. Neither can read the other's checkout.
 - **An audit.** Once the gate passes, a second session reads the work and sends its findings back.
-- **A sandbox.** A session's commands write only in its own checkout and the paths `kiln.json` lists, and reach
-  only the hosts it lists. A session cannot write under `.kiln/`, except to ask for an amendment to its spec.
+- **A sandbox, while the session runs.** A session's shell commands write only in its own checkout and the paths
+  `kiln.json` lists, and reach only the hosts it lists. kiln's hook keeps its file tools off `.kiln/`.
 - **Your spec's wording.** A build that finds the spec wrong does not quietly build something else. It writes an
   amendment and waits on its branch for you.
 
@@ -125,6 +126,18 @@ which holds the landed work.
   kiln fire ─▶ main ┤                                                ├─▶ stacked ─▶ gate ─▶ audit ─▶ land
                     └─ verify session, in its own clone:  the tests ─┘
 ```
+
+### What the sandbox does not cover
+
+kiln guards against a session that strays, not against one that attacks.
+
+- **The gate runs the code a session wrote, outside the sandbox**, with your environment. So do a gauge and the
+  pre-commit hook. It is as if you ran the tests of a branch someone sent you.
+- **A session reads any file your account reads**, and inherits your environment's variables.
+- **Paths in `writable` are shared.** Go's module and build caches serve every Go project on the machine.
+
+So build specs you wrote, in a repository you trust, and read what lands as you would a colleague's commit. The
+gaps kiln knows of are filed under [`bugs/`](bugs).
 
 ## Gauges
 
@@ -173,8 +186,8 @@ bugs: landed, last ran 2026-11-17 00:24, runs next after 2026-11-17 00:54
 
 kiln runs its own repository this way. Its [`bugs`](.kiln/monitors/bugs) monitor fixes what is filed under
 `bugs/`, each with a test that fails first. `code-health` refactors the files a gauge scores lowest, and `uat`
-tidies the acceptance tests of accepted specs. An unattended session needs a long-lived sign-in: run
-`claude setup-token`.
+tidies the acceptance tests of accepted specs. An unattended session runs under the sign-in `claude` has on the
+machine.
 
 ## Commands
 
