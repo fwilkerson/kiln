@@ -186,8 +186,8 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 - A monitor names a `command`, an `agent` or both, and a `check` or a `gauge`, never both.
 - The rest of a check's stdout goes to the agent. A check that exits non-zero, or prints no such last line, couldn't
   run, and starts no fix. So does a gauge kiln could not read.
-- A monitor is due when it never ran, when its check or gauge couldn't run, or when its last run started its
-  interval, less half an hour, ago.
+- A monitor is due when it never ran, when its check or gauge couldn't run, when a usage limit ended its fix, or
+  when its fix was cut short. Otherwise it is due once its last run started its interval, less half an hour, ago.
 - A fix is a build with no spec. The gate holds it, with the check added unless `"gates": false`. That setting is
   for a check that reads something a fix cannot change until it is deployed. A gauge always joins the gate.
 - A fix never writes under `.kiln/`. Without `"tests": true`, it never writes under an `acceptance` path's part
@@ -197,13 +197,22 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 - `"drain": true` is for a queue that each fix takes one item from, such as a folder of bug reports. After a fix
   lands, kiln runs the check again at once, due or not, and starts the next fix. The run ends when the check asks
   for no fix, when the monitor is held, or when a fix does not land. It needs a check or a gauge.
-- `kiln monitor run` refuses while `kiln fire` builds, or another `kiln monitor run` runs, and `kiln fire` while
-  it runs. So a long run, such as one that drains, is never joined by the next hour's.
+- `kiln monitor run` refuses while `kiln fire` builds, another `kiln monitor run` runs, or `kiln accept` lands,
+  and `kiln fire` while it runs. So a long run, such as one that drains, is never joined by the next hour's.
 
-A monitor is held, and starts no fix, while nothing changed since its last fix stopped, asked for you, was
-rejected, or changed nothing. It is held after a landed fix too, while its check stays out of the gate and prints
-the same. A monitor with a gauge is held after a landed fix while its entry and what the gauge prints are as they
-were. `kiln status` shows either as `held: landed`. Its check or gauge still runs when due.
+A monitor is held, and starts no fix, by how its last fix ended. A change since that fix started releases it:
+
+| Its last fix                           | Held until a change to                                             |
+|----------------------------------------|--------------------------------------------------------------------|
+| stopped, or was rejected               | main's tip, the monitor's entry in `kiln.json`, or what it printed |
+| asked for you, with a check or gauge   | its entry, or what it printed                                      |
+| asked for you, with neither            | main's tip, or its entry                                           |
+| changed nothing, with a check or gauge | its entry, or what it printed                                      |
+| landed, with a gauge                   | its entry, or what its gauge printed                               |
+| landed, with a check out of the gate   | what its check printed                                             |
+
+`kiln status` shows the last two as `held: landed`. Its check or gauge still runs when due. `kiln monitor run
+<name>` skips the hold, and never starts a second fix.
 
 ## Agents
 
