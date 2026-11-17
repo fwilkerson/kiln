@@ -1,0 +1,42 @@
+name: release
+
+# A pushed tag such as v0.1.0 tests kiln, builds it for both Macs, and publishes a GitHub release:
+#
+#   kiln_v0.1.0_darwin_arm64.tar.gz    kiln, its zsh completion _kiln, LICENSE and README.md
+#   kiln_v0.1.0_darwin_amd64.tar.gz
+#   checksums.txt                      shasum -a 256 -c checksums.txt
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      # The whole history, so go build stamps the binary with the tag it was built at.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./...
+      - name: Build
+        run: |
+          for arch in arm64 amd64; do
+            dir="kiln_${GITHUB_REF_NAME}_darwin_${arch}"
+            mkdir -p "dist/$dir"
+            CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" go build -trimpath -ldflags='-s -w' -o "dist/$dir/kiln" ./cmd/kiln
+            cp LICENSE README.md cmd/kiln/_kiln "dist/$dir/"
+            tar -C dist -czf "dist/$dir.tar.gz" "$dir"
+          done
+          cd dist && shasum -a 256 *.tar.gz > checksums.txt
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes dist/*.tar.gz dist/checksums.txt
