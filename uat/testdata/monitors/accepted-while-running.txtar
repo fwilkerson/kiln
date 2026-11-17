@@ -1,0 +1,22 @@
+# A fix accepted while another kiln holds the run lock, whose landing the next kiln monitor run makes.
+
+env KILN_OPEN=true
+
+# Given: a monitor whose fix waits for kiln accept, and another kiln that holds the run lock.
+exec sh -c 'kiln monitor run || true'
+exec kiln status
+stdout 'docs: waiting on the developer'
+
+# When: the developer runs kiln accept with the monitor's name, while the other kiln holds the lock,
+exec sh -c 'perl -e ''use Fcntl qw(:flock); open(F, ">>", ".git/kiln/run.lock") or die; flock(F, LOCK_EX) or die; open(M, ">", ".git/locked"); close(M); sleep 30'' & while [ ! -f .git/locked ]; do sleep 0.1; done; kiln accept docs; s=$?; kill $!; exit $s'
+stdout 'docs: accepted; the next kiln monitor run lands it'
+
+# Then: kiln status shows the fix accepted, its landing waiting for the next kiln monitor run.
+exec kiln status
+! stdout 'waiting on the developer'
+stdout 'docs: accepted, lands at the next kiln monitor run'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "monitors": [
+ {"name": "docs", "every": "168h", "command": "echo 'the docs, brought up to date' >docs.txt", "accept": true}
+]}

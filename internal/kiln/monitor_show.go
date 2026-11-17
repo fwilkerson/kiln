@@ -20,6 +20,8 @@ type standing struct {
 	// outcome is the outcome of the fix the result names, or "". fixed is whether the result names a fix.
 	outcome string
 	fixed   bool
+	// landing is the book's record of the fix while its accepted landing is queued or building, or nil.
+	landing *record
 	// summary is the check's summary, the report's summary, the session's error, or why the check couldn't run.
 	summary, report string
 	// last is when its last run started, and next when it is due again. Each is zero for a monitor that never ran.
@@ -29,8 +31,9 @@ type standing struct {
 // neverRun is the result of a monitor that never ran.
 const neverRun = "never run"
 
-// standing is where m stands, from its history.
-func (h *history) standing(m monitor) standing {
+// standing is where m stands, from its history. rec is the record of its fix, if the book holds one. An accepted
+// landing is worded from rec, since the ledger's last outcome still says the fix waits on its branch.
+func (h *history) standing(m monitor, rec *record) standing {
 	if h == nil || h.last.Kind == "" {
 		return standing{result: neverRun}
 	}
@@ -50,7 +53,29 @@ func (h *history) standing(m monitor) standing {
 		s.result, s.summary = e.Found, e.Summary
 	}
 
+	if s.fixed && rec.fixLanding() {
+		s.result, s.landing = landingResult(rec.State), rec
+	}
+
 	return s
+}
+
+// fixLanding reports whether r, which may be nil, is a monitor's fix whose accepted landing is queued or building.
+func (r *record) fixLanding() bool {
+	if r == nil {
+		return false
+	}
+
+	return r.Monitor && r.landing()
+}
+
+// landingResult is the result of a monitor whose accepted fix's landing is in the state st.
+func landingResult(st state) string {
+	if st == building {
+		return "accepted, landing"
+	}
+
+	return "accepted, lands at the next kiln monitor run"
 }
 
 // fixResult is a fix's outcome, in the words kiln status shows.
@@ -94,9 +119,10 @@ func (r *Repo) monitorStatus(ctx context.Context, out io.Writer) error {
 	now := r.now()
 	fmt.Fprintln(out, "monitors:")
 	for _, m := range c.Monitors {
-		h := all[m.Name]
-		fmt.Fprintf(out, "%s: %s, %s\n", m.Name, h.standing(m).result, h.standing(m).when(h.due(m, now)))
-		for _, line := range h.standing(m).lines(m.Name, k.find(m.Name)) {
+		h, rec := all[m.Name], k.find(m.Name)
+		s := h.standing(m, rec)
+		fmt.Fprintf(out, "%s: %s, %s\n", m.Name, s.result, s.when(h.due(m, now)))
+		for _, line := range s.lines(m.Name, rec) {
 			fmt.Fprintln(out, indent(line))
 		}
 	}
@@ -186,7 +212,7 @@ func (r *Repo) MonitorShow(ctx context.Context, name Spec, in io.Reader, out io.
 		return err
 	}
 
-	s := h.standing(monitor{Name: name})
+	s := h.standing(monitor{Name: name}, k.find(name))
 	// The body starts with kiln:, so a monitor named 4 can't read as OSC 9;4, a progress bar Ghostty draws.
 	fmt.Fprintf(out, "\x1b]9;kiln: %s %s\a", name, s.result)
 	fmt.Fprintf(out, "%s: %s, at %s\n", name, s.result, shownTime(s.last.Local()))

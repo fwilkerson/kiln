@@ -9,6 +9,7 @@ import (
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/kiln/internal/tui"
 )
 
 // TestMonitorConfig holds which monitors kiln.json may name.
@@ -308,6 +309,28 @@ func TestMonitorStatusLines(t *testing.T) {
 
 			if tc.s.outcome == outNeedsYou && strings.Contains(lines, tc.s.report) {
 				t.Errorf("%q holds the agent's report", lines)
+			}
+		})
+	}
+}
+
+// TestAcceptedLanding holds that a monitor with an accepted fix stands as the book holds the fix. The ledger still
+// says the fix waits.
+func TestAcceptedLanding(t *testing.T) {
+	h := histories([]entry{{Kind: monitorKind, Monitor: "docs", Found: foundFix, Build: "b"},
+		{Kind: outcomeKind, Build: "b", Outcome: outWaits}})["docs"]
+	for name, tc := range map[string]struct {
+		landing state
+		want    tui.State
+	}{
+		"its landing queued": {landing: queued, want: tui.Queued},
+		"its landing builds": {landing: building, want: tui.Halted},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := h.standing(monitor{Name: "docs"}, &record{Name: "docs", State: tc.landing, Accepted: true,
+				Monitor: true})
+			if got := s.state(); got != tc.want || strings.Contains(s.result, "waiting") {
+				t.Errorf("stands %q, as %q; want %q, and no wait on the developer", got, s.result, tc.want)
 			}
 		})
 	}

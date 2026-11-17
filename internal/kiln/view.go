@@ -163,6 +163,11 @@ func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
 		return nil, err
 	}
 
+	k, err := v.r.store.read()
+	if err != nil {
+		return nil, err
+	}
+
 	fixes := map[Spec][]*tui.Build{}
 	for _, s := range collect(entries) {
 		if s.Monitor != "" {
@@ -174,7 +179,7 @@ func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
 	shown := make([]tui.Spec, len(c.Monitors))
 	for i, m := range c.Monitors {
 		h := all[m.Name]
-		s := h.standing(m)
+		s := h.standing(m, k.find(m.Name))
 		shown[i] = tui.Spec{Name: string(m.Name), State: s.state(), Builds: fixes[m.Name],
 			Monitor: &tui.Monitor{Result: s.result, Summary: s.summary, Last: s.last, Next: s.next, Due: h.due(m, now),
 				Readings: repositoryReadings(entries, m)}}
@@ -215,8 +220,12 @@ var fixStates = map[string]tui.State{outLanded: tui.Landed, outStopped: tui.Stop
 	outUnchanged: outUnchanged, outRejected: tui.Rejected, outDropped: "cut short", "": tui.Running}
 
 // state is where the monitor of s stands, as the view words it. It stands as its last fix ended, or as its check
-// found. A held monitor stands where the fix that holds it ended.
+// found. A held monitor stands where the fix that holds it ended. An accepted landing stands as the book holds it.
 func (s standing) state() tui.State {
+	if s.landing != nil {
+		return stateOf(s.landing)
+	}
+
 	if s.fixed {
 		return fixStates[s.outcome]
 	}
