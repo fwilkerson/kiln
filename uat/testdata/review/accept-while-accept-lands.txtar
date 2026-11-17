@@ -1,0 +1,81 @@
+# A spec accepted while another kiln accept lands, which lands it too, as the reply says.
+
+# Given: two specs waiting on their branches with amendments. Once $HOME/.hold exists, the gate waits for
+# $HOME/.go.
+exec kiln queue x
+exec kiln queue y
+exec kiln fire
+stdout '^x: waits on kiln/x'
+stdout '^y: waits on kiln/y'
+
+# When: the developer accepts x, and accepts y while x's landing holds the run lock,
+exec sh -c 'touch "$HOME/.hold"; kiln accept x >"$HOME/x.out" 2>&1 & while [ ! -f "$HOME/.gating" ]; do sleep 0.1; done; kiln accept y; s=$?; touch "$HOME/.go"; wait $!; exit $s'
+
+# Then: the reply names the kiln accept that is landing, and no kiln fire, since none runs.
+stdout '^y: accepted; the kiln accept that is landing lands it$'
+! stdout 'kiln fire'
+
+# The kiln accept of x lands both, so no spec is left.
+exec kiln status
+stdout '^kiln holds no approved spec$'
+
+-- .kiln/kiln.json --
+{"gate": ["sh -c 'if [ -f \"$HOME/.hold\" ]; then touch \"$HOME/.gating\"; while [ ! -f \"$HOME/.go\" ]; do sleep 0.1; done; fi'"]}
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- .kiln/specs/y.md --
+### 1. Y answers
+
+- **Given**: nothing.
+- **When**: Y is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+      {"result": {"result": "Built x, under an amendment."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y/.\" ."}}},
+      {"result": {"result": "Built y, under an amendment."}}
+    ]}
+  },
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}, "2": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+}
+-- _given/x/.kiln/specs/x.amend.md --
+# Amendments to .kiln/specs/x.md
+
+## Acceptance test 1: X answers
+
+### Old
+
+- **Then**: it answers 42.
+
+### New
+
+- **Then**: it answers 43.
+
+### Reason
+
+42 is taken.
+-- _given/y/.kiln/specs/y.amend.md --
+# Amendments to .kiln/specs/y.md
+
+## Acceptance test 1: Y answers
+
+### Old
+
+- **Then**: it answers 42.
+
+### New
+
+- **Then**: it answers 43.
+
+### Reason
+
+42 is taken.

@@ -822,8 +822,8 @@ func (r *record) status(out io.Writer) {
 // the commit that last held it. The commit that moves main is gated first, on main as it stands.
 //
 // A spec waiting on its branch first folds its amendments into the spec, and lands as a build does. A conflict or a
-// failing gate goes back to its build's session. While another kiln fire builds, that run lands it instead. While a
-// kiln monitor run builds, the next kiln fire or kiln monitor run lands it.
+// failing gate goes back to its build's session. While another kiln fire or kiln accept holds the run lock, that run
+// lands it instead. While a kiln monitor run builds, the next kiln fire or kiln monitor run lands it.
 //
 // A monitor's fix waiting on its branch is rebased onto main, and gated again, check included. Then main moves onto
 // it if main hasn't moved. It retires nothing. While another kiln holds the run lock, the next kiln
@@ -927,10 +927,11 @@ func (r *Repo) acceptFix(ctx context.Context, b *build) error {
 }
 
 // landAccepted lands the queued landing of b's accepted spec or fix, unless another kiln holds the run lock. A kiln
-// fire that holds it lands a spec's then. Otherwise the next kiln monitor run lands it, or for a spec, a kiln fire.
+// fire or kiln accept that holds it lands a spec's then. Otherwise the next kiln monitor run lands it, or for a spec,
+// a kiln fire.
 func (r *Repo) landAccepted(ctx context.Context, b *build) error {
 	name := b.rec.Name
-	err := r.run(ctx, b.out, name)
+	err := r.run(ctx, b.out, acceptHolder, name)
 	if errors.Is(err, errRunning) {
 		fmt.Fprintf(b.out, "%s: accepted; %s lands it\n", name, r.landsAccepted(b.rec))
 		return nil
@@ -960,6 +961,8 @@ func (r *Repo) landsAccepted(rec record) string {
 		return "the next kiln monitor run"
 	case r.runHeld() == monitorHolder:
 		return "the next kiln fire or kiln monitor run"
+	case r.runHeld() == acceptHolder:
+		return "the kiln accept that is landing"
 	}
 
 	return "the kiln fire that is building"

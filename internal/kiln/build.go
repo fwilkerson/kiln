@@ -25,14 +25,15 @@ const unknownReset = 5 * time.Minute
 // goes on first, in the same session. Fire refuses while another kiln builds in the repository, and while kiln is being
 // reinstalled. It skips a monitor's fix.
 func (r *Repo) Fire(ctx context.Context, out io.Writer) error {
-	return r.run(ctx, out, "")
+	return r.run(ctx, out, runHolder, "")
 }
 
 var errRunning = fmt.Errorf("%w: another kiln builds in this repository", errRefused)
 
-// run builds the queued specs, or only the one named only, if it is not "".
-func (r *Repo) run(ctx context.Context, out io.Writer, only Spec) error {
-	unlock, err := r.lockRun(runHolder)
+// run builds the queued specs, or only the one named only, if it is not "". holder names the kiln that runs it, as
+// lockRun says.
+func (r *Repo) run(ctx context.Context, out io.Writer, holder string, only Spec) error {
+	unlock, err := r.lockRun(holder)
 	if err != nil {
 		return err
 	}
@@ -74,8 +75,8 @@ func (r *Repo) buildEach(ctx context.Context, out io.Writer, only Spec, unlock f
 	}
 }
 
-// lockRun takes the run lock, which one kiln fire or kiln monitor run in the repository holds at a time. holder
-// names which, for a kiln accept that finds it held.
+// lockRun takes the run lock, which one kiln in the repository holds at a time. holder names the kiln that takes it,
+// for a kiln accept that finds it held.
 func (r *Repo) lockRun(holder string) (unlock func(), err error) {
 	unlock, err = r.store.lock(runLock, syscall.LOCK_EX|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
@@ -93,6 +94,7 @@ func (r *Repo) lockRun(holder string) (unlock func(), err error) {
 const (
 	runHolder     = "kiln fire"
 	monitorHolder = "kiln monitor run"
+	acceptHolder  = "kiln accept"
 )
 
 // runHeld is the kiln that holds the run lock, or last held it.
