@@ -134,11 +134,8 @@ func TestGate(t *testing.T) {
 	const other = "--- FAIL: TestNew (0.00s)\nFAIL\nFAIL\texample.com/s\t0.1s\n"
 	const broken = "# example.com/s\n./s.go:3:1: syntax error\nFAIL\texample.com/s [build failed]\n"
 	const hung = "panic: test timed out after 10m0s\nFAIL\texample.com/t\t600.0s\n"
+	const exited = "FAIL\n--- FAIL: TestFlaky (0.00s)\nFAIL\texample.com/s\t0.1s\n"
 	const flaky = "TestFlaky (example.com/s)"
-	goTest := func(exit int, output string) []check {
-		return []check{{Command: "go test ./...", Exit: exit, Output: output}}
-	}
-
 	for name, tc := range map[string]struct {
 		tip, main []check
 		refused   map[string]string
@@ -175,6 +172,10 @@ func TestGate(t *testing.T) {
 			tip: goTest(1, failing+hung), main: goTest(1, failing),
 			atMain: []string{flaky}, failing: []string{"`go test ./...`"},
 		},
+		"a test binary that exits before it reports, after another run's lone FAIL line": {
+			tip: goTest(1, exited), main: goTest(1, failing), atMain: []string{flaky},
+			failing: []string{"`go test ./...`"}, mentions: "ended before their tests reported: example.com/s.",
+		},
 		"a test that fails at main under another command": {
 			tip:    []check{{Command: "go test -race ./...", Exit: 1, Output: failing}},
 			main:   goTest(1, failing),
@@ -198,8 +199,7 @@ func TestGate(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			readOutputs(tc.tip, tc.main)
-			v := judge(tc.tip, tc.main, tc.refused)
+			v := judge(readOutputs(tc.tip), readOutputs(tc.main), tc.refused)
 			got := judgmentOf(v, tc.mentions)
 			want := judgment{
 				tc.passed, fmt.Sprintf("%q", tc.atMain), fmt.Sprintf("%q", tc.failing), !tc.passed, tc.hinted, true,
@@ -209,6 +209,11 @@ func TestGate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// goTest is the check of a go test run that exited with exit and printed output.
+func goTest(exit int, output string) []check {
+	return []check{{Command: "go test ./...", Exit: exit, Output: output}}
 }
 
 // TestReportNamesLostFailure holds the rule that a gate's report names each failed test. A check keeps only the end
@@ -249,15 +254,16 @@ func judgmentOf(v verdict, mentions string) judgment {
 	}
 }
 
-// readOutputs reads each check's output for the Go tests that failed, as runChecks does. It reads only go test's
-// output, and keeps what a row says its JUnit XML named.
-func readOutputs(checks ...[]check) {
-	for _, cs := range checks {
-		for i := range cs {
-			failed, broken := failedTests(cs[i].Output)
-			cs[i].Failed, cs[i].Broken = append(cs[i].Failed, failed...), cs[i].Broken || broken
-		}
+// readOutputs reads each check's output for the Go tests that failed, as runChecks does, and answers checks. It reads
+// only go test's output, and keeps what a row says its JUnit XML named.
+func readOutputs(checks []check) []check {
+	for i := range checks {
+		failed, cutShort, broken := failedTests(checks[i].Output)
+		checks[i].Failed, checks[i].CutShort = append(checks[i].Failed, failed...), cutShort
+		checks[i].Broken = checks[i].Broken || broken
 	}
+
+	return checks
 }
 
 func TestSpecStates(t *testing.T) {

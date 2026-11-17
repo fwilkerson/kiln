@@ -32,6 +32,9 @@ type check struct {
 	// Broken is true when the command failed in a way no test names. A Go package that fails to build does that. So do
 	// JUnit XML that will not parse, and a test module that will not import.
 	Broken bool `json:"broken,omitempty"`
+	// CutShort names each Go package whose test binary ended before it reported, as os.Exit, a panic or a timeout does.
+	// Such a check is broken too.
+	CutShort []string `json:"cut_short,omitempty"`
 }
 
 // tests names tests, each as a check names it, such as "TestAT1 (example.com/acceptance/x)".
@@ -79,36 +82,43 @@ func runCheck(ctx context.Context, dir git.Worktree, command string, env []strin
 		return check{}, fmt.Errorf("the gate's %q: %w", command, err)
 	}
 
-	goFailed, goBroken := failedTests(string(out))
+	goFailed, cutShort, goBroken := failedTests(string(out))
 	failed, ran, broken := readJUnit(junit)
 	c.Failed = slices.Compact(slices.Sorted(slices.Values(append(goFailed, failed...))))
-	c.Ran, c.Broken = ran, goBroken || broken
+	c.Ran, c.CutShort, c.Broken = ran, cutShort, goBroken || broken
 	return c, nil
 }
 
-// failedTests reads go test's output for the top-level tests that failed, each named with its package. broken is true
-// when a package failed with no test named.
-func failedTests(output string) (failed []string, broken bool) {
+// failedTests reads go test's output for the top-level tests that failed, each named with its package. cutShort names
+// each package that named a failed test, but whose test binary ended before it reported. broken is true when a package
+// failed with no test named, or is cut short.
+func failedTests(output string) (failed, cutShort []string, broken bool) {
 	var f failures
 	for line := range strings.Lines(output) {
 		f.read(strings.TrimRight(line, "\r\n"))
 	}
 
-	return append(f.failed, f.pending...), f.broken
+	return append(f.failed, f.pending...), f.cutShort, f.broken || len(f.cutShort) > 0
 }
 
 // failures is what go test's output says failed, so far. pending names the tests that failed in a package whose
-// FAIL line is still to come.
+// FAIL line is still to come. finished is whether a lone FAIL line followed the last failed test's line. A test binary
+// prints that line when it reports.
 type failures struct {
-	failed, pending []string
-	broken          bool
+	failed, pending, cutShort []string
+	broken, finished          bool
 }
 
 // read reads one line of go test's output.
 func (f *failures) read(line string) {
+	if line == "FAIL" {
+		f.finished = true
+		return
+	}
+
 	if name, ok := strings.CutPrefix(line, "--- FAIL: "); ok {
 		name, _, _ = strings.Cut(name, " ")
-		f.pending = append(f.pending, name)
+		f.pending, f.finished = append(f.pending, name), false
 		return
 	}
 
@@ -124,9 +134,12 @@ func (f *failures) read(line string) {
 
 	if len(f.pending) == 0 {
 		f.broken = true
+	} else if !f.finished {
+		// A binary that os.Exit, a stray panic or the timeout ended prints no lone FAIL, and may have skipped tests.
+		f.cutShort = append(f.cutShort, pkg)
 	}
 
-	f.pending = nil
+	f.pending, f.finished = nil, false
 }
 
 // verdict is what a gate found.
@@ -230,6 +243,11 @@ func (c check) report(main check, notRun tests) string {
 	}
 
 	report += "\n" + strings.TrimSpace(c.Output)
+	if len(c.CutShort) > 0 {
+		report += "\n\nThe run was cut short. These packages ended before their tests reported: " +
+			strings.Join(c.CutShort, ", ") + ". A test there may call os.Exit, or panic in a goroutine."
+	}
+
 	if len(notRun) > 0 {
 		report += "\n\nThe run was cut short. These tests ran at main, but not here: " +
 			strings.Join(notRun, ", ") + "."
