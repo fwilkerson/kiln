@@ -2,9 +2,11 @@ name: release
 
 # A pushed tag such as v0.1.0 tests kiln, builds it for both Macs, and publishes a GitHub release:
 #
-#   kiln_v0.1.0_darwin_arm64.tar.gz    kiln, its zsh completion _kiln, LICENSE and README.md
-#   kiln_v0.1.0_darwin_amd64.tar.gz
-#   checksums.txt                      shasum -a 256 -c checksums.txt
+#   kiln_darwin_arm64.tar.gz    kiln, its zsh completion _kiln, LICENSE and README.md
+#   kiln_darwin_amd64.tar.gz
+#   checksums.txt               shasum -a 256 -c checksums.txt
+#
+# No name holds the version, so releases/latest/download/<name> always answers the newest.
 
 on:
   push:
@@ -29,7 +31,7 @@ jobs:
       - name: Build
         run: |
           for arch in arm64 amd64; do
-            dir="kiln_${GITHUB_REF_NAME}_darwin_${arch}"
+            dir="kiln_darwin_${arch}"
             mkdir -p "dist/$dir"
             CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" go build -trimpath -ldflags='-s -w' -o "dist/$dir/kiln" ./cmd/kiln
             cp LICENSE README.md cmd/kiln/_kiln "dist/$dir/"
