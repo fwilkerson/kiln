@@ -159,8 +159,9 @@ func fixNext(name Spec, outcome string) string {
 	case outNeedsYou:
 		return fmt.Sprintf("read the report, see to it, then run kiln monitor run %s", name)
 	case outWaits:
-		return fmt.Sprintf("read it with git show kiln/%s, then run kiln accept %s, or kiln reject %s", name, name,
-			name)
+		// A fix holds a commit for each round, so git show would print the last round alone.
+		return fmt.Sprintf("read it with git diff main...kiln/%s, then run kiln accept %s, or kiln reject %s", name,
+			name, name)
 	}
 
 	return ""
