@@ -1,18 +1,37 @@
 #!/bin/sh
-# The check of kiln's bugs monitor. It asks for a fix while bugs/ holds a bug, one Markdown file each.
-# It prints the first bug by name, for the monitor's agent. Its last line is the JSON object kiln reads.
+# The check of kiln's bugs monitor. Its last line is the JSON object kiln reads.
+#
+#   at main's tip    asks for a fix while bugs/ holds a bug, and prints the first by name, for the monitor's agent
+#   in a fix's gate  passes once the fix deletes that first bug, and adds or deletes no other
+#
+# So a queue of bugs drains one fix at a time, and no fix lands that leaves its bug's file in bugs/.
 set -eu
 
-first=
-count=0
-for f in bugs/*.md; do
-  [ -e "$f" ] || continue
-  [ -n "$first" ] || first=$f
-  count=$((count + 1))
-done
+# bugs lists the bugs commit $1 holds, one Markdown file each, by name.
+bugs() { git ls-tree --name-only "$1" bugs/ | grep '\.md$' || true; }
+
+# base is where the fix left main. It is HEAD itself at main's tip, where no fix is under way.
+base=$(git merge-base main HEAD)
+queue=$(bugs "$base")
+first=$(printf '%s\n' "$queue" | head -n 1)
+count=$(printf '%s\n' "$queue" | grep -c . || true)
 
 if [ "$count" -eq 0 ]; then
   echo '{"fix": false, "summary": "bugs/ holds no bug"}'
+  exit 0
+fi
+
+if [ "$base" != "$(git rev-parse HEAD)" ]; then
+  if [ "$(bugs HEAD)" = "$(printf '%s\n' "$queue" | tail -n +2)" ]; then
+    echo "{\"fix\": false, \"summary\": \"the fix deletes $first\"}"
+    exit 0
+  fi
+
+  echo "Delete $first, the bug this fix is for, and add or delete no other file under bugs/. It now holds:"
+  echo
+  bugs HEAD
+  echo
+  echo "{\"fix\": true, \"summary\": \"the fix must delete $first, and no other bug\"}"
   exit 0
 fi
 
