@@ -1,8 +1,12 @@
 // Package tui draws kiln's builds in one full-screen view, live and past. It reads, and changes nothing.
 //
-//	home ──enter──▶ build ──enter──▶ run ──s──▶ the spec, as the build's approval held it
-//	  │  side panel: specs, newest first, then monitors; / filters; the one selected narrows home's builds to its own
-//	  └──── the "now" line, enter ────▲   esc goes back one screen at every step
+//	home ──enter──▶ build ──enter──▶ run
+//	  │                               ▲
+//	  └──── the "now" line, enter ────┘
+//
+//	home   side panel: specs, newest first, then monitors; / filters; the one selected narrows home's builds
+//	s      on home, a build or a run: the spec, as the build's approval held it, then its amendments
+//	esc    back one screen; ? lists every key a screen takes; q quits
 //
 //	err := tui.Show(ctx, source, "", tui.Terminal{In: os.Stdin, Out: os.Stdout})  // a name selects its spec
 //
@@ -11,8 +15,9 @@
 // are its fixes, which open as a spec's builds do.
 //
 // It reads its [Source] again once a second, so a running run grows as its session writes. A run lists its calls
-// newest first, below its answer. Keys and the mouse both work, and ? lists every key a screen takes. A click opens
-// the row it hits, and the wheel scrolls what it is over. Red marks what failed, yellow what runs or waits, and green
+// newest first, below its answer. A session idle for over a minute, with no call open, shows its idle time in
+// yellow. Keys and the mouse both work. A click opens the row it hits, and the wheel scrolls what it is over, 3 lines
+// a notch. Red marks what failed, yellow what runs or waits, and green
 // what passed. A glyph beside each color says the same: ✗, ▶ and ✓. Cyan marks the panel the keys go to, and each
 // key's name. It marks a spec that waits on the developer too, beside ◆.
 //
