@@ -195,7 +195,7 @@ func fixNext(name Spec, outcome string) string {
 
 // MonitorShow shows how the last run of the monitor name ended, in the window kiln opens for it. It writes an OSC 9
 // sequence, which Ghostty shows as a notification. The result follows, with its summary, report or error, and the
-// command to run next. Then it waits for return on in.
+// command to run next. Then it waits for return on in. It refuses a monitor the ledger holds no run of.
 func (r *Repo) MonitorShow(ctx context.Context, name Spec, in io.Reader, out io.Writer) error {
 	entries, err := r.store.entries()
 	if err != nil {

@@ -10,8 +10,9 @@ import (
 )
 
 // MonitorRun runs, at main's tip, each monitor kiln.json names that is due, one at a time. With a name, it runs that
-// monitor alone, due or not, and held or not. It refuses while another kiln builds in the repository, and while kiln
-// is being reinstalled. First it drops each fix a kiln cut short, and lands each accepted landing that is queued.
+// monitor alone, due or not, and held or not by its last fix. It never starts a second fix while one builds, waits or
+// lands. It refuses while another kiln builds in the repository, and while kiln is being reinstalled. First it drops
+// each fix a kiln cut short, and lands each accepted landing that is queued.
 func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {
 	unlock, err := r.lockRun(monitorHolder)
 	if err != nil {

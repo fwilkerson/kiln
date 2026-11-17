@@ -185,10 +185,11 @@ func appendTo(list *[]string) func(string) error {
 	}
 }
 
-// Hook answers the PreToolUse call on in, for the session that args name. args are what kiln wrote after "kiln hook"
-// in the session's settings. Hook refuses a write outside the session's worktree, and one to a path that
-// guard.guarded names. It writes its refusal to out, as Claude Code reads it. It reads no shell command: the gate's
-// own check finds a guarded path a command changed. Its error is ErrUsage for args that kiln never writes.
+// Hook answers the PreToolUse call on in, for the session that args name. args are what kiln wrote after "kiln hook" in
+// the session's settings. Hook refuses a write outside the session's worktree, one to a guarded path, and one that
+// names no file. The package doc lists those paths. It writes its refusal to out, as Claude Code reads it. It reads no
+// shell command: the gate's own check finds a guarded path a command changed. Its error is [ErrUsage] for args that
+// kiln never writes.
 func Hook(args []string, in io.Reader, out io.Writer) error {
 	g, err := hookGuard(args)
 	if err != nil {

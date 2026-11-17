@@ -15,7 +15,8 @@ import (
 // MonitorInstall sets up a launchd job that runs kiln monitor run in the repository each hour. It writes the job to
 // ~/Library/LaunchAgents/, named for a hash of the repository's path, and loads it with launchctl bootstrap. The job
 // runs at the minute of the hour it was installed at. launchd runs such a job on wake when its minute passed during
-// sleep. The job runs with the PATH kiln was installed from. Installed again, it replaces the job.
+// sleep. The job runs with the PATH of the kiln monitor install that set it up. It writes what it prints to
+// monitor.log, beside kiln's ledger. Installed again, it replaces the job.
 func (r *Repo) MonitorInstall(ctx context.Context, out io.Writer) error {
 	home, err := os.UserHomeDir()
 	if err != nil {

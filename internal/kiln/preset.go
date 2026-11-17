@@ -96,7 +96,8 @@ func unused(dir string, used []string) error {
 	return nil
 }
 
-// ErrUsage is the kind of a command kiln refuses for its arguments. kiln init refuses a preset it does not know so.
+// ErrUsage is the kind of a command kiln refuses for its arguments. Init returns it for a preset it does not know.
+// Hook returns it for arguments kiln never writes.
 var ErrUsage = errors.New("usage")
 
 // presetNamed is the preset of name, or the first for "". It refuses any other name, and names each preset.

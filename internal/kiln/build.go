@@ -22,8 +22,8 @@ import (
 const unknownReset = 5 * time.Minute
 
 // Fire builds each queued spec, one at a time, until none is queued. A build that was building when kiln last stopped
-// goes on first, in the same session. Fire refuses while another kiln fire or kiln monitor run builds in the
-// repository, and while kiln is being reinstalled. It skips a monitor's fix.
+// goes on first, in the same session. Fire refuses while another kiln builds in the repository, and while kiln is being
+// reinstalled. It skips a monitor's fix.
 func (r *Repo) Fire(ctx context.Context, out io.Writer) error {
 	return r.run(ctx, out, "")
 }
