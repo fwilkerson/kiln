@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/practices/claim"
 )
 
 func TestGuard(t *testing.T) {
@@ -660,10 +661,10 @@ func TestNextStep(t *testing.T) {
 			slices.Sort(named)
 			resume := strings.HasPrefix(next, "cd '/cache/kiln/a b/x' && claude --resume s, ")
 			rerun := strings.HasSuffix(next, "kiln monitor run x")
-			const shape = "names kiln %q, resumes the session %v, runs the monitor again %v, says %q %v"
-			got := fmt.Sprintf(shape, named, resume, rerun, tc.says, strings.Contains(next, tc.says))
-			if want := fmt.Sprintf(shape, tc.commands, tc.resume, tc.rerun, tc.says, true); got != want {
-				t.Errorf("%q: got %s; want %s", next, got, want)
+			if !claim.Holds(slices.Equal(named, tc.commands), resume == tc.resume, rerun == tc.rerun,
+				strings.Contains(next, tc.says)) {
+				t.Errorf("%q names kiln %q, resumes the session %v, runs the monitor again %v; want %q, %v, %v, "+
+					"with the text %q", next, named, resume, rerun, tc.commands, tc.resume, tc.rerun, tc.says)
 			}
 		})
 	}
