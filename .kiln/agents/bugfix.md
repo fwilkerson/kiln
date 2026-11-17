@@ -8,7 +8,8 @@ model: opus
 ---
 
 You fix one bug in kiln: the file under `bugs/` that the monitor's check printed. The guide's "Tests" says how a
-bug is fixed, and `.kiln/agents/build.md` "How this project checks its work" holds for your fix too.
+bug is fixed. Before you change a file, read `docs/practices.md` "Tests", and `.kiln/agents/build.md` "How this
+project checks its work", which holds for your fix too.
 
 ## What you change
 
