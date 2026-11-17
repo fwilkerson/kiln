@@ -10,8 +10,8 @@ import (
 
 // Clone makes a clone of the repository at path. It holds only main's objects and no remote, so nothing in it
 // reaches the repository's other branches. It checks the clone out on a new branch, made from main. Its links are
-// plain files, as a worktree's are, and it commits as the repository does. If that fails part way, it removes the
-// clone.
+// plain files, as a worktree's are, and it commits as the repository does. It refuses a path that is there already.
+// If the clone fails part way, Clone removes it.
 func (g *Git) Clone(ctx context.Context, path Worktree, main, branch Branch) error {
 	path = g.at(path)
 	if _, err := os.Lstat(string(path)); err == nil {
@@ -49,14 +49,14 @@ func (g *Git) clone(ctx context.Context, path Worktree, main, branch Branch) err
 	return nil
 }
 
-// Fetch makes branch in the repository what branch is in the clone at path, as it stands there.
+// Fetch sets branch in the repository to the commit branch holds in clone, even where that drops commits.
 func (g *Git) Fetch(ctx context.Context, clone Worktree, branch Branch) error {
 	refspec := "+" + branch.ref() + ":" + branch.ref()
 	_, err := g.in(ctx, g.repo, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", string(g.at(clone)), refspec)
 	return err
 }
 
-// Pull makes branch in the clone at path what branch is in the repository. The clone must not have it checked out.
+// Pull sets branch in clone to the commit branch holds in the repository. clone must not have branch checked out.
 func (g *Git) Pull(ctx context.Context, clone Worktree, branch Branch) error {
 	refspec := "+" + branch.ref() + ":" + branch.ref()
 	_, err := g.in(ctx, clone, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", string(g.repo), refspec)

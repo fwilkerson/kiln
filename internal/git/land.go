@@ -13,9 +13,9 @@ import (
 	"time"
 )
 
-// InTheWay says why a branch was not moved. Tip is where the branch was, when it was not at the commit expected. Busy
-// is the worktree where a rebase, a bisect or another git holding the index is busy with it. Files are the developer's
-// changed, untracked or ignored files that moving it would have overwritten.
+// InTheWay says why [Git.Move] did not move a branch, by the one field it sets. Tip is where the branch was, when it
+// was not at the commit expected. Busy is the worktree where a rebase, a bisect or another git holding the index
+// works on the branch. Files are the developer's changed, untracked or ignored files that the move would overwrite.
 type InTheWay struct {
 	Tip   Rev
 	Busy  Worktree
@@ -23,8 +23,8 @@ type InTheWay struct {
 }
 
 // Move moves branch from expected to to, a commit that descends from it. A branch checked out in a worktree moves
-// with it, by a fast-forward merge. It refuses, with an [InTheWay], when the branch is not at expected. That is so when
-// another landing moved it first.
+// with it, by a fast-forward merge. Move refuses with an [InTheWay], which says why, and moves nothing. When git
+// refuses for no reason Move can name, Move tries once more after 500 ms.
 func (g *Git) Move(ctx context.Context, branch Branch, to, expected Rev) (*InTheWay, error) {
 	way, again, err := g.moveOnce(ctx, branch, to, expected)
 	if !again {
@@ -310,7 +310,7 @@ func overlap(a, b string) bool {
 }
 
 // Remove removes the worktree at path, if it is there, and then branch, if it is not "". It refuses a path that holds
-// the main checkout.
+// the main checkout, or a directory that is not a worktree.
 func (g *Git) Remove(ctx context.Context, path Worktree, branch Branch) error {
 	g.worktrees.Lock()
 	defer g.worktrees.Unlock()

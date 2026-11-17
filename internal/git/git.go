@@ -5,15 +5,28 @@
 //	_, err = g.Commit(ctx, tree, "a session's work")    // whatever the session left uncommitted
 //	onto, err := g.Tip(ctx, "main")
 //	landed, conflict, err := g.Rebase(ctx, tree, onto, "feat(x): land the approved spec")
+//	// conflict != nil: git could not merge the branch onto onto alone, and nothing changed
 //	// ... gate landed ...
-//	way, err := g.Move(ctx, "main", landed, onto)       // refused, with way.Tip, if main moved meanwhile
+//	way, err := g.Move(ctx, "main", landed, onto)
+//	// way.Tip:   main moved meanwhile, as another landing moves it
+//	// way.Busy:  a rebase, a bisect or another git is busy with main, in that worktree
+//	// way.Files: the developer's files that moving main would overwrite
+//	err = g.Remove(ctx, tree, "kiln/x")
 //
-// Every call runs with hooks, signing, autostash and background work off. The developer's config and the repository's
-// cannot turn them on. Every call runs in the C locale, so git's words are never translated. A branch is named by
-// its short name, as refs/heads/ holds it. A relative path is the main checkout's.
+// A conflict and a refused move are answers, not errors. An error names the git command that failed and what it
+// printed. A branch is named by its short name, as refs/heads/ holds it. A relative path is the main checkout's.
 //
-// Its errors name the git command that failed and what it printed. Rebase answers a conflict as a [Conflict], not an
-// error. Move answers a move it refused as an [InTheWay], not an error.
+// Every call runs with hooks, signing, autostash, update-refs, fsmonitor, submodule recursion and background
+// maintenance off.
+// kiln passes that config in the environment, so neither the developer's config nor the repository's turns them on.
+// No call opens an editor, prompts for a password, or takes an optional lock. Every call runs in the C locale, so
+// git's words are never translated. Each runs in a process group of its own, so kiln's interrupt does not end it.
+//
+// kiln needs git 2.55 or later, whose hook.<event>.enabled turns off a hook that config defines. kiln asks xcrun once
+// for the git behind /usr/bin/git, since that shim near doubles each call's time.
+//
+// A worktree or clone kiln makes holds each symbolic link as a plain file that holds its target. Claude Code's sandbox
+// refuses a shell's write through a link under .claude/. The main checkout keeps its links, and so does each commit.
 package git
 
 import (
