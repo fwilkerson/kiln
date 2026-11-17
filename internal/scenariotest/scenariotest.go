@@ -9,10 +9,48 @@
 //
 // Run runs one script, for a spec's test N. RunAll runs each script of each feature, testdata/<feature>/*.txtar.
 //
-// A script's $WORK is the scratch repository's main checkout, on main. Its first commit holds every file the script
-// brings, but claude.json and what is under _given/. A session copies in the work it builds from _given/, which Go's
-// ./... leaves out too. HOME is a directory of the script's own, so kiln's worktrees are the script's own too.
-// $KILN_REPO is the checkout of kiln the test runs in, for a script that works on kiln's own repository.
+// This script lands a spec x, with one scripted build session and one audit:
+//
+//	exec kiln queue x
+//	exec kiln fire
+//	stdout '^x: landed on main'
+//	grep 'Built x' .claude-calls/build/1/1/stream.jsonl
+//
+//	-- claude.json --
+//	{
+//	  "build": {"1": {"1": [
+//	    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+//	    {"result": {"result": "Built x."}}
+//	  ]}},
+//	  "audit": {"1": {"1": [{"result": {"result": "read 1 directory, found 0"}}]}}
+//	}
+//	-- .kiln/specs/x.md --
+//	### 1. X answers
+//
+//	- **Given**: nothing.
+//	- **When**: X is called.
+//	- **Then**: it answers 42.
+//	-- _given/x/x.go --
+//	package scratch
+//
+//	func X() int { return 42 }
+//
+// The script runs in a scratch repository, with the scripted claude in place of the real one:
+//
+//	$WORK/                       the main checkout, on main; its first commit holds what the script brings
+//	  claude.json                the scripted claude's steps, a ClaudeScript, by role, attempt and call
+//	  _given/                    the work a session copies in, which that commit and Go's ./... leave out
+//	  .claude-calls/<role>/<attempt>/<call>/
+//	                             each call's record, in the files that ClaudeCallFile and its kin name
+//	$WORK-home/                  HOME, so kiln's worktrees and caches are the script's own
+//
+//	PATH        kiln, built from cmd/kiln, then claude, the scripted one
+//	KILN_REPO   the checkout of kiln the test runs in, for a script that works on kiln's own repository
+//	GOCACHE     the developer's, with GOMODCACHE and GOPATH; Go runs offline, as GOPROXY=off,
+//	            GOTOOLCHAIN=local and GOFLAGS=-buildvcs=false say
+//
+// Main refuses to run any test, exiting 2, when the first claude on the PATH is not the scripted one. A real claude
+// would call the model.
 //
 // A script brings only what its Given names. One that brings anything under .kiln/ gets the rest of a Go project that
 // kiln builds:
@@ -23,10 +61,6 @@
 //     the tools Read, Grep, Glob and Bash.
 //   - A spec under .kiln/specs/ that holds only its acceptance tests, from "### 1." on, gets the other sections of
 //     /shape's template, empty, and Status Approved. It is spec N, by its name's place among the script's specs.
-//
-// On the PATH, kiln is built from cmd/kiln, and claude is the scripted one. It follows $WORK/claude.json, a
-// [ClaudeScript], and records each call under $WORK/.claude-calls/<role>/<attempt>/<call>/. The record holds the
-// files that [ClaudeCallFile] and the constants beside it name. Go runs offline, from the developer's caches.
 //
 // A script drives a full-screen program in a pseudo-terminal, such as kiln tui. Its commands are term, keys, click,
 // wheel, screen and color. No sandboxed session can open a pseudo-terminal, so term skips such a script inside one.
