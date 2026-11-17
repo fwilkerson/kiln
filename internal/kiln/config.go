@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
+	"path"
+	"slices"
 	"strings"
 
 	"github.com/fwilkerson/kiln/internal/git"
@@ -28,8 +31,9 @@ type config struct {
 	// Workflow is "split", or "" for build then audit. Like Acceptance and Harness, kiln reads it at the commit the
 	// build was queued at.
 	Workflow string `json:"workflow,omitempty"`
-	// Acceptance is where a spec's acceptance tests live, with {spec} for its name, such as "acceptance/{spec}/".
-	Acceptance string `json:"acceptance,omitempty"`
+	// Acceptance holds each path a spec's acceptance tests live in, with {spec} for its name, such as
+	// "acceptance/{spec}/". A JSON string is a list of one.
+	Acceptance paths `json:"acceptance,omitempty"`
 	// Harness holds paths both sessions of a split build may write, such as the code the acceptance tests run through.
 	Harness []string `json:"harness,omitempty"`
 	// Reaudit holds paths the audit reads again whenever the work's own change to them differs from what it read.
@@ -44,15 +48,110 @@ const splitWorkflow = "split"
 // specVar stands for the spec's name in kiln.json's acceptance.
 const specVar = "{spec}"
 
-// acceptancePath is where the acceptance tests of spec live.
-func (c config) acceptancePath(spec Spec) string {
-	return strings.ReplaceAll(c.Acceptance, specVar, string(spec))
+// paths is a list of paths in kiln.json, which also reads a JSON string as a list of one. A commit from before
+// acceptance took a list holds a string.
+type paths []string
+
+func (p *paths) UnmarshalJSON(raw []byte) error {
+	var one string
+	if err := json.Unmarshal(raw, &one); err == nil {
+		*p = paths{one}
+		return nil
+	}
+
+	return json.Unmarshal(raw, (*[]string)(p))
 }
 
-// fixedPart is the part of acceptance before {spec}, which is the same for every spec.
-func (c config) fixedPart() string {
-	fixed, _, _ := strings.Cut(c.Acceptance, specVar)
+// acceptancePaths are the paths the acceptance tests of spec live in.
+func (c config) acceptancePaths(spec Spec) []string {
+	var filled []string
+	for _, p := range c.Acceptance {
+		filled = append(filled, strings.ReplaceAll(p, specVar, string(spec)))
+	}
+
+	return filled
+}
+
+// fixedParts are the parts of each acceptance path before {spec}, which are the same for every spec.
+func (c config) fixedParts() []string {
+	var fixed []string
+	for _, p := range c.Acceptance {
+		part, _, _ := strings.Cut(p, specVar)
+		fixed = append(fixed, part)
+	}
+
 	return fixed
+}
+
+// acceptanceRefusal says why kiln queue may not take acceptance, or "". Each path holds {spec}, after a part of its
+// own, in its clean form. No path's part before {spec} starts another's, so no two specs' paths meet.
+func (c config) acceptanceRefusal() string {
+	if len(c.Acceptance) == 0 {
+		return fmt.Sprintf("names no acceptance, the paths of a spec's acceptance tests: add one, such as "+
+			"\"acceptance/%s/\"", specVar)
+	}
+
+	for _, p := range c.Acceptance {
+		if why := pathRefusal(p); why != "" {
+			return fmt.Sprintf("names the acceptance path %q, %s", p, why)
+		}
+	}
+
+	fixed := c.fixedParts()
+	for i, a := range fixed {
+		for j, b := range fixed {
+			if i != j && strings.HasPrefix(fold(a), fold(b)) {
+				return fmt.Sprintf("names the acceptance paths %q and %q, whose parts before %s could make two "+
+					"specs' paths meet: start each with a part no other starts with", c.Acceptance[j],
+					c.Acceptance[i], specVar)
+			}
+		}
+	}
+
+	return ""
+}
+
+// harnessRefusal says why kiln queue may not take spec, or "". It refuses a spec whose acceptance paths meet a
+// harness path. A split build removes what main holds under those paths from its build session's checkout.
+func (c config) harnessRefusal(spec Spec) string {
+	for _, a := range c.acceptancePaths(spec) {
+		for _, h := range c.Harness {
+			if meets(a, h) {
+				return fmt.Sprintf("%s's acceptance path %s meets the harness path %s, which its build would "+
+					"remove: rename the spec", spec, a, h)
+			}
+		}
+	}
+
+	return ""
+}
+
+// meets is whether paths a and b are one path, or one holds the other, as APFS folds case.
+func meets(a, b string) bool {
+	fa, fb := fold(path.Clean(a))+"/", fold(path.Clean(b))+"/"
+	return strings.HasPrefix(fa, fb) || strings.HasPrefix(fb, fa)
+}
+
+// unguarded is whether kiln cannot keep a fix off the acceptance tests. Then acceptance names no path, or one with
+// no part before {spec}.
+func (c config) unguarded() bool {
+	return len(c.Acceptance) == 0 || slices.Contains(c.fixedParts(), "")
+}
+
+// pathRefusal says why kiln.json may not name p as an acceptance path, or "".
+func pathRefusal(p string) string {
+	switch {
+	case !strings.Contains(p, specVar):
+		return "which lacks " + specVar + ", so it would hold every spec's tests"
+	case strings.HasPrefix(p, specVar):
+		return "which starts with " + specVar + ", so a spec's name would decide where it is"
+	// fs.ValidPath refuses a leading slash, an unclean form, and ".." that would climb out of the repository.
+	case !fs.ValidPath(strings.TrimSuffix(p, "/")):
+		return "which is not a clean path from the repository's top: write it as path.Clean does, such as " +
+			"\"uat/" + specVar + "/\""
+	}
+
+	return ""
 }
 
 const configFile = kilnDir + "/kiln.json"

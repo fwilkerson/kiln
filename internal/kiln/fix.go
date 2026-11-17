@@ -49,7 +49,7 @@ type fixing struct {
 func newFixing(c config, m monitor, found checked) *fixing {
 	fixes := side{role: fixRole}
 	if !m.Tests {
-		fixes.acceptance = c.fixedPart()
+		fixes.acceptance = c.fixedParts()
 	}
 
 	return &fixing{monitor: m, checked: found, side: fixes}
@@ -453,20 +453,20 @@ func (b *build) fixLaunch(ctx context.Context, resume bool, prompt string) (clau
 
 // kept is the forbidden action that keeps the fix's session off what it may not write.
 func (f *fixing) kept() string {
-	if f.side.acceptance == "" {
+	if len(f.side.acceptance) == 0 {
 		return "Changing anything under .kiln/, by a file tool or a shell command."
 	}
 
 	return fmt.Sprintf("Changing anything under .kiln/, or under %s, by a file tool or a shell command.",
-		f.side.acceptance)
+		strings.Join(f.side.acceptance, ", "))
 }
 
 // contract is kiln's contract with the agent of the monitor name.
 func (f *fixing) contract(name Spec) string {
 	tests := "The monitor says its fixes may write the acceptance tests."
-	if f.side.acceptance != "" {
-		tests = fmt.Sprintf("Nor is anything under `%s`, the acceptance tests, which judge your fix.",
-			f.side.acceptance)
+	if len(f.side.acceptance) > 0 {
+		tests = fmt.Sprintf("Nor is anything under %s, the acceptance tests, which judge your fix.",
+			quoted(f.side.acceptance))
 	}
 
 	return fmt.Sprintf(monitorContract, name, tests)

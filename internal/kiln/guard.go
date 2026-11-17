@@ -31,10 +31,10 @@ type guard struct {
 type side struct {
 	// role is buildRole or verifyRole in a split build, fixRole in a monitor's fix, and "" otherwise.
 	role string
-	// acceptance is a split build's acceptance path, with the spec's name filled in, such as "acceptance/x/". In a
-	// fix it is that path's fixed part, and guards each path that starts with it. It is "" in a fix whose monitor
-	// says it may write the tests.
-	acceptance string
+	// acceptance holds a split build's acceptance paths, with the spec's name filled in, such as "acceptance/x/". In
+	// a fix it holds each path's fixed part, and guards each path that starts with one. It is empty in a fix whose
+	// monitor says it may write the tests.
+	acceptance []string
 	// harness holds the paths both sessions of a split build write, such as the code the tests run through.
 	harness []string
 }
@@ -46,11 +46,11 @@ const fixRole = "fix"
 func (s side) valid() bool {
 	switch s.role {
 	case "":
-		return s.acceptance == "" && s.harness == nil
+		return s.acceptance == nil && s.harness == nil
 	case fixRole:
 		return s.harness == nil
 	case buildRole, verifyRole:
-		return s.acceptance != ""
+		return len(s.acceptance) > 0
 	}
 
 	return false
@@ -60,22 +60,25 @@ func (s side) valid() bool {
 // build session writes neither the acceptance tests nor the amendments. Its verify session writes only those, and
 // the harness. A fix writes no acceptance test, unless its monitor says it may.
 func (s side) refusal(rel, folded string, spec Spec) string {
-	tests := within(folded, s.acceptance) || folded == fold(spec.amendPath())
+	in := func(root string) bool { return within(folded, root) }
+	tests := slices.ContainsFunc(s.acceptance, in) || folded == fold(spec.amendPath())
+	paths := strings.Join(s.acceptance, ", ")
 	switch s.role {
 	case buildRole:
 		if tests {
 			return fmt.Sprintf("%s is the verify session's: in a split build, it alone writes %s and %s", rel,
-				s.acceptance, spec.amendPath())
+				paths, spec.amendPath())
 		}
 	case verifyRole:
-		if !tests && !slices.ContainsFunc(s.harness, func(h string) bool { return within(folded, h) }) {
+		if !tests && !slices.ContainsFunc(s.harness, in) {
 			return fmt.Sprintf("%s is the build session's: in a split build, the verify session writes only %s, "+
-				"%s and the harness", rel, s.acceptance, spec.amendPath())
+				"%s and the harness", rel, paths, spec.amendPath())
 		}
 	case fixRole:
-		if s.acceptance != "" && strings.HasPrefix(folded, fold(s.acceptance)) {
+		i := slices.IndexFunc(s.acceptance, func(fixed string) bool { return strings.HasPrefix(folded, fold(fixed)) })
+		if i >= 0 {
 			return fmt.Sprintf("%s is under the acceptance tests, %s, which judge a monitor's fix: it writes them "+
-				"only when its monitor says \"tests\": true", rel, s.acceptance)
+				"only when its monitor says \"tests\": true", rel, s.acceptance[i])
 		}
 	}
 
@@ -135,8 +138,8 @@ func (g guard) hookArgs() []string {
 		args = append(args, "--role", g.side.role)
 	}
 
-	if g.side.acceptance != "" {
-		args = append(args, "--acceptance", g.side.acceptance)
+	for _, a := range g.side.acceptance {
+		args = append(args, "--acceptance", a)
 	}
 
 	for _, h := range g.side.harness {
@@ -163,11 +166,8 @@ func hookGuard(args []string) (guard, error) {
 	flags.StringVar((*string)(&g.spec), "spec", "", "the spec the session builds")
 	flags.StringVar((*string)(&g.place), "place", "", "the build's worktree")
 	flags.StringVar(&g.side.role, "role", "", "the session's side: build or verify in a split build, or fix")
-	flags.StringVar(&g.side.acceptance, "acceptance", "", "the acceptance path the side guards")
-	flags.Func("harness", "a path both sessions of a split build write; given once for each", func(p string) error {
-		g.side.harness = append(g.side.harness, p)
-		return nil
-	})
+	flags.Func("acceptance", "an acceptance path the side guards; given once for each", appendTo(&g.side.acceptance))
+	flags.Func("harness", "a path both sessions of a split build write; given once for each", appendTo(&g.side.harness))
 
 	switch err := flags.Parse(args); {
 	case err != nil, flags.NArg() > 0, g.spec == "", g.place == "", !g.side.valid():
@@ -175,6 +175,14 @@ func hookGuard(args []string) (guard, error) {
 	}
 
 	return g, nil
+}
+
+// appendTo is a flag's func that appends each value given to list.
+func appendTo(list *[]string) func(string) error {
+	return func(v string) error {
+		*list = append(*list, v)
+		return nil
+	}
 }
 
 // Hook answers the PreToolUse call on in, for the session that args name. args are what kiln wrote after "kiln hook"

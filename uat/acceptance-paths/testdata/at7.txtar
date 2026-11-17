@@ -1,0 +1,24 @@
+# 7. A monitor's fix writes under no path.
+
+env KILN_OPEN=true
+
+# Given: kiln.json names the acceptance paths uat/{spec}/ and integration/{spec}/, and a monitor that does not say
+# its fixes may write the tests. Its command changes a file under integration/.
+
+# When: the developer runs kiln monitor run.
+exec sh -c 'kiln monitor run || true'
+
+# Then: the monitor's fix stops,
+exec kiln status
+stdout 'guarded.*stopped'
+
+# and its change is not on main.
+exec git show main:integration/a/note.txt
+! stdout 'changed by guarded'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "acceptance": ["uat/{spec}/", "integration/{spec}/"], "monitors": [
+ {"name": "guarded", "every": "168h", "command": "echo 'changed by guarded' >>integration/a/note.txt"}
+]}
+-- integration/a/note.txt --
+a's tests

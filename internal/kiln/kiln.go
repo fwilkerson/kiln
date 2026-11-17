@@ -58,7 +58,11 @@
 //	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
 //
 // kiln queue reads the build, verify and audit agents' files at the commit it queues. It refuses one it can't use.
-// It refuses a kiln.json that names no acceptance path. It refuses a build agent that says how to write the tests.
+// It refuses a kiln.json whose acceptance names no path, a path without {spec}, or one that starts with it. It refuses
+// a path that path.Clean changes, but for its last slash, or one that starts with a slash. It refuses a list in which
+// one path's part before {spec} starts another's, or equals it, with case folded. It refuses a spec when a harness
+// path is one of its paths, or holds one, or lies under one. It refuses a build agent that says how to write the
+// tests. Such a line names a path's part before {spec}, where the part starts a path.
 // Every session of the build runs with them as they stood there. An agent's file names the session's tools, model,
 // effort and advisor in its frontmatter. Without tools, it has every tool. Without model, it runs Opus. Without
 // effort or advisor, kiln names none, and each is Claude Code's own. Its body comes first in the session's system
@@ -100,7 +104,8 @@
 // fails on any path the work changed under .kiln/ but .kiln/specs/<name>.amend.md. It fails on a split session's
 // write outside its side too. It does so however the path was
 // written. A session's hook refuses an Edit or a Write there before it happens. A monitor's fix writes nothing under
-// .kiln/. Nor does it write a path that starts with acceptance's part before {spec}, unless its monitor says tests.
+// .kiln/. Nor does it write a path that starts with any acceptance path's part before {spec}, unless its monitor says
+// tests.
 //
 // A usage limit pauses the build until the limit resets, and then resumes the same session. A limit with no reset
 // pauses it for 5 minutes.
@@ -111,11 +116,12 @@
 //	 "agent": "deps.md", "prompt": "Make the gate pass."}
 //
 // kiln.json refuses a monitor with no name, a name another has, or one no spec could have. It refuses an interval
-// under an hour, or not in whole hours. It refuses a monitor with no command and no agent. It refuses one that may
-// not write the tests while acceptance has no part before {spec}. It refuses a gauge that gauges lacks. It refuses a
-// gauge beside a check, or beside gates. A monitor is due when it never ran, or its check or gauge couldn't run. It
-// is due when a usage limit ended its fix, or its fix was cut short. Otherwise it is due once its last run started
-// its interval, less 30 minutes, ago. $KILN_NOW, as RFC 3339, stands for the clock.
+// under an hour, or not in whole hours. It refuses a monitor with no command and no agent. It refuses one that may not
+// write the tests while kiln cannot guard them. acceptance then names no path, or one with no part before {spec}. It
+// refuses a gauge that gauges lacks. It refuses a gauge beside a check, or beside gates. A monitor is due when it never
+// ran, or its check or gauge couldn't run. It is due when a usage limit ended its fix, or its fix was cut short.
+// Otherwise it is due once its last run started its interval, less 30 minutes, ago. $KILN_NOW, as RFC 3339, stands for
+// the clock.
 //
 // Its check runs with sh -c in a worktree of its own at main's tip. Its last line of stdout is {"fix": true|false,
 // "summary": "..."}. A check that exits non-zero, or prints no such line, couldn't run. kiln then keeps its last
@@ -204,6 +210,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
@@ -426,6 +434,10 @@ func (r *Repo) queueable(ctx context.Context, main git.Rev, name Spec) ([]byte, 
 			return nil, fmt.Errorf("%w: %s names a monitor %s, and one name is never both a spec's and a "+
 				"monitor's: rename one", errRefused, configFile, name)
 		}
+
+		if why := c.harnessRefusal(name); why != "" {
+			return nil, fmt.Errorf("%w: %s", errRefused, why)
+		}
 	}
 
 	if err := formOf(string(spec)); err != nil {
@@ -443,9 +455,8 @@ func (r *Repo) ready(ctx context.Context, main git.Rev) error {
 		return fmt.Errorf("%w: %w", errRefused, err)
 	}
 
-	if c.fixedPart() == "" {
-		return fmt.Errorf("%w: %s names no acceptance, the path of a spec's acceptance tests, or one that starts "+
-			"with %s; add one, such as \"acceptance/%s/\"", errRefused, configFile, specVar, specVar)
+	if why := c.acceptanceRefusal(); why != "" {
+		return fmt.Errorf("%w: %s %s", errRefused, configFile, why)
 	}
 
 	agents := map[string]agent{}
@@ -455,7 +466,7 @@ func (r *Repo) ready(ctx context.Context, main git.Rev) error {
 		}
 	}
 
-	if line := testsText(agents[buildRole].body, c.fixedPart()); line != "" {
+	if line := testsText(agents[buildRole].body, c.fixedParts()); line != "" {
 		return fmt.Errorf("%w: %s says how to write the acceptance tests, in %q: move that text to %s, which "+
 			"every build reads", errRefused, agentFile(buildRole), line, agentFile(verifyRole))
 	}
@@ -464,20 +475,43 @@ func (r *Repo) ready(ctx context.Context, main git.Rev) error {
 }
 
 // testsText is the first line of body that says how to write the acceptance tests, or "". An older default build
-// agent said so. Such a line is its heading, or its line on what the build writes. Or it names fixed, where the tests
-// live.
-func testsText(body, fixed string) string {
+// agent said so. Such a line is its heading, or its line on what the build writes. Or it names one of fixed, where
+// the tests live.
+func testsText(body string, fixed []string) string {
 	for line := range strings.Lines(body) {
 		line = strings.TrimSpace(line)
+		names := func(part string) bool { return startsPath(line, part) }
 		switch {
 		case line == "## Acceptance tests",
 			strings.HasPrefix(line, "- The code of each of the spec's acceptance tests"),
-			strings.Contains(line, fixed):
+			slices.ContainsFunc(fixed, names):
 			return line
 		}
 	}
 
 	return ""
+}
+
+// startsPath is whether line holds part where part starts a path. That is at the line's start, or after a rune no
+// path holds, such as a space or a backtick. So "internal/git/" does not start "git/".
+func startsPath(line, part string) bool {
+	for at := 0; ; at++ {
+		i := strings.Index(line[at:], part)
+		if i < 0 {
+			return false
+		}
+
+		at += i
+		before, _ := utf8.DecodeLastRuneInString(line[:at])
+		if at == 0 || !inPath(before) {
+			return true
+		}
+	}
+}
+
+// inPath is whether r is a rune a path's name commonly holds.
+func inPath(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("._-/", r)
 }
 
 // approvedSpec reads .kiln/specs/<name>.md at main, a spec whose Status is Approved.

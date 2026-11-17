@@ -40,7 +40,7 @@ func (b *build) kept(s sides, role string) string {
 	case s.split && role == buildRole:
 		// A split build's amendments are the verify session's.
 		return fmt.Sprintf("Changing anything under .kiln/, or under %s, by a file tool or a shell command.",
-			s.acceptance)
+			strings.Join(s.acceptance, ", "))
 	}
 
 	return fmt.Sprintf("Changing anything under .kiln/ but %s, by a file tool or a shell command.",

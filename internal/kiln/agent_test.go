@@ -197,7 +197,8 @@ func TestQueueNeedsInit(t *testing.T) {
 }
 
 // TestQueueNeedsTestsPlace holds that kiln queue refuses a kiln.json that names no place for the acceptance tests.
-// It refuses a build agent that still says how to write them, as an older default did.
+// It refuses paths that two specs could share. It refuses a spec whose paths meet the harness. It refuses a build
+// agent that still says how to write the tests, as an older default did.
 func TestQueueNeedsTestsPlace(t *testing.T) {
 	for name, tc := range map[string]struct {
 		change, refusal string
@@ -205,9 +206,20 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 		"kiln init's files are taken": {},
 		"kiln.json names no acceptance": {change: `sed -i '' '/"acceptance"/d' .kiln/kiln.json`,
 			refusal: "names no acceptance"},
-		"its acceptance starts with the spec's name": {
-			change:  `sed -i '' 's|"acceptance": .*|"acceptance": "{spec}/",|' .kiln/kiln.json`,
-			refusal: "names no acceptance"},
+		"its acceptance starts with the spec's name": {change: acceptance(`"{spec}/"`), refusal: "starts with {spec}"},
+		"a list of two paths is taken":               {change: acceptance(`["uat/{spec}/", "integration/{spec}/"]`)},
+		"an empty list":                              {change: acceptance(`[]`), refusal: "names no acceptance"},
+		"a path without the spec's name":             {change: acceptance(`["uat/{spec}/", "integration/"]`), refusal: "lacks {spec}"},
+		"a path not in its clean form":               {change: acceptance(`["./uat/{spec}/"]`), refusal: "not a clean path"},
+		"a path above the repository":                {change: acceptance(`["../{spec}/"]`), refusal: "not a clean path"},
+		"a path from the root":                       {change: acceptance(`["/uat/{spec}/"]`), refusal: "not a clean path"},
+		"a fixed part that starts another's":         {change: acceptance(`["uat/{spec}/", "uat/integration/{spec}/"]`), refusal: "could make two"},
+		"one fixed part twice, in other letters":     {change: acceptance(`["test_{spec}.py", "Test_{spec}-it.py"]`), refusal: "could make two"},
+		"a fixed part that only shares a prefix":     {change: acceptance(`["uat/{spec}/", "uat-it/{spec}/"]`)},
+		"the spec's path is a harness path":          {change: harness(`acceptance/x/`), refusal: "meets the harness path"},
+		"a harness path is under the spec's path":    {change: harness(`acceptance/x/h/`), refusal: "meets the harness path"},
+		"the spec's path is under a harness path":    {change: harness(`acceptance/`), refusal: "meets the harness path"},
+		"a harness path beside the spec's":           {change: harness(`acceptance/xh/`)},
 		"the build agent keeps the old heading": {change: `printf '\n## Acceptance tests\n' >>.kiln/agents/build.md`,
 			refusal: "move that text to .kiln/agents/verify.md"},
 		"the build agent keeps the old line": {
@@ -216,6 +228,13 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 		"the build agent names where the tests live": {
 			change:  `printf '\nWrite them in acceptance/x/.\n' >>.kiln/agents/build.md`,
 			refusal: "move that text to .kiln/agents/verify.md"},
+		"the build agent names the second path": {
+			change: acceptance(`["uat/{spec}/", "integration/{spec}/"]`) +
+				` && printf '\nRun the suite in (integration/).\n' >>.kiln/agents/build.md`,
+			refusal: "move that text to .kiln/agents/verify.md"},
+		"the build agent names a path that only ends in a part": {
+			change: acceptance(`["uat/{spec}/", "git/{spec}/"]`) +
+				` && printf '\nThe wrapper is in internal/git/.\n' >>.kiln/agents/build.md`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r, repo := scratchRepo(t)
@@ -236,6 +255,16 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 			}
 		})
 	}
+}
+
+// acceptance is a shell command that sets kiln.json's acceptance to raw, a JSON value.
+func acceptance(raw string) string {
+	return `sed -i '' 's|"acceptance": .*|"acceptance": ` + raw + `,|' .kiln/kiln.json`
+}
+
+// harness is a shell command that sets kiln.json's one harness path to p.
+func harness(p string) string {
+	return `sed -i '' 's|"internal/testutil/"|"` + p + `"|' .kiln/kiln.json`
 }
 
 // TestAuditedDirs holds which directories the audit reads. A file at the top, in any language, names ".". A directory

@@ -127,15 +127,21 @@ gate refuse the rest.
   servers a session calls, each as Claude Code's MCP server settings hold one, such as
   `{"codescene": {"command": "cs-mcp-auth"}}`. They run outside the sandbox. kiln reads it from main's tip, so a build
   cannot weaken its own gate. The pre-commit hook runs the gate's commands on a commit to main.
-- `kiln.json`'s `acceptance` is where a spec's acceptance tests live, with `{spec}` for its name, such as
-  `"acceptance/{spec}/"`. `kiln queue` refuses a `kiln.json` without it. `reaudit` lists paths the audit must read
+- `kiln.json`'s `acceptance` lists each path a spec's acceptance tests live in, with `{spec}` for its name, such as
+  `["uat/{spec}/", "integration/{spec}/"]`. One path may be a string, such as `"acceptance/{spec}/"`. `kiln queue`
+  refuses a `kiln.json` that names no path, a path without `{spec}` or that starts with it, or a path not in its clean
+  form. It refuses a list in which one path's part before `{spec}` starts another's, so no two specs' paths meet. It
+  refuses a spec whose name puts one of its paths on a `harness` path, or around or inside one. A project with more
+  than one path says which test goes in which in its verify agent, and where each test's code is in its audit agent's
+  "Acceptance tests" section. `reaudit` lists paths the audit must read
   whenever the work changes them, such as a harness or migrations. When the work's own change to one differs from what
   the audit last read, the audit reads the work again before it lands, as a round. kiln reads `reaudit` from main's
   tip too.
 - `"workflow": "split"` builds each spec with two sessions at once, each in a clone of main of its own. The build
   session writes the code, and the verify session writes the acceptance tests from the spec alone, never seeing the
   code. Each session's settings deny it reads of the other's clone, and the hook keeps each to its side. The build
-  session writes nothing under `acceptance` or in the amendment file. The verify session writes only there, and in
+  session writes nothing under each path of `acceptance` or in the amendment file. The verify session writes only
+  there, and in
   `harness`, the paths both may write. kiln gates the build session's work alone, and its failures go to the build
   session. Then kiln stacks both sides on `kiln/<name>`, and gates the stack. Its failures go to the verify session,
   which fixes its tests, or names the tests the code fails, which go to the build session. The audit then reads the
@@ -173,7 +179,9 @@ gate refuse the rest.
   reading kiln could not take, of no number or a failed command, couldn't run. A monitor names a check or a gauge, never
   both, and `gates` only beside a check. `"gates": false` keeps the check out of the gate, for a check that reads
   something a fix can't change until it is deployed. `"accept": true` keeps each fix waiting for `kiln accept`. A fix
-  never writes under `.kiln/`, nor under `acceptance`'s part before `{spec}`, unless the monitor says `"tests": true`.
+  never writes under `.kiln/`, nor under each `acceptance` path's part before `{spec}`, unless the monitor says
+  `"tests": true`. So a fix cannot change a lasting suite or a harness under such a part, nor a name that such a suite
+  calls.
   An agent asks for the developer with the last line of its reply: `{"ask": true, "summary": "..."}`.
 - A file such as an agent or a skill, meant for `.kiln/` or `.claude/`, is the developer's. A build names it in its
   last reply instead of writing it.

@@ -668,7 +668,7 @@ func (b *build) landing() string {
 // gate runs the gate on the build's worktree, and writes it to the ledger. landing is the gate on the work rebased
 // onto main. A fix's gate keeps it to its side.
 func (b *build) gate(ctx context.Context, landing bool, allowed ...string) (verdict, error) {
-	return b.gated(ctx, landing, "", b.treeGuard(allowed...))
+	return b.gated(ctx, landing, nil, b.treeGuard(allowed...))
 }
 
 // treeGuard is the guard on the build's worktree, which lets the build change allowed. A fix's keeps it to its side.
@@ -684,7 +684,7 @@ func (b *build) treeGuard(allowed ...string) guard {
 
 // gated runs the gate as Repo.gate does, and writes it to the ledger. landing is the gate on the work rebased onto
 // main.
-func (b *build) gated(ctx context.Context, landing bool, without string, guards ...guard) (verdict, error) {
+func (b *build) gated(ctx context.Context, landing bool, without []string, guards ...guard) (verdict, error) {
 	start := time.Now()
 	v, err := b.r.gate(ctx, without, guards...)
 	if err == nil {

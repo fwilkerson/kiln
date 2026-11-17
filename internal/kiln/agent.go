@@ -152,7 +152,7 @@ var (
 )
 
 // contract is kiln's contract with role's agent, in the build's workflow. No agent's file holds it, so no project
-// drops a line of it. It fills in the spec's name, its acceptance path and the harness.
+// drops a line of it. It fills in the spec's name, its acceptance paths and the harness, each path in backticks.
 func (s sides) contract(role string, name Spec) string {
 	text := map[string]string{buildRole: buildContract, verifyRole: verifyContract, auditRole: auditContract}[role]
 	if role == buildRole && s.split {
@@ -161,10 +161,15 @@ func (s sides) contract(role string, name Spec) string {
 
 	harness := "which kiln.json names none of"
 	if len(s.harness) > 0 {
-		harness = "`" + strings.Join(s.harness, "`, `") + "`"
+		harness = quoted(s.harness)
 	}
 
-	return fmt.Sprintf(text, name, s.acceptance, harness)
+	return fmt.Sprintf(text, name, quoted(s.acceptance), harness)
+}
+
+// quoted is each of paths in backticks, joined by commas.
+func quoted(paths []string) string {
+	return "`" + strings.Join(paths, "`, `") + "`"
 }
 
 // agentLaunch is l, a session of role's agent in the build, as the agent's file at the build's approval says. Its
@@ -213,8 +218,8 @@ func (b *build) agentAt(ctx context.Context, role string) (agent, error) {
 // sides is what each session of a build may write, as kiln.json at the build's approval says.
 type sides struct {
 	split bool
-	// acceptance is the spec's acceptance path, with its name filled in.
-	acceptance string
+	// acceptance holds the spec's acceptance paths, with its name filled in.
+	acceptance []string
 	harness    []string
 }
 
@@ -229,7 +234,7 @@ func (b *build) sides(ctx context.Context) (sides, error) {
 		return sides{}, err
 	}
 
-	s := sides{split: c.Workflow == splitWorkflow, acceptance: c.acceptancePath(b.rec.Name), harness: c.Harness}
+	s := sides{split: c.Workflow == splitWorkflow, acceptance: c.acceptancePaths(b.rec.Name), harness: c.Harness}
 	b.side = &s
 	return s, nil
 }

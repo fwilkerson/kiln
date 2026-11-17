@@ -259,9 +259,9 @@ func (c check) namesNothing() bool {
 
 // gate runs the gate on the commit checked out at the first guard's checkout, a build's checkout. It runs
 // kiln.json's commands there, and at main's tip. It checks the paths each guard's work changed since it left
-// main, as that guard says. without is a path kiln removed from the work, or "". Main is gated without it too. Its
-// removal is no write of the work's.
-func (r *Repo) gate(ctx context.Context, without string, guards ...guard) (verdict, error) {
+// main, as that guard says. without holds the paths kiln removed from the work. Main is gated without them too.
+// Their removal is no write of the work's.
+func (r *Repo) gate(ctx context.Context, without []string, guards ...guard) (verdict, error) {
 	main, err := r.git.Tip(ctx, mainBranch)
 	if err != nil {
 		return verdict{}, err
@@ -298,8 +298,8 @@ func (r *Repo) gate(ctx context.Context, without string, guards ...guard) (verdi
 }
 
 // refused says, by path, why the build may not change each path its work changed since it left main. A path under
-// without that the work lacks is kiln's removal, not the work's.
-func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without string) (map[string]string, error) {
+// one of without that the work lacks is kiln's removal, not the work's.
+func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []string) (map[string]string, error) {
 	head, err := r.git.Head(ctx, g.place)
 	if err != nil {
 		return nil, err
@@ -335,9 +335,9 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without strin
 	return refused, nil
 }
 
-// removed is whether p is under without, and head lacks it. That is kiln's removal, not the work's.
-func (r *Repo) removed(ctx context.Context, head git.Rev, p, without string) (bool, error) {
-	if !within(fold(p), without) {
+// removed is whether p is under one of without, and head lacks it. That is kiln's removal, not the work's.
+func (r *Repo) removed(ctx context.Context, head git.Rev, p string, without []string) (bool, error) {
+	if !slices.ContainsFunc(without, func(root string) bool { return within(fold(p), root) }) {
 		return false, nil
 	}
 
@@ -349,10 +349,10 @@ func (r *Repo) removed(ctx context.Context, head git.Rev, p, without string) (bo
 // no check an older kiln kept is read.
 const checksVersion = 2
 
-// atMain runs commands at main's tip, less the path without, in a worktree of its own. It keeps the checks, and runs
-// them again only once main, without or the commands change. kiln fire and kiln accept share the worktree, one at a
-// time.
-func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string, without string) ([]check, error) {
+// atMain runs commands at main's tip, less the paths without, in a worktree of its own. It keeps the checks, and
+// runs them again only once main, without or the commands change. kiln fire and kiln accept share the worktree, one
+// at a time.
+func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string, without []string) ([]check, error) {
 	unlock, err := r.store.lock(mainLock, syscall.LOCK_EX)
 	if err != nil {
 		return nil, err
@@ -360,7 +360,9 @@ func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string, with
 
 	defer unlock()
 
-	key := strings.Join(append([]string{fmt.Sprint(checksVersion), string(main), without}, commands...), "\x00")
+	// The count of without tells where its paths end and the commands begin.
+	parts := append([]string{fmt.Sprint(checksVersion), string(main), fmt.Sprint(len(without))}, without...)
+	key := strings.Join(append(parts, commands...), "\x00")
 	b, err := r.store.read()
 	if err != nil {
 		return nil, err
@@ -376,8 +378,8 @@ func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string, with
 	}
 
 	// The next Detached puts back what this removes.
-	if without != "" {
-		if err := os.RemoveAll(filepath.Join(string(tree), without)); err != nil {
+	for _, p := range without {
+		if err := os.RemoveAll(filepath.Join(string(tree), p)); err != nil {
 			return nil, err
 		}
 	}

@@ -178,17 +178,26 @@ func (b *build) cloneSides(ctx context.Context) error {
 	return nil
 }
 
-// removeOldTests commits, on the build side, the removal of the spec's acceptance tests main holds. It answers
-// whether main held any.
-func (b *build) removeOldTests(ctx context.Context, acceptance string) (bool, error) {
+// removeOldTests commits the removal of what main holds under each of acceptance, on the build side. It makes one
+// commit, and answers whether main held any.
+func (b *build) removeOldTests(ctx context.Context, acceptance []string) (bool, error) {
 	clone := b.r.clone(b.rec.Name, buildRole)
-	at := filepath.Join(string(clone), acceptance)
-	if _, err := os.Lstat(at); err != nil {
-		return false, nil
+	held := false
+	for _, p := range acceptance {
+		at := filepath.Join(string(clone), p)
+		if _, err := os.Lstat(at); err != nil {
+			continue
+		}
+
+		if err := os.RemoveAll(at); err != nil {
+			return false, err
+		}
+
+		held = true
 	}
 
-	if err := os.RemoveAll(at); err != nil {
-		return false, err
+	if !held {
+		return false, nil
 	}
 
 	message := fmt.Sprintf("chore(%s): remove the old acceptance tests, which the verify session writes anew\n",
@@ -309,7 +318,7 @@ func (b *build) gateBuild(ctx context.Context) (verdict, error) {
 		return verdict{}, err
 	}
 
-	without := ""
+	var without []string
 	if b.now().OldTests {
 		without = g.side.acceptance
 	}
@@ -337,7 +346,7 @@ func (b *build) gateStack(ctx context.Context) (turn, error) {
 		return turn{}, err
 	}
 
-	v, err := b.gated(ctx, false, "", b.treeGuard(b.allowed()...), g)
+	v, err := b.gated(ctx, false, nil, b.treeGuard(b.allowed()...), g)
 	if err != nil || v.passed {
 		return turn{}, err
 	}
@@ -388,7 +397,7 @@ func (b *build) stack(ctx context.Context) (setback, error) {
 	return setback{why: whyConflict, report: report, failing: conflict.Files}, err
 }
 
-// putBack puts the acceptance path back on the build side of the stack, in a commit of kiln's. It puts it as it
+// putBack puts each acceptance path back on the build side of the stack, in a commit of kiln's. It puts it as it
 // stands at the two tips' merge base. Then the verify side's changes there merge cleanly. Merged straight, a
 // revised spec's removed tests conflict with each test the verify session changed. Each it left alone is deleted.
 func (b *build) putBack(ctx context.Context, buildTip, verifyTip git.Rev) error {
@@ -409,7 +418,7 @@ func (b *build) putBack(ctx context.Context, buildTip, verifyTip git.Rev) error 
 
 	var removed []string
 	for _, p := range changed {
-		if within(fold(p), s.acceptance) {
+		if slices.ContainsFunc(s.acceptance, func(root string) bool { return within(fold(p), root) }) {
 			removed = append(removed, p)
 		}
 	}

@@ -169,7 +169,7 @@ func (c config) stepsRefusal(m monitor) string {
 		return "names an agent that is no file under .kiln/agents/, such as \"triage.md\""
 	case m.role() == auditRole:
 		return "names the audit as its agent, which changes nothing"
-	case !m.Tests && c.fixedPart() == "":
+	case !m.Tests && c.unguarded():
 		return "may not write the tests, while acceptance names no path before {spec} for kiln to guard"
 	}
 

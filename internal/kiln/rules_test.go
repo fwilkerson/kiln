@@ -24,11 +24,15 @@ import (
 
 func TestGuard(t *testing.T) {
 	const place = "/Users/dev/Library/Caches/kiln/repo/x"
-	builds := side{role: buildRole, acceptance: "acceptance/x/", harness: []string{"harness/"}}
-	verifies := side{role: verifyRole, acceptance: "acceptance/x/", harness: []string{"harness/"}}
-	fixes := side{role: fixRole, acceptance: "acceptance/"}
+	builds := side{role: buildRole, acceptance: []string{"acceptance/x/"}, harness: []string{"harness/"}}
+	verifies := side{role: verifyRole, acceptance: []string{"acceptance/x/"}, harness: []string{"harness/"}}
+	twoPaths := []string{"uat/x/", "integration/x/"}
+	buildsTwo := side{role: buildRole, acceptance: twoPaths}
+	verifiesTwo := side{role: verifyRole, acceptance: twoPaths}
+	fixes := side{role: fixRole, acceptance: []string{"acceptance/"}}
+	fixesTwo := side{role: fixRole, acceptance: []string{"uat/", "integration/"}}
 	fixesTests := side{role: fixRole}
-	fixesPython := side{role: fixRole, acceptance: "tests/acceptance/test_"}
+	fixesPython := side{role: fixRole, acceptance: []string{"tests/acceptance/test_"}}
 	for name, tc := range map[string]struct {
 		tool, cwd, file string
 		side            side
@@ -65,6 +69,13 @@ func TestGuard(t *testing.T) {
 		"but no test under the acceptance path":      {tool: "Write", file: place + "/acceptance/y/y_test.go", side: fixes, refused: true},
 		"nor the amendment file":                     {tool: "Write", file: place + "/.kiln/specs/x.amend.md", side: fixesTests, refused: true},
 		"a fix whose monitor says tests writes them": {tool: "Write", file: place + "/acceptance/y/y_test.go", side: fixesTests},
+		"a build session writes under neither path":  {tool: "Write", file: place + "/integration/x/x_test.go", side: buildsTwo, refused: true},
+		"nor under the first":                        {tool: "Write", file: place + "/uat/x/x_test.go", side: buildsTwo, refused: true},
+		"but writes another spec's second path":      {tool: "Write", file: place + "/integration/y/y_test.go", side: buildsTwo},
+		"a verify session writes under the second":   {tool: "Write", file: place + "/integration/x/x_test.go", side: verifiesTwo},
+		"and under the first":                        {tool: "Write", file: place + "/uat/x/x_test.go", side: verifiesTwo},
+		"a fix writes under no path's fixed part":    {tool: "Write", file: place + "/integration/y/y_test.go", side: fixesTwo, refused: true},
+		"and writes code beside them":                {tool: "Write", file: place + "/internal/integration/i.go", side: fixesTwo},
 		"a fixed part with no slash guards a prefix": {tool: "Write", file: place + "/tests/acceptance/test_x.py", side: fixesPython, refused: true},
 		"and leaves what only shares its directory":  {tool: "Write", file: place + "/tests/acceptance/conftest.py", side: fixesPython},
 	} {
@@ -106,6 +117,7 @@ func TestHookArguments(t *testing.T) {
 		"a flag with no value":            {"--spec", "x", "--place", "/w", "--role"},
 		"a word after the flags":          {"--spec", "x", "--place", "/w", "y"},
 		"an acceptance path with no role": {"--spec", "x", "--place", "/w", "--acceptance", "a/"},
+		"two acceptance paths, no role":   {"--spec", "x", "--place", "/w", "--acceptance", "a/", "--acceptance", "b/"},
 		"a harness in a fix":              {"--spec", "x", "--place", "/w", "--role", fixRole, "--harness", "h/"},
 	} {
 		t.Run(name, func(t *testing.T) {

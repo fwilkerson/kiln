@@ -1,0 +1,25 @@
+# 5. kiln refuses a build agent that names any path.
+
+# Given: kiln.json names the acceptance paths uat/{spec}/ and integration/{spec}/. The build agent's file
+# names integration/, the second path's part before {spec}.
+
+# When: the developer queues an approved spec.
+! exec kiln queue x
+
+# Then: kiln refuses it, and kiln status does not show it queued.
+stderr '^kiln queue: refused: '
+exec kiln status
+! stdout '^x:'
+
+-- .kiln/kiln.json --
+{"acceptance": ["uat/{spec}/", "integration/{spec}/"]}
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- .kiln/agents/build.md --
+Build the spec.
+
+Keep the suites under integration/ passing.

@@ -17,28 +17,30 @@ func TestMonitorConfig(t *testing.T) {
 		monitors, acceptance string
 		refused              bool
 	}{
-		"a command":                   {monitors: `{"name": "deps", "every": "24h", "command": "true"}`},
-		"an agent, by its file":       {monitors: `{"name": "deps", "every": "1h", "agent": "triage.md"}`},
-		"an agent, by its path":       {monitors: `{"name": "deps", "every": "1h", "agent": ".kiln/agents/triage.md"}`},
-		"no name":                     {monitors: `{"every": "24h", "command": "true"}`, refused: true},
-		"a name no spec could have":   {monitors: `{"name": "Deps", "every": "24h", "command": "true"}`, refused: true},
-		"a name another monitor has":  {monitors: `{"name": "a", "every": "1h", "command": "x"}, {"name": "a", "every": "2h", "command": "y"}`, refused: true},
-		"under an hour":               {monitors: `{"name": "deps", "every": "30m", "command": "true"}`, refused: true},
-		"not whole hours":             {monitors: `{"name": "deps", "every": "90m", "command": "true"}`, refused: true},
-		"no duration":                 {monitors: `{"name": "deps", "every": "daily", "command": "true"}`, refused: true},
-		"a check alone":               {monitors: `{"name": "deps", "every": "24h", "check": "true"}`, refused: true},
-		"an agent outside .kiln":      {monitors: `{"name": "deps", "every": "24h", "agent": "../x.md"}`, refused: true},
-		"the audit as its agent":      {monitors: `{"name": "deps", "every": "24h", "agent": "audit.md"}`, refused: true},
-		"tests kiln could not guard":  {monitors: `{"name": "deps", "every": "24h", "command": "true"}`, acceptance: "{spec}_test/", refused: true},
-		"tests the monitor may write": {monitors: `{"name": "deps", "every": "24h", "command": "true", "tests": true}`, acceptance: "{spec}_test/"},
-		"a gauge":                     {monitors: `{"name": "deps", "every": "24h", "gauge": "health", "agent": "triage.md"}`},
-		"a gauge gauges lacks":        {monitors: `{"name": "deps", "every": "24h", "gauge": "size", "agent": "triage.md"}`, refused: true},
-		"a check and a gauge":         {monitors: `{"name": "deps", "every": "24h", "check": "true", "gauge": "health", "agent": "triage.md"}`, refused: true},
-		"gates beside a gauge":        {monitors: `{"name": "deps", "every": "24h", "gauge": "health", "gates": true, "agent": "triage.md"}`, refused: true},
+		"a command":                    {monitors: `{"name": "deps", "every": "24h", "command": "true"}`},
+		"an agent, by its file":        {monitors: `{"name": "deps", "every": "1h", "agent": "triage.md"}`},
+		"an agent, by its path":        {monitors: `{"name": "deps", "every": "1h", "agent": ".kiln/agents/triage.md"}`},
+		"no name":                      {monitors: `{"every": "24h", "command": "true"}`, refused: true},
+		"a name no spec could have":    {monitors: `{"name": "Deps", "every": "24h", "command": "true"}`, refused: true},
+		"a name another monitor has":   {monitors: `{"name": "a", "every": "1h", "command": "x"}, {"name": "a", "every": "2h", "command": "y"}`, refused: true},
+		"under an hour":                {monitors: `{"name": "deps", "every": "30m", "command": "true"}`, refused: true},
+		"not whole hours":              {monitors: `{"name": "deps", "every": "90m", "command": "true"}`, refused: true},
+		"no duration":                  {monitors: `{"name": "deps", "every": "daily", "command": "true"}`, refused: true},
+		"a check alone":                {monitors: `{"name": "deps", "every": "24h", "check": "true"}`, refused: true},
+		"an agent outside .kiln":       {monitors: `{"name": "deps", "every": "24h", "agent": "../x.md"}`, refused: true},
+		"the audit as its agent":       {monitors: `{"name": "deps", "every": "24h", "agent": "audit.md"}`, refused: true},
+		"tests kiln could not guard":   {monitors: `{"name": "deps", "every": "24h", "command": "true"}`, acceptance: `"{spec}_test/"`, refused: true},
+		"tests the monitor may write":  {monitors: `{"name": "deps", "every": "24h", "command": "true", "tests": true}`, acceptance: `"{spec}_test/"`},
+		"tests under no path to guard": {monitors: `{"name": "deps", "every": "24h", "command": "true"}`, acceptance: `[]`, refused: true},
+		"tests under one of two paths": {monitors: `{"name": "deps", "every": "24h", "command": "true"}`, acceptance: `["uat/{spec}/", "{spec}_test/"]`, refused: true},
+		"a gauge":                      {monitors: `{"name": "deps", "every": "24h", "gauge": "health", "agent": "triage.md"}`},
+		"a gauge gauges lacks":         {monitors: `{"name": "deps", "every": "24h", "gauge": "size", "agent": "triage.md"}`, refused: true},
+		"a check and a gauge":          {monitors: `{"name": "deps", "every": "24h", "check": "true", "gauge": "health", "agent": "triage.md"}`, refused: true},
+		"gates beside a gauge":         {monitors: `{"name": "deps", "every": "24h", "gauge": "health", "gates": true, "agent": "triage.md"}`, refused: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			acceptance := cmpOr(tc.acceptance, "acceptance/{spec}/")
-			raw := `{"gate": ["true"], "rounds": 1, "acceptance": "` + acceptance + `", "gauges": [{"name": ` +
+			acceptance := cmpOr(tc.acceptance, `"acceptance/{spec}/"`)
+			raw := `{"gate": ["true"], "rounds": 1, "acceptance": ` + acceptance + `, "gauges": [{"name": ` +
 				`"health", "command": "true", "min": 10}], "monitors": [` + tc.monitors + `]}`
 			if _, err := parseConfig([]byte(raw)); (err != nil) != tc.refused {
 				t.Errorf("refused %v, want %v", err, tc.refused)
