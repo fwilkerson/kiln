@@ -117,7 +117,8 @@ which holds the landed work.
   another writes the tests, from the spec alone. Neither can read the other's checkout.
 - **An audit.** Once the gate passes, a second session reads the work and sends its findings back.
 - **A sandbox, while the session runs.** A session's shell commands write only in its own checkout and the paths
-  `kiln.json` lists, and reach only the hosts it lists. kiln's hook keeps its file tools off `.kiln/`.
+  `kiln.json` lists, and reach only the hosts it lists. kiln's hook keeps its file tools off `.kiln/`. The gate
+  then runs the work outside the sandbox, as your own `go test` does.
 - **Your spec's wording.** A build that finds the spec wrong does not quietly build something else. It writes an
   amendment and waits on its branch for you.
 
@@ -126,18 +127,6 @@ which holds the landed work.
   kiln fire ─▶ main ┤                                                ├─▶ stacked ─▶ gate ─▶ audit ─▶ land
                     └─ verify session, in its own clone:  the tests ─┘
 ```
-
-### What the sandbox does not cover
-
-kiln guards against a session that strays, not against one that attacks.
-
-- **The gate runs the code a session wrote, outside the sandbox**, with your environment. So do a gauge and the
-  pre-commit hook. It is as if you ran the tests of a branch someone sent you.
-- **A session reads any file your account reads**, and inherits your environment's variables.
-- **Paths in `writable` are shared.** Go's module and build caches serve every Go project on the machine.
-
-So build specs you wrote, in a repository you trust, and read what lands as you would a colleague's commit. The
-gaps kiln knows of are filed under [`bugs/`](bugs).
 
 ## Gauges
 
