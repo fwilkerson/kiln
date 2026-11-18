@@ -895,12 +895,13 @@ func (r *Repo) acceptLanded(ctx context.Context, b *build) error {
 			back.report)
 	}
 
-	// Before the landing, the spec had no branch: its build's was gone once it landed.
+	// Before the landing, the spec had no branch: its build's was gone once it landed. The landing ran the gate
+	// again, in a worktree of its own.
 	if err != nil {
-		return errors.Join(err, r.git.Remove(context.WithoutCancel(ctx), b.tree, name.branch()))
+		return errors.Join(err, r.dropCheckouts(context.WithoutCancel(ctx), name))
 	}
 
-	if err := r.git.Remove(ctx, b.tree, name.branch()); err != nil {
+	if err := r.dropCheckouts(ctx, name); err != nil {
 		return err
 	}
 
