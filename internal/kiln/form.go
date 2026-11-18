@@ -85,6 +85,27 @@ var (
 // testsForm refuses the lines of an Acceptance tests section that leave its form. Each test is numbered in turn from
 // 1, and holds a Given, a When and a Then.
 func testsForm(lines []string) error {
+	tests, err := splitTests(lines)
+	if err != nil {
+		return err
+	}
+
+	if len(tests) == 0 {
+		return fmt.Errorf("it holds no acceptance test")
+	}
+
+	for i, test := range tests {
+		if err := clausesOf(test); err != nil {
+			return fmt.Errorf("its acceptance test %d %w", i+1, err)
+		}
+	}
+
+	return nil
+}
+
+// splitTests returns the lines of each test in an Acceptance tests section. A ### heading outside a code fence starts
+// a test. It refuses a heading that is not the next test's number and a title.
+func splitTests(lines []string) ([][]string, error) {
 	var tests [][]string
 	fenced := false
 	for _, line := range lines {
@@ -103,23 +124,13 @@ func testsForm(lines []string) error {
 
 		m := testHeading.FindStringSubmatch(line)
 		if m == nil || m[1] != strconv.Itoa(len(tests)+1) {
-			return fmt.Errorf("its acceptance test %q is not ### %d. and a title", heading, len(tests)+1)
+			return nil, fmt.Errorf("its acceptance test %q is not ### %d. and a title", heading, len(tests)+1)
 		}
 
 		tests = append(tests, nil)
 	}
 
-	if len(tests) == 0 {
-		return fmt.Errorf("it holds no acceptance test")
-	}
-
-	for i, test := range tests {
-		if err := clausesOf(test); err != nil {
-			return fmt.Errorf("its acceptance test %d %w", i+1, err)
-		}
-	}
-
-	return nil
+	return tests, nil
 }
 
 // clausesOf refuses a test's lines unless they hold a Given, a When and a Then, in that order.

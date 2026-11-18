@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/fwilkerson/practices/claim"
 )
 
 func TestReadJUnit(t *testing.T) {
@@ -40,7 +42,7 @@ func TestReadJUnit(t *testing.T) {
 	} {
 		t.Run(file, func(t *testing.T) {
 			failed, ran, broken := readJUnit(filepath.Join("testdata", "junit", file))
-			if !slices.Equal(failed, want.failed) || !slices.Equal(ran, want.ran) || broken != want.broken {
+			if !claim.Holds(slices.Equal(failed, want.failed), slices.Equal(ran, want.ran), broken == want.broken) {
 				t.Errorf("got failed %q, ran %q, broken %v; want %q, %q, %v",
 					failed, ran, broken, want.failed, want.ran, want.broken)
 			}

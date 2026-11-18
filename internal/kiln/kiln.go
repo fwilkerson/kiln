@@ -538,7 +538,7 @@ func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
 	}
 
 	if dropped != "" {
-		r.dropped(name, dropped, out)
+		r.ended(name, dropped, outDropped, out)
 	}
 
 	if drop {
@@ -687,11 +687,6 @@ func (r *Repo) specAt(ctx context.Context, at git.Rev, name Spec) (spec []byte, 
 	return r.git.Show(ctx, at, name.oldFile())
 }
 
-// dropped writes to the ledger that the build of name ended, dropped.
-func (r *Repo) dropped(name Spec, build string, out io.Writer) {
-	r.ended(name, build, outDropped, out)
-}
-
 // ended writes to the ledger that the build of name ended with outcome.
 func (r *Repo) ended(name Spec, build, outcome string, out io.Writer) {
 	if err := r.store.write(entry{Kind: outcomeKind, Build: build, Outcome: outcome}); err != nil {
@@ -714,7 +709,7 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 	if rec.Monitor {
 		r.ended(name, rec.Build, outRejected, out)
 	} else {
-		r.dropped(name, rec.Build, out)
+		r.ended(name, rec.Build, outDropped, out)
 	}
 
 	if err := r.dropCheckouts(ctx, name); err != nil {

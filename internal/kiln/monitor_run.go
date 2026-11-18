@@ -126,7 +126,7 @@ func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 		return b.readGauges(ctx)
 	}
 
-	r.dropped(rec.Name, rec.Build, out)
+	r.ended(rec.Name, rec.Build, outDropped, out)
 	if err := r.dropCheckouts(ctx, rec.Name); err != nil {
 		return err
 	}
