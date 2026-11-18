@@ -1,0 +1,37 @@
+# kiln help prints the usage to stdout, and a usage error names the mistake on stderr.
+
+# Given: a project with one approved spec.
+
+# When: the developer asks kiln for help, in each of its three ways.
+# Then: each prints the usage to stdout, and nothing to stderr.
+exec kiln help
+stdout '^usage:'
+stdout '^  kiln queue <name>'
+! stderr .
+exec kiln --help
+stdout '^usage:'
+! stderr .
+exec kiln -h
+stdout '^usage:'
+! stderr .
+
+# When: the developer types a command kiln lacks, or a command with the wrong arguments.
+# Then: each exits 2, and prints to stderr a first line that names the mistake, then the usage.
+! exec kiln bogus
+! stdout .
+stderr '\Akiln: unknown command bogus\nusage:'
+! exec kiln queue
+! stdout .
+stderr '\Akiln queue: takes one spec''s name\nusage:'
+! exec kiln monitor bogus
+stderr '\Akiln monitor: takes install, run \[<name>\] or show <name>\nusage:'
+! exec kiln hook --spec x
+stderr '\Akiln hook: usage: kiln never writes the arguments \["--spec" "x"\]\nusage:'
+exec sh -c 'for c in bogus queue "monitor bogus" "hook --spec x"; do kiln $c 2>/dev/null </dev/null; test $? -eq 2 || exit 1; done'
+
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.

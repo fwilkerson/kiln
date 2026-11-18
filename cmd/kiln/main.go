@@ -13,6 +13,7 @@
 //	kiln monitor run [<name>]
 //	                         run each monitor kiln.json names that is due; or run one now, due or not
 //	kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
+//	kiln help                print this usage, as kiln --help and kiln -h do
 //
 // Each refuses a spec in a state it does not take, as go doc ./internal/kiln shows.
 //
@@ -31,8 +32,9 @@
 // kiln complete lists kiln's commands, one per line. With a command, it lists the names that command would not refuse.
 // For accept and reject, those include the waiting fixes. For monitor run and monitor show, they are the monitors.
 //
-// kiln exits 0 when the command did what it says, and 1 when it refused or failed. A usage error exits 2. So does a
-// kiln hook that cannot read its call, which Claude Code reads as a refusal. SIGINT and SIGTERM cancel the command.
+// kiln exits 0 when the command did what it says, and 1 when it refused or failed. kiln help prints the usage to
+// stdout. A usage error exits 2, and prints the usage to stderr under a line that names the mistake. A kiln hook
+// that cannot read its call exits 2 too, which Claude Code reads as a refusal. SIGINT and SIGTERM cancel the command.
 package main
 
 import (
@@ -63,6 +65,7 @@ const usage = `usage:
   kiln monitor run [<name>]
                            run each monitor kiln.json names that is due; or run one now, due or not
   kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
+  kiln help                print this usage, as kiln --help and kiln -h do
 `
 
 // commands are the developer's commands, as kiln complete lists them.
@@ -85,7 +88,7 @@ func monitor(ctx context.Context, r *kiln.Repo, args []string, out *os.File) err
 	usage := strings.Join(args[:min(1, len(args))], "") + "/" + fmt.Sprint(len(args))
 	do, ok := monitorCommands[usage]
 	if !ok {
-		return errUsage
+		return usageError("takes install, run [<name>] or show <name>")
 	}
 
 	name := kiln.Spec(strings.Join(args[min(1, len(args)):], ""))
@@ -120,13 +123,15 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
-		return 2
+		return exit("kiln", usageError("names no command"), stderr)
 	}
 
 	command, args := args[0], args[1:]
 	var err error
 	switch command {
+	case "help", "--help", "-h":
+		fmt.Fprint(stdout, usage)
+		return 0
 	case "hook":
 		err = hook(args, stdin, stdout)
 	case "precommit":
@@ -134,24 +139,26 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 	case "complete":
 		err = complete(ctx, args, stdout)
 	default:
-		err = repo(ctx, command, args, stdout)
-	}
-
-	return exit(command, err, stderr)
-}
-
-// exit reports err on stderr and returns the status kiln exits with.
-func exit(command string, err error, stderr io.Writer) int {
-	switch {
-	case errors.Is(err, errUsage):
-		if err != errUsage {
-			fmt.Fprintf(stderr, "kiln %s: %v\n", command, err)
+		do, ok := onRepo[command]
+		if !ok {
+			return exit("kiln", usageError("unknown command "+command), stderr)
 		}
 
+		err = repo(ctx, do, args, stdout)
+	}
+
+	return exit("kiln "+command, err, stderr)
+}
+
+// exit reports err on stderr, after who, and returns the status kiln exits with.
+func exit(who string, err error, stderr io.Writer) int {
+	switch {
+	case errors.Is(err, errUsage):
+		fmt.Fprintf(stderr, "%s: %v\n", who, err)
 		fmt.Fprint(stderr, usage)
 		return 2
 	case err != nil:
-		fmt.Fprintf(stderr, "kiln %s: %v\n", command, err)
+		fmt.Fprintf(stderr, "%s: %v\n", who, err)
 		return 1
 	}
 
@@ -161,13 +168,16 @@ func exit(command string, err error, stderr io.Writer) int {
 // errUsage is a usage error. kiln's own refusal of an argument has the same kind.
 var errUsage = kiln.ErrUsage
 
-// repo opens the repository in the working directory and runs command on it.
-func repo(ctx context.Context, command string, args []string, out *os.File) error {
-	do, ok := onRepo[command]
-	if !ok {
-		return errUsage
-	}
+// usageError is a usage error whose text names the mistake, such as "takes one spec's name".
+type usageError string
 
+func (e usageError) Error() string { return string(e) }
+
+// Is makes a usageError match errUsage.
+func (usageError) Is(target error) bool { return target == errUsage }
+
+// repo opens the repository in the working directory and runs do on it.
+func repo(ctx context.Context, do repoCommand, args []string, out *os.File) error {
 	r, err := kiln.Open(ctx, ".", os.Environ())
 	if err != nil {
 		return err
@@ -180,7 +190,7 @@ func repo(ctx context.Context, command string, args []string, out *os.File) erro
 func noArgs(do func(*kiln.Repo, context.Context, io.Writer) error) repoCommand {
 	return func(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
 		if len(args) != 0 {
-			return errUsage
+			return usageError("takes no arguments")
 		}
 
 		return do(r, ctx, out)
@@ -193,7 +203,7 @@ func initRepo(ctx context.Context, r *kiln.Repo, args []string, out *os.File) er
 	flags.SetOutput(io.Discard)
 	preset := flags.String("preset", "", "the preset to write: go or python")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
-		return errUsage
+		return usageError("takes only --preset <name>")
 	}
 
 	return r.Init(ctx, out, kiln.InitOptions{Preset: *preset})
@@ -203,7 +213,7 @@ func initRepo(ctx context.Context, r *kiln.Repo, args []string, out *os.File) er
 func oneName(do func(*kiln.Repo, context.Context, kiln.Spec, io.Writer) error) repoCommand {
 	return func(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
 		if len(args) != 1 {
-			return errUsage
+			return usageError("takes one spec's name")
 		}
 
 		return do(r, ctx, kiln.Spec(args[0]), out)
@@ -213,7 +223,7 @@ func oneName(do func(*kiln.Repo, context.Context, kiln.Spec, io.Writer) error) r
 // tui is kiln tui, which takes a spec's name or none.
 func tui(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
 	if len(args) > 1 {
-		return errUsage
+		return usageError("takes one spec's name, or none")
 	}
 
 	var name kiln.Spec
@@ -228,7 +238,7 @@ func tui(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
 // kiln monitor run and show take the monitors' names.
 func complete(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) > 2 {
-		return errUsage
+		return usageError("takes a command, and its subcommand")
 	}
 
 	names, err := takes(ctx, args)

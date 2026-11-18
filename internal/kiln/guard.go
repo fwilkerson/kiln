@@ -168,6 +168,7 @@ func (g guard) hookCommand(exe string) string {
 func hookGuard(args []string) (guard, error) {
 	var g guard
 	flags := flag.NewFlagSet("hook", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
 	flags.StringVar((*string)(&g.spec), "spec", "", "the spec the session builds")
 	flags.StringVar((*string)(&g.place), "place", "", "the build's worktree")
 	flags.StringVar(&g.side.role, "role", "", "the session's side: build or verify in a split build, or fix")
@@ -176,7 +177,7 @@ func hookGuard(args []string) (guard, error) {
 
 	switch err := flags.Parse(args); {
 	case err != nil, flags.NArg() > 0, g.spec == "", g.place == "", !g.side.valid():
-		return guard{}, ErrUsage
+		return guard{}, fmt.Errorf("%w: kiln never writes the arguments %q", ErrUsage, args)
 	}
 
 	return g, nil
