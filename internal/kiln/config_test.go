@@ -32,6 +32,24 @@ func TestAcceptanceForms(t *testing.T) {
 	}
 }
 
+// TestHosts holds that kiln.json names each host bare, as the sandbox reads one. A refusal names the host.
+func TestHosts(t *testing.T) {
+	for host, refused := range map[string]bool{
+		"proxy.golang.org":          false,
+		"*.example.org":             false,
+		"https://proxy.golang.org/": true,
+		"proxy.golang.org:443":      true,
+	} {
+		_, err := parseConfig([]byte(`{"gate": ["true"], "hosts": ["` + host + `"]}`))
+		switch {
+		case (err != nil) != refused:
+			t.Errorf("%s: parseConfig answers %v, want refused %v", host, err, refused)
+		case refused && !strings.Contains(err.Error(), strconv.Quote(host)):
+			t.Errorf("%s: parseConfig answers %v, which does not name the host", host, err)
+		}
+	}
+}
+
 // TestWritablePaths holds that a writable command's paths reach a session only when each is absolute. Claude Code
 // would read a relative one from where the session runs. A refusal names the path.
 func TestWritablePaths(t *testing.T) {
