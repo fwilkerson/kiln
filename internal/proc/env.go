@@ -19,21 +19,31 @@ const (
 
 // withheld is every variable a child does not inherit, and why.
 var withheld = []withholding{
-	{"ANTHROPIC_API_KEY", []Child{Session}, "would bill an account instead of the developer's login"},
-	{"ANTHROPIC_AUTH_TOKEN", []Child{Session}, "would bill an account instead of the developer's login"},
-	{"GIT_*", []Child{Shell, Session, Git}, "one such as GIT_DIR or GIT_INDEX_FILE aims git at another repository"},
-	{"CLAUDE*", []Child{Session}, "Claude Code's own, set for the session that may have started kiln"},
+	{"ANTHROPIC_API_KEY", []Child{Session}, nil, "would bill an account instead of the developer's login"},
+	{"ANTHROPIC_AUTH_TOKEN", []Child{Session}, nil, "would bill an account instead of the developer's login"},
+	{"GIT_*", []Child{Shell, Session, Git}, nil, "one such as GIT_DIR or GIT_INDEX_FILE aims git at another repository"},
+	{"CLAUDE*", []Child{Session}, signIn, "Claude Code's own, set for the session that may have started kiln"},
+}
+
+// signIn is each CLAUDE* variable that says how the developer signs in, which a session keeps.
+var signIn = []string{
+	"CLAUDE_CODE_OAUTH_TOKEN",
+	"CLAUDE_CONFIG_DIR",
+	"CLAUDE_CODE_USE_BEDROCK",
+	"CLAUDE_CODE_USE_VERTEX",
 }
 
 type withholding struct {
 	// name is a variable's name, or a prefix of names when it ends in "*".
 	name string
 	from []Child
-	why  string
+	// except is each name the prefix matches that the child still inherits.
+	except []string
+	why    string
 }
 
 func (w withholding) holds(c Child, name string) bool {
-	if !slices.Contains(w.from, c) {
+	if !slices.Contains(w.from, c) || slices.Contains(w.except, name) {
 		return false
 	}
 

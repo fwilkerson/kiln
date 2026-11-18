@@ -649,8 +649,8 @@ func (r *Repo) blinds(name Spec, role string) (denyRead, allowRead, deny []strin
 	others := []string{string(r.clone(name, other(role))), string(r.tree(name)), string(r.auditTree(name)),
 		string(r.gateTree(name)), filepath.Join(r.trees, mainTree), r.top, r.common}
 	denyRead = []string{r.trees, r.top, r.common}
-	if home, err := os.UserHomeDir(); err == nil {
-		transcripts := filepath.Join(home, ".claude", "projects", projectDir(string(r.clone(name, other(role)))))
+	if config := r.claudeConfig(); config != "" {
+		transcripts := filepath.Join(config, "projects", projectDir(string(r.clone(name, other(role)))))
 		others = append(others, transcripts)
 		denyRead = append(denyRead, transcripts)
 	}
@@ -662,9 +662,29 @@ func (r *Repo) blinds(name Spec, role string) (denyRead, allowRead, deny []strin
 	return denyRead, []string{string(r.clone(name, role))}, deny
 }
 
+// claudeConfig is the folder where a session keeps its transcripts, read from the environment kiln gives it. It is
+// CLAUDE_CONFIG_DIR, else .claude in the home folder, and empty when neither is known.
+func (r *Repo) claudeConfig() string {
+	if dir := envValue(r.env, "CLAUDE_CONFIG_DIR"); dir != "" {
+		return dir
+	}
+
+	home := envValue(r.env, "HOME")
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+
+	if home == "" {
+		return ""
+	}
+
+	return filepath.Join(home, ".claude")
+}
+
 var notNamed = regexp.MustCompile(`[^A-Za-z0-9]`)
 
-// projectDir names the directory under ~/.claude/projects/ that holds the transcripts of a session in dir.
+// projectDir names the directory, in the projects folder of [Repo.claudeConfig], of the transcripts of a session in
+// dir.
 func projectDir(dir string) string {
 	return notNamed.ReplaceAllString(dir, "-")
 }

@@ -1051,3 +1051,30 @@ func TestSumUpPlaces(t *testing.T) {
 		})
 	}
 }
+
+// TestBlindTranscripts holds where a split build's session may not read the other session's transcripts. The folder
+// follows the environment the session gets, as Claude Code's own does.
+func TestBlindTranscripts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		env  []string
+		want string
+	}{
+		{"the config dir the developer set", []string{"HOME=/home/dev", "CLAUDE_CONFIG_DIR=/x"}, "/x/projects"},
+		{"the home folder, with no config dir", []string{"HOME=/home/dev"}, "/home/dev/.claude/projects"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := &Repo{trees: "/trees", top: "/repo", common: "/repo/.git", env: tt.env}
+			want := filepath.Join(tt.want, projectDir(string(r.clone("x", verifyRole))))
+			denyRead, _, deny := r.blinds("x", buildRole)
+			if !slices.Contains(denyRead, want) || !slices.Contains(deny, "Read(/"+want+"/**)") {
+				t.Errorf("blinds deny %v and %v, want both to hold %s", denyRead, deny, want)
+			}
+		})
+	}
+}
