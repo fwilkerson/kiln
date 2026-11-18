@@ -726,3 +726,54 @@ func TestFixOutcomes(t *testing.T) {
 		}
 	}
 }
+
+// TestGaugeRowCost holds that a gauge's row costs no more for the readings too old to fit. 40 times the readings
+// take under 5 times as long, and show the same newest ones.
+func TestGaugeRowCost(t *testing.T) {
+	start := time.Now()
+	draw := func(n int) (string, time.Duration) {
+		rs := make([]Reading, n)
+		for i := range rs {
+			v := float64(i % 10)
+			rs[i] = Reading{Gauge: "health", At: start.Add(time.Duration(i) * time.Hour), Value: &v, Line: "≥ 10"}
+		}
+
+		specs := []Spec{{Name: "code-health", Monitor: &Monitor{Readings: rs}}}
+		took := time.Duration(1<<63 - 1)
+		var text string
+		for range 3 {
+			begin := time.Now()
+			text = gaugeRows(specs, 150)[0].text
+			took = min(took, time.Since(begin))
+		}
+
+		return text, took
+	}
+
+	few, fewTook := draw(500)
+	many, manyTook := draw(20_000)
+	if many != few {
+		t.Errorf("20,000 readings show\n%s\nwant the newest, as 500 show\n%s", many, few)
+	}
+
+	if manyTook >= 5*fewTook {
+		t.Errorf("20,000 readings took %v, 500 took %v: want under 5 times as long", manyTook, fewTook)
+	}
+}
+
+// TestNarrowGauge holds that a terminal narrower than the specs panel still draws a monitor's newest reading.
+func TestNarrowGauge(t *testing.T) {
+	v := 9.0
+	rs := make([]Reading, 5)
+	for i := range rs {
+		rs[i] = Reading{Gauge: "health", At: time.Now().Add(time.Duration(i) * time.Hour), Value: &v, Line: "≥ 10"}
+	}
+
+	src := source{specs: []Spec{{Name: "x", State: UAT}},
+		monitors: []Spec{{Name: "code-health", Monitor: &Monitor{Readings: rs}}}}
+	for _, w := range []int{20, 21} {
+		if m := drive(t, src, "", sized(w, 30)); !strings.Contains(screenOf(m), "health") {
+			t.Errorf("at %d columns, no gauge row is on the screen\n%s", w, screenOf(m))
+		}
+	}
+}

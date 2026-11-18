@@ -23,8 +23,9 @@ func (g gaugeReads) add(r Reading, spec string) {
 }
 
 // readings are the readings by gauge: the specs' of their landings, and the monitors' of the whole repository. Each
-// gauge's are in the order kiln wrote them. names lists the gauges, sorted.
-func readings(specs []Spec) (names []string, landings, repository gaugeReads) {
+// gauge's are in the order kiln wrote them. names lists the gauges, sorted. Of a monitor's, it keeps the newest keep,
+// and always the newest.
+func readings(specs []Spec, keep int) (names []string, landings, repository gaugeReads) {
 	landings, repository = gaugeReads{}, gaugeReads{}
 	for _, s := range specs {
 		for _, b := range s.Builds {
@@ -34,7 +35,8 @@ func readings(specs []Spec) (names []string, landings, repository gaugeReads) {
 		}
 
 		if s.Monitor != nil {
-			for _, r := range s.Monitor.Readings {
+			rs := s.Monitor.Readings
+			for _, r := range rs[max(0, len(rs)-max(keep, 1)):] {
 				repository.add(r, "")
 			}
 		}
@@ -54,7 +56,8 @@ func readings(specs []Spec) (names []string, landings, repository gaugeReads) {
 // gaugeRows draws, in w cells, a row for each gauge's readings of landings. Below it is a row of its readings of the
 // whole repository, where a monitor has read it. It answers none while no build or monitor has a reading.
 func gaugeRows(specs []Spec, w int) []row {
-	names, landings, repository := readings(specs)
+	// Each reading takes at least one cell, so w+1 readings still leave an older one for the … to mark.
+	names, landings, repository := readings(specs, w+1)
 	var rows []row
 	for _, name := range names {
 		if rs := landings[name]; len(rs) > 0 {
@@ -74,12 +77,7 @@ func gaugeRows(specs []Spec, w int) []row {
 func gaugeRow(title string, rs []landingRead, w int) row {
 	line := rs[len(rs)-1].Line
 	head := bold.Render(title) + " " + dim.Render(line)
-	cells := make([]string, len(rs))
-	for j, r := range rs {
-		cells[j] = r.shown(line)
-	}
-
-	return row{text: head + "  " + newestFitting(cells, w-ansi.StringWidth(head)-2)}
+	return row{text: head + "  " + newestFitting(rs, line, w-ansi.StringWidth(head)-2)}
 }
 
 // shown is the reading beside its spec, where it has one. One that crossed its line is red beside ✗. One read against
@@ -105,20 +103,35 @@ func (r landingRead) shown(line string) string {
 	return r.spec + " " + value
 }
 
-// newestFitting joins the last of cells that fit in w cells, oldest first. A … marks that older ones are left out.
-// Where not even the newest fits, it is the newest alone, which the panel then cuts.
-func newestFitting(cells []string, w int) string {
-	sep := dim.Render(" · ")
-	for from := range cells {
-		joined := strings.Join(cells[from:], sep)
-		if from > 0 {
-			joined = dim.Render("… ") + joined
+// newestFitting joins the newest of rs, as shown against line, that fit in w cells, oldest first. A … marks that
+// older ones are left out. Where not even the newest fits, it is the newest alone, which the panel then cuts.
+func newestFitting(rs []landingRead, line string, w int) string {
+	sep, more := dim.Render(" · "), dim.Render("… ")
+	newest := rs[len(rs)-1].shown(line)
+	cells, width := []string{newest}, ansi.StringWidth(newest)
+	// From the newest backward, the walk stops at the width, so a reading too old to fit costs nothing.
+	for i := len(rs) - 2; i >= 0; i-- {
+		cell := rs[i].shown(line)
+		next, room := width+ansi.StringWidth(sep)+ansi.StringWidth(cell), w
+		if i > 0 {
+			room -= ansi.StringWidth(more)
 		}
 
-		if ansi.StringWidth(joined) <= w {
-			return joined
+		if next > room {
+			break
 		}
+
+		cells, width = append(cells, cell), next
 	}
 
-	return cells[len(cells)-1]
+	slices.Reverse(cells)
+	joined := strings.Join(cells, sep)
+	switch {
+	case len(cells) == len(rs):
+		return joined
+	case ansi.StringWidth(more)+width <= w:
+		return more + joined
+	default:
+		return newest
+	}
 }
