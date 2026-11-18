@@ -23,7 +23,8 @@
 //	CLAUDE*                       ✗               Claude Code's own, set by the session that may have started kiln
 //
 // A session still keeps the four CLAUDE* variables that say how the developer signs in: CLAUDE_CODE_OAUTH_TOKEN,
-// CLAUDE_CONFIG_DIR, CLAUDE_CODE_USE_BEDROCK and CLAUDE_CODE_USE_VERTEX.
+// CLAUDE_CONFIG_DIR, CLAUDE_CODE_USE_BEDROCK and CLAUDE_CODE_USE_VERTEX. Every child still keeps the four GIT_*
+// variables that name who commits: GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME and GIT_COMMITTER_EMAIL.
 //
 // kiln runs on macOS alone. The process table is read with sysctl(3), not /bin/ps, which is setuid and which a
 // session's sandbox refuses to exec. [WorkingDirs] asks lsof, which it gives 5 s.

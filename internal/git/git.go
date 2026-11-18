@@ -50,7 +50,8 @@ import (
 // pinned overrides, for every call, what config could otherwise make git do. It could run a hook or a monitor, or sign
 // and so wait on a passphrase. It could stash the developer's changes, move other branches in a rebase, or start work
 // in the background. It could refuse kiln's unsigned commits, or a merge that is not a fast-forward. It could name a
-// clone's remote other than origin, or print a signature's check where kiln reads an author.
+// clone's remote other than origin, or print a signature's check where kiln reads an author. Without an identity, it
+// could guess one from the account and host, where git commit should refuse.
 var pinned = [][2]string{
 	{"core.hooksPath", "/dev/null"},
 	{"core.fsmonitor", "false"},
@@ -65,6 +66,7 @@ var pinned = [][2]string{
 	{"merge.ff", "true"},
 	{"clone.defaultRemoteName", "origin"},
 	{"log.showSignature", "false"},
+	{"user.useConfigOnly", "true"},
 }
 
 // events are githooks(5)'s at git 2.55. hook.<event>.enabled=false turns off a hook defined in config, which

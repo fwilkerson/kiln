@@ -21,7 +21,10 @@ const (
 var withheld = []withholding{
 	{"ANTHROPIC_API_KEY", []Child{Session}, nil, "would bill an account instead of the developer's login"},
 	{"ANTHROPIC_AUTH_TOKEN", []Child{Session}, nil, "would bill an account instead of the developer's login"},
-	{"GIT_*", []Child{Shell, Session, Git}, nil, "one such as GIT_DIR or GIT_INDEX_FILE aims git at another repository"},
+	{
+		"GIT_*", []Child{Shell, Session, Git}, identity,
+		"one such as GIT_DIR or GIT_INDEX_FILE aims git at another repository",
+	},
 	{"CLAUDE*", []Child{Session}, signIn, "Claude Code's own, set for the session that may have started kiln"},
 }
 
@@ -32,6 +35,9 @@ var signIn = []string{
 	"CLAUDE_CODE_USE_BEDROCK",
 	"CLAUDE_CODE_USE_VERTEX",
 }
+
+// identity is each GIT_* variable that names who commits, which every child keeps, so its commits are the developer's.
+var identity = []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"}
 
 type withholding struct {
 	// name is a variable's name, or a prefix of names when it ends in "*".
