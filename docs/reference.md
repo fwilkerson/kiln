@@ -250,6 +250,8 @@ x: stopped: the gate still failed after its last round:
 - To change an amendment's wording, commit your own wording to the spec, then run `kiln reject <name>` and
   `kiln queue <name>`.
 - If the landing of accepted amendments stops, `kiln accept <name>` lands it again.
+- kiln signs each commit it makes when your git config sets `commit.gpgSign`. A key that would ask for its passphrase
+  stops the landing, never waits: load the key with `ssh-add`, then queue or accept again.
 - `kiln tui` shows each build's spec as the commit it was queued at held it.
 - A monitor's fix that lands, stops, waits or asks for you opens a tab in Ghostty's front window, beside the tab you are
   in, with its summary and the command to run next. The tab notifies you, and a click on the notification brings it

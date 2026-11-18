@@ -776,7 +776,9 @@ type landing struct {
 
 // landingBuild is a build of x in a new repository, on its branch from main. It answers the repository, and main.
 func landingBuild(t *testing.T) (*build, string, git.Rev) {
+	// kiln's git never sees GIT_CONFIG_GLOBAL, so HOME and XDG_CONFIG_HOME keep the developer's config from it.
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	repo := t.TempDir()

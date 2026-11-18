@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// TestConfig holds the package doc's promise: the developer's git config does not change what a call does.
+// TestConfig holds the package doc's promise: the developer's git config changes no call, but for signing its commits.
 func TestConfig(t *testing.T) {
 	for name, tc := range map[string]struct {
 		repoConfig, globalConfig string
@@ -30,10 +31,34 @@ func TestConfig(t *testing.T) {
 			},
 		},
 		"log.showSignature keeps a signed commit's author": {
-			repoConfig: "ssh-keygen -q -t ed25519 -N '' -C t -f key && echo \"t@t $(cat key.pub)\" >signers && " +
-				"git config gpg.format ssh && git config user.signingKey \"$PWD/key.pub\" && " +
-				"git config gpg.ssh.allowedSignersFile \"$PWD/signers\" && git config log.showSignature true",
-			call: landSigned,
+			repoConfig: signingKey("") + " && git config log.showSignature true",
+			call:       landSigned,
+		},
+		"commit.gpgSign signs the landing": {
+			repoConfig: signingKey("") + " && git config commit.gpgSign true",
+			call: func(t *testing.T, s scratch) error {
+				landed, err := land(t, s)
+				if err != nil {
+					return err
+				}
+
+				if signed := sh(t, s.repo, "git log -1 --format=%G? "+string(landed)); signed != "G" {
+					return fmt.Errorf("the landing's signature check is %q; want G", signed)
+				}
+
+				return nil
+			},
+		},
+		"a signing key behind a passphrase fails the landing at once": {
+			repoConfig: signingKey("secret") + " && git config commit.gpgSign true",
+			call: func(t *testing.T, s scratch) error {
+				_, err := land(t, s)
+				if err == nil || !strings.Contains(err.Error(), "could not sign") {
+					return fmt.Errorf("the landing's error is %v; want git could not sign", err)
+				}
+
+				return nil
+			},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -100,6 +125,26 @@ func landSigned(t *testing.T, s scratch) error {
 	}
 
 	return nil
+}
+
+// signingKey is the shell command that makes an SSH key behind passphrase, and has the repository sign with it.
+func signingKey(passphrase string) string {
+	return "ssh-keygen -q -t ed25519 -N '" + passphrase + "' -C t -f key && echo \"t@t $(cat key.pub)\" >signers && " +
+		"git config gpg.format ssh && git config user.signingKey \"$PWD/key.pub\" && " +
+		"git config gpg.ssh.allowedSignersFile \"$PWD/signers\""
+}
+
+// land rebases an unsigned commit on kiln/x onto main, and answers the landing.
+func land(t *testing.T, s scratch) (git.Rev, error) {
+	tree := filepath.Join(t.TempDir(), "tree")
+	if err := s.git.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main"); err != nil {
+		return "", err
+	}
+
+	sh(t, tree, "echo x >x && git add x && git commit --quiet --no-gpg-sign -m x")
+	onto := git.Rev(sh(t, s.repo, "git rev-parse main"))
+	landed, _, err := s.git.Rebase(t.Context(), git.Worktree(tree), onto, "land")
+	return landed, err
 }
 
 // scratch is a repository with one commit on main, and a git whose HOME holds only the global config given.

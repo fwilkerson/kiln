@@ -16,10 +16,11 @@
 // A conflict and a refused move are answers, not errors. An error names the git command that failed and what it
 // printed. A branch is named by its short name, as refs/heads/ holds it. A relative path is the main checkout's.
 //
-// Every call runs with hooks, signing, signature checks, autostash, update-refs, fsmonitor, submodule recursion and
-// background maintenance off. A merge may make a merge commit, and a clone names its remote origin.
-// kiln passes that config in the environment, so neither the developer's config nor the repository's turns them on.
-// No call opens an editor, prompts for a password, or takes an optional lock. Every call runs in the C locale, so
+// Every call runs with hooks, signature checks, autostash, update-refs, fsmonitor, submodule recursion and background
+// maintenance off. A merge may make a merge commit, and a clone names its remote origin. kiln passes that config in the
+// environment, so neither the developer's config nor the repository's turns them on. A commit is signed as the
+// developer's config says. A signing key that would ask for its passphrase fails the call at once, and the error says
+// so. No call opens an editor, prompts for a password, or takes an optional lock. Every call runs in the C locale, so
 // git's words are never translated. Each runs in a process group of its own, which the terminal's Ctrl-C does not
 // reach. When ctx ends, the call's git is killed. [Git.Move]'s fast-forward alone runs to its end, so the checkout is
 // never left half-updated.
@@ -49,15 +50,14 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// pinned overrides, for every call, what config could otherwise make git do. It could run a hook or a monitor, or sign
-// and so wait on a passphrase. It could stash the developer's changes, move other branches in a rebase, or start work
+// pinned overrides, for every call, what config could otherwise make git do. It could run a hook or a monitor. It
+// could stash the developer's changes, move other branches in a rebase, or start work
 // in the background. It could refuse kiln's unsigned commits, or a merge that is not a fast-forward. It could name a
 // clone's remote other than origin, or print a signature's check where kiln reads an author. Without an identity, it
 // could guess one from the account and host, where git commit should refuse.
 var pinned = [][2]string{
 	{"core.hooksPath", "/dev/null"},
 	{"core.fsmonitor", "false"},
-	{"commit.gpgSign", "false"},
 	{"merge.autoStash", "false"},
 	{"rebase.autoStash", "false"},
 	{"rebase.updateRefs", "false"},
@@ -94,7 +94,9 @@ var configured = func() []string {
 		env = append(env, key, value)
 	}
 
-	return append(env, fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(pairs)))
+	// ssh-keygen asks the program in SSH_ASKPASS for a passphrase, never the terminal, and false refuses at once.
+	return append(env, fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(pairs)), "SSH_ASKPASS=/usr/bin/false",
+		"SSH_ASKPASS_REQUIRE=force")
 }()
 
 // Rev names a commit by its hash, or by anything else git rev-parse takes, such as a branch.
@@ -225,6 +227,12 @@ func (f *failed) Error() string {
 	return fmt.Sprintf("git %s: exit %d: %s", strings.Join(f.Args, " "), f.Exit, strings.TrimSpace(f.Stderr))
 }
 
+// unsigned is err, from a git that could not sign the commit it made.
+func unsigned(err error) error {
+	return fmt.Errorf("%w: git could not sign the commit, as the git config asks: load the signing key into "+
+		"ssh-agent with ssh-add, or turn commit.gpgSign off", err)
+}
+
 type call struct {
 	dir   string
 	stdin string
@@ -242,7 +250,13 @@ func (g *Git) run(ctx context.Context, c call, args ...string) (string, error) {
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
 		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
-			return stdout.String(), &failed{Args: args, Exit: exit.ExitCode(), Stderr: stderr.String()}
+			f := &failed{Args: args, Exit: exit.ExitCode(), Stderr: stderr.String()}
+			// git commit and git merge print this when the commit's signing failed.
+			if strings.Contains(f.Stderr, "failed to write commit object") {
+				return stdout.String(), unsigned(f)
+			}
+
+			return stdout.String(), f
 		}
 
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
@@ -505,11 +519,22 @@ func (g *Git) commitTree(ctx context.Context, r *rebase, tree string) (Rev, erro
 
 	name, rest, _ := strings.Cut(strings.TrimSuffix(by, "\n"), "\x00")
 	email, date, _ := strings.Cut(rest, "\x00")
+	args := []string{"commit-tree", tree, "-p", string(r.onto), "-F", "-"}
+	// commit-tree ignores commit.gpgSign, which git commit and git merge read.
+	sign, _ := g.line(ctx, r.checkout, "config", "--type=bool", "commit.gpgSign")
+	if sign == "true" {
+		args = append(args, "-S")
+	}
+
 	made, err := g.run(ctx, call{
 		dir:   string(g.at(r.checkout)),
 		stdin: r.message,
 		env:   []string{"GIT_AUTHOR_NAME=" + name, "GIT_AUTHOR_EMAIL=" + email, "GIT_AUTHOR_DATE=" + date},
-	}, "commit-tree", tree, "-p", string(r.onto), "-F", "-")
+	}, args...)
+	if _, ok := errors.AsType[*failed](err); ok && sign == "true" {
+		err = unsigned(err)
+	}
+
 	return Rev(strings.TrimSpace(made)), err
 }
 
