@@ -105,9 +105,21 @@ type texted struct {
 	err  error
 }
 
+// specRef names a spec, or a monitor. A monitor may share a spec's name.
+type specRef struct {
+	spec    string
+	monitor bool
+}
+
+// ref is what names s among the specs and monitors.
+func (s Spec) ref() specRef { return specRef{s.Name, s.Monitor != nil} }
+
+// names reports whether r names s.
+func (r specRef) names(s Spec) bool { return s.ref() == r }
+
 // buildRef names a build by its spec, and its index among the spec's builds.
 type buildRef struct {
-	spec  string
+	specRef
 	build int
 }
 
@@ -204,7 +216,7 @@ func (m *model) loaded(msg loaded) {
 	}
 
 	// A name kiln holds no spec of becomes the filter, which then says so.
-	if m.open != "" && !m.pick(m.open) {
+	if m.open != "" && !m.pick(func(s Spec) bool { return s.Name == m.open }) {
 		m.filter = m.open
 	}
 
@@ -218,7 +230,7 @@ func (m *model) keep(specs []Spec) {
 	build, held := m.homeBuild(recentPane)
 	m.specs = specs
 	if picked {
-		m.pick(spec.Name)
+		m.pick(spec.ref().names)
 	}
 
 	if i := slices.IndexFunc(m.recent(), func(l listed) bool { return l.buildRef == build }); held && i >= 0 {
@@ -236,9 +248,9 @@ func (m model) picked() (Spec, bool) {
 	return Spec{}, false
 }
 
-// pick selects the spec name in the specs panel, or all of them when the panel lists no such spec.
-func (m *model) pick(name string) bool {
-	i := slices.IndexFunc(m.filtered(), func(s Spec) bool { return s.Name == name })
+// pick selects the specs panel's first spec for which is reports true, or the row for all when none does.
+func (m *model) pick(is func(Spec) bool) bool {
+	i := slices.IndexFunc(m.filtered(), is)
 	m.selectSpec(i + 1)
 	return i >= 0
 }
@@ -256,7 +268,7 @@ func (m model) homeBuild(p pane) (buildRef, bool) {
 	switch p {
 	case specsPane:
 		s, ok := m.picked()
-		return buildRef{s.Name, len(s.Builds) - 1}, ok && len(s.Builds) > 0
+		return buildRef{s.ref(), len(s.Builds) - 1}, ok && len(s.Builds) > 0
 	case nowPane:
 		ref, _, ok := running(m.specs)
 		return ref.buildRef, ok
@@ -579,16 +591,16 @@ func (s *screen) pin() {
 	s.anchor = len(s.calls.Actions) - 1 - row
 }
 
-func (m model) spec(name string) *Spec {
-	if i := slices.IndexFunc(m.specs, func(s Spec) bool { return s.Name == name }); i >= 0 {
+func (m model) spec(ref specRef) *Spec {
+	if i := slices.IndexFunc(m.specs, ref.names); i >= 0 {
 		return &m.specs[i]
 	}
 
 	return nil
 }
 
-func (m model) builds(name string) []*Build {
-	if s := m.spec(name); s != nil {
+func (m model) builds(ref specRef) []*Build {
+	if s := m.spec(ref); s != nil {
 		return s.Builds
 	}
 
@@ -596,7 +608,7 @@ func (m model) builds(name string) []*Build {
 }
 
 func (m model) build(ref buildRef) *Build {
-	if builds := m.builds(ref.spec); ref.build < len(builds) {
+	if builds := m.builds(ref.specRef); ref.build < len(builds) {
 		return builds[ref.build]
 	}
 
@@ -634,7 +646,7 @@ func (m model) recent() []listed {
 	var all []listed
 	for _, s := range specs {
 		for i, b := range s.Builds {
-			all = append(all, listed{buildRef{s.Name, i}, b})
+			all = append(all, listed{buildRef{s.ref(), i}, b})
 		}
 	}
 
@@ -648,7 +660,7 @@ func running(specs []Spec) (runRef, *Run, bool) {
 		for bi, b := range s.Builds {
 			runs := b.runs()
 			if ri := slices.IndexFunc(runs, (*Run).running); ri >= 0 {
-				return runRef{buildRef{s.Name, bi}, ri}, runs[ri], true
+				return runRef{buildRef{s.ref(), bi}, ri}, runs[ri], true
 			}
 		}
 	}
@@ -658,7 +670,7 @@ func running(specs []Spec) (runRef, *Run, bool) {
 
 func find(specs []Spec, ref runRef) *Run {
 	for _, s := range specs {
-		if s.Name != ref.spec || ref.build >= len(s.Builds) {
+		if s.ref() != ref.specRef || ref.build >= len(s.Builds) {
 			continue
 		}
 

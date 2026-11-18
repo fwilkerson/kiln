@@ -549,7 +549,7 @@ func (m model) outcome(ref buildRef) string {
 
 	if said == "" {
 		said = "not ended"
-		if s := m.spec(ref.spec); ref.build == len(s.Builds)-1 {
+		if s := m.spec(ref.specRef); ref.build == len(s.Builds)-1 {
 			said = string(s.State)
 		}
 	}

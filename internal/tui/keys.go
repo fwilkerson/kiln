@@ -74,7 +74,7 @@ func homeKeys() keyMap {
 				func(m *model, _ *screen) tea.Cmd {
 					s, _ := m.picked()
 					m.filter = ""
-					m.pick(s.Name)
+					m.pick(s.ref().names)
 					return nil
 				}},
 			showKeys, quits,

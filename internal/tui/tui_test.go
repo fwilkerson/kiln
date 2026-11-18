@@ -132,6 +132,31 @@ func shows(t *testing.T, m model, patterns ...string) {
 	}
 }
 
+// TestMonitorNamedAsSpec holds that the model tells a monitor from a spec of the same name. A refresh keeps the
+// monitor selected. Its running fix shows the monitor's state, and Enter, Enter opens the fix's run.
+func TestMonitorNamedAsSpec(t *testing.T) {
+	now := time.Now()
+	build := &Build{Spec: "deps", Started: now.Add(-2 * time.Hour), Outcome: "accepted", Steps: []Step{
+		&Run{Role: "build", Session: "build", Start: now.Add(-2 * time.Hour), End: now.Add(-time.Hour)},
+	}}
+	fix := &Build{Spec: "deps", Started: now.Add(-time.Minute), Fix: true, Steps: []Step{
+		&Run{Role: "fix", Session: "fix", Start: now.Add(-time.Minute), To: -1},
+	}}
+	src := source{specs: []Spec{{Name: "deps", State: Accepted, Builds: []*Build{build}}}, monitors: []Spec{
+		{Name: "deps", State: Running, Builds: []*Build{fix}, Monitor: &Monitor{Result: "running"}},
+	}, calls: map[string]claude.Recounted{"build": {Answer: "the build's answer"}, "fix": {Answer: "the fix's answer"}}}
+	m := drive(t, src, "", sized(140, 30), press('j'), press('j'), tick{})
+	shows(t, m, `╭ fixes of deps · `, `#1 +▶ running `)
+
+	m = sendAll(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if b := m.build(m.top().buildRef); m.top().kind != buildScreen || b != fix {
+		t.Errorf("enter on the monitor opens screen %v of build %v, want its fix:\n%s", m.top().kind, b, screenOf(m))
+	}
+
+	m = sendAll(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	shows(t, m, `the fix's answer`)
+}
+
 // TestRoundsUnknown holds that a build's rounds are unknown when a run does not say why it started. The trend
 // leaves it out of the median, and the builds panel shows its rounds as unknown, never as 0.
 func TestRoundsUnknown(t *testing.T) {
@@ -401,7 +426,7 @@ func TestLiveRun(t *testing.T) {
 	tops("call 17 ")
 	late := calls(21)
 	m = send(m, func() tea.Msg {
-		return loaded{at: now, specs: src.specs, opened: runRef{buildRef{"x", 0}, 0}, open: &late}
+		return loaded{at: now, specs: src.specs, opened: runRef{buildRef{specRef{spec: "x"}, 0}, 0}, open: &late}
 	})
 
 	tops("call 17 ")
