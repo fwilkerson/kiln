@@ -116,14 +116,22 @@ func TestSpecBeforeKiln(t *testing.T) {
 
 // TestInitKeeps holds what kiln init leaves as the project made it. It keeps kiln.json's gate and rounds, and adds no
 // hosts or writable key, since those differ by preset. It writes no default over a file of its name. It links nothing
-// over one in .claude/.
+// over one in .claude/. It names each such file, unless that path already reaches kiln's own file through a link.
 func TestInitKeeps(t *testing.T) {
 	r, repo := scratchRepo(t)
 	shell(t, repo, `mkdir -p .kiln/agents .claude/agents && `+
 		`echo '{"gate": ["true"], "rounds": 1}' >.kiln/kiln.json && `+
-		`echo mine >.kiln/agents/build.md && echo mine >.claude/agents/critic.md`)
-	if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
+		`echo mine >.kiln/agents/build.md && echo mine >.claude/agents/critic.md && `+
+		`ln -s ../../.kiln/agents/comprehension.md .claude/agents && ln -s ../.kiln/skills .claude/skills`)
+	var out strings.Builder
+	if err := r.Init(t.Context(), &out, InitOptions{}); err != nil {
 		t.Fatal(err)
+	}
+
+	const skipped = "linked nothing at .claude/agents/critic.md, since another file is there; " +
+		"rename one to link .kiln/agents/critic.md\n"
+	if got := strings.Count(out.String(), "linked nothing"); got != 1 || !strings.Contains(out.String(), skipped) {
+		t.Errorf("kiln init said:\n%s\nwant the one line %q", out.String(), skipped)
 	}
 
 	wantConfigKept(t, repo)
