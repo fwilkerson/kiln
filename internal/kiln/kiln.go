@@ -859,6 +859,8 @@ func (r *Repo) Status(ctx context.Context, out io.Writer) error {
 func (r *record) status(out io.Writer) {
 	fmt.Fprintf(out, "%s: %s", r.Name, shownState(r))
 	switch {
+	case r.halted():
+		fmt.Fprintf(out, "\n  %s", haltedNext)
 	case r.State == building && !r.Paused.IsZero():
 		fmt.Fprintf(out, ", paused for a usage limit until %s", r.Paused.Local().Format("15:04:05 on Jan 2"))
 	case r.State == amended:

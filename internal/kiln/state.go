@@ -157,6 +157,9 @@ func (b *book) refusal(command string, name Spec, changed func(since git.Rev) (b
 		return "", nil
 	case r == nil:
 		return "kiln holds no record of it", nil
+	case r.halted() && !r.Monitor:
+		// A plain kiln fire takes up a spec's build or landing, but no monitor's fix.
+		return "it is halted, as " + haltedNext, nil
 	case r.landing():
 		return fmt.Sprintf("its landing is %s", r.State), nil
 	case r.Monitor:
@@ -228,15 +231,28 @@ func (r *record) takeRefusal(command string) string {
 
 // shownState is where the spec of r stands, in the words kiln status shows.
 func shownState(r *record) string {
-	switch {
-	case r.Monitor && r.Accepted:
-		return string(r.State) + ", landing an accepted fix"
-	case r.Accepted:
-		return string(r.State) + ", landing accepted amendments"
+	shown := string(r.State)
+	if r.halted() {
+		shown = "halted"
 	}
 
-	return string(r.State)
+	switch {
+	case r.Monitor && r.Accepted:
+		return shown + ", landing an accepted fix"
+	case r.Accepted:
+		return shown + ", landing accepted amendments"
+	}
+
+	return shown
 }
+
+// halted reports whether r is building for a kiln fire that is gone. The next kiln fire takes it up again.
+func (r *record) halted() bool {
+	return r.State == building && !alive(r.PID)
+}
+
+// haltedNext is what kiln status and kiln queue say of a halted build.
+const haltedNext = "its kiln fire is gone: kiln fire takes it up again"
 
 // queue queues a new build of name from the spec at main's tip, main. It answers whether an earlier build left a
 // branch to drop. It answers the ID of an earlier build it drops before that build ended.

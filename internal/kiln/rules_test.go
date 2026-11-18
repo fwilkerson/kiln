@@ -379,6 +379,27 @@ var specStates = map[string]specState{
 	"reject a fix's stopped landing":           {given: "fix stopped landing", command: "reject", then: none},
 }
 
+// TestHaltedRefusal holds what a command says of x, building for a kiln fire that is gone. A plain kiln fire takes
+// up a spec's build or landing, so the refusal names it. A fix's landing keeps its own refusal.
+func TestHaltedRefusal(t *testing.T) {
+	for name, tc := range map[string]struct {
+		given, command, says string
+	}{
+		"queue a halted build":          {given: "building", command: queueCommand, says: "it is halted, as " + haltedNext},
+		"queue a halted landing":        {given: "building landing", command: queueCommand, says: "it is halted, as " + haltedNext},
+		"accept a halted landing":       {given: "building landing", command: acceptCommand, says: "it is halted, as " + haltedNext},
+		"reject a halted landing":       {given: "building landing", command: rejectCommand, says: "it is halted, as " + haltedNext},
+		"accept a fix's halted landing": {given: "fix building landing", command: acceptCommand, says: "its landing is building"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := givenBook(tc.given)
+			if got, err := b.refusal(tc.command, "x", nil); got != tc.says || err != nil {
+				t.Errorf("kiln %s says %q, %v; want %q", tc.command, got, err, tc.says)
+			}
+		})
+	}
+}
+
 // givenBook is a book that holds the spec x in the state given words, as a row's given does. "fix " starts a
 // monitor's fix.
 func givenBook(given string) book {

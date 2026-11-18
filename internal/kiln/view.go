@@ -242,7 +242,7 @@ func (s standing) state() tui.State {
 // be running already.
 func stateOf(rec *record) tui.State {
 	switch {
-	case rec.State == building && !alive(rec.PID):
+	case rec.halted():
 		return tui.Halted
 	case rec.State == building && !rec.Paused.IsZero():
 		return tui.Paused
