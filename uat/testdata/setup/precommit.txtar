@@ -10,8 +10,8 @@ exec git add broken_test.go
 # When: the developer commits it.
 ! exec git commit -m 'test: add a broken test'
 
-# Then: the pre-commit hook refuses the commit, naming the test.
-stderr 'the commit to main is refused, since the gate fails on TestBroken \(example.com/scratch\)'
+# Then: the pre-commit hook refuses the commit, naming the test and the fix.
+stderr '^kiln: the commit to main is refused, since the gate fails on TestBroken \(example.com/scratch\)\. Make the gate''s commands pass, or change gate in \.kiln/kiln\.json\.$'
 exec git log -1 --format=%s main
 stdout '^start$'
 

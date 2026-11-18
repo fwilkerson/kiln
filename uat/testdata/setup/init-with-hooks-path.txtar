@@ -27,6 +27,11 @@ exec kiln init
 ! stdout 'other repositories'
 stdout '\ninstalled no pre-commit hook, since core\.hooksPath names \.githooks, this repository''s own hooks directory; add this line to your own pre-commit hook: kiln precommit\n\z'
 
+# Having written no file this time, it names the gate but asks for no commit.
+stdout '^the pre-commit hook runs the gate on each commit to main:$'
+stdout '^  go vet \./\.\.\.$'
+! stdout 'commit \.kiln/'
+
 # Given: no core.hooksPath, and a pre-commit hook of the developer's own, as husky writes.
 exec git config --global --unset core.hooksPath
 exec git config --unset core.hooksPath
