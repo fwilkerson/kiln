@@ -18,7 +18,8 @@
 //
 // Every call runs with hooks, signature checks, autostash, update-refs, fsmonitor, submodule recursion and background
 // maintenance off. A merge may make a merge commit, and a clone names its remote origin. kiln passes that config in the
-// environment, so neither the developer's config nor the repository's turns them on. A commit is signed as the
+// environment, so neither the developer's config nor the repository's turns them on. A commit's author comes from
+// config or the environment. With neither, it fails rather than guess one from the host. A commit is signed as the
 // developer's config says. A signing key that would ask for its passphrase fails the call at once, and the error says
 // so. No call opens an editor, prompts for a password, or takes an optional lock. Every call runs in the C locale, so
 // git's words are never translated. Each runs in a process group of its own, which the terminal's Ctrl-C does not

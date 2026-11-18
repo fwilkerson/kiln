@@ -217,7 +217,7 @@ func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec
 	return run.fix(ctx, newFixing(run.c, m, found), line, h)
 }
 
-// fix runs the fix f that the monitor line started. It opens a window when the developer should see how it ended. h
+// fix runs the fix f that the monitor line started. It opens a tab when the developer should see how it ended. h
 // is the monitor's history before this run. It answers whether the fix landed.
 func (run *monitorRunning) fix(ctx context.Context, f *fixing, line entry, h *history) (landed bool, err error) {
 	b, err := run.r.startFix(ctx, run.out, f, line)

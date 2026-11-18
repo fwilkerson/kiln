@@ -122,8 +122,9 @@
 //
 // The audit reads each directory holding a file the build changed outside .kiln/. For a directory it emptied, it reads
 // the nearest above. Nothing the audit writes reaches the build, and kiln removes its worktree once it ends. A
-// landing that doesn't move main leaves the branch as it stood before the landing began. kiln accept lands a commit
-// that retires the spec. A spec that waited on its branch lands its work first, with the amendments folded in.
+// landing that doesn't move main leaves the branch as it stood before the landing began. Should kiln die once main
+// holds the landing, the next kiln fire records it landed, and starts no session. kiln accept lands a commit that
+// retires the spec. A spec that waited on its branch lands its work first, with the amendments folded in.
 //
 // A usage limit pauses the build until the limit resets, and then resumes the same session. A limit with no reset
 // pauses it for 5 minutes.
@@ -180,7 +181,8 @@
 // One kiln monitor run:
 //
 //	lock       run.lock alone, so no kiln fire builds meanwhile; build.lock shared
-//	recover    drop each fix a kiln cut short, then land each accepted landing that is queued
+//	recover    drop each fix a kiln cut short, or end it landed when main holds its landing; then land each accepted
+//	           landing that is queued
 //	each monitor kiln.json names, in its order, or the one named:
 //	  due?     skipped unless due, or named
 //	  held?    held while a fix of it builds, waits or lands; held by its last fix, as below, unless named
