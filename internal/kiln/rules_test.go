@@ -107,6 +107,40 @@ func TestGuard(t *testing.T) {
 	}
 }
 
+// TestGuardLinks holds that the hook judges a write by where it lands, after each link in its path. The links are
+// real, in the worktree x, which w links to.
+func TestGuardLinks(t *testing.T) {
+	top := t.TempDir()
+	shell(t, top, `mkdir -p main/.kiln main/.git/hooks x/.claude x/sub && ln -s x w && cd x && `+
+		`ln -s ../main/.kiln k && ln -s "$PWD/../main/.git" g && ln -s .claude c && ln -s . a && `+
+		`ln -s ../planted b && ln -s sub s`)
+	const outside = "is outside this build's worktree"
+	for name, tc := range map[string]struct{ place, file, refusal string }{
+		"a link to the main checkout's .kiln":     {file: "k/monitors/planted", refusal: outside},
+		"a link to git's directory":               {file: "g/hooks/post-commit", refusal: outside},
+		"a long spelling, then a link to no file": {file: strings.Repeat("a/", 30) + "b", refusal: outside},
+		"a link to the worktree's .claude": {file: "c/settings.local.json",
+			refusal: ".claude/settings.local.json is a Claude Code settings file"},
+		"a link to the worktree's own code is kept":   {file: "s/x.go"},
+		"and kept in a worktree kiln names by a link": {place: "w", file: "s/x.go"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			place := filepath.Join(top, cmp.Or(tc.place, "x"))
+			in, _ := json.Marshal(map[string]any{"tool_name": "Write", "cwd": place,
+				"tool_input": map[string]string{"file_path": tc.file}})
+			var out bytes.Buffer
+			g := guard{spec: "x", place: git.Worktree(place)}
+			if err := Hook(g.hookArgs(), bytes.NewReader(in), &out); err != nil {
+				t.Fatal(err)
+			}
+
+			if got := out.String(); (got == "") != (tc.refusal == "") || !strings.Contains(got, tc.refusal) {
+				t.Errorf("the hook answered %q, want the refusal %q", got, tc.refusal)
+			}
+		})
+	}
+}
+
 // TestHookArguments holds that the hook refuses arguments kiln never writes, so no slip leaves a session unguarded.
 func TestHookArguments(t *testing.T) {
 	for name, args := range map[string][]string{
