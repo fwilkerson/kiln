@@ -1,4 +1,4 @@
-# kiln on one page: what it adds to Claude Code, and what one developer's repository runs with it.
+# kiln on one page: what it offers a developer, and what kiln's own repository runs with it.
 # Render: onepage render docs/one-page.txt docs/one-page.html (github.com/fwilkerson/onepage).
 # README.md is the quick start, and docs/reference.md holds every key of kiln.json.
 
@@ -17,28 +17,29 @@ mark dot @you your attention
 mark more more
 
 ::: titleblock
-cell id | kiln for Claude Code
+cell id | Specs in, commits out
 wordmark kiln
 motto Approve it, walk away
-para kiln adds three things to Claude Code: a skill that shapes a spec with you, builds that run in the background, and monitors that keep working on your repository.
-para One Go binary, for macOS. Each piece of work lands on main as one commit, held to your own checks.
+para Shape a spec with Claude, approve it, and go do something else. kiln builds it in the background with headless Claude Code sessions, holds it to your own checks, and lands it on main as one commit.
+para Between features, monitors keep your repository in shape: they fix the bugs you file, tidy the code, and keep the docs true.
+para One Go binary, for macOS.
 
 cell problem | Without kiln
-lead **An agent still needs you at the keyboard.**
-point P1 | Work stops when you step away, though the spec already said what done means. | {1}
-point P2 | A session that writes the code and its tests grades its own work. | {2}
-point P3 | Small chores pile up between features: filed bugs, drifting docs, tired code. | {3}
+lead **A coding agent needs you at the keyboard.**
+point P1 | It stops to ask, so the work stops when you step away.
+point P2 | It writes the code and the tests that grade it.
+point P3 | Chores wait for you between features: filed bugs, drifting docs, tired code. | {1} {2} {4}
 
 cell answer | With kiln
 big You approve a @you{spec} and walk away. You come back to it **built, tested and audited**, on @repo{main}.
-para @agent{**/shape**} asks what it needs, has three reviewers read the draft, and writes the spec.
-para @kiln{**kiln fire**} builds each approved spec in a sandbox, while you work on the next one.
-para @kiln{**Monitors**} run on a schedule, find a problem, and land its fix the same way.
+para **Shape it together.** `/shape` asks what it needs, and three reviewers read the draft before you approve it.
+para **Build in the background.** One session writes the code and another the tests, each in a sandbox, while you shape the next spec.
+para **Automate the rest.** A monitor is a check on a schedule and an agent that fixes what it finds. Its fix lands like any build.
 
 cell attn | Your attention goes only here
 item ●1 | **Shape and approve a spec.**
-item ●2 | **Try what landed**, then accept it.
-item ●3 | **Answer when a build asks**: it found the spec wrong, or could not pass.
+item ●2 | **Try what landed**, and accept it.
+item ●3 | **Answer when a build asks**: the spec looked wrong, or the checks would not pass.
 :::
 
 view 2 BUILD | one spec, from a draft to main | after you approve it, no one waits at the keyboard
@@ -88,7 +89,7 @@ rung @agent | 2 · Amend | the build | A spec found wrong gets an amendment, and
 rung @you | 3 · Decide | you ●3 | Accept or reject the amendment, or fix the spec and queue it again.
 :::
 
-view 3 TEND | monitors: a check on a schedule, then a fix | kiln runs these four on its own repository
+view 3 AUTOMATE | a check on a schedule, then a fix | the four monitors kiln runs on its own repository
 
 ::: assembly
 box launchd @kiln A2-A3 | LAUNCHD | `kiln monitor run`, | each hour
@@ -109,7 +110,7 @@ part 1 @kiln | Bugs | a check lists `bugs/`; its fix takes the first report | Fi
 part 2 @kiln | Code health | a gauge scores changed files | Refactors the three lowest-scoring files, and changes no behavior.
 part 3 @kiln | UAT | a check finds an accepted spec's tests | Folds them into the suite, by feature, and waits for you to accept.
 part 4 @kiln | Docs | a check finds packages whose code changed | Reads their docs against the code, fixes what is false, and waits for you.
-part 5 @agent | A fix | a build with no spec | Gated, audited and landed like any build, so a monitor is as safe as a spec.
+part 5 @agent | A fix | a build with no spec | Gated, audited and landed like any build.
 :::
 
 view 4 START | what you type | real output

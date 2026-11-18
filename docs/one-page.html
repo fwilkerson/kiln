@@ -570,34 +570,35 @@
 
 <header class="tblock">
   <div class="cell id">
-    <span class="lab">kiln for Claude Code</span>
+    <span class="lab">Specs in, commits out</span>
     <div class="mark">kiln</div>
     <div class="motto">Approve it, walk away</div>
-    <p>kiln adds three things to Claude Code: a skill that shapes a spec with you, builds that run in the background, and monitors that keep working on your repository.</p>
-    <p>One Go binary, for macOS. Each piece of work lands on main as one commit, held to your own checks.</p>
+    <p>Shape a spec with Claude, approve it, and go do something else. kiln builds it in the background with headless Claude Code sessions, holds it to your own checks, and lands it on main as one commit.</p>
+    <p>Between features, monitors keep your repository in shape: they fix the bugs you file, tidy the code, and keep the docs true.</p>
+    <p>One Go binary, for macOS.</p>
   </div>
   <div class="cell problem">
     <span class="lab">Without kiln</span>
-    <p class="lead"><b>An agent still needs you at the keyboard.</b></p>
+    <p class="lead"><b>A coding agent needs you at the keyboard.</b></p>
     <div class="plist">
-      <b>P1</b><span>Work stops when you step away, though the spec already said what done means.</span><span class="see"><span class="bal kiln" data-item="1">1</span></span>
-      <b>P2</b><span>A session that writes the code and its tests grades its own work.</span><span class="see"><span class="bal kiln" data-item="2">2</span></span>
-      <b>P3</b><span>Small chores pile up between features: filed bugs, drifting docs, tired code.</span><span class="see"><span class="bal kiln" data-item="3">3</span></span>
+      <b>P1</b><span>It stops to ask, so the work stops when you step away.</span><span class="see"></span>
+      <b>P2</b><span>It writes the code and the tests that grade it.</span><span class="see"></span>
+      <b>P3</b><span>Chores wait for you between features: filed bugs, drifting docs, tired code.</span><span class="see"><span class="bal kiln" data-item="1">1</span> <span class="bal kiln" data-item="2">2</span> <span class="bal kiln" data-item="4">4</span></span>
     </div>
   </div>
   <div class="cell answer">
     <span class="lab">With kiln</span>
     <p class="big">You approve a <span class="you">spec</span> and walk away. You come back to it <b>built, tested and audited</b>, on <span class="repo">main</span>.</p>
-    <p><span class="agent"><b>/shape</b></span> asks what it needs, has three reviewers read the draft, and writes the spec.</p>
-    <p><span class="kiln"><b>kiln fire</b></span> builds each approved spec in a sandbox, while you work on the next one.</p>
-    <p><span class="kiln"><b>Monitors</b></span> run on a schedule, find a problem, and land its fix the same way.</p>
+    <p><b>Shape it together.</b> <code>/shape</code> asks what it needs, and three reviewers read the draft before you approve it.</p>
+    <p><b>Build in the background.</b> One session writes the code and another the tests, each in a sandbox, while you shape the next spec.</p>
+    <p><b>Automate the rest.</b> A monitor is a check on a schedule and an agent that fixes what it finds. Its fix lands like any build.</p>
   </div>
   <div class="cell attn">
     <span class="lab">Your attention goes only here</span>
     <ol>
       <li><span class="disc" data-n="1"></span><span><b>Shape and approve a spec.</b></span></li>
-      <li><span class="disc" data-n="2"></span><span><b>Try what landed</b>, then accept it.</span></li>
-      <li><span class="disc" data-n="3"></span><span><b>Answer when a build asks</b>: it found the spec wrong, or could not pass.</span></li>
+      <li><span class="disc" data-n="2"></span><span><b>Try what landed</b>, and accept it.</span></li>
+      <li><span class="disc" data-n="3"></span><span><b>Answer when a build asks</b>: the spec looked wrong, or the checks would not pass.</span></li>
     </ol>
   </div>
   <div class="legend">
@@ -711,7 +712,7 @@
   </div>
 </div>
 
-<h2 class="sh"><span class="n">3</span><span class="t">TEND<small>monitors: a check on a schedule, then a fix</small></span><span class="rule"></span><span class="note">kiln runs these four on its own repository</span></h2>
+<h2 class="sh"><span class="n">3</span><span class="t">AUTOMATE<small>a check on a schedule, then a fix</small></span><span class="rule"></span><span class="note">the four monitors kiln runs on its own repository</span></h2>
 
 <div class="system">
 <svg class="assembly" width="960" height="392" viewBox="0 0 960 392">
@@ -762,7 +763,7 @@
       <tr data-item="2"><td><span class="bal kiln">2</span></td><td><b>Code health</b> <span>a gauge scores changed files</span></td><td>Refactors the three lowest-scoring files, and changes no behavior.</td></tr>
       <tr data-item="3"><td><span class="bal kiln">3</span></td><td><b>UAT</b> <span>a check finds an accepted spec's tests</span></td><td>Folds them into the suite, by feature, and waits for you to accept.</td></tr>
       <tr data-item="4"><td><span class="bal kiln">4</span></td><td><b>Docs</b> <span>a check finds packages whose code changed</span></td><td>Reads their docs against the code, fixes what is false, and waits for you.</td></tr>
-      <tr data-item="5"><td><span class="bal agent">5</span></td><td><b>A fix</b> <span>a build with no spec</span></td><td>Gated, audited and landed like any build, so a monitor is as safe as a spec.</td></tr>
+      <tr data-item="5"><td><span class="bal agent">5</span></td><td><b>A fix</b> <span>a build with no spec</span></td><td>Gated, audited and landed like any build.</td></tr>
     </tbody>
   </table>
 </div>

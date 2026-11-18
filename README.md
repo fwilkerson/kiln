@@ -182,8 +182,8 @@ kiln monitor show <name>         show how a monitor's last run ended
 
 ## Read more
 
-- [docs/one-page.html](docs/one-page.html): kiln on one page, to open in a browser. `docs/one-page.txt` is its
-  source, for [onepage](https://github.com/fwilkerson/onepage).
+- [kiln on one page](https://fwilkerson.github.io/kiln/): what kiln offers, and the monitors it runs on itself.
+  `docs/one-page.txt` is its source, for [onepage](https://github.com/fwilkerson/onepage).
 - [docs/reference.md](docs/reference.md): each key of `kiln.json`, the agents' files, and what kiln records.
 - `go doc ./internal/kiln`: every state a spec moves through, as a diagram, and what each command refuses.
 - [PRODUCT.md](PRODUCT.md): each spec kiln was built from. kiln builds itself.
