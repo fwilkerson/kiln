@@ -335,6 +335,10 @@ func (g *Git) Detached(ctx context.Context, path Worktree, commit Rev) error {
 // that holds its target. Claude Code's sandbox refuses a shell's write to where a link under .claude/ points. With
 // links, a session could not change what .claude/agents links to. The main checkout keeps its links.
 func (g *Git) addWorktree(ctx context.Context, path Worktree, args ...string) error {
+	if err := g.unshare(ctx); err != nil {
+		return err
+	}
+
 	if _, err := g.in(ctx, g.repo, "config", "set", "extensions.worktreeConfig", "true"); err != nil {
 		return err
 	}
@@ -350,6 +354,42 @@ func (g *Git) addWorktree(ctx context.Context, path Worktree, args ...string) er
 
 	_, err := g.in(ctx, path, "reset", "--quiet", "--hard")
 	return err
+}
+
+// unshare moves core.bare and core.worktree to the main worktree's config.worktree, as git-worktree(1) says to before
+// extensions.worktreeConfig. Left shared, core.bare = true makes git read every linked worktree as bare.
+func (g *Git) unshare(ctx context.Context) error {
+	common, err := g.CommonDir(ctx)
+	if err != nil {
+		return err
+	}
+
+	shared := filepath.Join(common, "config")
+	for _, key := range []string{"core.bare", "core.worktree"} {
+		value, err := g.line(ctx, g.repo, "config", "get", "--file", shared, key)
+		if unset, ok := errors.AsType[*failed](err); ok && unset.Exit == 1 {
+			continue
+		}
+
+		if err != nil {
+			return err
+		}
+
+		if value == "false" {
+			continue
+		}
+
+		main := filepath.Join(common, "config.worktree")
+		if _, err := g.in(ctx, g.repo, "config", "set", "--file", main, key, value); err != nil {
+			return err
+		}
+
+		if _, err := g.in(ctx, g.repo, "config", "unset", "--file", shared, key); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Head is the commit checked out at checkout.

@@ -54,3 +54,41 @@ func checkLinks(t *testing.T, repo, tree string) {
 		t.Errorf("the main checkout's .claude/agents links to %q, %v; want ../.kiln/agents", link, err)
 	}
 }
+
+// TestCheckoutSharedCore holds that kiln's first worktree leaves the developer's checkout usable. With
+// extensions.worktreeConfig, git reads a shared core.bare or core.worktree in each linked worktree.
+func TestCheckoutSharedCore(t *testing.T) {
+	commit := "git config user.name t && git config user.email t@t && echo a >a && git add a && git commit -qm first"
+	for _, c := range []struct {
+		name, setup string
+	}{
+		{"bare", "mkdir src && cd src && git init -q -b main && " + commit + " && cd .. && " +
+			"git clone -q --bare src repo.git && git -C repo.git worktree add -q ../work main"},
+		{"worktree", "git --git-dir=gd --work-tree=work init -q -b main && mkdir work && cd work && " +
+			"echo 'gitdir: ../gd' >.git && " + commit},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			sh(t, dir, c.setup)
+			work := filepath.Join(dir, "work")
+			sh(t, work, "echo dirty >a")
+			g, err := git.New(work, os.Environ())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			tree := filepath.Join(dir, "tree")
+			if err := g.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main"); err != nil {
+				t.Fatal(err)
+			}
+
+			if status := sh(t, work, "git status --short"); status != "M a" {
+				t.Errorf("git status in the developer's checkout says %q; want M a", status)
+			}
+
+			if top, want := sh(t, tree, "git rev-parse --show-toplevel"), sh(t, tree, "pwd -P"); top != want {
+				t.Errorf("kiln's worktree has its top at %s; want %s", top, want)
+			}
+		})
+	}
+}
