@@ -152,8 +152,8 @@ func (r *Repo) writeDefault(rel string, raw []byte) (bool, error) {
 // these, so it never adds one language's commands to a project in another.
 var sharedKeys = []string{"rounds"}
 
-// addKeys adds to the JSON object old each of sharedKeys that it lacks, as from holds it. It answers nil when old
-// lacks none.
+// addKeys adds to the JSON object old each of sharedKeys that it lacks, as from holds it. It keeps each byte of old,
+// and puts each added key after the last, indented as that key. It answers nil when old lacks none.
 func addKeys(old, from []byte) ([]byte, error) {
 	var have, want map[string]json.RawMessage
 	if err := json.Unmarshal(old, &have); err != nil {
@@ -164,23 +164,58 @@ func addKeys(old, from []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	added := false
-	for _, key := range sharedKeys {
-		if _, ok := have[key]; !ok {
-			have[key], added = want[key], true
-		}
+	at, indent, err := lastMember(old)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", configFile, err)
 	}
 
-	if !added {
+	var add bytes.Buffer
+	for _, key := range sharedKeys {
+		if _, ok := have[key]; ok {
+			continue
+		}
+
+		if len(have) > 0 || add.Len() > 0 {
+			add.WriteByte(',')
+		}
+
+		fmt.Fprintf(&add, "%s%q: %s", indent, key, want[key])
+	}
+
+	if add.Len() == 0 {
 		return nil, nil
 	}
 
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	err := enc.Encode(have)
-	return b.Bytes(), err
+	return slices.Concat(old[:at], add.Bytes(), old[at:]), nil
+}
+
+// lastMember answers the offset just past the object obj's last value, and the white space before that value's key.
+// With no member, at is the offset just past the opening brace, and indent is empty.
+func lastMember(obj []byte) (at int, indent string, err error) {
+	dec := json.NewDecoder(bytes.NewReader(obj))
+	if _, err := dec.Token(); err != nil {
+		return 0, "", err
+	}
+
+	for at = int(dec.InputOffset()); dec.More(); at = int(dec.InputOffset()) {
+		rest := obj[at:]
+		if r := bytes.TrimLeft(rest, " \t\r\n"); len(r) > 0 && r[0] == ',' {
+			rest = r[1:]
+		}
+
+		key := bytes.TrimLeft(rest, " \t\r\n")
+		indent = string(rest[:len(rest)-len(key)])
+		var value json.RawMessage
+		if _, err := dec.Token(); err != nil {
+			return 0, "", err
+		}
+
+		if err := dec.Decode(&value); err != nil {
+			return 0, "", err
+		}
+	}
+
+	return at, indent, nil
 }
 
 // link links .claude/<p> to .kiln/<p>, unless .claude/ holds something of that name. It says so when that

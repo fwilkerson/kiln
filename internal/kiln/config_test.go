@@ -49,3 +49,20 @@ func TestWritablePaths(t *testing.T) {
 		}
 	}
 }
+
+// TestAddKeys holds that kiln init adds rounds after kiln.json's last key, indented as that key, and keeps each other
+// byte.
+func TestAddKeys(t *testing.T) {
+	for _, tc := range []struct{ name, old, want string }{
+		{"one key", "{\n  \"gate\": [\"true\"]\n}\n", "{\n  \"gate\": [\"true\"],\n  \"rounds\": 3\n}\n"},
+		{"two keys", "{\"gate\": [\"true\"],\n\t\"hosts\": []}", "{\"gate\": [\"true\"],\n\t\"hosts\": [],\n\t\"rounds\": 3}"},
+		{"no key", "{}", `{"rounds": 3}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := addKeys([]byte(tc.old), []byte(`{"rounds": 3}`))
+			if err != nil || string(got) != tc.want {
+				t.Errorf("addKeys(%q) = %q, %v; want %q", tc.old, got, err, tc.want)
+			}
+		})
+	}
+}

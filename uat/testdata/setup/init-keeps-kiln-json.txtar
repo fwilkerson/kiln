@@ -1,0 +1,28 @@
+# kiln init adds rounds to a kiln.json that lacks it, and keeps each byte the developer wrote.
+
+# Given: a repository whose .kiln/kiln.json, written by hand, lacks rounds.
+# The file is copied in, since the harness adds rounds to a .kiln/kiln.json the script brings.
+mkdir .kiln
+cp _given/kiln.json .kiln/kiln.json
+
+# When: the developer runs kiln init.
+exec kiln init
+
+# Then: kiln.json holds rounds as its last key, indented as the key above it, and nothing else changed,
+stdout '^wrote \.kiln/kiln\.json$'
+cmp .kiln/kiln.json _given/want.json
+
+# and a second run leaves the file as it is.
+exec kiln init
+! stdout 'kiln\.json'
+cmp .kiln/kiln.json _given/want.json
+
+-- _given/kiln.json --
+{"gate": ["true"],
+ "hosts": ["a.example"],
+ "acceptance": "acc/{spec}/"}
+-- _given/want.json --
+{"gate": ["true"],
+ "hosts": ["a.example"],
+ "acceptance": "acc/{spec}/",
+ "rounds": 3}
