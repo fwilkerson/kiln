@@ -80,6 +80,8 @@ type record struct {
 	Amendments string `json:"amendments,omitempty"`
 	// Monitor is true of a monitor's fix, whose Name is the monitor's. Approved is then main's tip when it started.
 	Monitor bool `json:"monitor,omitempty"`
+	// Title is the title the fix's agent last gave the commit that lands it, in place of kiln's own.
+	Title string `json:"title,omitempty"`
 	runner
 }
 

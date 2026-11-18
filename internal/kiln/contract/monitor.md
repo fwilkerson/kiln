@@ -21,6 +21,19 @@ When what the monitor found needs a person, not a fix, end your last reply with 
 `{"ask": true, "summary": "..."}`, with one line that sums it up. The rest of your reply is your report to the
 developer. kiln then drops what you changed, and main stays as it was. Ask only when no fix you could make is right.
 
+### The commit's title
+
+When you end a turn with the fix done, end your last reply with one line, a JSON object: `{"title": "..."}`. kiln
+lands your work as one commit, under that title. Write it as a Conventional Commit of at most 72 characters,
+`type(scope): summary`, so a reader of `git log --oneline` learns what changed without opening the commit:
+
+- The type is the kind of change, such as `fix`, `refactor`, `perf`, `test` or `docs`.
+- The scope is the part of the code the change is in, such as a package or a command. It is never the monitor's
+  name: the commit's body names the monitor.
+- The summary says what the change does, in the imperative, such as `keep each gauge row's cost linear`.
+
+kiln keeps the title of your last reply that gave one. Without one, the title is `fix(%[1]s): land the monitor's fix`.
+
 ### How the fix goes
 
 You work in your own worktree, on the monitor's branch, `kiln/%[1]s`. Commit as you go, or leave your changes: when

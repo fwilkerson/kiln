@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
@@ -172,6 +174,10 @@ func (b *build) fixAgent(ctx context.Context, gateReport string) error {
 			return err
 		}
 
+		if title := titleOf(ended.Text); title != "" {
+			b.set(func(r *record) { r.Title = title })
+		}
+
 		var next string
 		if next, why, err = b.fixGate(ctx); err != nil || next == "" {
 			return err
@@ -236,6 +242,31 @@ func askOf(text string) (summary, report string, asked bool) {
 
 	return ask.Summary, strings.TrimSpace(above), ask.Ask
 }
+
+// titleOf reads the title an agent's reply gives the commit that lands its fix. Its last line is {"title": "..."}.
+// It answers "" unless the title is one line, type(scope): summary, of at most titleMax characters.
+func titleOf(text string) string {
+	last, _ := lastOf(text)
+	var t struct {
+		Title string `json:"title"`
+	}
+	if !jsonLine(last, &t) || !conventionalTitle(t.Title) {
+		return ""
+	}
+
+	return t.Title
+}
+
+// conventionalTitle is true of a title of at most titleMax characters, as Conventional Commits writes one.
+func conventionalTitle(title string) bool {
+	return utf8.RuneCountInString(title) <= titleMax && conventional.MatchString(title)
+}
+
+// titleMax is the longest title titleOf takes, the limit Conventional Commits' common tooling keeps.
+const titleMax = 72
+
+// conventional matches a Conventional Commits title: type(scope): summary, where the scope and a ! are optional.
+var conventional = regexp.MustCompile(`^[a-z]+(\([a-z0-9][a-z0-9./_-]*\))?!?: \S[^\n]*$`)
 
 // jsonLine reads line into v, if it is a JSON object.
 func jsonLine(line string, v any) bool {

@@ -1,0 +1,60 @@
+# An agent titles the commit that lands its fix.
+
+env KILN_OPEN=true
+
+# Given: a monitor whose agent writes a file, and ends its reply with a title for the commit.
+
+# When: the developer runs kiln monitor run.
+exec kiln monitor run
+
+# Then: main's last commit has the agent's title, and its body names the monitor.
+exec git log -1 --format=%s main
+stdout '^fix\(notes\): write the missing note$'
+exec git log -1 --format=%b main
+stdout 'for the monitor stale'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "monitors": [
+ {"name": "stale", "every": "24h", "check": "sh .kiln/monitors/stale", "agent": ".kiln/agents/stale.md", "prompt": "Write the note."}
+]}
+-- .kiln/monitors/stale --
+if [ -e note.txt ]; then
+  echo '{"fix": false, "summary": "note.txt is there"}'
+else
+  echo '{"fix": true, "summary": "note.txt is missing"}'
+fi
+-- .kiln/agents/stale.md --
+Write the missing note.
+-- claude.json --
+{
+ "stale": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "echo noted >note.txt"
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Wrote note.txt.\n{\"title\": \"fix(notes): write the missing note\"}"
+     }
+    }
+   ]
+  }
+ },
+ "audit": {
+  "1": {
+   "1": [
+    {
+     "result": {
+      "result": "read 1 directories, found 0"
+     }
+    }
+   ]
+  }
+ }
+}

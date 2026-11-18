@@ -226,6 +226,28 @@ func TestAsk(t *testing.T) {
 	}
 }
 
+// TestTitle holds which titles an agent's reply gives the commit that lands its fix.
+func TestTitle(t *testing.T) {
+	for name, tc := range map[string]struct{ text, want string }{
+		"a title on the last line": {text: "Fixed it.\n{\"title\": \"fix(tui): keep each row linear\"}",
+			want: "fix(tui): keep each row linear"},
+		"one with no scope":         {text: `{"title": "perf: cache the gauge rows"}`, want: "perf: cache the gauge rows"},
+		"a reply with no title":     {text: "Fixed it."},
+		"a title above other lines": {text: "{\"title\": \"fix(tui): x\"}\nThen I checked it."},
+		"a title of 73 characters":  {text: `{"title": "fix(tui): ` + strings.Repeat("x", 63) + `"}`},
+		"a title of 72 characters": {text: `{"title": "fix(tui): ` + strings.Repeat("x", 62) + `"}`,
+			want: "fix(tui): " + strings.Repeat("x", 62)},
+		"a title with no type": {text: `{"title": "Fixed the gauge rows"}`},
+		"a title of two lines": {text: `{"title": "fix(tui): x\n\nmore"}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := titleOf(tc.text); got != tc.want {
+				t.Errorf("titleOf = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // claudeEnded is a session's end, with text as its result.
 func claudeEnded(text string, failed bool) claude.Ended {
 	return claude.Ended{Text: text, Failed: failed}

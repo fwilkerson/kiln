@@ -203,8 +203,9 @@
 // prompt, it reads "Fix what the monitor <name> found, and end your turn." The gate adds the check, unless gates is
 // false, and fails while it asks for a fix. A fix that passes lands, or waits for kiln accept when accept is true.
 // Work that changes nothing ends unchanged. An agent's reply whose last line is {"ask": true, "summary": "..."} ends
-// the fix needs you, with its report. A failed session ends it session failed. A usage limit ends it at once, never
-// waiting for the reset. Only a fix whose agent ran gets the audit.
+// the fix needs you, with its report. One whose last line is {"title": "type(scope): summary"}, of at most 72
+// characters, titles the commit that lands the fix. A failed session ends it session failed. A usage limit ends it
+// at once, never waiting for the reset. Only a fix whose agent ran gets the audit.
 //
 // A monitor may name a gauge in place of a check, as "gauge": "health". Its run reads the gauge over the whole
 // repository. It reads in the check's worktree at main's tip, with git's empty tree in $KILN_BASE. A reading that

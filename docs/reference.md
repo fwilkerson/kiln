@@ -199,6 +199,8 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
   before `{spec}` either, so it cannot change a lasting suite.
 - An agent asks for you with the last line of its reply: `{"ask": true, "summary": "..."}`. kiln then drops what it
   changed.
+- An agent titles the commit that lands its fix with the last line of its reply: `{"title": "fix(tui): ..."}`, a
+  Conventional Commit of at most 72 characters. Without one, the title is `fix(<monitor>): land the monitor's fix`.
 - `"drain": true` is for a queue that each fix takes one item from, such as a folder of bug reports. After a fix
   lands, kiln runs the check again at once, due or not, and starts the next fix. The run ends when the check asks
   for no fix, when the monitor is held, or when a fix does not land. It needs a check or a gauge.

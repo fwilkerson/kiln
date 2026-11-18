@@ -712,14 +712,20 @@ func (b *build) message(what string) string {
 }
 
 // landing is the message of the commit that lands the build. It holds the build's time, cost, turns and failed calls,
-// so git log shows what each landed build cost.
+// so git log shows what each landed build cost. A fix's title is its agent's, when the agent gave one.
 func (b *build) landing() string {
 	what := "land the approved spec"
 	if b.rec.Monitor {
 		what = "land the monitor's fix"
 	}
 
-	return b.message(what) + "\nBuild: " + b.r.summary(b.rec.Build) + "\n"
+	message := b.message(what)
+	if b.rec.Title != "" {
+		_, body, _ := strings.Cut(message, "\n")
+		message = b.rec.Title + "\n" + body
+	}
+
+	return message + "\nBuild: " + b.r.summary(b.rec.Build) + "\n"
 }
 
 // gate runs the gate on the build's worktree, and writes it to the ledger. landing is the gate on the work rebased
