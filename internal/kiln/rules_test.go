@@ -778,13 +778,19 @@ func TestNextStep(t *testing.T) {
 	}
 }
 
-// TestFixStep holds a fix's next step to spec 4's table in every state, accepted or not. A new state needs no row.
+// TestFixStep holds a fix's next step to spec 4's table in every state, accepted or not. A new state needs no row. An
+// accepted fix that conflicts with main names kiln reject alone, since no session resolves the conflict.
 func TestFixStep(t *testing.T) {
 	for _, s := range []state{queued, building, stopped, landed, amended, waiting} {
 		for _, accepted := range []bool{false, true} {
 			rec := record{Name: "x", State: s, Accepted: accepted, Monitor: true}
 			namedIn(t, fixStep(rec), &rec)
 		}
+	}
+
+	rec := record{Name: "x", State: stopped, Accepted: true, Monitor: true, Why: fixConflicts + "docs.txt"}
+	if named := namedIn(t, fixStep(rec), &rec); !slices.Equal(named, []string{"reject"}) {
+		t.Errorf("a conflicted fix's step %q names kiln %v; want kiln reject alone", fixStep(rec), named)
 	}
 }
 

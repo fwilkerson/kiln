@@ -1,4 +1,4 @@
-# A fix that waits for accept.
+# A fix that waits for accept. One that conflicts with main names kiln reject, and the next fix lands on accept.
 
 env KILN_OPEN=true
 
@@ -15,7 +15,30 @@ cmp stdout $WORK/_given/main-before
 exec kiln status
 stdout 'docs.*waiting'
 
-# When: and then kiln accept with the monitor's name.
+# Given: main changed since, in the lines the fix changed.
+exec sh -c 'echo "the docs, written by hand" >docs.txt && git add docs.txt && git commit -qm "docs: write by hand"'
+
+# When: the developer runs kiln accept with the monitor's name,
+! exec kiln accept docs
+
+# then its summary says main changed what the fix changed. Its output and kiln status name kiln reject docs, since
+# no session resolves a conflict, and never ask to accept again.
+stdout 'docs: stopped: main changed what the fix changed'
+stdout 'kiln reject docs'
+! stdout 'kiln accept docs to land it again'
+stderr 'kiln reject docs'
+! stderr 'kiln accept docs lands it again'
+exec kiln status
+stdout 'main changed what the fix changed'
+stdout 'kiln reject docs'
+! stdout 'kiln accept docs to land it again'
+! stdout 'git merge main'
+
+# When: the developer rejects the fix, runs the monitor again by name, since it is not due, and accepts its new fix,
+exec kiln reject docs
+exec sh -c 'kiln monitor run docs || true'
+exec kiln status
+stdout 'docs.*waiting'
 exec sh -c 'kiln accept docs || true'
 
 # Then: after the accept, main holds the change.
