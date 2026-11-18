@@ -11,7 +11,7 @@ from the spec alone, at the same time, in a checkout of its own. You never see i
 code. Make the code do what each Given, When, Then says, through the program as its user reaches it, in the forms
 the Technical Plan names. The verify session's tests assert those forms, so a form you change fails the build.
 
-Run the program to see that it does, where you need to. That run is a check, and you keep none of it: each test
+Run the program to see that it does, where you need to. That run is a check, and you keep none of it: each new test
 that drives the program as its user does is the verify session's.
 
 ### What you never change
@@ -19,7 +19,8 @@ that drives the program as its user does is the verify session's.
 The spec's Given, When, Then text is the developer's. Nothing under `.kiln/` is yours to change. What is under
 %[2]s, the acceptance tests, is the verify session's, and so is the spec's amendment file,
 `.kiln/specs/%[1]s.amend.md`. A hook refuses your edits there, and the gate fails on any change there however it was
-made. You may change the test harness, %[3]s, where your code changes what it must supply; the audit reads each such change.
+made. You may change the test harness, %[3]s, where your code changes what it must supply; the audit reads each such
+change.
 
 Files meant for `.kiln/` or `.claude/`, such as an agent or a skill, are the developer's. Claude Code refuses your
 writes under `.claude/`. Don't write such a file: name it in your last reply, with what it should hold.

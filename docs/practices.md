@@ -26,6 +26,11 @@ differ, this file decides for kiln.
 
 ## Tests
 
+- Prove a rule with the cheapest test that reaches it through real machinery, among those the session may write.
+  From cheapest: a row in a table that exists, a check added to a test that exists, a new unit test over real git,
+  files or a fake claude, a check added to a scenario whose Given already reaches the rule, and last a new scenario,
+  at seconds each. A new scenario is for what only the built binary shows: its exit code and output, a killed or
+  racing kiln, a git hook. A spec's acceptance tests differ: one for each Then, through the command line.
 - A test's condition holds one `||`. `claim.Holds`, from the practices module, takes the rest, as
   `TestSpecBeforeKiln` in `internal/kiln/agent_test.go` shows. `go doc -all github.com/fwilkerson/practices/claim`
   is its contract.
@@ -41,8 +46,8 @@ organize current work by stories, then reorganize it by functional area. A story
 - Once the spec is accepted, its scenarios fold into `uat/testdata/<feature>/`. A feature is something the developer
   does, such as review a build. Name a folded scenario for what it shows. From then on it follows the product, not
   the retired spec's wording or numbers.
-- Fold in a change that touches the tests alone. A build never folds or merges, since its session would rewrite the
-  tests that judge its code. A build changes a folded scenario only where its spec changes what the scenario shows.
+- Fold in a change that touches the tests alone. Only the `uat` monitor folds or merges, for the developer to
+  accept: another session that did would rewrite the tests that judge its own code.
 - Merge two scenarios that build the same Given, so one build carries the checks of both. Three of kiln's specs
   each described one state from their own side: nine of their scenarios held one of three fixtures, byte for byte.
 - Drop a scenario when a unit table's row holds its rule, and another scenario runs the same wiring through the

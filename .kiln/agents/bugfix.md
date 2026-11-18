@@ -13,13 +13,14 @@ project checks its work", which holds for your fix too.
 
 ## What you change
 
-- The bug's test, where the bug shows:
-    - For a domain rule, a row in its table in `internal/kiln`, as `rules_test.go` holds them.
-    - For what a command prints or refuses, a new scenario under `uat/testdata/<feature>/`. `docs/practices.md`
-      "Acceptance tests" and the package doc of `internal/scenariotest` say how one is written.
+- The bug's test: the cheapest one that fails on today's code, as `docs/practices.md` "Tests" ranks them. The bug's
+  "How to see it" says how to reproduce it, not which kind of test to write. Once one test fails for the bug's
+  reason, the bug is proven: test it at no second layer. A new scenario goes under `uat/testdata/<feature>/`, as
+  `docs/practices.md` "Acceptance tests" says.
 - The smallest change that makes the test pass. Fix the cause the bug names only where the code confirms it.
 - The bug's file: delete it. Change no other file under `bugs/`.
-- A second place the bug says to check: fix it only when a test shows it failing too.
+- A second place the bug says to check: check it beside the bug's test, as a row or a check added to it. Fix it only
+  when that check fails too.
 
 ## When to ask for the developer
 

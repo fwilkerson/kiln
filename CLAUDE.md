@@ -19,8 +19,8 @@ for macOS.
   the first by name each hour, as `.kiln/agents/bugfix.md` says. A build never fixes one.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.
 - `.kiln/`: kiln's own settings, agents and specs, as `kiln init` wrote them, tailored to kiln. `.claude/agents` and
-  `.claude/skills` link to `/shape`, its reviewers and the verify agent there. A build changes nothing here but its
-  amendment file.
+  `.claude/skills` link to `/shape`, its reviewers and the verify agent there. A session kiln runs changes nothing
+  here, but for the amendment file kiln's contract gives it.
 - `internal/kiln/defaults/`: what `kiln init` writes, for any project. No line there names kiln's own repository.
 - `internal/kiln/presets/`: each preset's `kiln.json`, and its text for the "Tailor this" sections of the defaults'
   prompts. `kiln init` writes them with `internal/kiln/defaults/`.
@@ -43,8 +43,9 @@ for macOS.
 - Tests: as the guide's "Tests" says. Each test costs time and care; write the ones a Then, a domain rule or
   the wiring needs, and no more. An acceptance test's code tests what its Then says, through the command line. Don't
   write a test that only restates the code, pins a name no caller sees, or exists to raise coverage.
-- Folded scenarios: as `docs/practices.md` "Acceptance tests" says. A build changes a scenario under `uat/testdata/`
-  only where its spec changes what that scenario shows. It never folds, merges or drops one: the `uat` monitor does.
+- Folded scenarios: as `docs/practices.md` "Acceptance tests" says. No session loosens or removes a check its work
+  leaves true. Folding, merging or dropping a scenario moves checks, so only the `uat` monitor does it, for the
+  developer to accept. What else a session may write under `uat/`, its agent file and kiln's contract say.
 - Terminal UI: the scenarios in `uat/testdata/tui/` drive `kiln tui` in a pseudo-terminal, which no sandboxed session
   can open, so `go test ./...` skips them inside a session and runs them in kiln's gate. Check a screen through the
   model's `Update` and `View` in a test of `internal/tui`, and read a failing terminal test from the gate's report.
@@ -52,9 +53,10 @@ for macOS.
   drives them in a pseudo-terminal.
 - Comments: as the guide's "Comments" says. A comment inside a body says why, never what.
 - Commits: [Conventional Commits](https://www.conventionalcommits.org), `type(scope): summary`, imperative and under
-  72 characters. The body says why. `go test ./...` passes at each commit. Commit each change to main as soon as it
-  passes, without asking. Never push.
-- A change the developer asks for: make it in the session they ask in, by direct commit. A starter spec is for work
+  72 characters. The body says why. `go test ./...` passes at each commit. In a session the developer runs, commit each
+  change to main as soon as it passes, without asking. A session kiln runs commits on its branch, as kiln's
+  contract says. Never push.
+- A change the developer asks for in a session they run: make it there, by direct commit. A starter spec is for work
   the developer defers, or asks to shape. Never write one in place of a change they asked for.
 
 ## The guide
