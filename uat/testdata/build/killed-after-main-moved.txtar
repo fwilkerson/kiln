@@ -1,15 +1,28 @@
-# A build whose landing moved main waits for UAT, though kiln was killed before it recorded the landing.
+# A build whose kiln fire died shows as halted. Once main holds its landing, the next kiln fire records it, to wait
+# for UAT.
 
 # Given: an approved spec whose build passes its gate. A git first on the PATH kills kiln as soon as a fast-forward
 # merge moves main.
 exec kiln queue x
 exec sh -c 'printf "#!/bin/sh\n\"%s\" \"\$@\" || exit\ncase \" \$* \" in *\" merge \"*\" --ff-only \"*) [ -e \"$WORK/.tmp/killed\" ] || { touch \"$WORK/.tmp/killed\"; kill -9 \$PPID; } ;; esac\n" "$(command -v git)" >.tmp/git && chmod +x .tmp/git'
 
-# When: kiln fire dies once main holds the landing, and the developer runs kiln fire again.
+# When: kiln fire dies once main holds the landing,
 ! exec sh -c 'PATH="$PWD/.tmp:$PATH" exec kiln fire'
 exists .tmp/killed
 exec git log -1 --format=%s main
 stdout '^feat\(x\): land the approved spec$'
+
+# then kiln status shows the build halted, and names kiln fire, which takes it up again,
+exec kiln status
+stdout '^x: halted\n  its kiln fire is gone: kiln fire takes it up again$'
+! stdout 'building'
+
+# and kiln queue refuses it with the same words.
+! exec kiln queue x
+stderr 'it is halted, as its kiln fire is gone: kiln fire takes it up again'
+! stderr 'once its build ends'
+
+# When: the developer runs kiln fire again.
 exec kiln fire
 cp stdout .tmp/run
 stdout '^x: landed on main'
