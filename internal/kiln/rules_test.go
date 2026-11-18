@@ -834,6 +834,64 @@ func TestLandChanges(t *testing.T) {
 	}
 }
 
+// TestLandedBefore holds what the next kiln makes of an accepted landing that moved main before kiln died. kiln fire
+// retires the spec, and kiln monitor run ends the fix landed. Neither lands it again.
+func TestLandedBefore(t *testing.T) {
+	for name, tc := range map[string]struct {
+		monitor bool
+		next    func(*build, context.Context) error
+		outcome string
+	}{
+		"kiln fire retires an accepted spec": {next: (*build).run, outcome: outAccepted},
+		"kiln monitor run ends an accepted fix landed": {monitor: true, outcome: outLanded,
+			next: func(b *build, ctx context.Context) error { return b.r.dropLost(ctx, b.rec, b.out) }},
+	} {
+		t.Run(name, func(t *testing.T) {
+			next, landed := landedThenKilled(t, tc.monitor)
+			if err := tc.next(next, t.Context()); err != nil {
+				t.Fatal(err)
+			}
+
+			k, _ := next.r.store.read()
+			entries, _ := next.r.store.entries()
+			last := entries[len(entries)-1]
+			tip := git.Rev(shell(t, next.r.top, "git rev-parse main"))
+			if !claim.Holds(tip == landed, k.find("x") == nil, last.Outcome == tc.outcome) {
+				t.Errorf("main at %s, landed at %s; x is %s, ending %q; want x %s, main held at its landing",
+					short(tip), short(landed), thenOf(k.find("x")), last.Outcome, tc.outcome)
+			}
+		})
+	}
+}
+
+// landedThenKilled is the build of x, an accepted landing, as the next kiln takes it up. The kiln before died once its
+// landing moved main. It answers the commit main moved to. A monitor's build is the fix of the monitor x.
+func landedThenKilled(t *testing.T, monitor bool) (*build, git.Rev) {
+	t.Setenv(openVar, "true")
+	b, repo, _ := landingBuild(t)
+	shell(t, repo, `echo '{"gate": ["true"], "monitors": [{"name": "x", "every": "1h", "command": "true", `+
+		`"tests": true}]}' >.kiln/kiln.json && git commit --quiet -am monitor`)
+	b.rec = record{Name: "x", State: building, Accepted: true, Monitor: monitor, Build: "b",
+		Approved: git.Rev(shell(t, repo, "git rev-parse HEAD"))}
+	err := b.r.store.update(func(k *book) error { k.Specs = []*record{new(b.rec)}; return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shell(t, string(b.tree), "echo 42 >x && git add x && git commit --quiet -m x")
+	landed, _, err := b.land(t.Context(), git.Rev(shell(t, string(b.tree), "git rev-parse HEAD")), nil)
+	if err != nil || landed == "" {
+		t.Fatalf("the landing answered %q, %v", landed, err)
+	}
+
+	k, err := b.r.store.read()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return &build{r: b.r, rec: *k.find("x"), tree: b.tree, out: io.Discard}, landed
+}
+
 // landing is what TestLandChanges compares of a landing. It holds whether it landed, where main is, and whether the
 // work went back unchanged.
 type landing struct {
