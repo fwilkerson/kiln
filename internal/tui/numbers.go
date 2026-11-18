@@ -207,14 +207,16 @@ func decimal(v float64) string {
 
 // span shows a build's or a run's time: seconds under a minute, minutes under an hour, then hours and minutes.
 func span(d time.Duration) string {
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d.Round(time.Second)/time.Second))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Round(time.Minute)/time.Minute))
+	if s := d.Round(time.Second); s < time.Minute {
+		return fmt.Sprintf("%ds", int(s/time.Second))
 	}
 
-	return fmt.Sprintf("%dh%02dm", int(d/time.Hour), int(d%time.Hour/time.Minute))
+	m := d.Round(time.Minute)
+	if m < time.Hour {
+		return fmt.Sprintf("%dm", int(m/time.Minute))
+	}
+
+	return fmt.Sprintf("%dh%02dm", int(m/time.Hour), int(m%time.Hour/time.Minute))
 }
 
 // clock shows how long something has gone on, as minutes and seconds, such as 0:42.
