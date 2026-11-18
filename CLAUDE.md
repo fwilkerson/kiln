@@ -29,6 +29,8 @@ for macOS.
 - `docs/practices.md`: kiln's own rules, which add to the guide. Read it before adding a package or an exported name.
 - `README.md`: what kiln is, and a quick start. `docs/reference.md`: each key of `kiln.json`, the agents' files, and
   what kiln records. `docs/practices.md` "Docs are the contract" says which doc holds a rule.
+- `docs/one-page.txt`: kiln on one page, the source that `onepage render docs/one-page.txt docs/one-page.html`
+  draws in the theme `docs/sheet/`. Render it again in the commit that changes either.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
 - `.claude/handoff.md`: the open work, and the facts no file holds. Read it before the first edit of a session. It
   is the developer's own, and git ignores it.

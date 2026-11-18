@@ -1,0 +1,144 @@
+# kiln on one page: what it adds to Claude Code, and what one developer's repository runs with it.
+# Render: onepage render docs/one-page.txt docs/one-page.html (github.com/fwilkerson/onepage).
+# README.md is the quick start, and docs/reference.md holds every key of kiln.json.
+
+title kiln, on one page
+theme sheet/theme.css
+
+actor you    you    the developer
+actor agent  agent  a Claude Code session
+actor kiln   kiln   kiln's own code
+actor repo   repo   git, on main
+
+line arrow work moves
+line planned @kiln planned
+mark balloon part
+mark dot @you your attention
+mark more more
+
+::: titleblock
+cell id | kiln for Claude Code
+wordmark kiln
+motto Approve it, walk away
+para kiln adds three things to Claude Code: a skill that shapes a spec with you, builds that run in the background, and monitors that keep working on your repository.
+para One Go binary, for macOS. Each piece of work lands on main as one commit, held to your own checks.
+
+cell problem | Without kiln
+lead **An agent still needs you at the keyboard.**
+point P1 | Work stops when you step away, though the spec already said what done means. | {1}
+point P2 | A session that writes the code and its tests grades its own work. | {2}
+point P3 | Small chores pile up between features: filed bugs, drifting docs, tired code. | {3}
+
+cell answer | With kiln
+big You approve a @you{spec} and walk away. You come back to it **built, tested and audited**, on @repo{main}.
+para @agent{**/shape**} asks what it needs, has three reviewers read the draft, and writes the spec.
+para @kiln{**kiln fire**} builds each approved spec in a sandbox, while you work on the next one.
+para @kiln{**Monitors**} run on a schedule, find a problem, and land its fix the same way.
+
+cell attn | Your attention goes only here
+item ●1 | **Shape and approve a spec.**
+item ●2 | **Try what landed**, then accept it.
+item ●3 | **Answer when a build asks**: it found the spec wrong, or could not pass.
+:::
+
+view 2 BUILD | one spec, from a draft to main | after you approve it, no one waits at the keyboard
+
+::: swimlane
+lane @you | the developer
+lane @agent | Claude Code | sessions
+lane @kiln | plain code
+lane @repo | git, | on main
+
+phase 1 | SHAPE
+phase 2 | BUILD, IN THE BACKGROUND
+phase 3 | LAND
+
+box shape @you 1.1 | **shape a spec** ●1 | `/shape`, then approve
+more `/shape` asks what it needs, and three reviewers read the draft before you approve it. Its acceptance tests say what done means, each a Given, a When and a Then.
+box queue @you 1.2 | `kiln queue x` | `kiln fire`
+box spec @repo 1.1-2 | 📄 SPEC | approved, on main
+arrow shape spec
+
+box build @agent 2.1 | BUILD | the code
+box verify @agent 2.1 | VERIFY | the tests, from | the spec alone
+more Two sessions, in two clones: one writes the code, the other the acceptance tests. Neither reads the other's work.
+box gate @kiln 2.2 | GATE | your checks, | read from main
+more kiln reads the gate's commands from main, never from the build's checkout, so a build cannot weaken the checks it is held to.
+box audit @agent 2.3 | AUDIT | a second session | reads the work
+more A failing gate, or the audit's findings, go back to the build as a round. Detail A says what happens when rounds run out.
+arrow queue build
+arrow queue verify
+arrow build gate
+arrow verify gate
+arrow gate audit
+detail A | build gate audit
+
+box land @kiln 3.1 | LAND | one commit
+box main @repo 3.1 | MAIN
+box try @you 3.2 | **try it** ●2 | `kiln accept x`
+arrow audit land
+arrow land main
+arrow main try
+:::
+
+::: details
+detail A | Detail A — when a build cannot land as it is | It keeps its checkout, so you can ask its session why.
+rung @agent | 1 · Round | the build | A failing gate, or the audit's findings, go back to the session, up to three times.
+rung @agent | 2 · Amend | the build | A spec found wrong gets an amendment, and the build waits on its branch.
+rung @you | 3 · Decide | you ●3 | Accept or reject the amendment, or fix the spec and queue it again.
+:::
+
+view 3 TEND | monitors: a check on a schedule, then a fix | kiln runs these four on its own repository
+
+::: assembly
+box launchd @kiln A2-A3 | LAUNCHD | `kiln monitor run`, | each hour
+group monitors B1-B4 | KILN'S OWN MONITORS
+box bugs @kiln B1 | BUGS {1} | every hour
+box health @kiln B2 | CODE HEALTH {2} | every day
+box uat @kiln B3 | UAT {3} | every day
+box docs @kiln B4 | DOCS {4} | every day
+box fix @agent C2-C3 | A FIX {5} | a session with | the monitor's | own agent
+valve gate @kiln | GATE
+rail main @repo D1-D4 | MAIN
+arrow launchd monitors
+arrow monitors fix
+arrow fix main via gate
+
+parts PARTS LIST | each monitor's check, and what its fix does
+part 1 @kiln | Bugs | a check lists `bugs/`; its fix takes the first report | Fixes each bug you file, one after another, with a test that fails first.
+part 2 @kiln | Code health | a gauge scores changed files | Refactors the three lowest-scoring files, and changes no behavior.
+part 3 @kiln | UAT | a check finds an accepted spec's tests | Folds them into the suite, by feature, and waits for you to accept.
+part 4 @kiln | Docs | a check finds packages whose code changed | Reads their docs against the code, fixes what is false, and waits for you.
+part 5 @agent | A fix | a build with no spec | Gated, audited and landed like any build, so a monitor is as safe as a spec.
+:::
+
+view 4 START | what you type | real output
+
+::: spec
+column
+howto 4.1 | Set a project up | `kiln init` @you
+```term
+$ kiln init
+wrote .kiln/kiln.json
+linked .claude/skills/shape
+{q:commit .kiln/ on main: kiln reads it there}
+```
+caption The preset is `go`, or `python` for uv, pytest, ruff and ty.
+column
+howto 4.2 | Build a spec | `kiln queue answer` @you then `kiln fire` @you
+```term
+$ kiln fire
+answer: {ok:landed on main} at {h:3f9c2ab81d0e}
+  4.2 min · $0.42 · 3 turns
+  next: kiln accept answer
+```
+caption `kiln tui` shows each session live.
+column
+howto 4.3 | Add a monitor | `kiln monitor install` @you
+```term
+$ .kiln/monitors/bugs
+# A gate command that leaves a child behind …
+\{"fix": true, "summary": "18 in bugs/, …"}
+```
+caption A check is any script whose last line says whether a fix is due. Name it, an agent and a schedule in `kiln.json`.
+:::

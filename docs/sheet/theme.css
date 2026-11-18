@@ -1,0 +1,75 @@
+/* The theme of docs/one-page.txt, for onepage: the inside of a firing kiln at night. Firebrick near-black, and
+   the actors on the smith's heat chart, coolest to hottest: cherry red (repo), orange (kiln), yellow-white (you),
+   and blue-white (agent). Both faces ship beside it, under the SIL Open Font License. */
+
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  font-weight: 200 800;
+  src: url("fonts/AtkinsonHyperlegibleNext.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-weight: 100 800;
+  src: url("fonts/JetBrainsMono.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: dark;
+
+  --canvas: #110b09;
+  --surface: #1b1310;
+  --surface-raised: #271b16;
+  --surface-sunken: #0b0706;
+  --line: #3b2a22;
+  --line-strong: #7f5f4d;
+  --ink: #f6eadd;
+  --ink-2: #c8b09e;
+
+  --you: #ffe696;
+  --you-tint: #2f2209;
+  --agent: #8fbaff;
+  --agent-tint: #131b2e;
+  --kiln: #ff8436;
+  --kiln-tint: #32170a;
+  --repo: #e64b5e;
+  --repo-tint: #2f0f15;
+
+  --syn-name: #d69d74;
+  --ref: #e64b5e;
+  --ok: #ffe696;
+  --you-ink: #ffe696;
+
+  --font-sans: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-head: "DIN Alternate", "Bahnschrift", "Atkinson Hyperlegible Next", sans-serif;
+  --hot: #ffb070;
+  --prompt: #ff8436;
+  --grid: transparent;
+  --look: page;
+  --radius: 8px;
+
+}
+
+/* The heat rising from the floor of the kiln. */
+.sheet {
+  background-image: radial-gradient(ellipse 90% 30% at 50% 102%, rgba(255, 110, 40, .08), transparent 70%);
+}
+
+/* The pyrometer: the title block's top edge runs the actors' heats, coolest to hottest. */
+.tblock {
+  background: linear-gradient(90deg, var(--repo), var(--kiln) 35%, var(--you) 70%, var(--agent)) top / 100% 3px no-repeat, var(--surface);
+}
+
+/* The wordmark, the one thing that glows: metal at yellow heat. */
+.mark {
+  background: linear-gradient(180deg, var(--you) 15%, var(--kiln) 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 14px rgba(255, 120, 40, .45));
+}
+
+/* A view's number is lit, and its rule cools from orange to a hairline. */
+.sh .n { color: var(--kiln); text-shadow: 0 0 10px rgba(255, 120, 40, .55); }
+.sh .rule { height: 1px; border-top: 0; background: linear-gradient(90deg, var(--kiln), var(--line) 45%); }
+.motto { color: var(--kiln); }
