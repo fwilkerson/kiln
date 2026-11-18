@@ -28,7 +28,8 @@
 //	permissions.deny        Deny, and denyInsteadOfPrompting: a question is refused, since no one answers it
 //	autoMode.hard_deny      Claude Code's defaults, and Forbidden
 //	autoMode.environment    no one is at the keyboard, and nothing is pushed to any remote
-//	sandbox                 on, with no unsandboxed command; writes in Dir and Writable alone
+//	sandbox                 on, with no unsandboxed command, and failing when it cannot start; writes in Dir and
+//	                        Writable alone
 //	sandbox.network         Domains alone, a listener on a local port, and trustd to check a TLS certificate
 //	sandbox.filesystem      denyRead DenyRead, allowRead AllowRead
 //	advisorModel            Advisor, when set

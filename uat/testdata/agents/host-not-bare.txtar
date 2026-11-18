@@ -1,0 +1,19 @@
+# kiln refuses a host that is not a bare host name.
+
+# Given: a project whose .kiln/kiln.json on main names a host as a URL.
+# When: the developer queues a spec.
+! exec kiln queue x
+
+# Then: kiln refuses it, naming the host, and kiln status does not show it queued.
+stderr 'https://proxy\.golang\.org/'
+exec kiln status
+! stdout '^x:'
+
+-- .kiln/kiln.json --
+{"hosts": ["https://proxy.golang.org/"]}
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.

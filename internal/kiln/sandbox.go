@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/fwilkerson/kiln/internal/claude"
@@ -74,7 +75,7 @@ func (r *Repo) reached(ctx context.Context, l claude.Launch) (claude.Launch, err
 }
 
 // printed answers the paths command prints, a field each. It runs command once per kiln command, in the checkout
-// kiln runs in, with sh -c. A command that fails is an error.
+// kiln runs in, with sh -c. A command that fails, or prints a path that is not absolute, is an error.
 func (r *Repo) printed(ctx context.Context, command string) ([]string, error) {
 	r.writableMu.Lock()
 	defer r.writableMu.Unlock()
@@ -89,10 +90,18 @@ func (r *Repo) printed(ctx context.Context, command string) ([]string, error) {
 		return nil, fmt.Errorf("%s's writable command %q: %w", configFile, command, err)
 	}
 
+	paths := strings.Fields(string(out))
+	for _, p := range paths {
+		if !filepath.IsAbs(p) {
+			return nil, fmt.Errorf("%s's writable command %q printed %q: print only absolute paths", configFile,
+				command, p)
+		}
+	}
+
 	if r.writable == nil {
 		r.writable = map[string][]string{}
 	}
 
-	r.writable[command] = strings.Fields(string(out))
+	r.writable[command] = paths
 	return r.writable[command], nil
 }

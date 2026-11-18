@@ -9,6 +9,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/fwilkerson/kiln/internal/git"
 )
@@ -173,11 +174,26 @@ func parseConfig(raw []byte) (config, error) {
 			splitWorkflow)
 	}
 
+	for _, h := range c.Hosts {
+		if !bareHost(h) {
+			return c, fmt.Errorf("%s names the host %q: name a bare host, such as \"proxy.golang.org\", or "+
+				"\"*.example.org\"", configFile, h)
+		}
+	}
+
 	if err := c.checkGauges(); err != nil {
 		return c, err
 	}
 
 	return c, c.checkMonitors()
+}
+
+// bareHost is whether h names a host as Claude Code's allowedDomains reads one. Such a host holds letters, digits,
+// hyphens and dots, after an optional "*." for subdomains. A scheme, a port or a path fails.
+func bareHost(h string) bool {
+	name := strings.TrimPrefix(h, "*.")
+	valid := func(r rune) bool { return r != '-' && r != '.' && !unicode.IsLetter(r) && !unicode.IsDigit(r) }
+	return name != "" && !strings.ContainsFunc(name, valid)
 }
 
 // checkGauges refuses a gauge with no name, a name another gauge has, or not exactly one of min and max.

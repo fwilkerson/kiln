@@ -32,6 +32,8 @@ func settings(l Launch) ([]byte, error) {
 		"sandbox": map[string]any{
 			"enabled":                  true,
 			"allowUnsandboxedCommands": false,
+			// Without this key, Claude Code runs each command unsandboxed when the sandbox cannot start.
+			"failIfUnavailable": true,
 			// Without this key, the sandbox refuses a listener, so no session runs a test that starts a server.
 			"network": map[string]any{"allowedDomains": nonNil(l.Domains), "allowLocalBinding": true,
 				"allowMachLookup": []string{trustd}},

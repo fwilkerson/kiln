@@ -77,7 +77,9 @@ session ──▶ gate ──passes──▶ audit ──no findings──▶ la
 ### hosts, writable and mcp
 
 - A session's commands run in Claude Code's sandbox. They write only in the session's checkout and the paths
-  `writable` prints, and reach only `hosts`.
+  `writable` prints, and reach only `hosts`. A session whose sandbox cannot start runs no command.
+- Each host is a bare host name, such as `proxy.golang.org` or `*.example.org`, with no scheme, port or path. kiln
+  refuses any other. A `writable` command prints only absolute paths, or no session starts.
 - They may listen on a local port, so a test that starts a server runs in a session.
 - An MCP server runs outside the sandbox. So do the gate's commands, a gauge, a monitor's check and its `command`,
   each with the developer's environment. The gate runs the code a session wrote.

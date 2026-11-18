@@ -1,7 +1,10 @@
 package kiln
 
 import (
+	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -26,5 +29,23 @@ func TestAcceptanceForms(t *testing.T) {
 				t.Errorf("the paths are %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestWritablePaths holds that a writable command's paths reach a session only when each is absolute. Claude Code
+// would read a relative one from where the session runs. A refusal names the path.
+func TestWritablePaths(t *testing.T) {
+	for command, refused := range map[string]string{
+		"echo /tmp/a /tmp/b": "",
+		"echo /tmp/a cache":  "cache",
+		"echo ./cache":       "./cache",
+	} {
+		_, err := (&Repo{top: t.TempDir()}).printed(context.Background(), command)
+		switch {
+		case (err != nil) != (refused != ""):
+			t.Errorf("%s: printed answers %v, want refused %q", command, err, refused)
+		case err != nil && !strings.Contains(err.Error(), strconv.Quote(refused)):
+			t.Errorf("%s: printed answers %v, which does not name %q", command, err, refused)
+		}
 	}
 }
