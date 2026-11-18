@@ -95,7 +95,7 @@ func fixResult(outcome string) string {
 // monitorStatus shows each monitor kiln.json names at main's tip. A line holds its result, when it last ran, and
 // when it runs next. Its summary follows.
 func (r *Repo) monitorStatus(ctx context.Context, out io.Writer) error {
-	main, err := r.git.Tip(ctx, mainBranch)
+	main, err := r.mainTip(ctx)
 	if err != nil {
 		return err
 	}

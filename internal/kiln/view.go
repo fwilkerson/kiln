@@ -16,8 +16,12 @@ import (
 
 // TUI shows kiln's builds in a full-screen view, live and past, until the developer quits. It opens on the spec
 // name, or on home when name is "". It reads what kiln fire writes, takes no lock, and writes nothing. It refuses an
-// out that is not a terminal.
+// out that is not a terminal. It refuses a repository with no branch main before it draws, as Status does.
 func (r *Repo) TUI(ctx context.Context, name Spec, in, out *os.File) error {
+	if _, err := r.mainTip(ctx); err != nil {
+		return err
+	}
+
 	return tui.Show(ctx, view{r}, string(name), tui.Terminal{In: in, Out: out})
 }
 
@@ -151,7 +155,7 @@ func fixText(b *tui.Build) string {
 // Monitors answers each monitor kiln.json names at main's tip, where it stands, and its fixes, oldest first. A
 // monitor that names a gauge holds its readings of the whole repository, oldest first.
 func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
-	main, err := v.r.git.Tip(ctx, mainBranch)
+	main, err := v.r.mainTip(ctx)
 	if err != nil {
 		return nil, err
 	}

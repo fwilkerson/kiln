@@ -142,7 +142,7 @@ func (b *build) splitStart(ctx context.Context) error {
 		return err
 	}
 
-	main, err := b.r.git.Tip(ctx, mainBranch)
+	main, err := b.r.mainTip(ctx)
 	if err != nil {
 		return err
 	}

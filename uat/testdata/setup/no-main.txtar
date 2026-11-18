@@ -1,0 +1,35 @@
+# kiln builds on the branch main, and says so in a repository that has none.
+
+# Given: a repository whose branch is master, and kiln's files.
+exec git branch -m master
+exec kiln init
+exec git add -A
+exec git commit --quiet -m 'chore: start kiln'
+
+# When: the developer runs kiln init again, and each command that reads main,
+# then init still exits 0, and says main is missing,
+exec kiln init
+stdout '^kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
+
+# while each command that reads main refuses with that one message, and no git error.
+! exec kiln queue x
+stderr '^kiln queue: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
+! stderr 'fatal'
+
+! exec kiln status
+stderr '^kiln status: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
+! stdout 'gauges'
+
+! exec kiln tui
+stderr '^kiln tui: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
+
+! exec kiln monitor run bugs
+stderr '^kiln monitor: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
+
+! exec kiln complete queue
+stderr '^kiln complete: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
+
+# A branch main with no commit on it is refused the same way.
+exec git checkout --quiet --orphan main
+! exec kiln queue x
+stderr '^kiln queue: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'

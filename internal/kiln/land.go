@@ -53,7 +53,7 @@ var errMainMoved = errors.New("main moved while the gate ran")
 // landOnce tries the landing once, onto main's tip. It answers errMainMoved when main moved meanwhile.
 func (b *build) landOnce(ctx context.Context, from git.Rev, retire func(ctx context.Context, held git.Rev) error,
 	allowed []string) (git.Rev, setback, error) {
-	onto, err := b.r.git.Tip(ctx, mainBranch)
+	onto, err := b.r.mainTip(ctx)
 	if err != nil {
 		return "", setback{}, err
 	}
@@ -205,7 +205,7 @@ func (b *build) foldAmendments(ctx context.Context, checkout git.Worktree) (git.
 }
 
 func (b *build) checkoutMain(ctx context.Context) error {
-	main, err := b.r.git.Tip(ctx, mainBranch)
+	main, err := b.r.mainTip(ctx)
 	if err != nil {
 		return err
 	}

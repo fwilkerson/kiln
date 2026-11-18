@@ -104,7 +104,7 @@ func findingsOf(text string) string {
 // changedFiles answers the build's commit, and the files its work changed since it left main, outside .kiln/. It
 // answers their directories too, as changedDirs names them.
 func (b *build) changedFiles(ctx context.Context) (head git.Rev, dirs, files []string, err error) {
-	main, err := b.r.git.Tip(ctx, mainBranch)
+	main, err := b.r.mainTip(ctx)
 	if err != nil {
 		return "", nil, nil, err
 	}

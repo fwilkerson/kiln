@@ -325,7 +325,7 @@ func (b *build) fixBase(ctx context.Context) (head, base git.Rev, err error) {
 		return "", "", err
 	}
 
-	main, err := b.r.git.Tip(ctx, mainBranch)
+	main, err := b.r.mainTip(ctx)
 	if err != nil {
 		return "", "", err
 	}
@@ -521,7 +521,7 @@ func (b *build) gatedCheck(ctx context.Context, v verdict) (verdict, error) {
 // while the reading crosses the gauge's line, or its command fails. A reading of no number never crossed. The gauge's
 // command and line are kiln.json's at main's tip, which may no longer name the gauge.
 func (b *build) gatedGauge(ctx context.Context, v verdict) (verdict, error) {
-	main, err := b.r.git.Tip(ctx, mainBranch)
+	main, err := b.r.mainTip(ctx)
 	if err != nil {
 		return v, err
 	}

@@ -466,7 +466,7 @@ func (b *build) round(back setback) (string, reason, error) {
 }
 
 func (b *build) start(ctx context.Context) error {
-	main, err := b.r.git.Tip(ctx, mainBranch)
+	main, err := b.r.mainTip(ctx)
 	if err != nil {
 		return err
 	}

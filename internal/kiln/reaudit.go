@@ -11,7 +11,7 @@ import (
 // the work the audit read. It compares each one's own change since it left main. Main's changes, brought in by a
 // rebase or a merge, never count. kiln.json is read at main's tip, so a build cannot loosen it.
 func (r *Repo) reaudits(ctx context.Context, read, now git.Rev) (bool, error) {
-	main, err := r.git.Tip(ctx, mainBranch)
+	main, err := r.mainTip(ctx)
 	if err != nil {
 		return false, err
 	}

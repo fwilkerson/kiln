@@ -306,6 +306,23 @@ const (
 	kilnDir = ".kiln"
 )
 
+// noMain says a repository has no branch main, or no commit on it, and how to make one. kiln init prints it.
+const noMain = "kiln builds on the branch " + mainBranch + ", which this repository lacks: commit to " + mainBranch +
+	", or run git branch -m " + mainBranch
+
+// errNoMain refuses a command that reads main, in a repository that noMain describes.
+var errNoMain = fmt.Errorf("%w: %s", errRefused, noMain)
+
+// mainTip is the commit main points to. It answers errNoMain while the repository has no such branch.
+func (r *Repo) mainTip(ctx context.Context) (git.Rev, error) {
+	tip, err := r.git.Tip(ctx, mainBranch)
+	if err == nil && tip == "" {
+		err = errNoMain
+	}
+
+	return tip, err
+}
+
 // Repo is one repository kiln builds, opened from any of its checkouts.
 type Repo struct {
 	top    string
@@ -463,7 +480,7 @@ var (
 // the state the spec is in, as the package doc shows. A stopped build, or one waiting for UAT, is dropped for the new
 // one.
 func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
-	main, err := r.git.Tip(ctx, mainBranch)
+	main, err := r.mainTip(ctx)
 	if err != nil {
 		return err
 	}
@@ -715,7 +732,7 @@ func (r *Repo) taking(command string) ([]string, error) {
 
 // monitorNames answers the monitors kiln.json names at main's tip.
 func (r *Repo) monitorNames(ctx context.Context) ([]string, error) {
-	main, err := r.git.Tip(ctx, mainBranch)
+	main, err := r.mainTip(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -736,7 +753,7 @@ func (r *Repo) queueNames(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	main, err := r.git.Tip(ctx, mainBranch)
+	main, err := r.mainTip(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -776,6 +793,10 @@ func (r *Repo) mayQueue(ctx context.Context, b book, main git.Rev, name Spec) er
 // Status shows each spec kiln holds, and where it stands, but no monitor's fix. Then it shows each gauge kiln.json
 // names at main's tip, with its latest reading. Last, it shows each monitor kiln.json names, and where it stands.
 func (r *Repo) Status(ctx context.Context, out io.Writer) error {
+	if _, err := r.mainTip(ctx); err != nil {
+		return err
+	}
+
 	b, err := r.store.read()
 	if err != nil {
 		return err

@@ -47,7 +47,7 @@ func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {
 // monitorRun is one kiln monitor run, as kiln.json at main's tip says. It answers the monitors it runs: each, or the
 // one named name.
 func (r *Repo) monitorRun(ctx context.Context, name Spec, out io.Writer) (*monitorRunning, []monitor, error) {
-	main, err := r.git.Tip(ctx, mainBranch)
+	main, err := r.mainTip(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -172,7 +172,7 @@ func (run *monitorRunning) pass(ctx context.Context, m monitor, dueOrNot bool) (
 // unless the monitor is held. h is m's history, and rec its fix's record, if it has one. It answers whether the
 // fix landed.
 func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec *record) (landed bool, err error) {
-	main, err := run.r.git.Tip(ctx, mainBranch)
+	main, err := run.r.mainTip(ctx)
 	if err != nil {
 		return false, err
 	}

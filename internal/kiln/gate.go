@@ -280,7 +280,7 @@ func (c check) namesNothing() bool {
 // main, as that guard says. without holds the paths kiln removed from the work. Main is gated without them too.
 // Their removal is no write of the work's.
 func (r *Repo) gate(ctx context.Context, without []string, guards ...guard) (verdict, error) {
-	main, err := r.git.Tip(ctx, mainBranch)
+	main, err := r.mainTip(ctx)
 	if err != nil {
 		return verdict{}, err
 	}
