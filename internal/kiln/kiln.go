@@ -228,10 +228,11 @@
 //
 // kiln monitor run with a name skips that hold, but never starts a second fix.
 //
-// kiln asks Ghostty, through osascript, for a tab in its front window, or a window when it shows none. The tab runs
-// <kiln> monitor show <name> in <top>. $KILN_OPEN names a command to run in place of osascript, with that command
-// line and <top> as its arguments. The tab notifies the developer, and shows the summary, report or error, and the
-// next command. A session that failed as the last run did opens none. An accepted landing opens none.
+// kiln asks Ghostty, through osascript, for a tab in its front window, or a window when it shows none. Ghostty's
+// selected tab stays selected. The tab runs <kiln> monitor show <name> in <top>. $KILN_OPEN names a command to run in
+// place of osascript, with that command line and <top> as its arguments. The tab notifies the developer, and shows
+// the summary, report or error, and the next command. A session that failed as the last run did opens none. An
+// accepted landing opens none.
 //
 // # The ledger
 //

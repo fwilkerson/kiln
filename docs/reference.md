@@ -251,10 +251,10 @@ x: stopped: the gate still failed after its last round:
   `kiln queue <name>`.
 - If the landing of accepted amendments stops, `kiln accept <name>` lands it again.
 - `kiln tui` shows each build's spec as the commit it was queued at held it.
-- A monitor's fix that lands, stops, waits or asks for you opens a tab in Ghostty's front window, with its summary
-  and the command to run next. The tab notifies you unless you are looking at it, and a click on the notification
-  brings it forward. `kiln monitor show <name>` shows the same. On the first tab, macOS asks to let kiln control
-  Ghostty. Without that, the tab never opens, and `.git/kiln/monitor.log` says why.
+- A monitor's fix that lands, stops, waits or asks for you opens a tab in Ghostty's front window, beside the tab you are
+  in, with its summary and the command to run next. The tab notifies you, and a click on the notification brings it
+  forward. `kiln monitor show <name>` shows the same. On the first tab, macOS asks to let kiln control Ghostty.
+  Without that, the tab never opens, and `.git/kiln/monitor.log` says why.
 
 ## Installing from source
 

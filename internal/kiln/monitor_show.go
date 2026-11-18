@@ -236,13 +236,16 @@ const openVar = "KILN_OPEN"
 
 // newTab is the AppleScript that opens a Ghostty tab in the front window, or a window when Ghostty shows none. Its
 // arguments are the tab's command and working directory. Handing Ghostty a script file instead makes it ask each time.
+// Ghostty selects a new tab, so the script selects the developer's tab again.
 const newTab = `on run argv
 	tell application "Ghostty"
 		set cfg to new surface configuration
 		set command of cfg to item 1 of argv
 		set initial working directory of cfg to item 2 of argv
 		if (count of windows) > 0 then
+			set was to selected tab of front window
 			new tab in front window with configuration cfg
+			select tab was
 		else
 			new window with configuration cfg
 		end if
@@ -252,7 +255,7 @@ end run`
 // open opens a Ghostty tab, which runs kiln monitor show for the monitor name. The tab's environment is Ghostty's,
 // not kiln's, so kiln names its own path and the repository's.
 func (r *Repo) open(ctx context.Context, name Spec) error {
-	args := []string{"shell:" + shellQuote(r.exe) + " monitor show " + string(name), r.top}
+	args := []string{shellQuote(r.exe) + " monitor show " + string(name), r.top}
 	cmd := exec.CommandContext(ctx, "osascript", append([]string{"-e", newTab}, args...)...)
 	if opener := envValue(r.env, openVar); opener != "" {
 		cmd = opening(ctx, opener, args)
