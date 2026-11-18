@@ -433,16 +433,25 @@ func monitorTitle(s Spec) string {
 	return fmt.Sprintf("fixes of %s · %s · %s · %s", s.Name, mon.Result, when, next)
 }
 
-// recentRows lists the builds panel's builds, newest first, in an area, below its columns' names. A narrow terminal
-// drops the date, then each build's turns, failed calls and rounds. A wide one draws each cost as a bar.
+// recentRows lists the builds panel's builds, newest first, in an area, below its columns' names. A selected
+// monitor's summary heads them, a row for each of its first three lines. The summary leaves the builds a row, and
+// ends in … where it is cut.
 func (m model) recentRows(in area) []row {
-	summary := m.pickedSummary()
-	if summary == "" {
-		return m.buildRows(in)
+	var rows []row
+	if summary := m.pickedSummary(); summary != "" {
+		lines := strings.Split(summary, "\n")
+		kept := lines[:min(len(lines), 3, max(0, in.h-1))]
+		for _, line := range kept {
+			rows = append(rows, row{text: line})
+		}
+
+		if len(kept) > 0 && len(kept) < len(lines) {
+			rows[len(rows)-1].text += dim.Render(" …")
+		}
 	}
 
-	in.h--
-	return append([]row{{text: summary}}, m.buildRows(in)...)
+	in.h -= len(rows)
+	return append(rows, m.buildRows(in)...)
 }
 
 // pickedSummary is the summary of the monitor selected in the specs panel, or "".

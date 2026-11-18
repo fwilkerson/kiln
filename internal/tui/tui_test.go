@@ -122,6 +122,26 @@ func TestMonitors(t *testing.T) {
 	}
 }
 
+// TestMonitorSummaryLines holds that each line of a monitor's summary has a row, up to three, above its builds. A
+// cut summary ends in "…".
+func TestMonitorSummaryLines(t *testing.T) {
+	now := time.Now()
+	fix := &Build{Spec: "deps", Started: now.Add(-time.Hour), Outcome: "stopped", Fix: true}
+	src := source{monitors: []Spec{{Name: "deps", State: Stopped, Builds: []*Build{fix}, Monitor: &Monitor{
+		Result: "stopped", Summary: "the session failed:\nAPI Error: 529 overloaded\nthird\nfourth"}}}}
+	m := drive(t, src, "deps", sized(140, 30))
+	shows(t, m, `│the session failed: *│\n.*│API Error: 529 overloaded *│\n.*│third … *│\n.*│ *started `,
+		`#1 +✗ stopped`)
+	if strings.Contains(screenOf(m), "fourth") {
+		t.Errorf("the screen shows a summary's fourth line:\n%s", screenOf(m))
+	}
+
+	// A panel of three rows keeps one for a build, and marks the summary's cut.
+	src.monitors[0].Builds = []*Build{fix, fix, fix, fix}
+	m = drive(t, src, "deps", sized(100, 14))
+	shows(t, m, `│the session failed: *│\n.*│API Error: 529 overloaded … *│\n.*│.*#\d +✗ stopped`)
+}
+
 // shows checks that m's screen matches each pattern.
 func shows(t *testing.T, m model, patterns ...string) {
 	t.Helper()
