@@ -23,8 +23,9 @@ func TestModern(t *testing.T) { repotest.Modern(t) }
 func TestHealth(t *testing.T) { repotest.Health(t, held) }
 
 // held is the score of each file under 10. The code-health monitor refactors them, and a line goes once its file
-// scores 10.
+// scores 10. A comment above a line keeps that file's finding, by the developer's choice.
 var held = map[string]string{
+	// Fire stays a pass-through to run, so cmd/kiln never picks run's lock holder or its spec.
 	"internal/kiln/build.go":       "9",
 	"internal/kiln/form.go":        "9",
 	"internal/kiln/junit_test.go":  "9",

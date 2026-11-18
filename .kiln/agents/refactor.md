@@ -34,6 +34,8 @@ on the guide's "Inside a function", "What a score is worth" and "Tests", which `
   hop, and a comparison folded into a formatted string. Undo a step that reads worse than the lines it replaced.
 - In a test, a condition past one `||` takes `claim.Holds`, as `docs/practices.md` "Tests" says.
 - When a file can't reach 10 without such a step, ask for the developer, and say which finding stands and why.
+- A line of `held` in `style_test.go` with a comment above it keeps that file's finding, by the developer's choice.
+  Skip that file, and take the next one the gauge lists.
 
 ## How you check the fix
 
