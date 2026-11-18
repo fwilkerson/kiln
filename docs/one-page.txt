@@ -17,29 +17,27 @@ mark dot @you your attention
 mark more more
 
 ::: titleblock
-cell id | Specs in, commits out
+cell id | One developer, one Mac, some agents
 wordmark kiln
-motto Approve it, walk away
-para Shape a spec with Claude, approve it, and go do something else. kiln builds it in the background with headless Claude Code sessions, holds it to your own checks, and lands it on main as one commit.
-para Between features, monitors keep your repository in shape: they fix the bugs you file, tidy the code, and keep the docs true.
-para One Go binary, for macOS.
+motto Tooling in. Commits out.
+para kiln runs Claude Code in the background, on your Mac. Features land from the specs you approve, and chores get done on a schedule, so one developer keeps a whole repository moving.
 
 cell problem | Without kiln
-lead **A coding agent needs you at the keyboard.**
-point P1 | It stops to ask, so the work stops when you step away.
-point P2 | It writes the code and the tests that grade it.
-point P3 | Chores wait for you between features: filed bugs, drifting docs, tired code. | {1} {2} {4}
+lead **You are the loop.**
+point P1 | You prompt, wait, read the diff, run the tests, and prompt again.
+point P2 | The session that wrote the code also wrote the tests that pass it.
+point P3 | Bugs, stale docs and slow tests wait for the day you get to them. | {1} {4}
 
 cell answer | With kiln
-big You approve a @you{spec} and walk away. You come back to it **built, tested and audited**, on @repo{main}.
-para **Shape it together.** `/shape` asks what it needs, and three reviewers read the draft before you approve it.
-para **Build in the background.** One session writes the code and another the tests, each in a sandbox, while you shape the next spec.
-para **Automate the rest.** A monitor is a check on a schedule and an agent that fixes what it finds. Its fix lands like any build.
+big You shape the @you{specs} and build the tooling; kiln puts the @agent{agents} to work within it.
+para **Specs become commits.** One session writes the code, another the tests from the spec alone. What passes your checks and an audit lands on main.
+para **Your checks decide.** kiln reads them from main, so no build can weaken them.
+para **kiln runs on itself.** Its monitors fix filed bugs with a test that fails first, refactor the lowest-scoring files, and correct stale docs.
 
 cell attn | Your attention goes only here
 item ●1 | **Shape and approve a spec.**
-item ●2 | **Try what landed**, and accept it.
-item ●3 | **Answer when a build asks**: the spec looked wrong, or the checks would not pass.
+item ●2 | **Tune the tooling**: your gate, a monitor's check, an agent's instructions.
+item ●3 | **Try what landed**, and answer a build that stops or asks.
 :::
 
 view 2 BUILD | one spec, from a draft to main | after you approve it, no one waits at the keyboard
@@ -63,7 +61,7 @@ arrow shape spec
 box build @agent 2.1 | BUILD | the code
 box verify @agent 2.1 | VERIFY | the tests, from | the spec alone
 more Two sessions, in two clones: one writes the code, the other the acceptance tests. Neither reads the other's work.
-box gate @kiln 2.2 | GATE | your checks, | read from main
+box gate @kiln 2.2 | GATE ●2 | your checks, | read from main
 more kiln reads the gate's commands from main, never from the build's checkout, so a build cannot weaken the checks it is held to.
 box audit @agent 2.3 | AUDIT | a second session | reads the work
 more A failing gate, or the audit's findings, go back to the build as a round. Detail A says what happens when rounds run out.
@@ -76,7 +74,7 @@ detail A | build gate audit
 
 box land @kiln 3.1 | LAND | one commit
 box main @repo 3.1 | MAIN
-box try @you 3.2 | **try it** ●2 | `kiln accept x`
+box try @you 3.2 | **try it** ●3 | `kiln accept x`
 arrow audit land
 arrow land main
 arrow main try
@@ -93,7 +91,7 @@ view 3 AUTOMATE | a check on a schedule, then a fix | the four monitors kiln run
 
 ::: assembly
 box launchd @kiln A2-A3 | LAUNCHD | `kiln monitor run`, | each hour
-group monitors B1-B4 | KILN'S OWN MONITORS
+group monitors B1-B4 | KILN'S OWN MONITORS ●2
 box bugs @kiln B1 | BUGS {1} | every hour
 box health @kiln B2 | CODE HEALTH {2} | every day
 box uat @kiln B3 | UAT {3} | every day

@@ -570,35 +570,33 @@
 
 <header class="tblock">
   <div class="cell id">
-    <span class="lab">Specs in, commits out</span>
+    <span class="lab">One developer, one Mac, some agents</span>
     <div class="mark">kiln</div>
-    <div class="motto">Approve it, walk away</div>
-    <p>Shape a spec with Claude, approve it, and go do something else. kiln builds it in the background with headless Claude Code sessions, holds it to your own checks, and lands it on main as one commit.</p>
-    <p>Between features, monitors keep your repository in shape: they fix the bugs you file, tidy the code, and keep the docs true.</p>
-    <p>One Go binary, for macOS.</p>
+    <div class="motto">Tooling in. Commits out.</div>
+    <p>kiln runs Claude Code in the background, on your Mac. Features land from the specs you approve, and chores get done on a schedule, so one developer keeps a whole repository moving.</p>
   </div>
   <div class="cell problem">
     <span class="lab">Without kiln</span>
-    <p class="lead"><b>A coding agent needs you at the keyboard.</b></p>
+    <p class="lead"><b>You are the loop.</b></p>
     <div class="plist">
-      <b>P1</b><span>It stops to ask, so the work stops when you step away.</span><span class="see"></span>
-      <b>P2</b><span>It writes the code and the tests that grade it.</span><span class="see"></span>
-      <b>P3</b><span>Chores wait for you between features: filed bugs, drifting docs, tired code.</span><span class="see"><span class="bal kiln" data-item="1">1</span> <span class="bal kiln" data-item="2">2</span> <span class="bal kiln" data-item="4">4</span></span>
+      <b>P1</b><span>You prompt, wait, read the diff, run the tests, and prompt again.</span><span class="see"></span>
+      <b>P2</b><span>The session that wrote the code also wrote the tests that pass it.</span><span class="see"></span>
+      <b>P3</b><span>Bugs, stale docs and slow tests wait for the day you get to them.</span><span class="see"><span class="bal kiln" data-item="1">1</span> <span class="bal kiln" data-item="4">4</span></span>
     </div>
   </div>
   <div class="cell answer">
     <span class="lab">With kiln</span>
-    <p class="big">You approve a <span class="you">spec</span> and walk away. You come back to it <b>built, tested and audited</b>, on <span class="repo">main</span>.</p>
-    <p><b>Shape it together.</b> <code>/shape</code> asks what it needs, and three reviewers read the draft before you approve it.</p>
-    <p><b>Build in the background.</b> One session writes the code and another the tests, each in a sandbox, while you shape the next spec.</p>
-    <p><b>Automate the rest.</b> A monitor is a check on a schedule and an agent that fixes what it finds. Its fix lands like any build.</p>
+    <p class="big">You shape the <span class="you">specs</span> and build the tooling; kiln puts the <span class="agent">agents</span> to work within it.</p>
+    <p><b>Specs become commits.</b> One session writes the code, another the tests from the spec alone. What passes your checks and an audit lands on main.</p>
+    <p><b>Your checks decide.</b> kiln reads them from main, so no build can weaken them.</p>
+    <p><b>kiln runs on itself.</b> Its monitors fix filed bugs with a test that fails first, refactor the lowest-scoring files, and correct stale docs.</p>
   </div>
   <div class="cell attn">
     <span class="lab">Your attention goes only here</span>
     <ol>
       <li><span class="disc" data-n="1"></span><span><b>Shape and approve a spec.</b></span></li>
-      <li><span class="disc" data-n="2"></span><span><b>Try what landed</b>, and accept it.</span></li>
-      <li><span class="disc" data-n="3"></span><span><b>Answer when a build asks</b>: the spec looked wrong, or the checks would not pass.</span></li>
+      <li><span class="disc" data-n="2"></span><span><b>Tune the tooling</b>: your gate, a monitor's check, an agent's instructions.</span></li>
+      <li><span class="disc" data-n="3"></span><span><b>Try what landed</b>, and answer a build that stops or asks.</span></li>
     </ol>
   </div>
   <div class="legend">
@@ -664,7 +662,7 @@
   </g>
   <g class="opens" data-more="gate" tabindex="0">
   <rect x="739" y="249" width="172" height="62" class="bx kiln"/>
-  <text x="748" y="267" class="tc f-kiln">GATE</text>
+  <text x="748" y="267" class="tc f-kiln">GATE</text><g class="disc" transform="translate(893,263)"><circle r="7"/><text y="3.5">2</text></g>
   <text x="748" y="286" class="ts">your checks,</text>
   <text x="748" y="303" class="ts">read from main</text>
   <g class="more-mk" transform="translate(911,249)"><rect x="-6" y="-6" width="12" height="12"/><path d="M-3.5,0 H3.5 M0,-3.5 V3.5"/></g>
@@ -682,7 +680,7 @@
   <rect x="1136" y="331" width="151" height="26" class="bx repo"/>
   <text x="1145" y="349" class="tc f-repo">MAIN</text>
   <rect x="1307" y="38" width="183" height="44" class="bx you"/>
-  <text x="1316" y="56" class="tb">try it</text><g class="disc" transform="translate(1472,52)"><circle r="7"/><text y="3.5">2</text></g>
+  <text x="1316" y="56" class="tb">try it</text><g class="disc" transform="translate(1472,52)"><circle r="7"/><text y="3.5">3</text></g>
   <text x="1316" y="74" class="tm">kiln accept x</text>
   <path d="M227,82 V329" class="w you" marker-end="url(#a-you)"/>
   <path d="M530,59 H634 V100" class="w you" marker-end="url(#a-you)"/>
@@ -716,42 +714,42 @@
 
 <div class="system">
 <svg class="assembly" width="960" height="392" viewBox="0 0 960 392">
-  <rect x="284" y="14" width="286" height="364" class="grp"/>
-  <rect x="294" y="6" width="190" height="16" class="tab"/>
-  <text x="300" y="18" class="tc">KILN'S OWN MONITORS</text>
-  <rect x="28" y="124" width="222" height="144" class="bx kiln"/>
+  <rect x="279" y="14" width="301" height="364" class="grp"/>
+  <rect x="289" y="6" width="210" height="16" class="tab"/>
+  <text x="295" y="18" class="tc">KILN'S OWN MONITORS</text><g class="disc" transform="translate(485,14)"><circle r="7"/><text y="3.5">2</text></g>
+  <rect x="28" y="124" width="217" height="144" class="bx kiln"/>
   <text x="37" y="142" class="tc f-kiln">LAUNCHD</text>
   <text x="37" y="161"><tspan class="tm">kiln monitor run</tspan><tspan class="ts">,</tspan></text>
   <text x="37" y="178" class="ts">each hour</text>
-  <rect x="298" y="28" width="258" height="48" class="bx kiln"/>
-  <text x="307" y="46" class="tc f-kiln">BUGS</text>
-  <text x="307" y="68" class="ts">every hour</text>
-  <rect x="298" y="124" width="258" height="48" class="bx kiln"/>
-  <text x="307" y="142" class="tc f-kiln">CODE HEALTH</text>
-  <text x="307" y="164" class="ts">every day</text>
-  <rect x="298" y="220" width="258" height="48" class="bx kiln"/>
-  <text x="307" y="238" class="tc f-kiln">UAT</text>
-  <text x="307" y="260" class="ts">every day</text>
-  <rect x="298" y="316" width="258" height="48" class="bx kiln"/>
-  <text x="307" y="334" class="tc f-kiln">DOCS</text>
-  <text x="307" y="356" class="ts">every day</text>
-  <rect x="604" y="124" width="178" height="144" class="bx agent"/>
-  <text x="613" y="142" class="tc f-agent">A FIX</text>
-  <text x="613" y="164" class="ts">a session with</text>
-  <text x="613" y="181" class="ts">the monitor's</text>
-  <text x="613" y="198" class="ts">own agent</text>
-  <text x="887" y="40" class="tc f-repo">MAIN</text>
-  <path d="M881,28 V364" class="w heavy repo"/>
-  <path d="M250,196 H282" class="w kiln" marker-end="url(#a-kiln)"/>
-  <path d="M570,76 H580 V172 H602" class="w" marker-end="url(#a)"/>
-  <path d="M782,204 H881" class="w agent"/><circle cx="881" cy="204" r="4.5" class="dot repo"/>
-  <path d="M847,211 L855,204 L847,197 Z M863,211 L855,204 L863,197 Z" class="valve kiln"/>
-  <text x="835" y="230" class="tc f-kiln">GATE</text>
-  <g class="bal kiln" data-item="1" transform="translate(556,28)"><circle r="10"/><text y="4">1</text></g>
-  <g class="bal kiln" data-item="2" transform="translate(556,124)"><circle r="10"/><text y="4">2</text></g>
-  <g class="bal kiln" data-item="3" transform="translate(556,220)"><circle r="10"/><text y="4">3</text></g>
-  <g class="bal kiln" data-item="4" transform="translate(556,316)"><circle r="10"/><text y="4">4</text></g>
-  <g class="bal agent" data-item="5" transform="translate(782,124)"><circle r="10"/><text y="4">5</text></g>
+  <rect x="293" y="28" width="273" height="48" class="bx kiln"/>
+  <text x="302" y="46" class="tc f-kiln">BUGS</text>
+  <text x="302" y="68" class="ts">every hour</text>
+  <rect x="293" y="124" width="273" height="48" class="bx kiln"/>
+  <text x="302" y="142" class="tc f-kiln">CODE HEALTH</text>
+  <text x="302" y="164" class="ts">every day</text>
+  <rect x="293" y="220" width="273" height="48" class="bx kiln"/>
+  <text x="302" y="238" class="tc f-kiln">UAT</text>
+  <text x="302" y="260" class="ts">every day</text>
+  <rect x="293" y="316" width="273" height="48" class="bx kiln"/>
+  <text x="302" y="334" class="tc f-kiln">DOCS</text>
+  <text x="302" y="356" class="ts">every day</text>
+  <rect x="614" y="124" width="173" height="144" class="bx agent"/>
+  <text x="623" y="142" class="tc f-agent">A FIX</text>
+  <text x="623" y="164" class="ts">a session with</text>
+  <text x="623" y="181" class="ts">the monitor's</text>
+  <text x="623" y="198" class="ts">own agent</text>
+  <text x="889" y="40" class="tc f-repo">MAIN</text>
+  <path d="M883,28 V364" class="w heavy repo"/>
+  <path d="M245,196 H277" class="w kiln" marker-end="url(#a-kiln)"/>
+  <path d="M580,76 H590 V172 H612" class="w" marker-end="url(#a)"/>
+  <path d="M787,204 H883" class="w agent"/><circle cx="883" cy="204" r="4.5" class="dot repo"/>
+  <path d="M849,211 L857,204 L849,197 Z M865,211 L857,204 L865,197 Z" class="valve kiln"/>
+  <text x="837" y="230" class="tc f-kiln">GATE</text>
+  <g class="bal kiln" data-item="1" transform="translate(566,28)"><circle r="10"/><text y="4">1</text></g>
+  <g class="bal kiln" data-item="2" transform="translate(566,124)"><circle r="10"/><text y="4">2</text></g>
+  <g class="bal kiln" data-item="3" transform="translate(566,220)"><circle r="10"/><text y="4">3</text></g>
+  <g class="bal kiln" data-item="4" transform="translate(566,316)"><circle r="10"/><text y="4">4</text></g>
+  <g class="bal agent" data-item="5" transform="translate(787,124)"><circle r="10"/><text y="4">5</text></g>
 </svg>
 
 <div class="bom">
@@ -808,7 +806,7 @@ answer: <span class="ok">landed on main</span> at <span class="h">3f9c2ab81d0e</
 <div class="mores" hidden>
 <section id="more-shape"><h3><b>shape a spec</b> <span class="disc" data-n="1"></span></h3><p><code>/shape</code> asks what it needs, and three reviewers read the draft before you approve it. Its acceptance tests say what done means, each a Given, a When and a Then.</p></section>
 <section id="more-verify"><h3>VERIFY</h3><p>Two sessions, in two clones: one writes the code, the other the acceptance tests. Neither reads the other's work.</p></section>
-<section id="more-gate"><h3>GATE</h3><p>kiln reads the gate's commands from main, never from the build's checkout, so a build cannot weaken the checks it is held to.</p></section>
+<section id="more-gate"><h3>GATE <span class="disc" data-n="2"></span></h3><p>kiln reads the gate's commands from main, never from the build's checkout, so a build cannot weaken the checks it is held to.</p></section>
 <section id="more-audit"><h3>AUDIT</h3><p>A failing gate, or the audit's findings, go back to the build as a round. Detail A says what happens when rounds run out.</p></section>
 </div>
 </div>
