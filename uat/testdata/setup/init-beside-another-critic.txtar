@@ -1,0 +1,24 @@
+# kiln init beside the developer's own critic agent leaves it, and says which of kiln's files it did not link.
+
+# Given: an agent of the developer's own at .claude/agents/critic.md.
+exists .claude/agents/critic.md
+
+# When: the developer runs kiln init,
+exec kiln init
+
+# then it links the other reviewers, and names the path it skipped, says another file is there, and which file
+# under .kiln/ it would have linked,
+stdout '^linked \.claude/agents/zoom-out\.md to '
+stdout '^linked nothing at \.claude/agents/critic\.md, since another file is there; rename one to link \.kiln/agents/critic\.md$'
+
+# and leaves the developer's critic as it was.
+grep 'Critic of my own' .claude/agents/critic.md
+exec test ! -L .claude/agents/critic.md
+
+# Run again, kiln init says nothing of the links it made itself.
+exec kiln init
+! stdout 'zoom-out'
+stdout '^linked nothing at \.claude/agents/critic\.md, '
+
+-- .claude/agents/critic.md --
+Critic of my own, for code.

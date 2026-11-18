@@ -183,19 +183,30 @@ func addKeys(old, from []byte) ([]byte, error) {
 	return b.Bytes(), err
 }
 
-// link links .claude/<p> to .kiln/<p>, unless .claude/ holds something of that name.
+// link links .claude/<p> to .kiln/<p>, unless .claude/ holds something of that name. It says so when that
+// something reaches a file other than .kiln/<p>, so the developer can rename one.
 func (r *Repo) link(p string, out io.Writer) error {
 	at := filepath.Join(r.top, ".claude", p)
+	own := filepath.Join(r.top, kilnDir, p)
 	if _, err := os.Lstat(at); !errors.Is(err, fs.ErrNotExist) {
+		if err != nil {
+			return err
+		}
+
+		if !sameFile(at, own) {
+			fmt.Fprintf(out, "linked nothing at .claude/%s, since another file is there; rename one to link %s/%s\n",
+				p, kilnDir, p)
+		}
+
+		return nil
+	}
+
+	target, err := filepath.Rel(filepath.Dir(at), own)
+	if err != nil {
 		return err
 	}
 
 	if err := os.MkdirAll(filepath.Dir(at), 0o755); err != nil {
-		return err
-	}
-
-	target, err := filepath.Rel(filepath.Dir(at), filepath.Join(r.top, kilnDir, p))
-	if err != nil {
 		return err
 	}
 
@@ -205,4 +216,12 @@ func (r *Repo) link(p string, out io.Writer) error {
 
 	fmt.Fprintf(out, "linked .claude/%s to %s\n", p, target)
 	return nil
+}
+
+// sameFile reports whether paths a and b reach one file, through any links on the way. A path that reaches nothing
+// is no file's.
+func sameFile(a, b string) bool {
+	x, errA := os.Stat(a)
+	y, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(x, y)
 }
