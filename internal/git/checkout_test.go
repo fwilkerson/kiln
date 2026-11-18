@@ -92,3 +92,30 @@ func TestCheckoutSharedCore(t *testing.T) {
 		})
 	}
 }
+
+// TestDetached holds that the gate's worktree holds only the commit. A nested repository lands as a pointer, without
+// its files. A file git ignores, left by an earlier use, is gone.
+func TestDetached(t *testing.T) {
+	repo := t.TempDir()
+	sh(t, repo, "git init --quiet -b main && git config user.name t && git config user.email t@t")
+	sh(t, repo, "echo '*.golden' >.gitignore && mkdir data && cd data && git init --quiet && echo 42 >want.golden && "+
+		"git add --force want.golden && git -c user.name=t -c user.email=t@t commit --quiet -m data")
+	sh(t, repo, "git add .gitignore data && git commit --quiet -m first")
+	g, err := git.New(repo, os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tree := filepath.Join(t.TempDir(), "tree")
+	for _, left := range []string{"data/want.golden", "x.golden"} {
+		if err := g.Detached(t.Context(), git.Worktree(tree), "main"); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := os.Stat(filepath.Join(tree, left)); err == nil {
+			t.Errorf("the worktree holds %s, which the commit lacks", left)
+		}
+
+		sh(t, tree, "echo 42 >x.golden")
+	}
+}
