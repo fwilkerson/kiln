@@ -13,7 +13,7 @@ grep '^--tools\nAgent,Bash,Edit,Glob,Grep,NotebookEdit,Read,WebFetch,WebSearch,W
 grep '"deny": \[\s*"Bash\(git push\)",\s*"Bash\(git push \*\)",\s*"Bash\(git update-ref \*\)",\s*"Bash\(git branch -f \*\)",\s*"Bash\(git branch -D \*\)",\s*"Bash\(git checkout main\)",\s*"Bash\(git switch main\)",\s*"Bash\(git reset \* main\)"\s*\]' .claude-calls/build/1/1/settings.json
 
 # forbidden actions
-grep '"hard_deny": \[\s*"\$defaults",\s*"Pushing to any remote, in any form\.",\s*"Writing, moving, resetting or deleting any ref but the branch checked out in the working directory, and above all main\.",\s*"Changing anything under \.kiln/ but \.kiln/specs/x\.amend\.md, by a file tool or a shell command\.",\s*"Changing \.claude/settings\.json or \.claude/settings\.local\.json\."\s*\]' .claude-calls/build/1/1/settings.json
+grep '"hard_deny": \[\s*"\$defaults",\s*"Pushing to any remote, in any form\.",\s*"Writing, moving, resetting or deleting any ref but the branch checked out in the working directory, and above all main\.",\s*"Changing anything under \.kiln/ but \.kiln/specs/x\.amend\.md, by a file tool or a shell command\.",\s*"Changing anything in a \.claude directory, by a file tool or a shell command\."\s*\]' .claude-calls/build/1/1/settings.json
 
 # and guard on .kiln/.
 grep 'PreToolUse:Edit hook error: \.kiln/agents/audit\.md ' .claude-calls/build/1/1/stream.jsonl

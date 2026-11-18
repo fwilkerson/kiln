@@ -28,7 +28,7 @@ func (b *build) sandboxed(ctx context.Context, l claude.Launch) (claude.Launch, 
 		"Writing, moving, resetting or deleting any ref but the branch checked out in the working directory, " +
 			"and above all main.",
 		kept,
-		"Changing .claude/settings.json or .claude/settings.local.json.",
+		"Changing anything in a .claude directory, by a file tool or a shell command.",
 	}
 	return b.r.reached(ctx, l)
 }

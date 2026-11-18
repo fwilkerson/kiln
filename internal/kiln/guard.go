@@ -118,6 +118,9 @@ func (g guard) guarded(rel string) string {
 			"build writes there only %s", rel, g.spec.amendPath())
 	case settings:
 		return rel + " is a Claude Code settings file, which stays the developer's"
+	case slices.Contains(names, fold(".claude")):
+		return rel + " is under a .claude/ directory, whose agents, skills and hooks run in the developer's own " +
+			"sessions: a build names such a file in its last reply instead of writing it"
 	}
 
 	return g.side.refusal(rel, folded, g.spec)

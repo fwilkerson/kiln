@@ -158,7 +158,7 @@
 //	a .git directory          only git and kiln write there
 //	.kiln/                    but .kiln/specs/<name>.amend.md, which a split build's verify session alone writes;
 //	                          a monitor's fix writes nothing there
-//	.claude/settings*.json    the developer's Claude Code settings
+//	a .claude directory       the developer's Claude Code settings, agents and skills, whose hooks run unsandboxed
 //	the other side            in a split build, the build session writes neither the acceptance tests nor the
 //	                          amendments; the verify session writes only those, and the harness
 //	the acceptance tests      to a monitor's fix, each path starting with an acceptance path's part before {spec},

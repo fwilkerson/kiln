@@ -50,6 +50,8 @@ func TestGuard(t *testing.T) {
 		"nor a spec by a path relative to its cwd":   {tool: "Edit", cwd: place + "/.kiln/specs", file: "x.md", refused: true},
 		"nor a path that climbs out of its worktree": {tool: "Write", file: place + "/../y/x.go", refused: true},
 		"nor the developer's Claude Code settings":   {tool: "Write", file: place + "/.claude/settings.json", refused: true},
+		"nor an agent under .claude":                 {tool: "Write", file: place + "/.claude/agents/helper.md", refused: true},
+		"nor a nested .claude's skill":               {tool: "Write", file: place + "/sub/.claude/skills/t/SKILL.md", refused: true},
 		"nor a git directory":                        {tool: "Write", file: place + "/sub/.git/config", refused: true},
 		"nor a notebook under .kiln":                 {tool: "NotebookEdit", file: place + "/.kiln/n.ipynb", refused: true},
 		"a write that names no file is refused":      {tool: "Write", refused: true},
@@ -86,9 +88,7 @@ func TestGuard(t *testing.T) {
 				input = map[string]string{"notebook_path": tc.file}
 			}
 
-			call := map[string]any{"tool_name": tc.tool, "cwd": tc.cwd, "tool_input": input}
-
-			in, _ := json.Marshal(call)
+			in, _ := json.Marshal(map[string]any{"tool_name": tc.tool, "cwd": tc.cwd, "tool_input": input})
 			var out bytes.Buffer
 			worktree := git.Worktree(place)
 			if strings.HasPrefix(tc.file, "/private") {
