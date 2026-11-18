@@ -203,19 +203,8 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 - `kiln monitor run` refuses while `kiln fire` builds, another `kiln monitor run` runs, or `kiln accept` lands,
   and `kiln fire` while it runs. So a long run, such as one that drains, is never joined by the next hour's.
 
-A monitor is held, and starts no fix, by how its last fix ended. A change since that fix started releases it:
-
-| Its last fix                           | Held until a change to                                             |
-|----------------------------------------|--------------------------------------------------------------------|
-| stopped, or was rejected               | main's tip, the monitor's entry in `kiln.json`, or what it printed |
-| asked for you, with a check or gauge   | its entry, or what it printed                                      |
-| asked for you, with neither            | main's tip, or its entry                                           |
-| changed nothing, with a check or gauge | its entry, or what it printed                                      |
-| landed, with a gauge                   | its entry, or what its gauge printed                               |
-| landed, with a check out of the gate   | what its check printed                                             |
-
-`kiln status` shows the last two as `held: landed`. Its check or gauge still runs when due. `kiln monitor run
-<name>` skips the hold, and never starts a second fix.
+A monitor is held, and starts no fix, by how its last fix ended, until a change releases it. The package doc of
+`internal/kiln` lists each hold and what releases it, under Monitors: `go doc ./internal/kiln`.
 
 ## Agents
 

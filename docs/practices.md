@@ -15,6 +15,13 @@ differ, this file decides for kiln.
 
 - Reply an unknown error as an opaque `internal_error`. The CLI alone keeps its cause, for the agent that relays it.
 
+## Docs are the contract
+
+- A rule of how kiln behaves has one home: the doc of the package that holds it. `docs/reference.md` says what a
+  project writes in `.kiln/`, and points to that package doc for what kiln then does. `README.md` shows the commands
+  in use, and states no rule.
+- When two docs state one rule, keep the package doc's, and make the other point to it.
+
 ## Tests
 
 - A test's condition holds one `||`. `claim.Holds`, from the practices module, takes the rest, as
