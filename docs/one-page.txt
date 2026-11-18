@@ -26,13 +26,13 @@ cell problem | Without kiln
 lead **You are the loop.**
 point P1 | You prompt, wait, read the diff, run the tests, and prompt again.
 point P2 | The session that wrote the code also wrote the tests that pass it.
-point P3 | Bugs, stale docs and slow tests wait for the day you get to them. | {1} {4}
+point P3 | Bugs, stale docs and slow tests wait for the day you get to them. | {1} {4} {3}
 
 cell answer | With kiln
 big You shape the @you{specs} and build the tooling; kiln puts the @agent{agents} to work within it.
 para **Specs become commits.** One session writes the code, another the tests from the spec alone. What passes your checks and an audit lands on main.
 para **Your checks decide.** kiln reads them from main, so no build can weaken them.
-para **kiln runs on itself.** Its monitors fix filed bugs with a test that fails first, refactor the lowest-scoring files, and correct stale docs.
+para **kiln runs on itself.** Its monitors fix filed bugs with a test that fails first, refactor the lowest-scoring files, correct stale docs, and speed up a slowing gate.
 
 cell attn | Your attention goes only here
 item ●1 | **Shape and approve a spec.**
@@ -87,14 +87,14 @@ rung @agent | 2 · Amend | the build | A spec found wrong gets an amendment, and
 rung @you | 3 · Decide | you ●3 | Accept or reject the amendment, or fix the spec and queue it again.
 :::
 
-view 3 AUTOMATE | a check on a schedule, then a fix | the four monitors kiln runs on its own repository
+view 3 AUTOMATE | a check on a schedule, then a fix | four of the monitors kiln runs on its own repository
 
 ::: assembly
 box launchd @kiln A2-A3 | LAUNCHD | `kiln monitor run`, | each hour
 group monitors B1-B4 | KILN'S OWN MONITORS ●2
 box bugs @kiln B1 | BUGS {1} | every hour
 box health @kiln B2 | CODE HEALTH {2} | every day
-box uat @kiln B3 | UAT {3} | every day
+box gate-time @kiln B3 | GATE TIME {3} | every day
 box docs @kiln B4 | DOCS {4} | every day
 box fix @agent C2-C3 | A FIX {5} | a session with | the monitor's | own agent
 valve gate @kiln | GATE
@@ -106,7 +106,7 @@ arrow fix main via gate
 parts PARTS LIST | each monitor's check, and what its fix does
 part 1 @kiln | Bugs | a check lists `bugs/`; its fix takes the first report | Fixes each bug you file, one after another, with a test that fails first.
 part 2 @kiln | Code health | a gauge scores changed files | Refactors the three lowest-scoring files, and changes no behavior.
-part 3 @kiln | UAT | a check finds an accepted spec's tests | Folds them into the suite, by feature, and waits for you to accept.
+part 3 @kiln | Gate time | a check compares the gate's recent times with the times before | Once the gate slows by half, speeds up the slowest tests without weakening one, and waits for you.
 part 4 @kiln | Docs | a check finds packages whose code changed | Reads their docs against the code, fixes what is false, and waits for you.
 part 5 @agent | A fix | a build with no spec | Gated, audited and landed like any build.
 :::

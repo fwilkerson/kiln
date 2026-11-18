@@ -581,7 +581,7 @@
     <div class="plist">
       <b>P1</b><span>You prompt, wait, read the diff, run the tests, and prompt again.</span><span class="see"></span>
       <b>P2</b><span>The session that wrote the code also wrote the tests that pass it.</span><span class="see"></span>
-      <b>P3</b><span>Bugs, stale docs and slow tests wait for the day you get to them.</span><span class="see"><span class="bal kiln" data-item="1">1</span> <span class="bal kiln" data-item="4">4</span></span>
+      <b>P3</b><span>Bugs, stale docs and slow tests wait for the day you get to them.</span><span class="see"><span class="bal kiln" data-item="1">1</span> <span class="bal kiln" data-item="4">4</span> <span class="bal kiln" data-item="3">3</span></span>
     </div>
   </div>
   <div class="cell answer">
@@ -589,7 +589,7 @@
     <p class="big">You shape the <span class="you">specs</span> and build the tooling; kiln puts the <span class="agent">agents</span> to work within it.</p>
     <p><b>Specs become commits.</b> One session writes the code, another the tests from the spec alone. What passes your checks and an audit lands on main.</p>
     <p><b>Your checks decide.</b> kiln reads them from main, so no build can weaken them.</p>
-    <p><b>kiln runs on itself.</b> Its monitors fix filed bugs with a test that fails first, refactor the lowest-scoring files, and correct stale docs.</p>
+    <p><b>kiln runs on itself.</b> Its monitors fix filed bugs with a test that fails first, refactor the lowest-scoring files, correct stale docs, and speed up a slowing gate.</p>
   </div>
   <div class="cell attn">
     <span class="lab">Your attention goes only here</span>
@@ -710,7 +710,7 @@
   </div>
 </div>
 
-<h2 class="sh"><span class="n">3</span><span class="t">AUTOMATE<small>a check on a schedule, then a fix</small></span><span class="rule"></span><span class="note">the four monitors kiln runs on its own repository</span></h2>
+<h2 class="sh"><span class="n">3</span><span class="t">AUTOMATE<small>a check on a schedule, then a fix</small></span><span class="rule"></span><span class="note">four of the monitors kiln runs on its own repository</span></h2>
 
 <div class="system">
 <svg class="assembly" width="960" height="392" viewBox="0 0 960 392">
@@ -728,7 +728,7 @@
   <text x="302" y="142" class="tc f-kiln">CODE HEALTH</text>
   <text x="302" y="164" class="ts">every day</text>
   <rect x="293" y="220" width="273" height="48" class="bx kiln"/>
-  <text x="302" y="238" class="tc f-kiln">UAT</text>
+  <text x="302" y="238" class="tc f-kiln">GATE TIME</text>
   <text x="302" y="260" class="ts">every day</text>
   <rect x="293" y="316" width="273" height="48" class="bx kiln"/>
   <text x="302" y="334" class="tc f-kiln">DOCS</text>
@@ -759,7 +759,7 @@
     <tbody>
       <tr data-item="1"><td><span class="bal kiln">1</span></td><td><b>Bugs</b> <span>a check lists <code>bugs/</code>; its fix takes the first report</span></td><td>Fixes each bug you file, one after another, with a test that fails first.</td></tr>
       <tr data-item="2"><td><span class="bal kiln">2</span></td><td><b>Code health</b> <span>a gauge scores changed files</span></td><td>Refactors the three lowest-scoring files, and changes no behavior.</td></tr>
-      <tr data-item="3"><td><span class="bal kiln">3</span></td><td><b>UAT</b> <span>a check finds an accepted spec's tests</span></td><td>Folds them into the suite, by feature, and waits for you to accept.</td></tr>
+      <tr data-item="3"><td><span class="bal kiln">3</span></td><td><b>Gate time</b> <span>a check compares the gate's recent times with the times before</span></td><td>Once the gate slows by half, speeds up the slowest tests without weakening one, and waits for you.</td></tr>
       <tr data-item="4"><td><span class="bal kiln">4</span></td><td><b>Docs</b> <span>a check finds packages whose code changed</span></td><td>Reads their docs against the code, fixes what is false, and waits for you.</td></tr>
       <tr data-item="5"><td><span class="bal agent">5</span></td><td><b>A fix</b> <span>a build with no spec</span></td><td>Gated, audited and landed like any build.</td></tr>
     </tbody>
