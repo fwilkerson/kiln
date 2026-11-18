@@ -16,8 +16,8 @@
 // A conflict and a refused move are answers, not errors. An error names the git command that failed and what it
 // printed. A branch is named by its short name, as refs/heads/ holds it. A relative path is the main checkout's.
 //
-// Every call runs with hooks, signing, autostash, update-refs, fsmonitor, submodule recursion and background
-// maintenance off.
+// Every call runs with hooks, signing, signature checks, autostash, update-refs, fsmonitor, submodule recursion and
+// background maintenance off. A merge may make a merge commit, and a clone names its remote origin.
 // kiln passes that config in the environment, so neither the developer's config nor the repository's turns them on.
 // No call opens an editor, prompts for a password, or takes an optional lock. Every call runs in the C locale, so
 // git's words are never translated. Each runs in a process group of its own, so kiln's interrupt does not end it.
@@ -49,7 +49,8 @@ import (
 
 // pinned overrides, for every call, what config could otherwise make git do. It could run a hook or a monitor, or sign
 // and so wait on a passphrase. It could stash the developer's changes, move other branches in a rebase, or start work
-// in the background.
+// in the background. It could refuse kiln's unsigned commits, or a merge that is not a fast-forward. It could name a
+// clone's remote other than origin, or print a signature's check where kiln reads an author.
 var pinned = [][2]string{
 	{"core.hooksPath", "/dev/null"},
 	{"core.fsmonitor", "false"},
@@ -60,6 +61,10 @@ var pinned = [][2]string{
 	{"submodule.recurse", "false"},
 	{"gc.auto", "0"},
 	{"maintenance.auto", "false"},
+	{"merge.verifySignatures", "false"},
+	{"merge.ff", "true"},
+	{"clone.defaultRemoteName", "origin"},
+	{"log.showSignature", "false"},
 }
 
 // events are githooks(5)'s at git 2.55. hook.<event>.enabled=false turns off a hook defined in config, which
