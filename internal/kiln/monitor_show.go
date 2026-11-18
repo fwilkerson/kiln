@@ -236,8 +236,10 @@ const openVar = "KILN_OPEN"
 
 // newTab is the AppleScript that opens a Ghostty tab in the front window, or a window when Ghostty shows none. Its
 // arguments are the tab's command and working directory. Handing Ghostty a script file instead makes it ask each time.
-// Ghostty selects a new tab, so the script selects the developer's tab again.
+// Ghostty selects a new tab, so the script selects the developer's tab again. Ghostty may also come forward, so the
+// script brings back the app that was in front. It uses open, since telling that app to activate needs a permission.
 const newTab = `on run argv
+	set prior to POSIX path of (path to frontmost application)
 	tell application "Ghostty"
 		set cfg to new surface configuration
 		set command of cfg to item 1 of argv
@@ -250,6 +252,10 @@ const newTab = `on run argv
 			new window with configuration cfg
 		end if
 	end tell
+	if prior does not end with "/Ghostty.app/" then
+		delay 0.3
+		do shell script "open -a " & quoted form of prior
+	end if
 end run`
 
 // open opens a Ghostty tab, which runs kiln monitor show for the monitor name. The tab's environment is Ghostty's,
