@@ -183,6 +183,9 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
                                                                                  └────▶ stops, or asks for you
 ```
 
+- `kiln monitor install` gives the launchd job the `PATH` it was run with, and its `TMPDIR` if it has one. The
+  gate's tests write their temporary files there. Spotlight watches macOS's own temporary directory, so a heavy
+  suite runs lighter with `TMPDIR` on a volume that holds `.metadata_never_index`. Set it, then install again.
 - A monitor names a `command`, an `agent` or both, and a `check` or a `gauge`, never both.
 - The rest of a check's stdout goes to the agent. A check that exits non-zero, or prints no such last line, couldn't
   run, and starts no fix. So does a gauge kiln could not read.

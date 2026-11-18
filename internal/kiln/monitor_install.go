@@ -15,8 +15,9 @@ import (
 // MonitorInstall sets up a launchd job that runs kiln monitor run in the repository each hour. It writes the job to
 // ~/Library/LaunchAgents/, named for a hash of the repository's path, and loads it with launchctl bootstrap. The job
 // runs at the minute of the hour it was installed at. launchd runs such a job on wake when its minute passed during
-// sleep. The job runs with the PATH of the kiln monitor install that set it up. It writes what it prints to
-// monitor.log, beside kiln's ledger. Installed again, it replaces the job.
+// sleep. The job runs with the PATH of the kiln monitor install that set it up. It keeps that command's TMPDIR
+// too, when it has one. It writes what it prints to monitor.log, beside kiln's ledger. Installed again, it replaces
+// the job.
 func (r *Repo) MonitorInstall(ctx context.Context, out io.Writer) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -64,7 +65,13 @@ func (r *Repo) launchdJob(label string, minute int) []byte {
 	b.WriteString("  </array>\n")
 	key("WorkingDirectory", r.top)
 	b.WriteString("  <key>EnvironmentVariables</key>\n  <dict>\n")
-	fmt.Fprintf(&b, "    <key>PATH</key>\n    <string>%s</string>\n  </dict>\n", escaped(envValue(r.env, "PATH")))
+	for _, name := range jobEnv {
+		if value := envValue(r.env, name); value != "" {
+			fmt.Fprintf(&b, "    <key>%s</key>\n    <string>%s</string>\n", name, escaped(value))
+		}
+	}
+
+	b.WriteString("  </dict>\n")
 	fmt.Fprintf(&b, "  <key>StartCalendarInterval</key>\n  <dict>\n    <key>Minute</key>\n    <integer>%d</integer>\n"+
 		"  </dict>\n", minute)
 	key("StandardOutPath", log)
@@ -72,6 +79,10 @@ func (r *Repo) launchdJob(label string, minute int) []byte {
 	b.WriteString("</dict>\n</plist>\n")
 	return []byte(b.String())
 }
+
+// jobEnv names the variables the launchd job keeps from kiln monitor install's environment. launchd gives a job
+// neither. TMPDIR is where the gate's tests write, which a developer may keep on a volume Spotlight never reads.
+var jobEnv = []string{"PATH", "TMPDIR"}
 
 // escaped is s, escaped for XML's character data.
 func escaped(s string) string {
