@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode"
@@ -187,9 +189,9 @@ func appendTo(list *[]string) func(string) error {
 
 // Hook answers the PreToolUse call on in, for the session that args name. args are what kiln wrote after "kiln hook" in
 // the session's settings. Hook refuses a write outside the session's worktree, one to a guarded path, and one that
-// names no file. The package doc lists those paths. It writes its refusal to out, as Claude Code reads it. It reads no
-// shell command: the gate's own check finds a guarded path a command changed. Its error is [ErrUsage] for args that
-// kiln never writes.
+// names no file. The package doc lists those paths. Hook judges the path a write reaches, after each link it holds. It
+// writes its refusal to out, as Claude Code reads it. It reads no shell command: the gate's own check finds a guarded
+// path a command changed. Its error is [ErrUsage] for args that kiln never writes.
 func Hook(args []string, in io.Reader, out io.Writer) error {
 	g, err := hookGuard(args)
 	if err != nil {
@@ -246,12 +248,51 @@ func canonical(p string) string {
 	return p
 }
 
+// resolve is target, joined to base when relative, with each link followed, as canonical spells it.
 func resolve(base, target string) string {
-	if path.IsAbs(target) {
-		return canonical(target)
+	if !path.IsAbs(target) {
+		target = path.Join(base, target)
 	}
 
-	return canonical(path.Join(base, target))
+	return canonical(followLinks(path.Clean(target)))
+}
+
+// followLinks is p with each link in its existing part followed. A link whose target does not exist yet is followed
+// too, since a write creates that target. It gives up after 40 links, as a loop of links would never end.
+func followLinks(p string) string {
+	for range 40 {
+		next, done := followLink(p)
+		if done {
+			return next
+		}
+
+		p = next
+	}
+
+	return p
+}
+
+// followLink is p with its existing part's links followed, and done, or p with one dangling link followed.
+func followLink(p string) (next string, done bool) {
+	for dir, rest := p, ""; ; dir, rest = filepath.Dir(dir), filepath.Join(filepath.Base(dir), rest) {
+		if real, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(real, rest), true
+		}
+
+		if to, err := os.Readlink(dir); err == nil {
+			if !filepath.IsAbs(to) {
+				// The kernel reads a relative target from the directory that really holds the link.
+				parent, _ := filepath.EvalSymlinks(filepath.Dir(dir))
+				to = filepath.Join(parent, to)
+			}
+
+			return filepath.Join(to, rest), false
+		}
+
+		if filepath.Dir(dir) == dir {
+			return p, true
+		}
+	}
 }
 
 // fold maps each rune to the least of its case orbit, as APFS, where builds run, compares names.
@@ -269,7 +310,7 @@ func fold(s string) string {
 // inside is whether p is the build's worktree or under it, as the volume reads names. rest keeps p's own spelling
 // of what follows the worktree.
 func (g guard) inside(p string) (rest string, ok bool) {
-	d := canonical(string(g.place))
+	d := canonical(followLinks(path.Clean(string(g.place))))
 	if d == "/" {
 		return strings.TrimPrefix(p, "/"), true
 	}
