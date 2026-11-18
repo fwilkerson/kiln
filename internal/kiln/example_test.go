@@ -48,11 +48,11 @@ func Example() {
 	// linked .claude/agents/comprehension.md to ../../.kiln/agents/comprehension.md
 	// linked .claude/agents/critic.md to ../../.kiln/agents/critic.md
 	// commit .kiln/ on main: kiln reads it there
-	// installed $REPO/.git/hooks/pre-commit
+	// kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main
 	// the pre-commit hook runs the gate on each commit to main, so make its commands pass before you commit .kiln/:
 	//   go vet ./...
 	//   go test ./...
-	// kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main
+	// installed $REPO/.git/hooks/pre-commit
 	// kiln queue takes [x]
 	// x: queued
 }

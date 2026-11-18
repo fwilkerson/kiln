@@ -40,10 +40,10 @@ wrote .kiln/agents/build.md
 wrote .kiln/kiln.json
 linked .claude/skills/shape to ../../.kiln/skills/shape
 commit .kiln/ on main: kiln reads it there
-installed /path/to/my-project/.git/hooks/pre-commit
 the pre-commit hook runs the gate on each commit to main, so make its commands pass before you commit .kiln/:
   go vet ./...
   go test ./...
+installed /path/to/my-project/.git/hooks/pre-commit
 $ git add .kiln .claude && git commit -m "chore: set up kiln"
 ```
 

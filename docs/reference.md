@@ -73,6 +73,8 @@ session ──▶ gate ──passes──▶ audit ──no findings──▶ la
   writing JUnit XML to the path kiln gives it in `$KILN_JUNIT`.
 - A command that fails and names no test is never excused. Nor is a run that left out a test main ran.
 - The pre-commit hook, which `kiln init` installs, runs the gate's commands on each commit to main.
+  Where `core.hooksPath` is set, or another pre-commit hook is in place, `kiln init` installs none. Add the line
+  `kiln precommit` to your own hook.
 
 ### hosts, writable and mcp
 

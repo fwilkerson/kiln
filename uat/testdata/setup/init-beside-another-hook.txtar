@@ -1,0 +1,16 @@
+# kiln init beside the developer's own pre-commit hook writes no hook, and says the line to add to it.
+
+# Given: a pre-commit hook of the developer's own, as husky writes.
+exec sh -c 'printf "#!/bin/sh\nexit 0\n" >.git/hooks/pre-commit && chmod +x .git/hooks/pre-commit'
+
+# When: the developer runs kiln init,
+exec kiln init
+
+# then it writes its files, leaves the hook as it was, and says last why it installed none, and the line to add.
+exists .kiln/kiln.json
+! grep 'kiln' .git/hooks/pre-commit
+! stdout '^installed /'
+stdout '\ninstalled no pre-commit hook, since .*/\.git/hooks/pre-commit is another one; add this line to it: kiln precommit\n\z'
+
+-- README.md --
+# scratch

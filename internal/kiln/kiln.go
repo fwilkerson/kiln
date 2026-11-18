@@ -431,17 +431,36 @@ func lockBuilds(how int) (release func(), err error) {
 // hookMark marks a pre-commit hook as kiln's own, which kiln init may write over.
 const hookMark = "# kiln's pre-commit hook"
 
-// installHook installs the pre-commit hook, unless another pre-commit hook is there.
+// installHook installs the pre-commit hook in the repository's own hooks directory. Where core.hooksPath is set, or
+// another pre-commit hook is there, it writes none. It then says why, and the line to add to the developer's own hook.
 func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
-	args := []string{"rev-parse", "--path-format=absolute", "--git-path", "hooks"}
-	hooks, err := plainGit(ctx, r.top, proc.Git.Env(r.env), args...)
+	env := proc.Git.Env(r.env)
+	set, err := plainGit(ctx, r.top, env, "config", "--default", "", "--get", "core.hooksPath")
 	if err != nil {
 		return err
 	}
 
+	hooks, err := plainGit(ctx, r.top, env, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
+	if err != nil {
+		return err
+	}
+
+	if set != "" {
+		whose := "which other repositories may share"
+		if strings.HasPrefix(hooks, r.top+string(filepath.Separator)) {
+			whose = "this repository's own hooks directory"
+		}
+
+		fmt.Fprintf(out, "installed no pre-commit hook, since core.hooksPath names %s, %s; add this line to your "+
+			"own pre-commit hook: kiln precommit\n", set, whose)
+		return nil
+	}
+
 	hook := filepath.Join(hooks, "pre-commit")
 	if old, err := os.ReadFile(hook); err == nil && !bytes.Contains(old, []byte(hookMark)) {
-		return fmt.Errorf("%w: %s is another pre-commit hook; call %s precommit from it", errRefused, hook, r.exe)
+		fmt.Fprintf(out, "installed no pre-commit hook, since %s is another one; add this line to it: kiln precommit\n",
+			hook)
+		return nil
 	}
 
 	if err := os.MkdirAll(hooks, 0o755); err != nil {

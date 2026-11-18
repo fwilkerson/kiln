@@ -1,0 +1,30 @@
+# kiln init writes no hook into a hooks directory that core.hooksPath names, shared or the repository's own.
+
+# Given: a global core.hooksPath, to a directory outside the repository, with no pre-commit hook.
+mkdir $WORK-hooks
+exec git config --global core.hooksPath $WORK-hooks
+
+# When: the developer runs kiln init,
+exec kiln init
+
+# then it writes its files and no hook, and says last why it installed none, and the line to add.
+exists .kiln/kiln.json
+! exists $WORK-hooks/pre-commit
+! exists .git/hooks/pre-commit
+! stdout '^installed /'
+stdout '\ninstalled no pre-commit hook, since core\.hooksPath names .*-hooks, which other repositories may share; add this line to your own pre-commit hook: kiln precommit\n\z'
+
+# Given: a repository whose own config names a hooks directory inside it, as husky does, and no branch main.
+exec git branch -m master
+exec git config core.hooksPath .githooks
+
+# When: the developer runs kiln init again,
+exec kiln init
+
+# then it writes no hook there, says the directory is the repository's own, and still says last the line to add.
+! exists .githooks/pre-commit
+! stdout 'other repositories'
+stdout '\ninstalled no pre-commit hook, since core\.hooksPath names \.githooks, this repository''s own hooks directory; add this line to your own pre-commit hook: kiln precommit\n\z'
+
+-- README.md --
+# scratch

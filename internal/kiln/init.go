@@ -38,10 +38,10 @@ type InitOptions struct {
 // Init writes kiln's defaults into .kiln/ in the checkout, as opt's preset fills them. It writes each where .kiln/
 // holds no file of its name. To a kiln.json that is there, it adds only rounds, the key every preset shares, if the
 // file lacks it. It links /shape and its reviewers into .claude/, each where .claude/ holds nothing of its name.
-// It installs the pre-commit hook, and prints kiln.json's gate, the commands the hook runs on each commit to main.
-// The hook refuses a commit to main that fails them. Init refuses
-// a preset it does not know before it writes anything, and refuses to write over another pre-commit hook. Last, it
-// says so when the repository has no branch main, which each command that reads main then refuses.
+// It says so when the repository has no branch main, which each command that reads main then refuses. It prints
+// kiln.json's gate, the commands the pre-commit hook runs on each commit to main. The hook refuses a commit to main
+// that fails them. Last, Init installs the hook, or says why it installed none, as installHook says. Init refuses a
+// preset it does not know before it writes anything.
 func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	p, err := presetNamed(opt.Preset)
 	if err != nil {
@@ -63,19 +63,15 @@ func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 		fmt.Fprintf(out, "commit %s/ on main: kiln reads it there\n", kilnDir)
 	}
 
-	if err := r.installHook(ctx, out); err != nil {
-		return err
+	if _, err := r.mainTip(ctx); errors.Is(err, errNoMain) {
+		fmt.Fprintln(out, noMain)
 	}
 
 	if err := r.sayGate(out, wrote); err != nil {
 		return err
 	}
 
-	if _, err := r.mainTip(ctx); errors.Is(err, errNoMain) {
-		fmt.Fprintln(out, noMain)
-	}
-
-	return nil
+	return r.installHook(ctx, out)
 }
 
 // sayGate prints the gate's commands of the checkout's kiln.json, which the pre-commit hook runs on each commit to
