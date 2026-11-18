@@ -448,13 +448,29 @@ func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	script := fmt.Sprintf("#!/bin/sh\n%s\nexec %s precommit\n", hookMark, shellQuote(r.exe))
-	if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
+	if err := os.WriteFile(hook, []byte(hookScript(r.exe)), 0o755); err != nil {
 		return err
 	}
 
 	fmt.Fprintf(out, "installed %s\n", hook)
 	return nil
+}
+
+// hookScript is the pre-commit hook that runs exe's precommit.
+// Once exe moves or is deleted, the hook runs the kiln on the PATH instead.
+func hookScript(exe string) string {
+	return fmt.Sprintf(`#!/bin/sh
+%s
+kiln=%s
+if [ ! -x "$kiln" ]; then
+	if ! command -v kiln >/dev/null 2>&1; then
+		echo "kiln is gone from $kiln; kiln init writes this hook again" >&2
+		exit 1
+	fi
+	kiln=kiln
+fi
+exec "$kiln" precommit
+`, hookMark, shellQuote(exe))
 }
 
 // Spec is a spec's name, such as checkout-flow: .kiln/specs/checkout-flow.md holds the spec.

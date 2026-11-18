@@ -1,0 +1,42 @@
+# The pre-commit hook outlives the kiln that wrote it.
+
+# Given: kiln init, run from a copy of kiln in a directory of its own, and the copy then deleted.
+exec sh -c 'mkdir -p .tmp/away && cp "$(command -v kiln)" .tmp/away/kiln'
+exec $WORK/.tmp/away/kiln init
+stdout '^installed .*pre-commit$'
+rm $WORK/.tmp/away/kiln
+
+# When: the developer commits, with kiln on the PATH,
+cp _given/one.go one.go
+exec git add one.go
+exec git commit -m 'feat: add one'
+
+# Then: the hook runs that kiln, and the commit lands.
+exec git log -1 --format=%s main
+stdout '^feat: add one$'
+
+# When: the developer commits, with no kiln on the PATH,
+exec sh -c 'mkdir -p .tmp/path && ln -s "$(command -v git)" .tmp/path/git'
+env PATH=$WORK/.tmp/path:/usr/bin:/bin
+cp _given/two.go two.go
+exec git add two.go
+! exec git commit -m 'feat: add two'
+
+# Then: the hook says kiln is gone from its path, and that kiln init writes the hook again.
+stderr 'kiln is gone from .*/\.tmp/away/kiln; kiln init writes this hook again'
+exec git log -1 --format=%s main
+stdout '^feat: add one$'
+
+-- .kiln/kiln.json --
+{}
+-- scratch.go --
+// Package scratch is where kiln's builds land.
+package scratch
+-- _given/one.go --
+package scratch
+
+const One = 1
+-- _given/two.go --
+package scratch
+
+const Two = 2
