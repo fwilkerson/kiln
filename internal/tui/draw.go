@@ -351,24 +351,30 @@ func stated(s State) string {
 
 // marked is a state's glyph, in its color, a spec's or a monitor's.
 func marked(s State) string {
+	style, glyph := look(s)
+	return style.Render(glyph)
+}
+
+// look is a state's color and glyph. A state with nothing to mark is plain, beside ◌.
+func look(s State) (lipgloss.Style, string) {
 	switch s {
-	case Running:
-		return yellow.Render("▶")
+	case Running, Limited:
+		return yellow, "▶"
 	case Paused:
-		return yellow.Render("‖")
+		return yellow, "‖"
 	case Halted:
-		return yellow.Render("!")
-	case Stopped, Failed:
-		return red.Render("✗")
+		return yellow, "!"
+	case Stopped, Failed, CouldNotRun:
+		return red, "✗"
 	case UAT, Waits, NeedsYou:
-		return heading.Render("◆")
+		return heading, "◆"
 	case Accepted, Landed, Healthy:
-		return green.Render("✓")
+		return green, "✓"
 	case Rejected:
-		return dim.Render("✗")
+		return dim, "✗"
 	}
 
-	return "◌"
+	return lipgloss.NewStyle(), "◌"
 }
 
 func (m model) nowRows() []row {
@@ -550,10 +556,14 @@ func gauge(v, most float64, w int) string {
 }
 
 // outcome is how a build ended, in its color and beside its glyph. A build that has not ended shows where it stands.
+// A fix that ended is marked as its monitor would be.
 func (m model) outcome(ref buildRef) string {
 	var said string
 	if b := m.build(ref); b != nil {
 		said = b.Outcome
+		if style, glyph := look(b.Ended); glyph != "◌" {
+			return style.Render(glyph + " " + said)
+		}
 	}
 
 	if said == "" {

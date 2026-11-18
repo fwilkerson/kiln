@@ -109,6 +109,13 @@ const (
 	NeedsYou State = "needs you"
 	// Failed is a fix whose session failed.
 	Failed State = "failed"
+	// CouldNotRun is a monitor whose check couldn't run, or whose fix's gated check couldn't.
+	CouldNotRun State = "couldn't run"
+	// Limited is a fix that a usage limit ended.
+	Limited   State = "usage limit"
+	Unchanged State = "unchanged"
+	// CutShort is a fix that kiln dropped before it ended.
+	CutShort State = "cut short"
 )
 
 // Build is one build of a spec, from one approval.
@@ -124,6 +131,8 @@ type Build struct {
 	// Fix is a monitor's fix, whose Spec names the monitor. Its Summary and Report say how it ended.
 	Fix             bool
 	Summary, Report string
+	// Ended is how a fix ended, as its monitor's State would say. It is "" for a spec's build, or a fix not ended.
+	Ended State
 	// Steps are its session runs and gates, in the order they ran.
 	Steps []Step
 	// Readings are the gauges' readings of its landing.

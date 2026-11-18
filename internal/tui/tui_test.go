@@ -657,3 +657,26 @@ func TestRepositoryGauge(t *testing.T) {
 		t.Errorf("no row matches %s on the screen\n%s", want, screenOf(short))
 	}
 }
+
+// TestFixOutcomes holds that a failed fix is red beside ✗. A fix that met a usage limit is yellow beside ▶. The specs
+// panel marks its monitor the same.
+func TestFixOutcomes(t *testing.T) {
+	for outcome, ended := range map[string]State{
+		"session failed": Failed, "couldn't run": CouldNotRun, "usage limit": Limited,
+	} {
+		want := map[State]color.Color{Failed: ansi.Red, CouldNotRun: ansi.Red, Limited: ansi.Yellow}[ended]
+		glyph := map[color.Color]string{ansi.Red: "✗", ansi.Yellow: "▶"}[want]
+		fix := &Build{Spec: "deps", Started: time.Now().Add(-time.Hour), Outcome: outcome, Fix: true, Ended: ended}
+		src := source{specs: []Spec{{Name: "x", State: UAT}}, monitors: []Spec{{Name: "deps", State: ended,
+			Builds: []*Build{fix}, Monitor: &Monitor{Result: outcome}}}}
+		// The selected row is reversed, so the specs panel's color is read with x selected.
+		specs, builds := drive(t, src, "", sized(140, 30)), drive(t, src, "deps", sized(140, 30))
+		shows(t, specs, `│`+glyph+` deps +`+string(ended)+` *│`)
+		shows(t, builds, `#1 +`+glyph+` `+outcome)
+		for text, m := range map[string]model{glyph + " deps": specs, glyph + " " + outcome: builds} {
+			if got := colorOf(t, m, text); !sameColor(got, want) {
+				t.Errorf("%q is drawn in %v, want %v", text, got, want)
+			}
+		}
+	}
+}

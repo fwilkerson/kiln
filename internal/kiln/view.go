@@ -220,8 +220,8 @@ func (e entry) tuiReading() tui.Reading {
 
 // fixStates are a monitor's states in the view, by its last fix's outcome. A fix with no outcome yet is running.
 var fixStates = map[string]tui.State{outLanded: tui.Landed, outStopped: tui.Stopped, outWaits: tui.Waits,
-	outNeedsYou: tui.NeedsYou, outFailed: tui.Failed, outLimit: "usage limit", outCouldNot: foundCouldNot,
-	outUnchanged: outUnchanged, outRejected: tui.Rejected, outDropped: "cut short", "": tui.Running}
+	outNeedsYou: tui.NeedsYou, outFailed: tui.Failed, outLimit: tui.Limited, outCouldNot: tui.CouldNotRun,
+	outUnchanged: tui.Unchanged, outRejected: tui.Rejected, outDropped: tui.CutShort, "": tui.Running}
 
 // state is where the monitor of s stands, as the view words it. It stands as its last fix ended, or as its check
 // found. A held monitor stands where the fix that holds it ended. An accepted landing, or a fix whose kiln is gone,
@@ -266,6 +266,10 @@ func (s *buildStats) gone() tui.State {
 func (s *buildStats) shown() *tui.Build {
 	b := &tui.Build{Spec: string(s.Spec), Approved: string(s.Approved), Started: s.At, Size: s.Size,
 		Outcome: s.outcome, Amendments: s.amendments, Fix: s.Monitor != "", Summary: s.summary, Report: s.report}
+	if b.Fix && s.outcome != "" {
+		b.Ended = fixStates[s.outcome]
+	}
+
 	gates := 0
 	for _, r := range s.runs {
 		before := max(gates, min(r.gates, len(s.gates)))
