@@ -850,9 +850,10 @@ func (r *record) status(out io.Writer) {
 // lands it instead. While a kiln monitor run builds, the next kiln fire or kiln monitor run lands it.
 //
 // A monitor's fix waiting on its branch is rebased onto main, and gated again, check included. Then main moves onto
-// it if main hasn't moved. It retires nothing. While another kiln holds the run lock, the next kiln
-// monitor run lands it. A landing that stops waits for kiln accept again. A stopped
-// landing lands again afresh, its rounds at 0, with no second fold. An accepted landing that stops fails Accept.
+// it if main hasn't moved. It retires nothing. While another kiln holds the run lock, the next kiln monitor run lands
+// it. A landing that stops on the gate waits for kiln accept again. One that conflicts with main waits for kiln
+// reject. A stopped landing lands again afresh, its rounds at 0, with no second fold. An accepted landing that stops
+// fails Accept.
 func (r *Repo) Accept(ctx context.Context, name Spec, out io.Writer) error {
 	// Accept takes the lock before it changes anything, so a reinstall that refuses it leaves the spec as it was.
 	unshare, err := shareBuilds()
@@ -972,11 +973,19 @@ func (r *Repo) landAccepted(ctx context.Context, b *build) error {
 	}
 
 	if s := k.find(name); s != nil && s.State == stopped {
-		err = fmt.Errorf("the landing of %s stopped: kiln accept %s lands it again, and kiln reject %s drops it", name,
-			name, name)
+		err = fmt.Errorf("the landing of %s stopped: %s", name, landAgain(*s))
 	}
 
 	return err
+}
+
+// landAgain says what the developer runs on the stopped landing of rec. No kiln accept lands a fix that conflicts.
+func landAgain(rec record) string {
+	if conflicted(rec) {
+		return fmt.Sprintf("main changed what the fix changed, so kiln reject %s drops it", rec.Name)
+	}
+
+	return fmt.Sprintf("kiln accept %s lands it again, and kiln reject %s drops it", rec.Name, rec.Name)
 }
 
 // landsAccepted names the kiln that lands the accepted landing of rec, while another kiln holds the run lock.

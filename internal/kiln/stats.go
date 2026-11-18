@@ -385,6 +385,8 @@ func fixStep(rec record) string {
 		return "wait for it to end"
 	case rec.landing():
 		return "wait for the next kiln monitor run, which lands it"
+	case conflicted(rec):
+		return fmt.Sprintf("run kiln reject %s, and the monitor's next run fixes anew, from main", rec.Name)
 	case rec.Accepted:
 		return fmt.Sprintf("fix main, and run kiln accept %s to land it again, or kiln reject %s", rec.Name, rec.Name)
 	case rec.State == waiting:
@@ -411,6 +413,11 @@ func gateFix(rec record) string {
 	}
 
 	return fmt.Sprintf("fix main or the spec, and run kiln queue %s", rec.Name)
+}
+
+// conflicted reports whether rec is an accepted fix whose landing stopped on a conflict with main.
+func conflicted(rec record) bool {
+	return rec.Monitor && rec.Accepted && strings.HasPrefix(rec.Why, fixConflicts)
 }
 
 // byKiln reports whether the build of rec stopped for an error of kiln's, not its gate's.

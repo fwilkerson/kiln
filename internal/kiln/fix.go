@@ -331,7 +331,8 @@ func (b *build) fixBase(ctx context.Context) (head, base git.Rev, err error) {
 }
 
 // landFix lands a fix the developer accepted. It is rebased onto main, and gated again, check included. Then main
-// moves onto it if main hasn't moved. A setback stops it, and kiln accept tries it again.
+// moves onto it if main hasn't moved. A setback stops it. kiln accept tries it again after the gate, and kiln reject
+// drops it after a conflict with main.
 func (b *build) landFix(ctx context.Context) error {
 	f, err := b.r.fixOf(ctx, b.rec)
 	if err != nil {
@@ -352,6 +353,9 @@ func (b *build) landFix(ctx context.Context) error {
 	switch {
 	case err != nil:
 		return err
+	case back.why == whyConflict:
+		// The conflict's report asks a session to merge, and none runs on a landing.
+		return &outOfRounds{why: fixConflicts + strings.Join(back.failing, "\n"), failing: back.failing}
 	case back.report != "":
 		return &outOfRounds{why: "the landing failed:\n" + back.report, failing: back.failing}
 	}
@@ -360,6 +364,9 @@ func (b *build) landFix(ctx context.Context) error {
 	f.end(outLanded, "", "")
 	return nil
 }
+
+// fixConflicts starts why an accepted fix's landing stopped on a conflict with main, before the files in conflict.
+const fixConflicts = "main changed what the fix changed, in these files:\n"
 
 // fixSettle ends the fix for err, the error its work ended with, as fixEnded records it. It answers the context's
 // error once kiln is interrupted, which leaves the fix building, cut short.
