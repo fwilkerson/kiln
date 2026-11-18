@@ -31,14 +31,14 @@ func (m model) trendRows(w int) []row {
 	tileW := (w - tileGap*(len(measures)-1)) / len(measures)
 	switch {
 	case len(recent) == 0:
-		return []row{{text: dim.Render("no build has ended yet")}}
+		return []row{{text: m.theme.dim.Render("no build has ended yet")}}
 	case tileW < tileMin:
-		return trendTable(recent, previous)
+		return trendTable(m.theme, recent, previous)
 	}
 
 	tiles := make([][]string, len(measures))
 	for i, ms := range measures {
-		tiles[i] = ms.tile(recent, previous, tileW)
+		tiles[i] = ms.tile(m.theme, recent, previous, tileW)
 	}
 
 	rows := make([]row, len(tiles[0]))
@@ -55,10 +55,11 @@ func (m model) trendRows(w int) []row {
 }
 
 // trendTable is the trend as a row for each measure: its name, its median, and the median before.
-func trendTable(recent, previous []*Build) []row {
+func trendTable(t theme, recent, previous []*Build) []row {
 	rows := make([]row, len(measures))
 	for i, ms := range measures {
-		rows[i].text = cols([]int{12, 18}, ms.short, ms.headline(recent, previous), dim.Render(ms.before(previous)))
+		rows[i].text = cols([]int{12, 18}, ms.short, ms.headline(t, recent, previous),
+			t.dim.Render(ms.before(previous)))
 	}
 
 	return rows
@@ -67,17 +68,17 @@ func trendTable(recent, previous []*Build) []row {
 // tile is m's rows of the trend, each at most w cells. They are its name, its median, and its bars in two rows. Below
 // them are the newest build's number, in the color of its bar, then the lowest and the highest. With builds before
 // the recent ones, their median is its last row.
-func (m measure) tile(recent, previous []*Build, w int) []string {
-	top, bottom := m.bars(recent, w)
+func (m measure) tile(t theme, recent, previous []*Build, w int) []string {
+	top, bottom := m.bars(t, recent, w)
 	newest := "?"
 	if v, ok := m.of(recent[len(recent)-1]); ok {
 		newest = m.shown(v)
 	}
 
-	lines := []string{bold.Render(m.short), m.headline(recent, previous), top, bottom,
-		accent.Render("newest " + newest), dim.Render(m.spread(recent))}
+	lines := []string{t.bold.Render(m.short), m.headline(t, recent, previous), top, bottom,
+		t.kiln.Render("newest " + newest), t.dim.Render(m.spread(recent))}
 	if len(previous) > 0 {
-		lines = append(lines, dim.Render(m.before(previous)))
+		lines = append(lines, t.dim.Render(m.before(previous)))
 	}
 
 	return lines
@@ -85,19 +86,19 @@ func (m measure) tile(recent, previous []*Build, w int) []string {
 
 // headline is m's median over the recent builds. One worse than before is red beside ✗, and a better one green
 // beside ✓. Where some builds do not know m, it says how many do.
-func (m measure) headline(recent, previous []*Build) string {
+func (m measure) headline(t theme, recent, previous []*Build) string {
 	shown, known := m.shownMedian(recent)
 	switch m.change(recent, previous) {
 	case 1:
-		shown = red.Render("✗ " + shown)
+		shown = t.failed.Render("✗ " + shown)
 	case -1:
-		shown = green.Render("✓ " + shown)
+		shown = t.passed.Render("✓ " + shown)
 	default:
-		shown = bold.Render(shown)
+		shown = t.bold.Render(shown)
 	}
 
 	if known < len(recent) {
-		shown += dim.Render(fmt.Sprintf("  %d of %d", known, len(recent)))
+		shown += t.dim.Render(fmt.Sprintf("  %d of %d", known, len(recent)))
 	}
 
 	return shown
@@ -134,10 +135,10 @@ func (m measure) spread(builds []*Build) string {
 }
 
 // bars draws m as a bar for each build, oldest first, in at most w cells. Each bar is two rows high: bars answers
-// the top row, then the bottom. A bar is as high as its build's share of the largest. The newest is in the accent
-// color, and the rest are dim. A build that does not know m draws a dot. Where they fit, the bars widen and stand a
-// cell apart.
-func (m measure) bars(builds []*Build, w int) (top, bottom string) {
+// the top row, then the bottom. A bar is as high as its build's share of the largest. The newest is in kiln's color,
+// and the rest are dim. A build that does not know m draws a dot. Where they fit, the bars widen and stand a cell
+// apart.
+func (m measure) bars(t theme, builds []*Build, w int) (top, bottom string) {
 	barW, gap := 1, ""
 	if n := len(builds); n > 0 && w >= 2*n-1 {
 		barW, gap = min(3, (w-n+1)/n), " "
@@ -146,9 +147,9 @@ func (m measure) bars(builds []*Build, w int) (top, bottom string) {
 	most := slices.Max(append(m.values(builds), 0))
 	var tops, bottoms []string
 	for i, b := range builds {
-		style := dim
+		style := t.dim
 		if i == len(builds)-1 {
-			style = accent
+			style = t.kiln
 		}
 
 		hi, lo := " ", "·"

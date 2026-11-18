@@ -199,17 +199,6 @@ func (term *Term) Background(at Pos) color.Color {
 	return nil
 }
 
-// Same reports whether two colors draw the same.
-func Same(a, b color.Color) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-
-	r1, g1, b1, a1 := a.RGBA()
-	r2, g2, b2, a2 := b.RGBA()
-	return r1 == r2 && g1 == g2 && b1 == b2 && a1 == a2
-}
-
 // Wait polls holds until it answers nil, or until Waited has passed. Then it answers holds' last error, with the
 // screen it last read.
 func (term *Term) Wait(holds func() error) error {

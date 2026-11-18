@@ -54,19 +54,19 @@ func TestTrend(t *testing.T) {
 		{"the window holds the last 10 that ended, beside the 10 before them",
 			ended(9, 9, 9, 9, 9, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), 0,
 			`last 10 builds .* the 10 before .*\n.*││cost .*\n.*││✓ \$1\.00 .*\n.*\n.*││█ █ █ █ █ █ █ █ █ █ .*\n` +
-				`.*││newest \$1\.00 .*\n.*││\$1\.00 – \$1\.00 .*\n.*││before \$3\.00 `, "✓ $1.00", ansi.Green},
+				`.*││newest \$1\.00 .*\n.*││\$1\.00 – \$1\.00 .*\n.*││before \$3\.00 `, "✓ $1.00", dark.passed.GetForeground()},
 		{"a build that has not ended is outside it", append(ended(1, 2, 4), running), 0,
 			`last 3 builds .*\n.*││cost .*\n.*││\$2\.00 .*\n.*││ {8}███ .*\n.*││▄▄▄ ███ ███ .*\n.*││newest \$4\.00 .*\n` +
 				`.*││\$1\.00 – \$4\.00 .*\n.*│╰`, "", nil},
 		{"a build whose number is unknown is left out of its median, and draws a dot", ended(1, -1, 3), 0,
 			`││\$2\.00  2 of 3 .*\n.*\n.*││▅▅▅ ··· ███ `, "$2.00  2 of 3", nil},
 		{"a worse number is red", ended(1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2), 0,
-			`││✗ \$2\.00 .*\n(.*\n){4}.*││before \$1\.00 `, "✗ $2.00", ansi.Red},
+			`││✗ \$2\.00 .*\n(.*\n){4}.*││before \$1\.00 `, "✗ $2.00", dark.failed.GetForeground()},
 		{"a trend too narrow for its tiles is a table with no bars", ended(1, 1), 74,
 			`│cost +\$1\.00 +│\n.*│minutes `, "", nil},
 		{"an 80-column terminal shows both medians",
 			ended(3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), 80,
-			`│cost +✓ \$1\.00 +before \$3\.00 *│`, "✓ $1.00", ansi.Green},
+			`│cost +✓ \$1\.00 +before \$3\.00 *│`, "✓ $1.00", dark.passed.GetForeground()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			src := source{specs: []Spec{{Name: "x", State: UAT, Builds: tc.builds}}}
@@ -105,7 +105,8 @@ func TestMonitors(t *testing.T) {
 
 	// A monitor that waits on the developer is marked as a spec that waits is. A stopped fix is marked as a stopped
 	// spec is.
-	for text, want := range map[string]color.Color{"◆ docs": ansi.Cyan, "✗ deps": ansi.Red} {
+	marks := map[string]color.Color{"◆ docs": dark.you.GetForeground(), "✗ deps": dark.failed.GetForeground()}
+	for text, want := range marks {
 		if got := colorOf(t, m, text); !sameColor(got, want) {
 			t.Errorf("%q is drawn in %v, want %v", text, got, want)
 		}
@@ -237,16 +238,16 @@ func TestRunScreen(t *testing.T) {
 		color color.Color
 	}{
 		{"an open call in a running run runs", Run{To: -1}, time.Second, []claude.Action{call},
-			"▶ " + call.At.Local().Format("15:04:05") + " Bash", ansi.Yellow},
+			"▶ " + call.At.Local().Format("15:04:05") + " Bash", dark.agent.GetForeground()},
 		{"an open call in an ended run was cut off", Run{End: now}, time.Second, []claude.Action{call}, "cut off",
-			ansi.Red},
+			dark.failed.GetForeground()},
 		{"a run whose kiln fire is gone shows it", Run{Lost: true}, time.Second, []claude.Action{call},
-			"! kiln stopped mid-run", ansi.Yellow},
+			"! kiln stopped mid-run", dark.kiln.GetForeground()},
 		{"idle past a minute with no call open is marked", Run{To: -1}, 2 * time.Minute, nil, "idle 2:00",
-			ansi.Yellow},
+			dark.you.GetForeground()},
 		{"idle in a call is not", Run{To: -1}, 2 * time.Minute, []claude.Action{call}, "idle 2:00", nil},
 		{"a refusal is red", Run{End: now}, time.Second, []claude.Action{{At: now, Tool: "Write", Input: "specs/x.md",
-			Failed: true, Refused: true, Cause: "no"}}, "refused: no", ansi.Red},
+			Failed: true, Refused: true, Cause: "no"}}, "refused: no", dark.failed.GetForeground()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := tc.run
@@ -287,6 +288,9 @@ func colorOf(t *testing.T, m model, text string) color.Color {
 	_, _ = emu.WriteString(strings.ReplaceAll(m.View().Content, "\n", "\r\n"))
 	return emu.CellAt(x, y).Style.Fg
 }
+
+// dark is the theme of a terminal that has not said its background is light.
+var dark = newTheme(true)
 
 func sameColor(a, b color.Color) bool {
 	if a == nil || b == nil {
@@ -661,7 +665,7 @@ func TestGauges(t *testing.T) {
 		}
 	}
 
-	if got := colorOf(t, m, "✗ 4"); !sameColor(got, ansi.Red) {
+	if got := colorOf(t, m, "✗ 4"); !sameColor(got, dark.failed.GetForeground()) {
 		t.Errorf("the crossed reading is drawn in %v, want red", got)
 	}
 }
@@ -704,14 +708,17 @@ func TestRepositoryGauge(t *testing.T) {
 	}
 }
 
-// TestFixOutcomes holds that a failed fix is red beside ✗. A fix that met a usage limit is yellow beside ▶. The specs
-// panel marks its monitor the same.
+// TestFixOutcomes holds that a failed fix is red beside ✗. A fix that met a usage limit is in a session's color,
+// beside ▶. The specs panel marks its monitor the same.
 func TestFixOutcomes(t *testing.T) {
 	for outcome, ended := range map[string]State{
 		"session failed": Failed, "couldn't run": CouldNotRun, "usage limit": Limited,
 	} {
-		want := map[State]color.Color{Failed: ansi.Red, CouldNotRun: ansi.Red, Limited: ansi.Yellow}[ended]
-		glyph := map[color.Color]string{ansi.Red: "✗", ansi.Yellow: "▶"}[want]
+		want, glyph := dark.failed.GetForeground(), "✗"
+		if ended == Limited {
+			want, glyph = dark.agent.GetForeground(), "▶"
+		}
+
 		fix := &Build{Spec: "deps", Started: time.Now().Add(-time.Hour), Outcome: outcome, Fix: true, Ended: ended}
 		src := source{specs: []Spec{{Name: "x", State: UAT}}, monitors: []Spec{{Name: "deps", State: ended,
 			Builds: []*Build{fix}, Monitor: &Monitor{Result: outcome}}}}
@@ -743,7 +750,7 @@ func TestGaugeRowCost(t *testing.T) {
 		var text string
 		for range 3 {
 			begin := time.Now()
-			text = gaugeRows(specs, 150)[0].text
+			text = model{specs: specs, theme: dark}.gaugeRows(150)[0].text
 			took = min(took, time.Since(begin))
 		}
 

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"
 	"github.com/rogpeppe/go-internal/testscript"
 
@@ -32,8 +31,9 @@ import (
 // A named key is one of keyNames. A pattern matches the screen's text, line by line, with (?m) set. A screen check
 // with ! passes at once when its text is not yet drawn, so wait for what the screen does hold first.
 //
-// A color is red, yellow, green, or none for the terminal's own. color reads the cell's foreground, or with
-// background its background. With !, it waits until the cell is drawn in any other color.
+// A color is a hue, red, yellow or green, which any shade of it matches. Or it is none, for the terminal's own. color
+// reads the cell's foreground, or with background its background. With !, it waits until the cell is drawn in any
+// other color.
 var terminalCommands = map[string]func(*testscript.TestScript, bool, []string){
 	"term":   startTerm,
 	"keys":   pressKeys,
@@ -49,7 +49,47 @@ var keyNames = map[string]rune{
 	"space": vt.KeySpace,
 }
 
-var colors = map[string]color.Color{"red": ansi.Red, "yellow": ansi.Yellow, "green": ansi.Green, "none": nil}
+// colors match the colors a script names. A hue matches each of its shades, so a check holds on any theme, in 256
+// colors too.
+var colors = map[string]func(color.Color) bool{
+	"red":    hued(-25, 12),
+	"yellow": hued(35, 70),
+	"green":  hued(80, 160),
+	"none":   func(c color.Color) bool { return c == nil },
+}
+
+// hued matches a color whose hue lies from lo to hi degrees, red at 0, from -180 to 180. A gray has no hue, and
+// matches no span.
+func hued(lo, hi float64) func(color.Color) bool {
+	return func(c color.Color) bool {
+		if c == nil {
+			return false
+		}
+
+		r, g, b, _ := c.RGBA()
+		top, bottom := max(r, g, b), min(r, g, b)
+		if top == bottom {
+			return false
+		}
+
+		span := float64(top - bottom)
+		var h float64
+		switch top {
+		case r:
+			h = (float64(g) - float64(b)) / span
+		case g:
+			h = 2 + (float64(b)-float64(r))/span
+		default:
+			h = 4 + (float64(r)-float64(g))/span
+		}
+
+		if h *= 60; h > 180 {
+			h -= 360
+		}
+
+		return h >= lo && h <= hi
+	}
+}
 
 // terminalKey holds a script's terminal among testscript's values.
 type terminalKey struct{}
@@ -197,11 +237,12 @@ func waitColor(ts *testscript.TestScript, neg bool, args []string) {
 	ts.Check(term.Wait(func() error { return check.holds(term) }))
 }
 
-// colorCheck is what a color command waits for: text's first cell drawn in want. With neg, it waits for another color.
+// colorCheck is what a color command waits for: text's first cell drawn in a color that drawn matches. With neg, it
+// waits for another color.
 type colorCheck struct {
 	background, neg bool
 	name            string
-	want            color.Color
+	drawn           func(color.Color) bool
 	text            string
 }
 
@@ -211,12 +252,12 @@ func parseColorCheck(neg bool, args []string) (colorCheck, bool) {
 		args = args[1:]
 	}
 
-	want, ok := colors[strings.Join(args[:min(1, len(args))], "")]
+	drawn, ok := colors[strings.Join(args[:min(1, len(args))], "")]
 	if len(args) != 2 || !ok {
 		return check, false
 	}
 
-	check.name, check.want, check.text = args[0], want, args[1]
+	check.name, check.drawn, check.text = args[0], drawn, args[1]
 	return check, true
 }
 
@@ -231,7 +272,7 @@ func (c colorCheck) holds(term *termtest.Term) error {
 		got = term.Background(at)
 	}
 
-	switch same := termtest.Same(got, c.want); {
+	switch same := c.drawn(got); {
 	case same && c.neg:
 		return fmt.Errorf("%q is drawn in %s", c.text, c.name)
 	case !same && !c.neg:

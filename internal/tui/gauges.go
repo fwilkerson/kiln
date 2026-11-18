@@ -55,17 +55,18 @@ func readings(specs []Spec, keep int) (names []string, landings, repository gaug
 
 // gaugeRows draws, in w cells, a row for each gauge's readings of landings. Below it is a row of its readings of the
 // whole repository, where a monitor has read it. It answers none while no build or monitor has a reading.
-func gaugeRows(specs []Spec, w int) []row {
+func (m model) gaugeRows(w int) []row {
 	// Each reading takes at least one cell, so w+1 readings still leave an older one for the … to mark.
-	names, landings, repository := readings(specs, w+1)
+	names, landings, repository := readings(m.specs, w+1)
+	t := m.theme
 	var rows []row
 	for _, name := range names {
 		if rs := landings[name]; len(rs) > 0 {
-			rows = append(rows, gaugeRow(name, rs, w))
+			rows = append(rows, t.gaugeRow(name, rs, w))
 		}
 
 		if rs := repository[name]; len(rs) > 0 {
-			rows = append(rows, gaugeRow(name+", repository", rs, w))
+			rows = append(rows, t.gaugeRow(name+", repository", rs, w))
 		}
 	}
 
@@ -74,26 +75,26 @@ func gaugeRows(specs []Spec, w int) []row {
 
 // gaugeRow draws the row title, its newest line, then the readings rs. A row too narrow for them all keeps the newest
 // that fit, and always the newest.
-func gaugeRow(title string, rs []landingRead, w int) row {
+func (t theme) gaugeRow(title string, rs []landingRead, w int) row {
 	line := rs[len(rs)-1].Line
-	head := bold.Render(title) + " " + dim.Render(line)
-	return row{text: head + "  " + newestFitting(rs, line, w-ansi.StringWidth(head)-2)}
+	head := t.bold.Render(title) + " " + t.dim.Render(line)
+	return row{text: head + "  " + t.newestFitting(rs, line, w-ansi.StringWidth(head)-2)}
 }
 
 // shown is the reading beside its spec, where it has one. One that crossed its line is red beside ✗. One read against
 // a line other than line shows its own.
-func (r landingRead) shown(line string) string {
+func (r landingRead) shown(t theme, line string) string {
 	value := "?"
 	if r.Value != nil {
 		value = strconv.FormatFloat(*r.Value, 'f', -1, 64)
 	}
 
 	if r.Crossed {
-		value = red.Render("✗ " + value)
+		value = t.failed.Render("✗ " + value)
 	}
 
 	if r.Line != line {
-		value += dim.Render(" (" + r.Line + ")")
+		value += t.dim.Render(" (" + r.Line + ")")
 	}
 
 	if r.spec == "" {
@@ -105,13 +106,13 @@ func (r landingRead) shown(line string) string {
 
 // newestFitting joins the newest of rs, as shown against line, that fit in w cells, oldest first. A … marks that
 // older ones are left out. Where not even the newest fits, it is the newest alone, which the panel then cuts.
-func newestFitting(rs []landingRead, line string, w int) string {
-	sep, more := dim.Render(" · "), dim.Render("… ")
-	newest := rs[len(rs)-1].shown(line)
+func (t theme) newestFitting(rs []landingRead, line string, w int) string {
+	sep, more := t.dim.Render(" · "), t.dim.Render("… ")
+	newest := rs[len(rs)-1].shown(t, line)
 	cells, width := []string{newest}, ansi.StringWidth(newest)
 	// From the newest backward, the walk stops at the width, so a reading too old to fit costs nothing.
 	for i := len(rs) - 2; i >= 0; i-- {
-		cell := rs[i].shown(line)
+		cell := rs[i].shown(t, line)
 		next, room := width+ansi.StringWidth(sep)+ansi.StringWidth(cell), w
 		if i > 0 {
 			room -= ansi.StringWidth(more)

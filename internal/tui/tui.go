@@ -15,15 +15,18 @@
 // are its fixes, which open as a spec's builds do.
 //
 // It reads its [Source] again once a second, so a running run grows as its session writes. A run lists its calls
-// newest first, below its answer. A session idle for over a minute, with no call open, shows its idle time in
-// yellow. Keys and the mouse both work. A click opens the row it hits, and the wheel scrolls what it is over, 3 lines
-// a notch. Red marks what failed, yellow what runs or waits, and green
-// what passed. A glyph beside each color says the same: ✗, ▶ and ✓. Cyan marks the panel the keys go to, and each
-// key's name. It marks a spec that waits on the developer too, beside ◆.
+// newest first, below its answer. A session idle for over a minute, with no call open, shows its idle time in the
+// developer's yellow. Keys and the mouse both work. A click opens the row it hits, and the wheel scrolls what it is
+// over, 3 lines a notch.
+//
+// Its colors are those of kiln's one-page sheet, where a hue says who acts. The developer's yellow marks where the
+// keys go, each key's name, and what waits on them, beside ◆. A session's blue marks what runs, beside ▶. Kiln's
+// orange marks a gate, a pause and a stop. Red marks what failed and green what passed, beside ✗ and ✓. On a terminal
+// that says its background is light, each hue is darker.
 //
 // The home screen's trend is the last 10 builds that ended, beside the 10 before them. Each number is the median of
-// the builds that know it. Below it is a bar for each build, oldest first, with the newest in cyan. A number kiln
-// could not read shows as ?, never as zero.
+// the builds that know it. Below it is a bar for each build, oldest first, with the newest in kiln's orange. A number
+// kiln could not read shows as ?, never as zero.
 //
 // Once a build or a monitor has a gauge's reading, a gauges panel spans the width below the trend. It holds a row per
 // gauge: its name and its newest line. Its readings of landings follow, oldest first, each beside the spec that landed

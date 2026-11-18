@@ -26,6 +26,8 @@ type model struct {
 	// live is the running run's stretch of its stream, for the now line.
 	live *claude.Recounted
 	w, h int
+	// theme is the dark one until the terminal says its background is light.
+	theme theme
 	// stack holds the screens the developer opened, home first. Esc takes the top one off.
 	stack []*screen
 	// open names the spec to select on home once the source is first read.
@@ -83,7 +85,8 @@ type screen struct {
 }
 
 func newModel(src Source, name string, every time.Duration) model {
-	return model{src: src, every: every, open: name, w: 80, h: 24, stack: []*screen{{kind: homeScreen}}}
+	return model{src: src, every: every, open: name, w: 80, h: 24, theme: newTheme(true),
+		stack: []*screen{{kind: homeScreen}}}
 }
 
 // tick asks the view to read its source again.
@@ -131,7 +134,7 @@ type runRef struct {
 	run int
 }
 
-func (m model) Init() tea.Cmd { return tea.Batch(m.load(), m.tick()) }
+func (m model) Init() tea.Cmd { return tea.Batch(m.load(), m.tick(), tea.RequestBackgroundColor) }
 
 func (m model) tick() tea.Cmd {
 	if m.every == 0 {
@@ -188,6 +191,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
+	case tea.BackgroundColorMsg:
+		m.theme = newTheme(msg.IsDark())
+		for _, s := range m.stack {
+			s.drawn = nil
+		}
 	case tick:
 		cmd = tea.Batch(m.load(), m.tick())
 	case loaded:
@@ -572,7 +580,7 @@ func (m model) drawText(s *screen) {
 	switch {
 	case s.text == "":
 	case s.drawn == nil, s.drawnW != m.w:
-		s.drawn, s.drawnW = markdown(s.text, m.w), m.w
+		s.drawn, s.drawnW = markdown(s.text, m.w, m.theme.markdown), m.w
 	}
 }
 

@@ -190,7 +190,7 @@ func (m *model) do(k tea.KeyPressMsg) tea.Cmd {
 
 // footer names the keys the screen's footer names, in at most w cells. It names whole bindings only. Where all do not
 // fit, ? and esc come first, then the rest in order, and the key list names the ones left out.
-func footer(k kind, w int) string {
+func (t theme) footer(k kind, w int) string {
 	foot := keyMaps[k].foot
 	first := func(b key.Binding) bool {
 		return b.Help().Key == keysList.Help().Key || b.Help().Key == back.Help().Key
@@ -202,11 +202,11 @@ func footer(k kind, w int) string {
 	var named []string
 	for _, b := range foot {
 		if kept[footName(b)] {
-			named = append(named, accent.Render(b.Help().Key)+" "+dim.Render(b.Help().Desc))
+			named = append(named, t.you.Render(b.Help().Key)+" "+t.dim.Render(b.Help().Desc))
 		}
 	}
 
-	return dotted(named...)
+	return t.dotted(named...)
 }
 
 // fitting names the bindings that fit in w cells, taken in order, with 3 cells between each two.
@@ -231,22 +231,22 @@ var keyNames = map[string]string{"up": "↑", "down": "↓", "left": "←", "rig
 // keyList is a box that lists every key the screen of kind k takes, and what each does.
 func (m model) keyList(k kind) *lipgloss.Layer {
 	lines := keyLines(k)
-	list, closes := columns(lines, m.keyRows()), "? or esc closes this"
+	list, closes := m.theme.columns(lines, m.keyRows()), "? or esc closes this"
 	if top, scrolls := m.keyTop(k, m.keysTop); scrolls {
 		shown := lines[top:min(len(lines), top+m.keyRows())]
-		list = column(shown)
+		list = m.theme.column(shown)
 		if top+len(shown) < len(lines) {
 			closes = "↓ more · " + closes
 		}
 	}
 
-	body := []string{heading.Render("keys"), list}
+	body := []string{m.theme.you.Bold(true).Render("keys"), list}
 	if len(lines)+5 <= m.h {
 		body = append(body, "")
 	}
 
-	body = append(body, dim.Render(closes))
-	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Cyan).
+	body = append(body, m.theme.dim.Render(closes))
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(m.theme.you.GetForeground()).
 		Padding(0, 1).Render(strings.Join(body, "\n"))
 	x := max(0, (m.w-lipgloss.Width(box))/2)
 	y := max(0, (m.h-lipgloss.Height(box))/2)
@@ -258,7 +258,7 @@ func (m model) keyList(k kind) *lipgloss.Layer {
 // than the terminal give way to one column that scrolls. A list that does not scroll starts at its first key.
 func (m model) keyTop(k kind, top int) (int, bool) {
 	lines := keyLines(k)
-	if lipgloss.Width(columns(lines, m.keyRows()))+keyListFrame <= m.w {
+	if lipgloss.Width(m.theme.columns(lines, m.keyRows()))+keyListFrame <= m.w {
 		return 0, false
 	}
 
@@ -282,10 +282,10 @@ func keyLines(k kind) []keyLine {
 }
 
 // columns draws lines in columns of rows lines each.
-func columns(lines []keyLine, rows int) string {
+func (t theme) columns(lines []keyLine, rows int) string {
 	var drawn []string
 	for chunk := range slices.Chunk(lines, rows) {
-		drawn = append(drawn, column(chunk), "   ")
+		drawn = append(drawn, t.column(chunk), "   ")
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, drawn[:len(drawn)-1]...)
@@ -318,7 +318,7 @@ func listedKeys(b key.Binding) string {
 }
 
 // column draws lines as one column of the key list, its keys aligned.
-func column(lines []keyLine) string {
+func (t theme) column(lines []keyLine) string {
 	keysW := 0
 	for _, l := range lines {
 		keysW = max(keysW, ansi.StringWidth(l.keys))
@@ -326,7 +326,7 @@ func column(lines []keyLine) string {
 
 	rows := make([]string, len(lines))
 	for i, l := range lines {
-		rows[i] = accent.Render(fmt.Sprintf("%-*s", keysW, l.keys)) + "  " + dim.Render(l.desc)
+		rows[i] = t.you.Render(fmt.Sprintf("%-*s", keysW, l.keys)) + "  " + t.dim.Render(l.desc)
 	}
 
 	return strings.Join(rows, "\n")

@@ -64,36 +64,8 @@ type row struct {
 	to   target
 }
 
-var (
-	red      = lipgloss.NewStyle().Foreground(lipgloss.Red)
-	yellow   = lipgloss.NewStyle().Foreground(lipgloss.Yellow)
-	green    = lipgloss.NewStyle().Foreground(lipgloss.Green)
-	dim      = lipgloss.NewStyle().Faint(true)
-	bold     = lipgloss.NewStyle().Bold(true)
-	reversed = lipgloss.NewStyle().Reverse(true)
-	frame    = lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
-	// accent marks where the eye starts: the panel the keys go to, and a key's name. It marks what waits on the
-	// developer too.
-	accent  = lipgloss.NewStyle().Foreground(lipgloss.Cyan)
-	heading = accent.Bold(true)
-	blue    = lipgloss.NewStyle().Foreground(lipgloss.BrightBlue)
-	magenta = lipgloss.NewStyle().Foreground(lipgloss.Magenta)
-)
-
 // dotted joins what a line says, with a dim dot between each two, so each reads apart.
-func dotted(parts ...string) string { return strings.Join(parts, dim.Render(" · ")) }
-
-// role colors a role's name, so a build session's runs and an audit's tell apart.
-func role(name string) string {
-	switch name {
-	case "build":
-		return blue.Render(name)
-	case "audit":
-		return magenta.Render(name)
-	}
-
-	return name
-}
+func (t theme) dotted(parts ...string) string { return strings.Join(parts, t.dim.Render(" · ")) }
 
 // layout places every row of the top screen in a terminal of m.w by m.h cells. The view draws it, and a click asks it
 // which row it hit.
@@ -174,19 +146,19 @@ func cut(s string, w int) string {
 	return ansi.Truncate(s, w, "…")
 }
 
-// pick draws a selected row reversed, in no other color.
-func pick(text string, selected bool) string {
+// pick draws a selected row in the picked style, in no other color.
+func (t theme) pick(text string, selected bool) string {
 	if selected {
-		return reversed.Render(ansi.Strip(text))
+		return t.picked.Render(ansi.Strip(text))
 	}
 
 	return text
 }
 
 func (m model) foot(k kind) *lipgloss.Layer {
-	text := footer(k, m.w-1)
+	text := m.theme.footer(k, m.w-1)
 	if m.err != nil {
-		text = red.Render("✗ kiln could not read its ledger: " + m.err.Error())
+		text = m.theme.failed.Render("✗ kiln could not read its ledger: " + m.err.Error())
 	}
 
 	return lipgloss.NewLayer(fit(" "+text, m.w)).Y(m.h - 1).Z(1)
@@ -210,14 +182,14 @@ func (p panel) inside() area { return area{p.w - 2, p.h - 2} }
 
 // box draws the panel, with its rows inside it from the top. A panel too short for its rows says in its title how
 // many it cut, as +2. So no row goes unseen without a mark.
-func (p panel) box(rows []row) *lipgloss.Layer {
+func (p panel) box(t theme, rows []row) *lipgloss.Layer {
 	if p.h < 2 {
 		return lipgloss.NewLayer("").X(p.x).Y(p.y)
 	}
 
-	edge, name := frame, bold
+	edge, name := t.frame, t.bold
 	if p.lit {
-		edge, name = accent, heading
+		edge, name = t.you, t.you.Bold(true)
 	}
 
 	inner := max(0, p.w-2)
@@ -247,7 +219,7 @@ func (m model) home() []*lipgloss.Layer {
 	rightW, h := m.w-sideW, m.h-1
 	now := m.nowRows()
 	tiles := m.trendRows(rightW - 2)
-	gauges := gaugeRows(m.specs, rightW-2)
+	gauges := m.gaugeRows(rightW - 2)
 	nowH := len(now) + 2
 	trendH := min(len(tiles)+2, max(3, h-nowH-5))
 	gaugesH := 0
@@ -265,10 +237,10 @@ func (m model) home() []*lipgloss.Layer {
 	recentBox := panel{to: target{toPane, int(recentPane)}, title: m.recentTitle(), lit: m.focus == recentPane,
 		x: sideW, y: nowH + trendH + gaugesH, area: area{rightW, recentH}}
 	layers := []*lipgloss.Layer{
-		specsBox.box(m.side(specsBox.inside())),
-		nowBox.box(now),
-		trendBox.box(tiles),
-		recentBox.box(m.recentRows(recentBox.inside())),
+		specsBox.box(m.theme, m.side(specsBox.inside())),
+		nowBox.box(m.theme, now),
+		trendBox.box(m.theme, tiles),
+		recentBox.box(m.theme, m.recentRows(recentBox.inside())),
 		m.foot(homeScreen),
 	}
 
@@ -276,7 +248,7 @@ func (m model) home() []*lipgloss.Layer {
 		return layers
 	}
 
-	return append(layers, gaugesBox.box(gauges))
+	return append(layers, gaugesBox.box(m.theme, gauges))
 }
 
 // recentTitle names the builds the builds panel lists: every spec's, or the selected spec's.
@@ -315,14 +287,15 @@ func (m model) side(in area) []row {
 		text := "≡ all specs"
 		if i > 0 {
 			s := specs[i-1]
-			text = marked(s.State) + " " + fit(s.Name, max(1, in.w-3-len(s.State))) + " " + stated(s.State)
+			text = m.theme.marked(s.State) + " " + fit(s.Name, max(1, in.w-3-len(s.State))) + " " +
+				m.theme.stated(s.State)
 		}
 
-		rows = append(rows, row{pick(text, m.focus == specsPane && i == sel), target{toSpec, i}})
+		rows = append(rows, row{m.theme.pick(text, m.focus == specsPane && i == sel), target{toSpec, i}})
 	}
 
 	if len(specs) == 0 && len(rows) < in.h {
-		rows = append(rows, row{text: dim.Render("no spec")})
+		rows = append(rows, row{text: m.theme.dim.Render("no spec")})
 	}
 
 	return rows
@@ -337,41 +310,42 @@ func (m model) filterRow() string {
 		return "/ " + m.filter
 	}
 
-	return dim.Render("/ filter")
+	return m.theme.dim.Render("/ filter")
 }
 
 // stated is a state's word. A spec that needs nothing more is dim, so the ones in play stand out.
-func stated(s State) string {
+func (t theme) stated(s State) string {
 	if s == Accepted || s == Rejected {
-		return dim.Render(string(s))
+		return t.dim.Render(string(s))
 	}
 
 	return string(s)
 }
 
 // marked is a state's glyph, in its color, a spec's or a monitor's.
-func marked(s State) string {
-	style, glyph := look(s)
+func (t theme) marked(s State) string {
+	style, glyph := t.look(s)
 	return style.Render(glyph)
 }
 
-// look is a state's color and glyph. A state with nothing to mark is plain, beside ◌.
-func look(s State) (lipgloss.Style, string) {
+// look is a state's color and glyph. A session runs a running spec, and kiln paused or halted one. What waits on the
+// developer is theirs. A state with nothing to mark is plain, beside ◌.
+func (t theme) look(s State) (lipgloss.Style, string) {
 	switch s {
 	case Running, Limited:
-		return yellow, "▶"
+		return t.agent, "▶"
 	case Paused:
-		return yellow, "‖"
+		return t.kiln, "‖"
 	case Halted:
-		return yellow, "!"
+		return t.kiln, "!"
 	case Stopped, Failed, CouldNotRun:
-		return red, "✗"
+		return t.failed, "✗"
 	case UAT, Waits, NeedsYou:
-		return heading, "◆"
+		return t.you, "◆"
 	case Accepted, Landed, Healthy:
-		return green, "✓"
+		return t.passed, "✓"
 	case Rejected:
-		return dim, "✗"
+		return t.dim, "✗"
 	}
 
 	return lipgloss.NewStyle(), "◌"
@@ -380,22 +354,23 @@ func look(s State) (lipgloss.Style, string) {
 func (m model) nowRows() []row {
 	ref, r, ok := running(m.specs)
 	if i := slices.IndexFunc(m.specs, func(s Spec) bool { return s.State == Paused }); !ok && i >= 0 {
-		return []row{{text: yellow.Render("‖ " + m.specs[i].Name + " · paused for a usage limit")}}
+		return []row{{text: m.theme.kiln.Render("‖ " + m.specs[i].Name + " · paused for a usage limit")}}
 	}
 
+	t := m.theme
 	if !ok {
-		return []row{{text: dim.Render("nothing is running")}}
+		return []row{{text: t.dim.Render("nothing is running")}}
 	}
 
-	first := dotted(yellow.Render("▶")+" "+bold.Render(ref.spec), role(r.Role)+" role", r.why(),
+	first := t.dotted(t.agent.Render("▶")+" "+t.bold.Render(ref.spec), t.agent.Render(r.Role)+" role", r.why(),
 		"running "+span(m.now.Sub(r.Start)))
-	second := dim.Render("reading its stream")
+	second := t.dim.Render("reading its stream")
 	if m.live != nil {
-		second = strings.Join(m.liveFacts(r, m.live), dim.Render("  ·  "))
+		second = strings.Join(m.liveFacts(r, m.live), t.dim.Render("  ·  "))
 	}
 
 	to := target{toNow, 0}
-	return []row{{pick(first, m.focus == nowPane), to}, {second, to}}
+	return []row{{t.pick(first, m.focus == nowPane), to}, {second, to}}
 }
 
 // liveFacts are what a running run's stream says. They are how long since it was written, the call open, its
@@ -408,7 +383,7 @@ func (m model) liveFacts(r *Run, c *claude.Recounted) []string {
 	case open >= 0:
 		said += ", in a call: " + c.Actions[open].Input
 	case idle > idleWarned:
-		said = yellow.Render("▶ " + said + ", in no call")
+		said = m.theme.you.Render("▶ " + said + ", in no call")
 	default:
 		said += ", in no call"
 	}
@@ -452,7 +427,7 @@ func (m model) recentRows(in area) []row {
 		}
 
 		if len(kept) > 0 && len(kept) < len(lines) {
-			rows[len(rows)-1].text += dim.Render(" …")
+			rows[len(rows)-1].text += m.theme.dim.Render(" …")
 		}
 	}
 
@@ -473,7 +448,7 @@ func (m model) pickedSummary() string {
 func (m model) buildRows(in area) []row {
 	all := m.recent()
 	if len(all) == 0 {
-		return []row{{text: dim.Render("no build yet")}}
+		return []row{{text: m.theme.dim.Render("no build yet")}}
 	}
 
 	line, most := recentLine(in.w), 0.0
@@ -488,7 +463,7 @@ func (m model) buildRows(in area) []row {
 	// A panel with room for one build or two lists them with no names above.
 	var rows []row
 	if in.h > 2 {
-		rows = []row{{text: dim.Render(line("started", second, "outcome", "size", "time", "cost", "turns", "failed",
+		rows = []row{{text: m.theme.dim.Render(line("started", second, "outcome", "size", "time", "cost", "turns", "failed",
 			"rounds", ""))}}
 	}
 
@@ -499,7 +474,8 @@ func (m model) buildRows(in area) []row {
 			cells[1] = fmt.Sprintf("#%d", all[i].build+1)
 		}
 
-		rows = append(rows, row{pick(line(cells...), m.focus == recentPane && i == sel), target{toRecent, i}})
+		rows = append(rows, row{m.theme.pick(line(cells...), m.focus == recentPane && i == sel),
+			target{toRecent, i}})
 	}
 
 	return rows
@@ -540,6 +516,7 @@ func (m model) recentCells(l listed, most float64) []string {
 	cost, costKnown := l.b.cost()
 	turns, turnsKnown := l.b.turns()
 	failed, _, failedKnown := l.b.failed()
+	dim := m.theme.dim
 	return []string{dim.Render(l.b.Started.Local().Format("Jan 02 15:04")), l.spec, m.outcome(l.buildRef),
 		plural(l.b.Size, "test"), time, dollars(cost, costKnown), count(turns, turnsKnown), count(failed, failedKnown),
 		count(l.b.rounds()), dim.Render(gauge(cost, most, costBar-1))}
@@ -561,7 +538,7 @@ func (m model) outcome(ref buildRef) string {
 	var said string
 	if b := m.build(ref); b != nil {
 		said = b.Outcome
-		if style, glyph := look(b.Ended); glyph != "◌" {
+		if style, glyph := m.theme.look(b.Ended); glyph != "◌" {
 			return style.Render(glyph + " " + said)
 		}
 	}
@@ -575,11 +552,13 @@ func (m model) outcome(ref buildRef) string {
 
 	switch said {
 	case "landed", "accepted":
-		return green.Render("✓ " + said)
+		return m.theme.passed.Render("✓ " + said)
 	case string(Stopped):
-		return red.Render("✗ " + said)
-	case string(Running), string(Paused):
-		return yellow.Render("▶ " + said)
+		return m.theme.failed.Render("✗ " + said)
+	case string(Running):
+		return m.theme.agent.Render("▶ " + said)
+	case string(Paused):
+		return m.theme.kiln.Render("▶ " + said)
 	}
 
 	return said
@@ -605,9 +584,9 @@ func (m model) page(s *screen) (head, body []row, sel int) {
 		title += ", with its amendments"
 	}
 
-	head = []row{{text: dotted(heading.Render(s.spec), title)}, {}}
+	head = []row{{text: m.theme.dotted(m.theme.bold.Render(s.spec), title)}, {}}
 	if s.drawn == nil {
-		return head, []row{{text: dim.Render("reading the spec")}}, -1
+		return head, []row{{text: m.theme.dim.Render("reading the spec")}}, -1
 	}
 
 	for _, line := range s.drawn {
@@ -631,19 +610,20 @@ func (m model) buildPage(s *screen) (head, body []row, sel int) {
 		return []row{{text: s.spec}}, nil, -1
 	}
 
+	t := m.theme
 	head = []row{
-		{text: dotted(heading.Render(s.spec), fmt.Sprintf("build %d", s.build+1),
-			"approved at "+dim.Render(short(b.Approved, 12)), plural(b.Size, "test"), m.outcome(s.buildRef))},
+		{text: t.dotted(t.bold.Render(s.spec), fmt.Sprintf("build %d", s.build+1),
+			"approved at "+t.dim.Render(short(b.Approved, 12)), plural(b.Size, "test"), m.outcome(s.buildRef))},
 		{text: m.summary(b)},
 		{},
-		{text: dim.Render(cols(m.runCols(), "", "run", "", "took", "turns", "cost", "failed", "context"))},
+		{text: t.dim.Render(cols(m.runCols(), "", "run", "", "took", "turns", "cost", "failed", "context"))},
 	}
 	body, sel = m.stepRows(s, b)
 	if b.Outcome != "" {
 		body = append(body, row{text: cols(m.runCols()[:1], "", m.outcome(s.buildRef))})
 	}
 
-	return head, append(body, causes(b)...), sel
+	return head, append(body, t.causes(b)...), sel
 }
 
 // stepRows are a build's runs and gates, in the order they ran, and the line of the selected run.
@@ -656,12 +636,12 @@ func (m model) stepRows(s *screen, b *Build) (body []row, sel int) {
 				sel = len(body)
 			}
 
-			body = append(body, row{pick(m.runRow(n, step), n == s.sel), target{toRun, n}})
-			body = append(body, runNotes(step)...)
+			body = append(body, row{m.theme.pick(m.runRow(n, step), n == s.sel), target{toRun, n}})
+			body = append(body, m.theme.runNotes(step)...)
 			n++
 		case *Gate:
-			body = append(body, row{text: cols(m.runCols(), "", dim.Render("gate"), verdict(step),
-				dim.Render(span(step.End.Sub(step.Start))))})
+			body = append(body, row{text: cols(m.runCols(), "", m.theme.kiln.Render("gate"), m.theme.verdict(step),
+				m.theme.dim.Render(span(step.End.Sub(step.Start))))})
 		}
 	}
 
@@ -669,24 +649,24 @@ func (m model) stepRows(s *screen, b *Build) (body []row, sel int) {
 }
 
 // runNotes say, below a run's row, that kiln stopped mid-run, and which paths it changed in the build's tree.
-func runNotes(r *Run) []row {
+func (t theme) runNotes(r *Run) []row {
 	var notes []row
 	if r.Lost {
-		notes = append(notes, row{text: "    " + yellow.Render("! kiln stopped mid-run")})
+		notes = append(notes, row{text: "    " + t.kiln.Render("! kiln stopped mid-run")})
 	}
 
 	if len(r.Changed) > 0 {
-		notes = append(notes, row{text: "    " + red.Render("✗ changed the tree: "+strings.Join(r.Changed, ", "))})
+		notes = append(notes, row{text: "    " + t.failed.Render("✗ changed the tree: "+strings.Join(r.Changed, ", "))})
 	}
 
 	return notes
 }
 
 // verdict says whether a gate passed, and whether it was the landing's.
-func verdict(g *Gate) string {
-	said := red.Render("✗ failed")
+func (t theme) verdict(g *Gate) string {
+	said := t.failed.Render("✗ failed")
 	if g.Passed {
-		said = green.Render("✓ passed")
+		said = t.passed.Render("✓ passed")
 	}
 
 	if g.Landing {
@@ -705,7 +685,7 @@ func (m model) runRow(n int, r *Run) string {
 	took := "?"
 	switch {
 	case r.running():
-		took = yellow.Render("▶ " + span(m.now.Sub(r.Start)))
+		took = m.theme.agent.Render("▶ " + span(m.now.Sub(r.Start)))
 	case !r.End.IsZero():
 		took = span(r.End.Sub(r.Start))
 	}
@@ -725,14 +705,15 @@ func (m model) runRow(n int, r *Run) string {
 	}
 
 	if len(r.Totals.Failed) > 0 {
-		failed = red.Render(failed)
+		failed = m.theme.failed.Render(failed)
 	}
 
 	if c := r.Totals.Context; c != nil {
 		context = tokens(c.Last)
 	}
 
-	return cols(m.runCols(), strconv.Itoa(n+1), role(r.Role), cmp.Or(r.Why, "?"), took, turns, cost, failed, context)
+	return cols(m.runCols(), strconv.Itoa(n+1), m.theme.agent.Render(r.Role), cmp.Or(r.Why, "?"), took, turns, cost,
+		failed, context)
 }
 
 // summary is a build's time, cost, turns and failed calls.
@@ -761,26 +742,26 @@ func (m model) summary(b *Build) string {
 
 	turns, turnsKnown := b.turns()
 	failed, refused, failedKnown := b.failed()
-	return dotted(fmt.Sprintf("%s: %s in gates, %s waiting on tools", time, span(gates), span(waiting)), price,
+	return m.theme.dotted(fmt.Sprintf("%s: %s in gates, %s waiting on tools", time, span(gates), span(waiting)), price,
 		count(turns, turnsKnown)+" turns",
 		fmt.Sprintf("%s failed, %s refused", count(failed, failedKnown), count(refused, failedKnown)))
 }
 
 // causes are a build's failed calls, grouped by cause, the most first.
-func causes(b *Build) []row {
+func (t theme) causes(b *Build) []row {
 	var failed []claude.Failure
 	for _, r := range b.runs() {
 		failed = append(failed, r.Totals.Failed...)
 	}
 
-	rows := []row{{}, {text: bold.Render("by cause")}}
+	rows := []row{{}, {text: t.bold.Render("by cause")}}
 	if len(failed) == 0 {
-		return append(rows, row{text: dim.Render("no failed calls")})
+		return append(rows, row{text: t.dim.Render("no failed calls")})
 	}
 
 	for _, c := range claude.Causes(failed) {
-		rows = append(rows, row{text: cols([]int{60}, red.Render(fmt.Sprintf("✗ %3d  %s", c.Count, c.Text)),
-			dim.Render(c.Tool+" "+c.Input))})
+		rows = append(rows, row{text: cols([]int{60}, t.failed.Render(fmt.Sprintf("✗ %3d  %s", c.Count, c.Text)),
+			t.dim.Render(c.Tool+" "+c.Input))})
 	}
 
 	return rows
@@ -793,16 +774,16 @@ func (m model) runPage(s *screen) (head, body []row, sel int) {
 		return []row{{text: s.spec}}, nil, -1
 	}
 
-	r := runs[s.run]
+	r, t := runs[s.run], m.theme
 	head = []row{
-		{text: dotted(heading.Render(s.spec), fmt.Sprintf("build %d", s.build+1),
-			fmt.Sprintf("run %d: %s", s.run+1, r.why()), role(r.Role)+" role",
-			"session "+dim.Render(short(r.Session, 8)))},
+		{text: t.dotted(t.bold.Render(s.spec), fmt.Sprintf("build %d", s.build+1),
+			fmt.Sprintf("run %d: %s", s.run+1, r.why()), t.agent.Render(r.Role)+" role",
+			"session "+t.dim.Render(short(r.Session, 8)))},
 		{text: m.runState(r, s.calls)},
 		{},
 	}
 	if s.calls == nil {
-		return head, []row{{text: dim.Render("reading its stream")}}, -1
+		return head, []row{{text: t.dim.Render("reading its stream")}}, -1
 	}
 
 	for _, line := range s.drawn {
@@ -811,7 +792,7 @@ func (m model) runPage(s *screen) (head, body []row, sel int) {
 
 	// One row, as callsFrom counts it.
 	if len(body) > 0 {
-		body = append(body, row{text: dim.Render("── calls, newest first " + strings.Repeat("─", max(0, m.w-23)))})
+		body = append(body, row{text: t.dim.Render("── calls, newest first " + strings.Repeat("─", max(0, m.w-23)))})
 	}
 
 	for _, a := range slices.Backward(s.calls.Actions) {
@@ -819,7 +800,7 @@ func (m model) runPage(s *screen) (head, body []row, sel int) {
 	}
 
 	if len(s.calls.Actions) == 0 {
-		body = append(body, row{text: dim.Render("no call yet")})
+		body = append(body, row{text: t.dim.Render("no call yet")})
 	}
 
 	return head, body, -1
@@ -841,32 +822,32 @@ func (m model) runState(r *Run, c *claude.Recounted) string {
 		cost = fmt.Sprintf("$%.2f", *r.Totals.CostUSD)
 	}
 
-	return dotted(append(facts, turns, cost)...)
+	return m.theme.dotted(append(facts, turns, cost)...)
 }
 
 // ran is how long a run ran, or how long it has run and how long since its session wrote.
 func (m model) ran(r *Run, c *claude.Recounted) []string {
 	switch {
 	case r.running():
-		facts := []string{yellow.Render("▶ running " + long(m.now.Sub(r.Start)))}
+		facts := []string{m.theme.agent.Render("▶ running " + long(m.now.Sub(r.Start)))}
 		if c != nil {
 			facts = append(facts, m.idle(c))
 		}
 
 		return facts
 	case r.Lost:
-		return []string{yellow.Render("! kiln stopped mid-run")}
+		return []string{m.theme.kiln.Render("! kiln stopped mid-run")}
 	}
 
 	return []string{"took " + span(r.End.Sub(r.Start))}
 }
 
-// idle is how long since the session wrote. Past idleWarned with no call open, it is yellow.
+// idle is how long since the session wrote. Past idleWarned with no call open, it asks for the developer's look.
 func (m model) idle(c *claude.Recounted) string {
 	idle := m.now.Sub(c.Written)
 	said := "idle " + clock(idle)
 	if idle > idleWarned && !slices.ContainsFunc(c.Actions, func(a claude.Action) bool { return a.Open }) {
-		said = yellow.Render(said)
+		said = m.theme.you.Render(said)
 	}
 
 	return said
@@ -901,21 +882,22 @@ func isRefused(a claude.Action) bool { return a.Refused }
 func (m model) action(a claude.Action, r *Run) string {
 	inputW := max(20, (m.w-34)/2)
 	widths := []int{1, 8, 5, inputW, -6}
-	at := dim.Render(a.At.Local().Format("15:04:05"))
-	input := dim.Render(cut(a.Input, inputW))
+	t := m.theme
+	at := t.dim.Render(a.At.Local().Format("15:04:05"))
+	input := t.dim.Render(cut(a.Input, inputW))
 	switch {
 	case a.Tool == "":
 		return cols(widths, "", at, "said", input)
 	case a.Open && r.running():
 		took := m.now.Sub(a.At)
-		return yellow.Render(cols(widths, "▶", a.At.Local().Format("15:04:05"), a.Tool, a.Input, clock(took),
+		return t.agent.Render(cols(widths, "▶", a.At.Local().Format("15:04:05"), a.Tool, a.Input, clock(took),
 			"running"))
 	case a.Open:
-		return cols(widths, red.Render("✗"), at, a.Tool, input, "—", red.Render("cut off"))
+		return cols(widths, t.failed.Render("✗"), at, a.Tool, input, "—", t.failed.Render("cut off"))
 	case a.Refused:
-		return cols(widths, red.Render("✗"), at, a.Tool, input, "—", red.Render("refused: "+a.Cause))
+		return cols(widths, t.failed.Render("✗"), at, a.Tool, input, "—", t.failed.Render("refused: "+a.Cause))
 	case a.Failed:
-		return cols(widths, red.Render("✗"), at, a.Tool, input, seconds(a.Took), red.Render(a.Cause))
+		return cols(widths, t.failed.Render("✗"), at, a.Tool, input, seconds(a.Took), t.failed.Render(a.Cause))
 	}
 
 	return cols(widths, "", at, a.Tool, input, seconds(a.Took))
