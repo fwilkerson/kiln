@@ -1,12 +1,15 @@
 package claude_test
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fwilkerson/kiln/internal/claude"
 )
@@ -45,4 +48,55 @@ func TestOverage(t *testing.T) {
 	case !errors.Is(ranOn, fs.ErrNotExist):
 		t.Errorf("the session worked on past the overage: %v", ranOn)
 	}
+}
+
+// forking stands in for a claude that prints first, then forks children in a loop. A child that escapes the kill holds
+// the session's output open for 20 s.
+const forking = `#!/bin/bash
+cat >/dev/null
+echo '%s'
+while :; do (sleep 20 &); done
+`
+
+// TestKillForks holds that Run returns promptly once it kills a session, at overage or when its context ends.
+// No child the session forked as it died holds Run past the kill.
+func TestKillForks(t *testing.T) {
+	cases := []struct {
+		name, first string
+		wait        time.Duration
+		limited     bool
+	}{
+		{"overage", `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","isUsingOverage":true}}`, time.Hour, true},
+		{"interrupted", `{"type":"system"}`, 300 * time.Millisecond, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			for range 6 {
+				ctx, cancel := context.WithTimeout(t.Context(), c.wait)
+				defer cancel()
+				began := time.Now()
+				ended := runForking(t, ctx, c.first)
+				switch took := time.Since(began); {
+				case (ended.Limit != nil) != c.limited:
+					t.Fatalf("Run answered %+v; want a usage limit: %v", ended, c.limited)
+				case took > 3*time.Second:
+					t.Fatalf("Run took %v to return after the kill", took)
+				}
+			}
+		})
+	}
+}
+
+// runForking runs forking, which prints first, through Run in a directory of its own, and answers how it ended.
+func runForking(t *testing.T, ctx context.Context, first string) claude.Ended {
+	const session = "0b8e6c1e-2f4d-4f6a-9b1c-3d5e7f9a1b2d"
+	dir := t.TempDir()
+	program := filepath.Join(dir, "claude")
+	if err := os.WriteFile(program, fmt.Appendf(nil, forking, first), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	c := claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: filepath.Join(dir, "sessions")})
+	ended, _ := c.Run(ctx, claude.Launch{Session: session, Role: "build", Prompt: "Build x.", Dir: dir})
+	return ended
 }

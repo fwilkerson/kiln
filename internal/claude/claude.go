@@ -258,6 +258,16 @@ func run(cmd *exec.Cmd, stream io.Writer) (ended Ended, stderr string, err error
 	tail := proc.NewTail(stderrKept)
 	cmd.Stderr = tail
 	proc.OwnGroup(cmd)
+	// A group kill misses a child forked as it lands, and that child would hold the output open past Wait. So each
+	// kill, at a limit or when the context ends, ends the tree first. exec calls Cancel only once Start succeeds.
+	begun, group := make(chan *tree, 1), cmd.Cancel
+	cmd.Cancel = func() error {
+		t := <-begun
+		begun <- t
+		t.end()
+		return group()
+	}
+
 	cmd.WaitDelay = outputGrace
 	out, err := cmd.StdoutPipe()
 	if err != nil {
@@ -269,6 +279,7 @@ func run(cmd *exec.Cmd, stream io.Writer) (ended Ended, stderr string, err error
 	}
 
 	tree := watch(cmd.Process.Pid, cmd.Dir)
+	begun <- tree
 	var read reading
 	lines := bufio.NewScanner(out)
 	lines.Buffer(nil, 64<<20)

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -24,6 +25,7 @@ type tree struct {
 	forks forks
 	quit  chan struct{}
 	done  chan struct{}
+	ended sync.Once
 }
 
 func watch(root int, place string) *tree {
@@ -143,7 +145,10 @@ func (t *tree) leads(pgid int, living map[int]int64) bool {
 	return ok && (!lives || now == known)
 }
 
-func (t *tree) end() {
+// end stops and kills each process of the tree. A call after the first waits for the first, then does nothing.
+func (t *tree) end() { t.ended.Do(t.kill) }
+
+func (t *tree) kill() {
 	close(t.quit)
 	<-t.done
 	t.forks.close()
