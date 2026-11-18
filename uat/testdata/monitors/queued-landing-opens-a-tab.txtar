@@ -1,14 +1,23 @@
-# A fix's landing that kiln monitor run takes up as it starts opens a tab, as the fix's own run did.
+# A fix accepted while another kiln holds the run lock shows as accepted. Its landing, which the next kiln monitor
+# run takes up as it starts, opens a tab, as the fix's own run did.
 
 env 'KILN_OPEN=echo opened >>.git/opened'
 
 # Given: a monitor whose fix waits for kiln accept, which opened a tab,
 exec sh -c 'kiln monitor run || true'
 grep -count=1 opened .git/opened
+exec kiln status
+stdout 'docs: waiting on the developer'
 
-# and a kiln accept made while another kiln holds the run lock, then a commit on main that breaks the gate.
+# and a kiln accept made while another kiln holds the run lock. kiln status then shows the fix accepted, its landing
+# waiting for the next kiln monitor run, though the ledger still says the fix waits.
 exec sh -c 'perl -e ''use Fcntl qw(:flock); open(F, ">>", ".git/kiln/run.lock") or die; flock(F, LOCK_EX) or die; open(M, ">", ".git/locked"); close(M); sleep 30'' & while [ ! -f .git/locked ]; do sleep 0.1; done; kiln accept docs; s=$?; kill $!; exit $s'
 stdout 'docs: accepted; the next kiln monitor run lands it'
+exec kiln status
+! stdout 'waiting on the developer'
+stdout 'docs: accepted, lands at the next kiln monitor run'
+
+# and a commit on main that breaks the gate.
 exec sh -c 'touch broken && git add broken && git commit -qm "break the gate"'
 
 # When: the developer's next kiln monitor run starts,
