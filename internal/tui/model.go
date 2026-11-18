@@ -32,6 +32,8 @@ type model struct {
 	open string
 	// keysShown lists the top screen's keys over it. Until it is closed, no other key or click reaches the screen.
 	keysShown bool
+	// keysTop is the first key the key list shows, where the list scrolls.
+	keysTop int
 
 	// The home screen's. The specs' first row stands for all of them, so sel[specsPane] is 0 there. On a spec, it is
 	// the spec's index in filtered, plus 1.
@@ -348,6 +350,10 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 	case key.Matches(k, keysList, back):
 		m.keysShown = false
+	case key.Matches(k, keyDown):
+		m.scrollKeys(1)
+	case key.Matches(k, keyUp):
+		m.scrollKeys(-1)
 	}
 
 	return nil

@@ -159,7 +159,7 @@ var (
 		m.stack = m.stack[:len(m.stack)-1]
 		return nil
 	}}
-	showKeys = command{keysList, func(m *model, _ *screen) tea.Cmd { m.keysShown = true; return nil }}
+	showKeys = command{keysList, func(m *model, _ *screen) tea.Cmd { m.keysShown, m.keysTop = true, 0; return nil }}
 	quits    = command{quit, func(*model, *screen) tea.Cmd { return tea.Quit }}
 )
 
@@ -230,30 +230,78 @@ var keyNames = map[string]string{"up": "↑", "down": "↓", "left": "←", "rig
 
 // keyList is a box that lists every key the screen of kind k takes, and what each does.
 func (m model) keyList(k kind) *lipgloss.Layer {
-	var lines []keyLine
-	for _, c := range keyMaps[k].commands {
-		lines = append(lines, keyLine{listedKeys(c.Binding), c.Help().Desc})
+	lines := keyLines(k)
+	list, closes := columns(lines, m.keyRows()), "? or esc closes this"
+	if top, scrolls := m.keyTop(k, m.keysTop); scrolls {
+		shown := lines[top:min(len(lines), top+m.keyRows())]
+		list = column(shown)
+		if top+len(shown) < len(lines) {
+			closes = "↓ more · " + closes
+		}
 	}
 
-	// A list taller than the terminal goes into columns, so the box always fits its height.
-	perColumn := max(1, min(len(lines), m.h-4))
-	var columns []string
-	for chunk := range slices.Chunk(lines, perColumn) {
-		columns = append(columns, column(chunk), "   ")
-	}
-
-	body := []string{heading.Render("keys"), lipgloss.JoinHorizontal(lipgloss.Top, columns[:len(columns)-1]...)}
+	body := []string{heading.Render("keys"), list}
 	if len(lines)+5 <= m.h {
 		body = append(body, "")
 	}
 
-	body = append(body, dim.Render("? or esc closes this"))
+	body = append(body, dim.Render(closes))
 	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Cyan).
 		Padding(0, 1).Render(strings.Join(body, "\n"))
 	x := max(0, (m.w-lipgloss.Width(box))/2)
 	y := max(0, (m.h-lipgloss.Height(box))/2)
 	return lipgloss.NewLayer(box).X(x).Y(y).Z(keyListZ)
 }
+
+// keyTop is the first key that the key list of kind k shows at scroll position top. It says whether the list
+// scrolls too. A list taller than the terminal goes into columns, so the box always fits its height. Columns wider
+// than the terminal give way to one column that scrolls. A list that does not scroll starts at its first key.
+func (m model) keyTop(k kind, top int) (int, bool) {
+	lines := keyLines(k)
+	if lipgloss.Width(columns(lines, m.keyRows()))+keyListFrame <= m.w {
+		return 0, false
+	}
+
+	return max(0, min(top, len(lines)-m.keyRows())), true
+}
+
+// scrollKeys moves the key list by d keys, where it scrolls.
+func (m *model) scrollKeys(d int) {
+	top, _ := m.keyTop(m.top().kind, m.keysTop)
+	m.keysTop, _ = m.keyTop(m.top().kind, top+d)
+}
+
+// keyLines are the key list's lines for the screen of kind k.
+func keyLines(k kind) []keyLine {
+	var lines []keyLine
+	for _, c := range keyMaps[k].commands {
+		lines = append(lines, keyLine{listedKeys(c.Binding), c.Help().Desc})
+	}
+
+	return lines
+}
+
+// columns draws lines in columns of rows lines each.
+func columns(lines []keyLine, rows int) string {
+	var drawn []string
+	for chunk := range slices.Chunk(lines, rows) {
+		drawn = append(drawn, column(chunk), "   ")
+	}
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, drawn[:len(drawn)-1]...)
+}
+
+// keyRows is how many keys the key list shows in a column: as many as fit the terminal's height.
+func (m model) keyRows() int { return max(1, m.h-4) }
+
+// keyListFrame is how many columns the key list's border and padding take.
+const keyListFrame = 4
+
+// keyDown and keyUp scroll a key list too wide for the terminal by a key.
+var (
+	keyDown = key.NewBinding(key.WithKeys("j", "down"))
+	keyUp   = key.NewBinding(key.WithKeys("k", "up"))
+)
 
 // keyLine is one line of the key list: a binding's keys, and what it does.
 type keyLine struct{ keys, desc string }

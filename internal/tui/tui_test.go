@@ -575,6 +575,52 @@ func TestNarrow(t *testing.T) {
 	}
 }
 
+// TestKeyListScrolls holds that a key list too wide for the terminal scrolls. Each j shows one key more, and k one
+// key back. Its last line says more follow, until the last key shows. A list that fits starts at its first key.
+func TestKeyListScrolls(t *testing.T) {
+	now := time.Now()
+	b := &Build{Spec: "x", Started: now, Steps: []Step{&Run{Role: "build", Session: "s", Why: "first run", Start: now,
+		End: now}}}
+	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}}
+	keys := keyLines(runScreen)
+	// shows finds a key's row in the box. It cuts each row at 100 columns, and reads runs of spaces as one.
+	shows := func(m model, l keyLine) bool {
+		for row := range strings.SplitSeq(screenOf(m), "\n") {
+			cut := strings.Join(strings.Fields(ansi.Truncate(row, 100, "")), " ")
+			if strings.Contains(cut, "│ "+l.keys+" "+l.desc+" │") {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	for _, h := range []int{5, 7} {
+		rows := h - 4
+		m := drive(t, src, "x", sized(100, h), press(tea.KeyEnter), press(tea.KeyEnter), press('?'))
+		for top := range len(keys) - rows + 1 {
+			switch more := strings.Contains(screenOf(m), "↓ more"); {
+			case len(strings.Split(screenOf(m), "\n")) != h, !shows(m, keys[top]), !shows(m, keys[top+rows-1]),
+				top > 0 && shows(m, keys[top-1]), more != (top+rows < len(keys)):
+				t.Fatalf("at %d rows, after %d j, the list does not start at %q:\n%s", h, top, keys[top].desc,
+					screenOf(m))
+			}
+
+			m = sendAll(m, press('j'))
+		}
+
+		if m = sendAll(m, press('k')); !shows(m, keys[len(keys)-rows-1]) {
+			t.Errorf("at %d rows, k does not show %q again:\n%s", h, keys[len(keys)-rows-1].desc, screenOf(m))
+		}
+	}
+
+	m := drive(t, src, "x", sized(100, 30), press(tea.KeyEnter), press(tea.KeyEnter), press('?'), press('j'),
+		press('j'), sized(100, 7))
+	if !shows(m, keys[0]) {
+		t.Errorf("j moved a list that fits, so it opens part way down after a resize:\n%s", screenOf(m))
+	}
+}
+
 // TestGauges holds home's gauges panel: a row per gauge, with its newest line. Its readings follow, as kiln wrote
 // them, each beside its spec. A crossed reading is red beside ✗. One read against another line shows it, and an
 // unknown one shows as ?.
