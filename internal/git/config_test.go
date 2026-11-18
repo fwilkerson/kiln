@@ -87,14 +87,16 @@ func landSigned(t *testing.T, s scratch) error {
 	}
 
 	sh(t, tree, "git commit --quiet --allow-empty -S -m signed")
+	// A git hook's GIT_AUTHOR_NAME outranks user.name, so the signed commit names the author to keep.
+	author := sh(t, tree, "git log -1 --no-show-signature --format=%an")
 	onto := git.Rev(sh(t, s.repo, "git rev-parse main"))
 	landed, _, err := s.git.Rebase(t.Context(), git.Worktree(tree), onto, "land")
 	if err != nil {
 		return err
 	}
 
-	if by := sh(t, s.repo, "git log -1 --no-show-signature --format=%an "+string(landed)); by != "t" {
-		return fmt.Errorf("the landing's author is %q; want t", by)
+	if by := sh(t, s.repo, "git log -1 --no-show-signature --format=%an "+string(landed)); by != author {
+		return fmt.Errorf("the landing's author is %q; want %q", by, author)
 	}
 
 	return nil
