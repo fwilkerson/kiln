@@ -469,7 +469,7 @@ func refuseCommit(checks []check, out io.Writer) error {
 		fmt.Fprintf(out, " on %s", strings.Join(named, ", "))
 	}
 
-	fmt.Fprintln(out, ".")
+	fmt.Fprintf(out, ". Make the gate's commands pass, or change gate in %s.\n", configFile)
 	return fmt.Errorf("%w: the gate fails on what the commit holds", errRefused)
 }
 

@@ -1,0 +1,30 @@
+# kiln init says the gate its hook runs, and the hook's refusal names the fix.
+
+# Given: a repository that holds only a README, not yet a Go module.
+! exists go.mod
+
+# When: the developer runs kiln init,
+exec kiln init
+
+# then, after its files, it names the gate's commands, and says the hook runs them on each commit to main.
+stdout '^installed .*pre-commit\n'
+stdout '^the pre-commit hook runs the gate on each commit to main, so make its commands pass before you commit \.kiln/:$'
+stdout '^  go vet \./\.\.\.$'
+stdout '^  go test \./\.\.\.$'
+
+# When the developer commits .kiln/ before the gate passes,
+exec git add .kiln .claude
+! exec git commit --quiet -m 'chore: start kiln'
+
+# then the hook refuses it, and names the fix.
+stderr 'kiln: the commit to main is refused, since the gate fails\. Make the gate''s commands pass, or change gate in \.kiln/kiln\.json\.$'
+
+# Once main holds .kiln/, kiln init again, as in a fresh clone, names the gate but asks for no commit.
+exec git commit --quiet --no-verify -m 'chore: start kiln'
+exec kiln init
+stdout '^the pre-commit hook runs the gate on each commit to main:$'
+stdout '^  go vet \./\.\.\.$'
+! stdout 'commit \.kiln/'
+
+-- README.md --
+# scratch
