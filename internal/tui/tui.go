@@ -89,7 +89,8 @@ const (
 	Queued  State = "queued"
 	Running State = "running"
 	Paused  State = "paused"
-	// Halted is a build whose kiln fire stopped mid-build. It goes on at the next kiln fire.
+	// Halted is a build whose kiln stopped mid-build. A spec's build goes on at the next kiln fire. kiln monitor run
+	// drops a fix, or lands an accepted fix.
 	Halted  State = "halted"
 	Stopped State = "stopped"
 	UAT     State = "UAT"

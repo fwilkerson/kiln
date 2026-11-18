@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/proc"
+	"github.com/fwilkerson/kiln/internal/tui"
 )
 
 // standing is where a monitor stands, as kiln status, kiln monitor show and kiln tui show it.
@@ -20,8 +21,9 @@ type standing struct {
 	// outcome is the outcome of the fix the result names, or "". fixed is whether the result names a fix.
 	outcome string
 	fixed   bool
-	// landing is the book's record of the fix while its accepted landing is queued or building, or nil.
-	landing *record
+	// rec is the book's record of the fix while the book says where it stands, or nil. That is while its accepted
+	// landing is queued or building, or while the kiln that fixes it is gone.
+	rec *record
 	// summary is the check's summary, the report's summary, the session's error, or why the check couldn't run.
 	summary, report string
 	// last is when its last run started, and next when it is due again. Each is zero for a monitor that never ran.
@@ -53,8 +55,11 @@ func (h *history) standing(m monitor, rec *record) standing {
 		s.result, s.summary = e.Found, e.Summary
 	}
 
-	if s.fixed && rec.fixLanding() {
-		s.result, s.landing = landingResult(rec.State), rec
+	switch {
+	case s.fixed && rec.fixHalted():
+		s.result, s.rec = string(tui.Halted), rec
+	case s.fixed && rec.fixLanding():
+		s.result, s.rec = landingResult(rec.State), rec
 	}
 
 	return s
@@ -67,6 +72,11 @@ func (r *record) fixLanding() bool {
 	}
 
 	return r.Monitor && r.landing()
+}
+
+// fixHalted reports whether r, which may be nil, is a monitor's fix whose kiln is gone mid-fix or mid-landing.
+func (r *record) fixHalted() bool {
+	return r != nil && r.Monitor && r.halted()
 }
 
 // landingResult is the result of a monitor whose accepted fix's landing is in the state st.

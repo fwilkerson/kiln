@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/tui"
+	"github.com/fwilkerson/practices/claim"
 )
 
 // TestView holds what the view reads from the book and the ledger. A spec the book no longer holds was accepted, or
@@ -256,6 +257,72 @@ func TestMonitorReadings(t *testing.T) {
 		t.Errorf("m's readings are\n%s\nwant\n%s\nand other's are %v, want none", got, want,
 			monitors[1].Monitor.Readings)
 	}
+}
+
+// TestCutShortFix holds that a fix whose kiln is gone stands halted, in the view and in kiln status. Status names
+// kiln monitor run, which drops the fix and runs the monitor again, or lands an accepted fix.
+func TestCutShortFix(t *testing.T) {
+	for name, tc := range map[string]struct {
+		accepted bool
+		next     string
+	}{
+		"a fix":                     {next: "next: run kiln monitor run m, which drops the fix"},
+		"an accepted fix's landing": {accepted: true, next: "next: run kiln monitor run m, which lands it"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := cutShortFix(t, tc.accepted)
+			monitors, err := view{r}.Monitors(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var status strings.Builder
+			if err := r.monitorStatus(t.Context(), &status); err != nil {
+				t.Fatal(err)
+			}
+
+			got := status.String()
+			if !claim.Holds(monitors[0].State == tui.Halted, strings.Contains(got, "m: halted"),
+				strings.Contains(got, tc.next)) {
+				t.Errorf("the view says %s, and status says\n%s\nwant halted, and %q", monitors[0].State, got,
+					tc.next)
+			}
+		})
+	}
+}
+
+// cutShortFix is a repository whose monitor m has a fix the book holds building, for a kiln that has exited. The
+// developer accepted the fix when accepted is true.
+func cutShortFix(t *testing.T, accepted bool) *Repo {
+	t.Helper()
+	dead := exec.Command("true")
+	if err := dead.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	r, repo := scratchRepo(t)
+	config := `{"gate": ["true"], "rounds": 1, "acceptance": "acceptance/{spec}/", "monitors": [{"name": "m", ` +
+		`"every": "24h", "command": "true"}]}`
+	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json && git add . && git commit --quiet -m start")
+	err := r.store.update(func(b *book) error {
+		b.Specs = []*record{{Name: "m", State: building, Build: "b", Monitor: true, Accepted: accepted,
+			PID: dead.Process.Pid}}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	at := time.Now().Add(-time.Hour)
+	for _, e := range []entry{{Kind: monitorKind, Monitor: "m", Found: foundFix}, {Kind: builtKind, Spec: "m",
+		Monitor: "m"}, {Kind: startKind, Role: "build", Session: "s", PID: dead.Process.Pid}} {
+		e.Build, e.At = "b", at
+		if err := r.store.write(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	return r
 }
 
 // valueOf is a reading's value, or ? where kiln could not take it.

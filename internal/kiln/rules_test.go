@@ -710,8 +710,19 @@ func TestNextStep(t *testing.T) {
 		"a fix's landing queued": {
 			rec: record{State: queued, Accepted: true, Monitor: true}, says: "the next kiln monitor run, which lands it",
 		},
-		"a fix's landing building": {rec: record{State: building, Accepted: true, Monitor: true}, says: "wait"},
-		"a fix building":           {rec: record{State: building, Monitor: true, Session: "s"}, says: "wait"},
+		"a fix's landing building": {
+			rec:  record{State: building, Accepted: true, Monitor: true, runner: runner{PID: os.Getpid()}},
+			says: "wait",
+		},
+		"a fix's landing whose kiln is gone": {
+			rec: record{State: building, Accepted: true, Monitor: true}, says: "run kiln monitor run x, which lands it",
+		},
+		"a fix building": {
+			rec: record{State: building, Monitor: true, Session: "s", runner: runner{PID: os.Getpid()}}, says: "wait",
+		},
+		"a fix whose kiln is gone": {
+			rec: record{State: building, Monitor: true, Session: "s"}, says: "run kiln monitor run x, which drops",
+		},
 		// The book has no command for kiln monitor run x, so the step's text names it.
 		"a fix stopped": {
 			rec: record{State: stopped, Monitor: true, Session: "s"}, commands: nil, rerun: true,
