@@ -231,8 +231,8 @@
 // kiln asks Ghostty, through osascript, for a tab in its front window, or a window when it shows none. The app and the
 // tab in front stay in front. The tab runs <kiln> monitor show <name> in <top>. $KILN_OPEN names a command to run in
 // place of osascript, with that command line and <top> as its arguments. The tab notifies the developer, and shows the
-// summary, report or error, and the next command. A session that failed as the last run did opens none. An accepted
-// landing opens none.
+// summary, report or error, and the next command. A session that failed as the last run did opens none. A landing
+// kiln accept makes opens none, and one that kiln monitor run takes up as it starts opens one.
 //
 // # The ledger
 //

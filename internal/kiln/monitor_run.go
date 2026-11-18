@@ -109,7 +109,7 @@ func (b *book) dropLost() []record {
 }
 
 // dropLost ends the build of rec, a fix a kiln cut short, dropped, and removes its branch and checkouts. A fix
-// whose landing main holds ends landed instead, and the gauges read it.
+// whose landing main holds ends landed instead, opens a tab, and the gauges read it.
 func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 	b := &build{r: r, rec: rec, tree: r.tree(rec.Name), out: out}
 	held, err := b.landedBefore(ctx)
@@ -122,6 +122,7 @@ func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 			return err
 		}
 
+		r.notify(ctx, rec.Name, out)
 		return b.readGauges(ctx)
 	}
 
@@ -225,7 +226,7 @@ func (run *monitorRunning) fix(ctx context.Context, f *fixing, line entry, h *hi
 	}
 
 	if notifies(f.outcome, h) {
-		run.open(ctx, line.Monitor)
+		run.r.notify(ctx, line.Monitor, run.out)
 	}
 
 	err = errors.Join(err, b.readGauges(ctx))
@@ -301,10 +302,11 @@ func (h *history) lastResult() string {
 	return h.result(h.last)
 }
 
-// open opens a tab that shows how the last run of the monitor name ended. An opener that fails changes no result.
-func (run *monitorRunning) open(ctx context.Context, name Spec) {
-	if err := run.r.open(ctx, name); err != nil {
-		fmt.Fprintf(run.out, "%s: kiln could not open a tab: %v\n", name, err)
+// notify opens a tab that shows how the last run of the monitor name ended. An opener that fails changes no result,
+// and kiln says so on out.
+func (r *Repo) notify(ctx context.Context, name Spec, out io.Writer) {
+	if err := r.open(ctx, name); err != nil {
+		fmt.Fprintf(out, "%s: kiln could not open a tab: %v\n", name, err)
 	}
 }
 

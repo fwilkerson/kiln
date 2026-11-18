@@ -69,6 +69,7 @@ func (r *Repo) buildEach(ctx context.Context, out io.Writer, only Spec, unlock f
 		}
 
 		b.waits(ctx)
+		b.notifyLanding(ctx, only)
 		if err := b.readGauges(ctx); err != nil {
 			return err
 		}
@@ -164,6 +165,15 @@ func (b *build) waits(ctx context.Context) {
 	fmt.Fprintf(b.out, "\x1b]9;kiln: %s %s\a", rec.Name, shownState(rec))
 	for _, line := range b.r.sumUp(ctx, *rec, b.tree, b.landed) {
 		fmt.Fprintln(b.out, indent(line))
+	}
+}
+
+// notifyLanding opens a tab for a fix's landing that kiln monitor run took up as it started, for landings alone. No
+// developer reads that run's output. kiln accept, run for the fix's name, prints the landing to the developer.
+func (b *build) notifyLanding(ctx context.Context, only Spec) {
+	// A fix's landing only lands or stops, as landingStops says, and either opens a tab.
+	if only == landings && b.fix != nil {
+		b.r.notify(ctx, b.rec.Name, b.out)
 	}
 }
 
