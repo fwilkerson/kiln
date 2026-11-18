@@ -1,0 +1,73 @@
+# An accepted spec with amendments is retired, though kiln was killed once its landing moved main.
+
+# Given: a spec waiting on its branch with an amendment. A git first on the PATH kills kiln as soon as a fast-forward
+# merge moves main.
+exec kiln queue x
+exec kiln fire
+stdout '^x: waits on kiln/x'
+exec sh -c 'printf "#!/bin/sh\n\"%s\" \"\$@\" || exit\ncase \" \$* \" in *\" merge \"*\" --ff-only \"*) [ -e \"$WORK/.tmp/killed\" ] || { touch \"$WORK/.tmp/killed\"; kill -9 \$PPID; } ;; esac\n" "$(command -v git)" >.tmp/git && chmod +x .tmp/git'
+
+# When: kiln accept dies once main holds the retired spec, and the developer runs kiln fire.
+! exec sh -c 'PATH="$PWD/.tmp:$PATH" exec kiln accept x'
+exists .tmp/killed
+exec git log -1 --format=%s main
+stdout '^docs\(x\): retire the accepted spec$'
+exec kiln fire
+stdout '^x: accepted'
+
+# Then: kiln status no longer lists the spec, and main holds the one landing.
+exec kiln status
+! stdout '^x:'
+exec git log --format=%s main
+stdout -count=1 '^feat\(x\): land the approved spec$'
+
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 1.
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+    {"result": {"result": "Built x, under an amendment."}}
+  ]}},
+  "audit": {"1": {"1": [{"result": {"result": "read 1 directory, found 0"}}]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 2.
+func X() int { return 2 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 2 {
+		t.Fatalf("X answers %d, want 2", got)
+	}
+}
+-- _given/x/.kiln/specs/x.amend.md --
+# Amendments to .kiln/specs/x.md
+
+## Acceptance test 1: X answers
+
+### Old
+
+- **Then**: it answers 1.
+
+### New
+
+- **Then**: it answers 2.
+
+### Reason
+
+1 is taken.

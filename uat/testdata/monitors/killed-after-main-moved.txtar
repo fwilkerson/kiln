@@ -1,0 +1,35 @@
+# A fix whose landing moved main ends landed, though kiln was killed before it recorded the landing.
+
+env KILN_OPEN=true
+
+# Given: a monitor whose check asks for a fix until a file holds a line, and whose command writes that line. A git
+# first on the PATH kills kiln as soon as a fast-forward merge moves main.
+exec sh -c 'printf "#!/bin/sh\n\"%s\" \"\$@\" || exit\ncase \" \$* \" in *\" merge \"*\" --ff-only \"*) [ -e \"$WORK/.tmp/killed\" ] || { touch \"$WORK/.tmp/killed\"; kill -9 \$PPID; } ;; esac\n" "$(command -v git)" >.tmp/git && chmod +x .tmp/git'
+
+# When: kiln monitor run dies once main holds the fix, and the developer runs kiln monitor run again.
+! exec sh -c 'PATH="$PWD/.tmp:$PATH" exec kiln monitor run'
+exists .tmp/killed
+exec git log -1 --format=%s main
+stdout '^fix\(bump\): land the monitor''s fix$'
+exec kiln monitor run
+! stdout 'dropped'
+
+# Then: kiln status shows the fix landed, and main holds the one landing.
+exec kiln status
+stdout 'bump.*landed'
+! stdout 'stopped|dropped'
+exec git log --format=%s main
+stdout -count=1 '^fix\(bump\): land the monitor''s fix$'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "monitors": [
+ {"name": "bump", "every": "24h", "check": "sh .kiln/monitors/bump", "command": "echo current >>state.txt"}
+]}
+-- .kiln/monitors/bump --
+if grep -qx current state.txt; then
+  echo '{"fix": false, "summary": "state.txt is current"}'
+else
+  echo '{"fix": true, "summary": "state.txt is stale"}'
+fi
+-- state.txt --
+stale

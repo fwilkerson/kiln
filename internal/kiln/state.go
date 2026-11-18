@@ -65,6 +65,10 @@ type record struct {
 	// Before is the commit kiln/<name> stood at when its landing began. It is set only while a landing runs. A
 	// landing that doesn't move main puts the branch back there.
 	Before git.Rev `json:"before,omitempty"`
+	// Landing is the commit a landing moves main to, set before main moves, and Onto the commit main stood at. Once
+	// main holds Landing, the next kiln records the landing, though kiln died first.
+	Landing git.Rev `json:"landing,omitempty"`
+	Onto    git.Rev `json:"onto,omitempty"`
 	// Why says why the build stopped, with the gate's output.
 	Why string `json:"why,omitempty"`
 	// Failing names what failed a build stopped past its last round. It names tests, commands and refused paths, or

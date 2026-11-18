@@ -199,6 +199,10 @@ type outOfRounds struct {
 func (s *outOfRounds) Error() string { return s.why }
 
 func (b *build) run(ctx context.Context) error {
+	if done, err := b.landedBefore(ctx); err != nil || done {
+		return err
+	}
+
 	if b.rec.Monitor {
 		return b.landFix(ctx)
 	}
@@ -217,6 +221,47 @@ func (b *build) run(ctx context.Context) error {
 	}
 
 	return b.untilDone(ctx)
+}
+
+// landedBefore records the landing that moved main before kiln died, and starts no session. A spec's build waits for
+// UAT, or is retired, and a fix ends landed. It answers whether main holds the record's landing.
+func (b *build) landedBefore(ctx context.Context) (bool, error) {
+	if held, err := b.r.holdsLanding(ctx, b.rec); err != nil || !held {
+		return false, err
+	}
+
+	b.landed, b.onto = b.rec.Landing, b.rec.Onto
+	if b.rec.Monitor {
+		f, err := b.r.fixOf(ctx, b.rec)
+		if err != nil {
+			return true, err
+		}
+
+		b.fix = f
+		f.end(outLanded, "", "")
+		return true, nil
+	}
+
+	if err := b.r.dropCheckouts(ctx, b.rec.Name); err != nil {
+		return true, err
+	}
+
+	return true, b.onMain(b.rec.Landing)
+}
+
+// holdsLanding is whether main holds rec's landing, the commit its landing moved main to, or was moving it to.
+func (r *Repo) holdsLanding(ctx context.Context, rec record) (bool, error) {
+	if rec.Landing == "" {
+		return false, nil
+	}
+
+	main, err := r.mainTip(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	base, err := r.git.MergeBase(ctx, main, rec.Landing)
+	return base == rec.Landing, err
 }
 
 // untilDone gates the work, and sends each failure or finding back to the session, until nothing goes back.
@@ -426,7 +471,7 @@ func (b *build) onMain(at git.Rev) error {
 	}
 
 	b.record(entry{Kind: outcomeKind, Outcome: outLanded})
-	b.set(func(r *record) { r.State = landed })
+	b.set(func(r *record) { r.State, r.Before, r.Landing, r.Onto = landed, "", "", "" })
 	b.landed = at
 	b.say("landed on main at %s, and waits for UAT", short(at))
 	return nil

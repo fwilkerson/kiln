@@ -108,8 +108,23 @@ func (b *book) dropLost() []record {
 	return lost
 }
 
-// dropLost ends the build of rec, a fix a kiln cut short, dropped, and removes its branch and checkouts.
+// dropLost ends the build of rec, a fix a kiln cut short, dropped, and removes its branch and checkouts. A fix
+// whose landing main holds ends landed instead, and the gauges read it.
 func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
+	b := &build{r: r, rec: rec, tree: r.tree(rec.Name), out: out}
+	held, err := b.landedBefore(ctx)
+	if err != nil {
+		return err
+	}
+
+	if held {
+		if err := b.fixEnded(ctx); err != nil {
+			return err
+		}
+
+		return b.readGauges(ctx)
+	}
+
 	r.dropped(rec.Name, rec.Build, out)
 	if err := r.dropCheckouts(ctx, rec.Name); err != nil {
 		return err

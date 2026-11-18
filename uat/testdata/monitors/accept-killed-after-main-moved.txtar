@@ -1,0 +1,29 @@
+# An accepted fix whose landing moved main ends landed, though kiln was killed before it recorded the landing.
+
+env KILN_OPEN=true
+
+# Given: a monitor whose fixes wait for kiln accept, and a fix of it waiting on its branch. A git first on the PATH
+# kills kiln as soon as a fast-forward merge moves main.
+exec sh -c 'kiln monitor run || true'
+exec kiln status
+stdout 'docs.*waiting'
+exec sh -c 'printf "#!/bin/sh\n\"%s\" \"\$@\" || exit\ncase \" \$* \" in *\" merge \"*\" --ff-only \"*) [ -e \"$WORK/.tmp/killed\" ] || { touch \"$WORK/.tmp/killed\"; kill -9 \$PPID; } ;; esac\n" "$(command -v git)" >.tmp/git && chmod +x .tmp/git'
+
+# When: kiln accept dies once main holds the fix, and the developer runs kiln monitor run.
+! exec sh -c 'PATH="$PWD/.tmp:$PATH" exec kiln accept docs'
+exists .tmp/killed
+exec git log -1 --format=%s main
+stdout '^fix\(docs\): land the monitor''s fix$'
+exec kiln monitor run
+
+# Then: kiln status shows the fix landed, not stopped, and main holds the one landing.
+exec kiln status
+stdout 'docs.*landed'
+! stdout 'stopped'
+exec git log --format=%s main
+stdout -count=1 '^fix\(docs\): land the monitor''s fix$'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "monitors": [
+ {"name": "docs", "every": "168h", "command": "echo 'the docs, brought up to date' >docs.txt", "accept": true}
+]}

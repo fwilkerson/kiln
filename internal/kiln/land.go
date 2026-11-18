@@ -20,7 +20,8 @@ import (
 // It answers the commit main moved to. Or it answers what kept the work from landing, for the session. That is a
 // conflict, work that changes nothing on main, or the gate. A landing that doesn't move main puts the branch back
 // where it stood, even after an error or an interrupt. Should kiln die mid-landing, the record keeps that commit,
-// and the next kiln fire puts the branch back.
+// and the next kiln fire puts the branch back. A landing that main holds has landed, whatever moving main answered.
+// The record keeps it until the build records it, so the next kiln records it if this one can't.
 func (b *build) land(ctx context.Context, from git.Rev, retire func(ctx context.Context, held git.Rev) error,
 	allowed ...string) (landed git.Rev, back setback, err error) {
 	before, err := b.r.git.Head(ctx, b.tree)
@@ -30,6 +31,10 @@ func (b *build) land(ctx context.Context, from git.Rev, retire func(ctx context.
 
 	b.set(func(r *record) { r.Before = before })
 	defer func() {
+		if landed == "" {
+			landed, err = b.heldAnyway(context.WithoutCancel(ctx), err)
+		}
+
 		if landed == "" {
 			err = errors.Join(err, b.unland(context.WithoutCancel(ctx)))
 		} else {
@@ -45,6 +50,21 @@ func (b *build) land(ctx context.Context, from git.Rev, retire func(ctx context.
 
 		b.say("main moved while the gate ran; the work is rebased onto it again")
 	}
+}
+
+// heldAnyway answers the record's landing, and no error, when main holds it though the move answered err. An
+// interrupt can cut the move short once main has moved. Otherwise it answers err.
+func (b *build) heldAnyway(ctx context.Context, err error) (git.Rev, error) {
+	held, found := b.r.holdsLanding(ctx, b.now())
+	switch {
+	case found != nil:
+		return "", errors.Join(err, found)
+	case !held:
+		return "", err
+	}
+
+	b.onto = b.now().Onto
+	return b.now().Landing, nil
 }
 
 // errMainMoved is a landing that main's move refused, since main moved while the gate ran.
@@ -141,6 +161,7 @@ func (b *build) changes(ctx context.Context, onto git.Rev) (git.Rev, setback, er
 
 // move moves main to head, only if main is still at onto. It answers errMainMoved if main moved.
 func (b *build) move(ctx context.Context, head, onto git.Rev) (git.Rev, setback, error) {
+	b.set(func(r *record) { r.Landing, r.Onto = head, onto })
 	way, err := b.r.git.Move(ctx, mainBranch, head, onto)
 	switch {
 	case err != nil:
@@ -165,7 +186,7 @@ func (b *build) unland(ctx context.Context) error {
 		return err
 	}
 
-	b.set(func(r *record) { r.Before = "" })
+	b.set(func(r *record) { r.Before, r.Landing, r.Onto = "", "", "" })
 	return nil
 }
 
