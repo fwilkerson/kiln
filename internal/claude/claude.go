@@ -42,6 +42,7 @@
 //
 // A usage limit ends a session with Ended.Limit. A limit is a rate_limit_event that rejects the session or bills
 // overage, or a result with API status 429. Overage bills beyond the plan, which no unattended session should do.
+// Run kills the session at the first such event, and reads none of its stream after.
 //
 // Run totals what each run printed, in Ended.Totals: its turns, cost, context, tool calls, waits and failed calls.
 // Totals keeps at most 200 bytes of a call's input, or of its cause. Recount totals a run again from the stream, from
@@ -274,6 +275,11 @@ func run(cmd *exec.Cmd, stream io.Writer) (ended Ended, stderr string, err error
 	for lines.Scan() {
 		_, _ = stream.Write(append(lines.Bytes(), '\n'))
 		read.line(lines.Bytes())
+		// A session that runs on past a limit bills overage, or resumes later from work it has already finished.
+		if read.limited {
+			_ = cmd.Cancel()
+			break
+		}
 	}
 
 	scanned := lines.Err()
