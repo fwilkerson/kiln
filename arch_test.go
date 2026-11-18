@@ -46,15 +46,16 @@ func violation(pkg, imp string) string {
 var outside = map[string][]string{
 	// The root holds only tests, which take the checks of a whole repository from repotest.
 	"github.com/fwilkerson/kiln": {"github.com/fwilkerson/practices/repotest"},
-	"internal/proc":              {"golang.org/x/sys"},
-	"internal/claude":            {"golang.org/x/sys"},
+	// repotest's Facts holds a package doc's numbers to its constants, so only a test imports it.
+	"internal/proc":   {"golang.org/x/sys", "github.com/fwilkerson/practices/repotest"},
+	"internal/claude": {"golang.org/x/sys", "github.com/fwilkerson/practices/repotest"},
 	// claim holds the checks tests share, so only a test imports it.
-	"internal/kiln": {"github.com/fwilkerson/practices/claim"},
+	"internal/kiln": {"github.com/fwilkerson/practices/claim", "github.com/fwilkerson/practices/repotest"},
 	"internal/scenariotest": {"github.com/rogpeppe/go-internal", "github.com/charmbracelet/x/ansi",
 		"github.com/charmbracelet/x/vt"},
 	"internal/tui": {"charm.land/bubbletea/v2", "charm.land/bubbles/v2", "charm.land/lipgloss/v2",
 		"github.com/alecthomas/chroma/v2", "github.com/charmbracelet/x/ansi", "github.com/charmbracelet/x/term",
-		"github.com/charmbracelet/x/vt"},
+		"github.com/charmbracelet/x/vt", "github.com/fwilkerson/practices/repotest"},
 	"internal/termtest": {"github.com/creack/pty", "github.com/charmbracelet/x/vt",
 		"github.com/charmbracelet/ultraviolet", "golang.org/x/image"},
 }

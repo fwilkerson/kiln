@@ -69,4 +69,6 @@ organize current work by stories, then reorganize it by functional area. A story
   file under 10 in `held`, so no change lowers one. The `code-health` monitor in `.kiln/kiln.json` refactors the
   files with the lowest scores, as its gauge `health` lists them, and deletes each from `held` once it scores 10.
 - `arch_test.go` and `style_test.go`: import rules, modern Go, and doc names.
+- `TestFacts` in a package's `facts_test.go`: each number the package doc states, beside the constant that holds it.
+  `repotest.Facts` fails when one moves without the other. A number a doc states gets a row there.
 - `go test ./...`, which the pre-commit hook runs on each commit to main.
