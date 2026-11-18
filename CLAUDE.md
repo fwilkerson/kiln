@@ -13,7 +13,8 @@ for macOS.
   build names a new one in its last reply, for the developer to commit. `monitors/uat` is the check of the monitor
   that folds an accepted spec's tests. `monitors/docs` is the check of the monitor that reads the docs of changed
   packages against their code. `gauges/health` is the gauge of `code-health`, the monitor that refactors the files
-  `go tool health` scores lowest.
+  `go tool health` scores lowest. `monitors/gate-time` is the check of the monitor that makes the tests faster
+  once the gate's times in kiln's ledger rise.
 - `bugs/<name>.md`: a bug the developer filed, with what happened and what should happen. `bugs`, a monitor, takes
   the first by name each hour, as `.kiln/agents/bugfix.md` says. A build never fixes one.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.

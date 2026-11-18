@@ -67,6 +67,16 @@
       "agent": ".kiln/agents/docs.md",
       "prompt": "Read the docs of each package the check printed against its code, as your instructions say.",
       "accept": true
+    },
+    {
+      "name": "gate-time",
+      "every": "24h",
+      "check": ".kiln/monitors/gate-time",
+      "gates": false,
+      "agent": ".kiln/agents/speedup.md",
+      "prompt": "Make the tests faster, from the slowest the check printed, as your instructions say.",
+      "accept": true,
+      "tests": true
     }
   ]
 }

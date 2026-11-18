@@ -29,6 +29,8 @@ differ, this file decides for kiln.
 - A test's condition holds one `||`. `claim.Holds`, from the practices module, takes the rest, as
   `TestSpecBeforeKiln` in `internal/kiln/agent_test.go` shows. `go doc -all github.com/fwilkerson/practices/claim`
   is its contract.
+- The `gate-time` monitor in `.kiln/kiln.json` makes the tests faster once the gate slows, by the rule its check's
+  header states. Its fix keeps each check, and waits for `kiln accept gate-time`.
 
 ## Acceptance tests
 
