@@ -189,7 +189,7 @@
 //	           command   first, outside the sandbox, then the gate; fails with no agent: stopped
 //	           agent     while the gate fails, or with no command; kiln.json's rounds, and the audit
 //	  ends     landed, waits on its branch, unchanged, needs you, session failed, usage limit, stopped, couldn't run
-//	  window   a Ghostty window, when the fix landed, waits, stopped, needs you or session failed
+//	  tab      a Ghostty tab, when the fix landed, waits, stopped, needs you or session failed
 //	  gauges   read after a landing, as after a build's
 //	  again    with "drain": true, after a fix that landed: from check, due or not, until no fix lands
 //
@@ -228,9 +228,10 @@
 //
 // kiln monitor run with a name skips that hold, but never starts a second fix.
 //
-// The window runs open -gna Ghostty --args --working-directory=<top> -e <kiln> monitor show <name>. $KILN_OPEN names
-// a command to run in place of open. That window notifies the developer, and shows the summary, report or error,
-// and the next command. A session that failed as the last run did opens none. An accepted landing opens none.
+// kiln asks Ghostty, through osascript, for a tab in its front window, or a window when it shows none. The tab runs
+// <kiln> monitor show <name> in <top>. $KILN_OPEN names a command to run in place of osascript, with that command
+// line and <top> as its arguments. The tab notifies the developer, and shows the summary, report or error, and the
+// next command. A session that failed as the last run did opens none. An accepted landing opens none.
 //
 // # The ledger
 //

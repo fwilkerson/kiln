@@ -193,7 +193,7 @@ func fixNext(name Spec, outcome string) string {
 	return ""
 }
 
-// MonitorShow shows how the last run of the monitor name ended, in the window kiln opens for it. It writes an OSC 9
+// MonitorShow shows how the last run of the monitor name ended, in the tab kiln opens for it. It writes an OSC 9
 // sequence, which Ghostty shows as a notification. The result follows, with its summary, report or error, and the
 // command to run next. Then it waits for return on in. It refuses a monitor the ledger holds no run of.
 func (r *Repo) MonitorShow(ctx context.Context, name Spec, in io.Reader, out io.Writer) error {
@@ -231,15 +231,29 @@ func (r *Repo) MonitorShow(ctx context.Context, name Spec, in io.Reader, out io.
 	return nil
 }
 
-// openVar names the command kiln runs in place of open, to open a window.
+// openVar names the command kiln runs in place of osascript, to open a tab.
 const openVar = "KILN_OPEN"
 
-// open opens a Ghostty window in the background, which runs kiln monitor show for the monitor name. LaunchServices
-// passes on neither the working directory nor the PATH, so kiln names its own path and the repository's.
+// newTab is the AppleScript that opens a Ghostty tab in the front window, or a window when Ghostty shows none. Its
+// arguments are the tab's command and working directory. Handing Ghostty a script file instead makes it ask each time.
+const newTab = `on run argv
+	tell application "Ghostty"
+		set cfg to new surface configuration
+		set command of cfg to item 1 of argv
+		set initial working directory of cfg to item 2 of argv
+		if (count of windows) > 0 then
+			new tab in front window with configuration cfg
+		else
+			new window with configuration cfg
+		end if
+	end tell
+end run`
+
+// open opens a Ghostty tab, which runs kiln monitor show for the monitor name. The tab's environment is Ghostty's,
+// not kiln's, so kiln names its own path and the repository's.
 func (r *Repo) open(ctx context.Context, name Spec) error {
-	args := []string{"-gna", "Ghostty", "--args", "--working-directory=" + r.top, "-e", r.exe, "monitor", "show",
-		string(name)}
-	cmd := exec.CommandContext(ctx, "open", args...)
+	args := []string{"shell:" + shellQuote(r.exe) + " monitor show " + string(name), r.top}
+	cmd := exec.CommandContext(ctx, "osascript", append([]string{"-e", newTab}, args...)...)
 	if opener := envValue(r.env, openVar); opener != "" {
 		cmd = opening(ctx, opener, args)
 	}

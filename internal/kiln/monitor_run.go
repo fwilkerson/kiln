@@ -264,11 +264,11 @@ func (run *monitorRunning) write(e entry) error {
 	return nil
 }
 
-// notified are the outcomes that open a window.
+// notified are the outcomes that open a tab.
 var notified = []string{outLanded, outStopped, outWaits, outNeedsYou, outFailed}
 
-// notifies is whether a fix that ended with outcome opens a window. h is its monitor's history before this run. A
-// session that failed as the monitor's last run did opens none. An expired sign-in then opens one window per monitor.
+// notifies is whether a fix that ended with outcome opens a tab. h is its monitor's history before this run. A
+// session that failed as the monitor's last run did opens none. An expired sign-in then opens one tab per monitor.
 func notifies(outcome string, h *history) bool {
 	if !slices.Contains(notified, outcome) {
 		return false
@@ -286,10 +286,10 @@ func (h *history) lastResult() string {
 	return h.result(h.last)
 }
 
-// open opens a window that shows how the last run of the monitor name ended. An opener that fails changes no result.
+// open opens a tab that shows how the last run of the monitor name ended. An opener that fails changes no result.
 func (run *monitorRunning) open(ctx context.Context, name Spec) {
 	if err := run.r.open(ctx, name); err != nil {
-		fmt.Fprintf(run.out, "%s: kiln could not open a window: %v\n", name, err)
+		fmt.Fprintf(run.out, "%s: kiln could not open a tab: %v\n", name, err)
 	}
 }
 
