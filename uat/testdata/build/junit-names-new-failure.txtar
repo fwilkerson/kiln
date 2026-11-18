@@ -1,7 +1,8 @@
-# 2. A pytest test that fails only on the build's commit fails the gate.
+# A pytest test that fails only on the build's commit fails the gate, and one that fails on main too is excused.
 
 # Given: a project whose kiln.json allows no round after a failing gate, and whose gate command reports test_a and
 # test_b failed on the build's commit, and only test_a on main.
+# The gate command copies pytest's JUnit XML to $KILN_JUNIT, one file at the build's commit and another at main.
 
 # When: a build reaches the gate.
 exec kiln queue t

@@ -1,26 +1,40 @@
-# Each session writes only its side.
+# Each session writes only its side, under each acceptance path, and is told each path.
 
-# Given: the project chooses the split workflow, and kiln.json names the acceptance path and the harness.
+# Given: the project chooses the split workflow, and kiln.json names the harness and two acceptance paths,
+# uat/{spec}/ and integration/{spec}/.
 exec kiln queue x
 
-# When: the build session writes a file under the acceptance path and the spec's amendment file, and the verify
-# session writes one outside its side.
+# When: the build session writes a file under each acceptance path and the spec's amendment file, and the verify
+# session writes one outside its side, then its tests under each path.
 exec kiln fire
 stdout '^x: landed on main'
 
 # Then: kiln refuses each of these writes,
-grep 'PreToolUse:Write hook error: [^"]*acceptance/x/mine_test\.go is the verify session''s' .claude-calls/build/1/1/stream.jsonl
+grep 'PreToolUse:Write hook error: [^"]*uat/x/mine_test\.go is the verify session''s' .claude-calls/build/1/1/stream.jsonl
+grep 'PreToolUse:Write hook error: [^"]*integration/x/mine_test\.go is the verify session''s' .claude-calls/build/1/1/stream.jsonl
 grep 'PreToolUse:Write hook error: [^"]*\.kiln/specs/x\.amend\.md is the verify session''s' .claude-calls/build/1/1/stream.jsonl
 grep 'PreToolUse:Write hook error: [^"]*y\.go is the build session''s' .claude-calls/verify/1/1/stream.jsonl
 
-# and none of the files is on the spec's branch.
-! exec git show main:acceptance/x/mine_test.go
+# none of the files is on main,
+! exec git show main:uat/x/mine_test.go
+! exec git show main:integration/x/mine_test.go
 ! exec git show main:.kiln/specs/x.amend.md
 ! exec git show main:y.go
-exec git show main:acceptance/x/x_test.go
+
+# and main holds the verify session's tests under each path.
+exec git show main:uat/x/x_test.go
+stdout 'func TestAT1'
+exec git show main:integration/x/x_test.go
+stdout 'func TestAT1'
+
+# Each session's instructions name both of the spec's paths.
+grep '`uat/x/`' .claude-calls/build/1/1/system
+grep '`integration/x/`' .claude-calls/build/1/1/system
+grep '`uat/x/`' .claude-calls/verify/1/1/system
+grep '`integration/x/`' .claude-calls/verify/1/1/system
 
 -- .kiln/kiln.json --
-{"workflow": "split", "rounds": 3, "harness": ["harness/"]}
+{"workflow": "split", "rounds": 3, "harness": ["harness/"], "acceptance": ["uat/{spec}/", "integration/{spec}/"]}
 -- claude.json --
 {
  "build": {
@@ -30,7 +44,16 @@ exec git show main:acceptance/x/x_test.go
      "tool": {
       "name": "Write",
       "input": {
-       "file_path": "acceptance/x/mine_test.go",
+       "file_path": "uat/x/mine_test.go",
+       "content": "package x_test\\n"
+      }
+     }
+    },
+    {
+     "tool": {
+      "name": "Write",
+      "input": {
+       "file_path": "integration/x/mine_test.go",
        "content": "package x_test\\n"
       }
      }
@@ -93,7 +116,7 @@ exec git show main:acceptance/x/x_test.go
    "1": [
     {
      "result": {
-      "result": "read 2 directories, found 0"
+      "result": "read 3 directories, found 0"
      }
     }
    ]
@@ -112,7 +135,21 @@ package scratch
 
 // X answers 42.
 func X() int { return 42 }
--- _given/tests/acceptance/x/x_test.go --
+-- _given/tests/uat/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}
+-- _given/tests/integration/x/x_test.go --
 package x_test
 
 import (

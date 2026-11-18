@@ -1,10 +1,14 @@
-# A revised spec's build session starts without its old tests.
+# A revised spec's build session starts without its old tests, under each acceptance path.
 
-# Given: a split spec landed, its acceptance tests are on main, and the developer revised a Then and queued it again.
+# Given: the project chooses the split workflow, and kiln.json names two acceptance paths, uat/{spec}/ and
+# integration/{spec}/. A spec landed with its tests under both paths on main, and the developer revised a Then and
+# queued it again.
 exec kiln queue x
 exec kiln fire
 stdout '^x: landed on main'
-exec git show main:acceptance/x/x_test.go
+exec git show main:uat/x/x_test.go
+stdout 'want 42'
+exec git show main:integration/x/x_test.go
 stdout 'want 42'
 exec sed -i '' 's/it answers 42\./it answers 43./' .kiln/specs/x.md
 exec git commit --quiet -am 'docs(x): revise test 1'
@@ -14,23 +18,26 @@ exec kiln queue x
 # kiln.json gives the build no round, so a gate that failed once would stop it.
 exec kiln fire
 
-# Then: the build session's checkout holds no file under the spec's acceptance path,
+# Then: the build session's checkout holds no file under either of the spec's paths,
 exists .claude-calls/build-listed
-! grep '^acceptance/' .claude-calls/build-listed
+! grep '^uat/' .claude-calls/build-listed
+! grep '^integration/' .claude-calls/build-listed
 grep '^x\.go$' .claude-calls/build-listed
 
 # its gate never runs the old tests,
 stdout '^x: landed on main'
 ! stdout 'the gate failed'
 
-# and the spec lands with the verify session's tests.
-exec git show main:acceptance/x/x_test.go
+# and the spec lands with the verify session's tests under both paths.
+exec git show main:uat/x/x_test.go
+stdout 'want 43'
+exec git show main:integration/x/x_test.go
 stdout 'want 43'
 exec git show main:x.go
 stdout 'return 43'
 
 -- .kiln/kiln.json --
-{"workflow": "split", "rounds": 0}
+{"workflow": "split", "rounds": 0, "acceptance": ["uat/{spec}/", "integration/{spec}/"]}
 -- claude.json --
 {
  "build": {
@@ -118,7 +125,7 @@ stdout 'return 43'
    "1": [
     {
      "result": {
-      "result": "read 2 directories, found 0"
+      "result": "read 3 directories, found 0"
      }
     }
    ]
@@ -127,7 +134,7 @@ stdout 'return 43'
    "1": [
     {
      "result": {
-      "result": "read 2 directories, found 0"
+      "result": "read 3 directories, found 0"
      }
     }
    ]
@@ -152,7 +159,7 @@ package scratch
 
 // X answers 43.
 func X() int { return 43 }
--- _given/tests/acceptance/x/x_test.go --
+-- _given/tests/uat/x/x_test.go --
 package x_test
 
 import (
@@ -166,7 +173,35 @@ func TestAT1(t *testing.T) {
 		t.Fatalf("X answers %d, want 42", got)
 	}
 }
--- _given/tests43/acceptance/x/x_test.go --
+-- _given/tests/integration/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}
+-- _given/tests43/uat/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 43 {
+		t.Fatalf("X answers %d, want 43", got)
+	}
+}
+-- _given/tests43/integration/x/x_test.go --
 package x_test
 
 import (

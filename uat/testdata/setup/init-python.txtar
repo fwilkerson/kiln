@@ -1,4 +1,4 @@
-# 7. kiln init --preset python writes Python's defaults.
+# kiln init --preset python writes Python's defaults.
 
 # Given: a repository with no .kiln/.
 ! exists .kiln
@@ -17,8 +17,7 @@ grep '"hosts": \[\n(?:\s+"[^\n]*\n)*?\s+"files\.pythonhosted\.org",?\n' .kiln/ki
 grep '"writable": \[\n(?:\s+"[^\n]*\n)*?\s+"uv cache dir",?\n' .kiln/kiln.json
 ! grep 'go ' .kiln/kiln.json
 
-# and .kiln/agents/build.md says where Python acceptance tests live.
-# Spec 10, split, moved that text: kiln.json's acceptance says where they live, and verify.md how they are written.
+# and kiln.json's acceptance says where Python acceptance tests live, and verify.md how they are written.
 grep '"acceptance": "tests/acceptance/test_\{spec\}\.py"' .kiln/kiln.json
 grep '`test_at<N>`' .kiln/agents/verify.md
 ! grep 'kiln:preset' .kiln/agents/verify.md

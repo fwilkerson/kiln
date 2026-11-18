@@ -1,9 +1,10 @@
-# A fix writes the tests only when its monitor says it may.
+# A fix writes the tests only when its monitor says it may, under any acceptance path.
 
 env KILN_OPEN=true
 
-# Given: a monitor that doesn't say its fixes may write the tests, whose command changes a file under the acceptance
-# path; and a second monitor that says they may, and whose command does the same.
+# Given: kiln.json names two acceptance paths, uat/{spec}/ and integration/{spec}/. A monitor that doesn't say its
+# fixes may write the tests changes a file under the second path. A second monitor that says they may changes a
+# file under the first.
 
 # When: the developer runs kiln monitor run.
 exec sh -c 'kiln monitor run || true'
@@ -13,19 +14,19 @@ exec kiln status
 stdout 'guarded.*stopped'
 
 # and its change is not on main,
-exec git show main:acceptance/a/note.txt
+exec git show main:integration/a/note.txt
 ! stdout 'changed by guarded'
 
 # and main holds the second monitor's change.
-exec git show main:acceptance/b/note.txt
+exec git show main:uat/b/note.txt
 stdout '^changed by trusted$'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
- {"name": "guarded", "every": "168h", "command": "echo 'changed by guarded' >>acceptance/a/note.txt"},
- {"name": "trusted", "every": "168h", "command": "echo 'changed by trusted' >>acceptance/b/note.txt", "tests": true}
+{"gate": ["true"], "acceptance": ["uat/{spec}/", "integration/{spec}/"], "monitors": [
+ {"name": "guarded", "every": "168h", "command": "echo 'changed by guarded' >>integration/a/note.txt"},
+ {"name": "trusted", "every": "168h", "command": "echo 'changed by trusted' >>uat/b/note.txt", "tests": true}
 ]}
--- acceptance/a/note.txt --
+-- integration/a/note.txt --
 a's tests
--- acceptance/b/note.txt --
+-- uat/b/note.txt --
 b's tests

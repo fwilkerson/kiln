@@ -1,4 +1,4 @@
-# 2. A build queued under one path builds with that path.
+# A build queued under one acceptance path builds with that path, though main names two by then.
 
 # Given: a project in the split workflow, and a spec x queued while kiln.json names its acceptance path as the string
 # "uat/{spec}/". Main's kiln.json then changes to the list ["uat/{spec}/", "integration/{spec}/"].
