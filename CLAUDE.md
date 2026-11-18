@@ -32,8 +32,6 @@ for macOS.
 - `docs/one-page.txt`: kiln on one page, the source that `onepage render docs/one-page.txt docs/one-page.html`
   draws in the theme `docs/sheet/`. Render it again in the commit that changes either.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
-- `.claude/handoff.md`: the open work, and the facts no file holds. Read it before the first edit of a session. It
-  is the developer's own, and git ignores it.
 - `uat/<spec>/`: the test code for each acceptance test of a spec not yet accepted, one Go test named `TestAT<N>`
   for test N.
 - `uat/testdata/<feature>/`: the scenarios of the specs the developer accepted, filed by feature. `TestUAT` in `uat/`
