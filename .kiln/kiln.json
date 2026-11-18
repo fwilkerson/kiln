@@ -58,6 +58,15 @@
       "prompt": "Fix the one bug the check printed, as your instructions say.",
       "tests": true,
       "drain": true
+    },
+    {
+      "name": "docs",
+      "every": "24h",
+      "check": ".kiln/monitors/docs",
+      "gates": false,
+      "agent": ".kiln/agents/docs.md",
+      "prompt": "Read the docs of each package the check printed against its code, as your instructions say.",
+      "accept": true
     }
   ]
 }

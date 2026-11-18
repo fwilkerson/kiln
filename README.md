@@ -174,9 +174,9 @@ bugs: landed, last ran 2026-11-17 00:24, runs next after 2026-11-17 00:54
 ```
 
 kiln runs its own repository this way. Its [`bugs`](.kiln/monitors/bugs) monitor fixes what is filed under
-`bugs/`, each with a test that fails first. `code-health` refactors the files a gauge scores lowest, and `uat`
-tidies the acceptance tests of accepted specs. An unattended session runs under the sign-in `claude` has on the
-machine.
+`bugs/`, each with a test that fails first. `code-health` refactors the files a gauge scores lowest, `uat` tidies
+the acceptance tests of accepted specs, and `docs` reads the docs of changed packages against their code. An
+unattended session runs under the sign-in `claude` has on the machine.
 
 ## Commands
 

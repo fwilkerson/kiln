@@ -21,6 +21,8 @@ differ, this file decides for kiln.
   project writes in `.kiln/`, and points to that package doc for what kiln then does. `README.md` shows the commands
   in use, and states no rule.
 - When two docs state one rule, keep the package doc's, and make the other point to it.
+- The `docs` monitor in `.kiln/kiln.json` reads the docs of each package whose code changed against that code. Its
+  fix waits for `kiln accept docs`.
 
 ## Tests
 

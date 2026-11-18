@@ -1,0 +1,30 @@
+#!/bin/sh
+# The check of kiln's docs monitor. It asks for a fix when Go code changed since the docs were last read against it.
+# It prints each package that changed, and each doc beside them, for the monitor's agent. Its last line is the JSON
+# object kiln reads.
+#
+# The docs were last read at the monitor's last fix on main. Before its first fix, they were read when this script
+# last changed. It prints the same until the code changes again, so kiln holds the monitor after a fix that found
+# nothing false.
+set -eu
+
+base=$(git log -1 --format=%H --fixed-strings --grep="fix(docs): land the monitor's fix" HEAD)
+[ -n "$base" ] || base=$(git log -1 --format=%H HEAD -- .kiln/monitors/docs)
+
+packages=$(git diff --name-only --diff-filter=d "$base" HEAD -- '*.go' | grep -v '_test\.go$' |
+  while read -r file; do dirname "$file"; done | sort -u)
+count=$(printf '%s\n' "$packages" | grep -c . || true)
+
+if [ "$count" -eq 0 ]; then
+  echo '{"fix": false, "summary": "no Go code changed since the docs were last read"}'
+  exit 0
+fi
+
+since=$(git rev-parse --short=12 "$base")
+echo "Go code changed in these packages since the docs were last read against it, at $since:"
+echo
+echo "$packages"
+echo
+echo "git diff $since HEAD -- <package> shows what changed in one."
+echo
+echo "{\"fix\": true, \"summary\": \"$count packages changed since $since\"}"
