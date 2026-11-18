@@ -97,6 +97,8 @@ func (m *move) apply(ctx context.Context) error {
 		update := []string{"update-ref", "-m", "kiln: land", m.branch.ref()}
 		_, err = m.g.in(ctx, m.g.repo, append(update, string(m.to), string(m.expected))...)
 	} else {
+		// A merge killed midway leaves the checkout half-updated and index.lock behind. It ends well within a minute.
+		ctx := context.WithoutCancel(ctx)
 		_, err = m.g.in(ctx, m.where, "merge", "--quiet", "--ff-only", "--no-overwrite-ignore", string(m.to))
 	}
 

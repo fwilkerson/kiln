@@ -20,7 +20,9 @@
 // background maintenance off. A merge may make a merge commit, and a clone names its remote origin.
 // kiln passes that config in the environment, so neither the developer's config nor the repository's turns them on.
 // No call opens an editor, prompts for a password, or takes an optional lock. Every call runs in the C locale, so
-// git's words are never translated. Each runs in a process group of its own, so kiln's interrupt does not end it.
+// git's words are never translated. Each runs in a process group of its own, which the terminal's Ctrl-C does not
+// reach. When ctx ends, the call's git is killed. [Git.Move]'s fast-forward alone runs to its end, so the checkout is
+// never left half-updated.
 //
 // kiln needs git 2.55 or later, whose hook.<event>.enabled turns off a hook that config defines. kiln asks xcrun once
 // for the git behind /usr/bin/git, since that shim near doubles each call's time.
@@ -229,7 +231,7 @@ type call struct {
 	env   []string
 }
 
-// run's own process group keeps an interrupt meant for kiln from ending its git.
+// run's own process group keeps the terminal's Ctrl-C from reaching its git. When ctx ends, run kills that group.
 func (g *Git) run(ctx context.Context, c call, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, g.binary(ctx), args...)
 	proc.OwnGroup(cmd)
