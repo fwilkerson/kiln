@@ -30,6 +30,8 @@ stderr 'kiln reject docs'
 ! stderr 'kiln accept docs lands it again'
 exec kiln status
 stdout 'main changed what the fix changed'
+! stdout '(?s)main changed what the fix changed.*main changed what the fix changed'
+stdout '^  docs.txt$'
 stdout 'kiln reject docs'
 ! stdout 'kiln accept docs to land it again'
 ! stdout 'git merge main'

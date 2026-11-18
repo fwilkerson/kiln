@@ -447,8 +447,11 @@ func (b *build) landingStops(ctx context.Context, err error) error {
 func (b *build) fixEnded(ctx context.Context) error {
 	f := b.fix
 	if f.outcome == outStopped {
-		f.summary = cmpOr(f.checked.summary, strings.SplitN(b.now().Why, "\n", 2)[0])
-		f.report = b.now().Why
+		f.summary, f.report = f.checked.summary, b.now().Why
+		if f.summary == "" {
+			// The summary takes the first line of why, so the report keeps the rest, and no line shows twice.
+			f.summary, f.report, _ = strings.Cut(f.report, "\n")
+		}
 	}
 
 	b.record(entry{Kind: outcomeKind, Outcome: f.outcome, Summary: f.summary, Report: f.report})

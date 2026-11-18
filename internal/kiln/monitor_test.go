@@ -336,6 +336,17 @@ func TestMonitorStatusLines(t *testing.T) {
 	}
 }
 
+// TestStoppedWhyOnce holds that a stopped fix's ledger line from before the fix split why still shows each line once.
+func TestStoppedWhyOnce(t *testing.T) {
+	first := "main changed what the fix changed, in these files:"
+	h := histories([]entry{{Kind: monitorKind, Monitor: "m", Found: foundFix, Build: "b"},
+		{Kind: outcomeKind, Build: "b", Outcome: outStopped, Summary: first, Report: first + "\ndocs.txt"}})["m"]
+	lines := strings.Join(h.standing(monitor{Name: "m"}, nil).lines("m", nil), "\n")
+	if strings.Count(lines, first) != 1 || !strings.Contains(lines, "docs.txt") {
+		t.Errorf("%q holds %q other than once, or no docs.txt", lines, first)
+	}
+}
+
 // TestAcceptedLanding holds that a monitor with an accepted fix stands as the book holds the fix. The ledger still
 // says the fix waits.
 func TestAcceptedLanding(t *testing.T) {
