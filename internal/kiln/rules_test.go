@@ -238,6 +238,50 @@ func TestReportNamesLostFailure(t *testing.T) {
 	}
 }
 
+// TestCommandLeavesChild holds that a command which leaves a child behind ends once its shell exits. The child gets
+// 10 s to close the command's output. kiln then kills the command's group, and keeps what the command printed.
+func TestCommandLeavesChild(t *testing.T) {
+	for name, run := range map[string]func(dir git.Worktree, command string) (string, error){
+		"a gate's command": func(dir git.Worktree, command string) (string, error) {
+			c, err := runCheck(t.Context(), dir, command, os.Environ())
+			return c.Output, err
+		},
+		"a monitor's check, command or gauge": func(dir git.Worktree, command string) (string, error) {
+			out, err := runShell(t.Context(), dir, command, os.Environ())
+			return out.both, err
+		},
+		"a writable command": func(dir git.Worktree, command string) (string, error) {
+			paths, err := (&Repo{top: string(dir)}).printed(t.Context(), command)
+			return strings.Join(paths, " "), err
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			began := time.Now()
+			out, err := run(git.Worktree(dir), "sleep 30 & echo $! > child; echo /started")
+			took := time.Since(began)
+			raw, _ := os.ReadFile(filepath.Join(dir, "child"))
+			var pid int
+			_, _ = fmt.Sscan(string(raw), &pid)
+			if err != nil || !claim.Holds(strings.TrimSpace(out) == "/started", took < 15*time.Second) {
+				t.Fatalf("answered %q, %v after %v; want /started within 15 s", out, err, took)
+			}
+
+			for range 50 {
+				if syscall.Kill(pid, 0) != nil {
+					return
+				}
+
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+			t.Errorf("the child, process %d, still runs", pid)
+		})
+	}
+}
+
 // judgment is what TestGate compares of a verdict. reported is whether it has a report. hinted is whether the report
 // points at KILN_JUNIT. mentioned is whether it holds what the row says it mentions.
 type judgment struct {

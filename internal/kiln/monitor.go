@@ -288,8 +288,7 @@ func runShell(ctx context.Context, dir git.Worktree, command string, env []strin
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
 	cmd.Dir, cmd.Env = string(dir), env
 	cmd.Stdout, cmd.Stderr = io.MultiWriter(&stdout, both), io.MultiWriter(&stderr, both)
-	proc.OwnGroup(cmd)
-	err := cmd.Run()
+	err := proc.Run(cmd)
 	return output{stdout: stdout.String(), stderr: stderr.String(), both: both.String()}, err
 }
 

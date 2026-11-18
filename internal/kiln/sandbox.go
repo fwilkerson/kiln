@@ -3,11 +3,11 @@ package kiln
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/fwilkerson/kiln/internal/claude"
+	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
@@ -83,14 +83,12 @@ func (r *Repo) printed(ctx context.Context, command string) ([]string, error) {
 		return paths, nil
 	}
 
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-	cmd.Dir, cmd.Env = r.top, proc.Shell.Env(r.env)
-	out, err := cmd.Output()
+	out, err := runShell(ctx, git.Worktree(r.top), command, proc.Shell.Env(r.env))
 	if err != nil {
 		return nil, fmt.Errorf("%s's writable command %q: %w", configFile, command, err)
 	}
 
-	paths := strings.Fields(string(out))
+	paths := strings.Fields(out.stdout)
 	for _, p := range paths {
 		if !filepath.IsAbs(p) {
 			return nil, fmt.Errorf("%s's writable command %q printed %q: print only absolute paths", configFile,

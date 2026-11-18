@@ -27,10 +27,12 @@
 // variables that name who commits: GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME and GIT_COMMITTER_EMAIL.
 //
 // kiln runs on macOS alone. The process table is read with sysctl(3), not /bin/ps, which is setuid and which a
-// session's sandbox refuses to exec. [WorkingDirs] asks lsof, which it gives 5 s.
+// session's sandbox refuses to exec. [WorkingDirs] asks lsof, which it gives 5 s. [Run] gives a group 10 s to close a
+// command's output.
 package proc
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -38,6 +40,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 // Look finds program on the PATH that env holds, where [exec.LookPath] would read kiln's own. It skips a
@@ -84,6 +87,9 @@ func (e *NotOnPath) Error() string {
 	return fmt.Sprintf("%s is not on the PATH: %s", e.Program, e.Path)
 }
 
+// outputGrace is how long [Run] waits for a group to close a command's output once the command exits.
+const outputGrace = 10 * time.Second
+
 // Executable says whether path names a regular file that someone may execute.
 func Executable(path string) bool {
 	info, err := os.Stat(path)
@@ -97,6 +103,27 @@ func Executable(path string) bool {
 func OwnGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+}
+
+// Run runs cmd, made with [exec.CommandContext], in a process group of its own, as [OwnGroup] says. Once cmd's
+// process exits, what it started has [outputGrace] to close cmd's output. Run then kills cmd's process group, when
+// the output stayed open or cmd failed. A process that left the group survives. Run answers the error cmd's process
+// ended with, and nil for output held past the grace.
+func Run(cmd *exec.Cmd) error {
+	OwnGroup(cmd)
+	cmd.WaitDelay = outputGrace
+	err := cmd.Run()
+	held := errors.Is(err, exec.ErrWaitDelay)
+	// Go answers an ExitError, not ErrWaitDelay, when the output stayed open and the shell failed.
+	if _, failed := errors.AsType[*exec.ExitError](err); held || failed {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+
+	if held {
+		return nil
+	}
+
+	return err
 }
 
 // Tail is an [io.Writer] that keeps only the last bytes written to it. Those may be the end of a child's

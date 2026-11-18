@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/fwilkerson/kiln/internal/claude"
@@ -140,16 +139,13 @@ func (b *build) fixWork(ctx context.Context) error {
 // commandGate runs the monitor's command in the fix's worktree, outside the sandbox, then commits and gates its work.
 func (b *build) commandGate(ctx context.Context) (verdict, error) {
 	command := b.fix.monitor.Command
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-	cmd.Dir, cmd.Env = string(b.tree), proc.Shell.Env(b.r.env)
-	proc.OwnGroup(cmd)
-	out, err := cmd.CombinedOutput()
+	out, err := runShell(ctx, b.tree, command, proc.Shell.Env(b.r.env))
 	if ctx.Err() != nil {
 		return verdict{}, ctx.Err()
 	}
 
 	if err != nil {
-		b.say("the command failed, %v; the gate judges its work:\n%s", err, indent(lastLines(string(out), 10)))
+		b.say("the command failed, %v; the gate judges its work:\n%s", err, indent(lastLines(out.both, 10)))
 	}
 
 	if _, err := b.r.git.Commit(ctx, b.tree, b.message("the command's work")); err != nil {

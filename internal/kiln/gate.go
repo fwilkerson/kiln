@@ -69,11 +69,8 @@ func runCheck(ctx context.Context, dir git.Worktree, command string, env []strin
 
 	defer os.RemoveAll(tmp)
 	junit := filepath.Join(tmp, "junit.xml")
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-	cmd.Dir = string(dir)
-	cmd.Env = append(slices.Clone(proc.Shell.Env(env)), junitVar+"="+junit)
-	proc.OwnGroup(cmd)
-	out, err := cmd.CombinedOutput()
+	printed, err := runShell(ctx, dir, command, append(slices.Clone(proc.Shell.Env(env)), junitVar+"="+junit))
+	out := []byte(printed.both)
 	cut := max(0, len(out)-outputKept)
 	c := check{Command: command, Output: string(out[cut:]), Cut: cut}
 	if exit, ok := errors.AsType[*exec.ExitError](err); ok {

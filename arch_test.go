@@ -1,7 +1,9 @@
 package kiln_test
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -82,4 +84,28 @@ func locate(path string) string {
 
 	top, _, _ := strings.Cut(rest, "/")
 	return top
+}
+
+// TestOneShell holds that internal/kiln runs a command from kiln.json with sh -c only in runShell, in monitor.go.
+// runShell ends a command whose child holds its output, so no other caller can wait on that child forever.
+func TestOneShell(t *testing.T) {
+	files, err := filepath.Glob("internal/kiln/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, file := range files {
+		code, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if file == "internal/kiln/monitor.go" || strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+
+		if shells := strings.Count(string(code), `"/bin/sh", "-c",`); shells > 0 {
+			t.Errorf("%s runs sh -c %d times: run the command with runShell", file, shells)
+		}
+	}
 }
