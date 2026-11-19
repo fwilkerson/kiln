@@ -6,7 +6,7 @@ kiln is one Go binary, for macOS. It builds each spec you approve with headless
 [Claude Code](https://claude.com/claude-code) sessions, in a sandbox. It holds the work to your project's own gate,
 has a second session audit it, and lands it on main as one commit. It asks you about nothing but the spec.
 
-![You shape and queue a spec; kiln builds, gates, audits and lands it on main.](docs/flow.svg)
+[![You shape and queue a spec; kiln builds, gates, audits and lands it on main.](docs/build.png)](https://fwilkerson.github.io/kiln/)
 
 ## Install
 

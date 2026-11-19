@@ -31,7 +31,9 @@ for macOS.
 - `README.md`: what kiln is, and a quick start. `docs/reference.md`: each key of `kiln.json`, the agents' files, and
   what kiln records. `docs/practices.md` "Docs are the contract" says which doc holds a rule.
 - `docs/one-page.txt`: kiln on one page, the source that `onepage render docs/one-page.txt docs/one-page.html`
-  draws in the theme `docs/sheet/`. Render it again in the commit that changes either.
+  draws in the theme `docs/sheet/`. Render it again in the commit that changes either. `docs/build.png`, the README's
+  picture, is the sheet's BUILD view: `onepage shot -width 1400 -height 2400 -clip 20,470,1360,456 -o docs/build.png
+  docs/one-page.html`. Shoot it again when that view moves.
 - `docs/later.md`: what was discussed and deferred. Don't build any of it.
 - `uat/<spec>/`: the test code for each acceptance test of a spec not yet accepted, one Go test named `TestAT<N>`
   for test N.
