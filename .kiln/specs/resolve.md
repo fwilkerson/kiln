@@ -1,6 +1,6 @@
-# Spec N: an accepted fix that main moved past still lands
+# Spec 14: An accepted fix that main moved past still lands
 
-Status: Proposed
+Status: Approved, 2026-11-18
 
 ## Overview
 
