@@ -97,17 +97,7 @@ func TestView(t *testing.T) {
 		t.Errorf("the view reads\n%s\nwant\n%s", g, w)
 	}
 
-	var readings []string
-	for _, rd := range specs[len(specs)-1].Builds[0].Readings {
-		value := "?"
-		if rd.Value != nil {
-			value = fmt.Sprint(*rd.Value)
-		}
-
-		readings = append(readings, fmt.Sprintf("%s %s %s crossed %v, at %v", rd.Gauge, value, rd.Line, rd.Crossed,
-			!rd.At.IsZero()))
-	}
-
+	readings := shownReadings(specs[len(specs)-1].Builds[0].Readings)
 	wantRead := "files 7 ≤ 5 crossed true, at true\nscore ? ≥ 5 crossed false, at true"
 	if g, w := strings.Join(readings, "\n"), wantRead; g != w {
 		t.Errorf("the done build's readings are\n%s\nwant\n%s", g, w)
@@ -126,6 +116,22 @@ func shownSpecs(specs []tui.Spec) []string {
 		}
 
 		shown = append(shown, fmt.Sprintf("%s %s: %s", s.Name, s.State, strings.Join(steps, ", ")))
+	}
+
+	return shown
+}
+
+// shownReadings words each reading as a line of its gauge, value, line, crossing, and whether it has a time.
+func shownReadings(readings []tui.Reading) []string {
+	var shown []string
+	for _, rd := range readings {
+		value := "?"
+		if rd.Value != nil {
+			value = fmt.Sprint(*rd.Value)
+		}
+
+		shown = append(shown, fmt.Sprintf("%s %s %s crossed %v, at %v", rd.Gauge, value, rd.Line, rd.Crossed,
+			!rd.At.IsZero()))
 	}
 
 	return shown

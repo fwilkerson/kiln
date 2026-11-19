@@ -710,7 +710,11 @@ func (b *build) converse(ctx context.Context, l claude.Launch, why reason) error
 // after auditTries runs in all.
 func (b *build) rerun(ctx context.Context, l claude.Launch, ended claude.Ended) error {
 	l.Prompt = interrupted
-	for try := 2; b.now().Asked && ended.Failed && try <= auditTries; try++ {
+	for try := 2; ended.Failed && try <= auditTries; try++ {
+		if !b.now().Asked {
+			return nil
+		}
+
 		var err error
 		if ended, err = b.talk(ctx, l, reason{Why: whyNoResult, Try: try}); err != nil {
 			return err
