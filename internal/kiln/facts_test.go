@@ -13,5 +13,7 @@ func TestFacts(t *testing.T) {
 		"pauses it for 5 minutes":              unknownReset == 5*time.Minute,
 		"last 16 KiB of each command's output": outputKept == 16<<10,
 		"its interval, less 30 minutes, ago":   slack == 30*time.Minute,
+		"up to 3 tries":                        auditTries == 3,
+		"of at most 72":                        titleMax == 72,
 	})
 }

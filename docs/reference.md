@@ -201,11 +201,8 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
   changed, but in the landing of a fix you accepted, where kiln keeps the fix, and `kiln status` shows the report.
 - An agent titles the commit that lands its fix with the last line of its reply: `{"title": "fix(tui): ..."}`, a
   Conventional Commit of at most 72 characters. Without one, the title is `fix(<monitor>): land the monitor's fix`.
-- When main moved past a fix that waits for `kiln accept`, the accept sends a conflict, or a failed gate, back to the
-  session that made the fix, and lands its work once the gate passes and the audit read what changed. The landing
-  commit's body names those files: `Changed since kiln accept: <path>, <path>`. A landing that still fails keeps the
-  fix for `kiln accept` or `kiln reject`. A fix that a `command` made alone has no session, so its conflict takes
-  `kiln reject`.
+- When main moved past a fix that waits for `kiln accept`, the accept may send the fix back to its session. The
+  package doc of `internal/kiln` says how that landing goes, under Monitors: `go doc ./internal/kiln`.
 - `"drain": true` is for a queue that each fix takes one item from, such as a folder of bug reports. After a fix
   lands, kiln runs the check again at once, due or not, and starts the next fix. The run ends when the check asks
   for no fix, when the monitor is held, or when a fix does not land. It needs a check or a gauge.

@@ -330,8 +330,8 @@ func (b *build) fixGate(ctx context.Context) (string, reason, error) {
 }
 
 // fixAfter takes a fix on once its gate passed. Work that changes nothing ends unchanged. An agent's work gets the
-// audit. Then a fix of a monitor with "accept": true waits on its branch, and any other lands. A setback goes back
-// to the session, or stops a fix with none.
+// audit. Then a fix of a monitor with "accept": true waits on its branch, until the developer accepts it. Any other
+// lands, as does an accepted fix's landing. A setback goes back to the session, or stops a fix with none.
 func (b *build) fixAfter(ctx context.Context) (string, reason, error) {
 	head, changed, err := b.fixChanged(ctx)
 	switch {
