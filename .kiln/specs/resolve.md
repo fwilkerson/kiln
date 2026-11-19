@@ -148,6 +148,14 @@ never waited, and sends each setback back to the fix's session. After this spec 
   that conflicts goes back as a conflict instead.
 - Before it lands, `landFix` commits what the worktree holds, as `fixGate` does. A stopped landing tells the
   developer to resume the session there, and `land` would otherwise reset what that session left uncommitted.
+  Work that so differs from the commit last read, as "What changed since kiln accept" defines it, goes to the gate
+  and the audit first, never straight to `land`.
+- The record marks the session's turn as running while it runs in a landing, as `Running` does for a split build.
+  An interrupt, a killed kiln or a usage limit leaves the mark. A landing that starts with the mark first resumes
+  the session with `interrupted`, as `goOn` does for a build, before it commits or lands anything. So no
+  half-done merge is committed as the session's work.
+- A landing keeps the title of the fix the developer accepted. `fixAgent` reads `titleOf` only before the
+  accept, so a turn that merges main never retitles the commit.
 - The kiln that lands the fix runs the session: `kiln accept`, or the next `kiln monitor run` for an accept that
   came while another kiln held the run lock. `Repo.Accept` already runs a build's session so, for accepted
   amendments. A landing that `kiln monitor run` takes up opens its tab when it ends, as today.
@@ -185,12 +193,19 @@ The record gains the commit the developer accepted: the branch's tip when `accep
   changes never count. It compares a binary file by its content too, with `git diff --binary`.
 - The landing commit's body gains one line when that list holds a file, before the `Build:` line that ends each
   landing commit: `Changed since kiln accept: <path>, <path>`.
-- The audit reads those files once in each landing, when the list holds a file outside `.kiln/`. It runs when
-  the work first passes the gate, through `build.audit`, over those files and their directories, and its prompt
-  names them. It spends no round, as a fix's first audit spends none. Its findings go back to the session with
-  `fixAudited`. `build.findings` then keeps its rule: it reads again only for a path `kiln.json`'s `reaudit`
-  names, as a round. So the fix for a finding is not audited again.
-- A landing that meets no setback changes nothing since `kiln accept`, so it runs no audit, and gains no line.
+- The audit is decided by what the work holds, not by what happened. The record's `Audited` is the commit last
+  read. `acceptFix` sets it to the commit the developer accepted. Each time a landing's work passes the gate, the
+  audit reads it when its own change differs from that commit's, in a file outside `.kiln/`. `Audited` then
+  moves to the work read.
+- One change moves `Audited` with no audit: the session's answer to the audit's findings, once it passes the
+  gate. The guide says not to audit the fix for an audit finding. `build.findings` keeps its rule for a path
+  `kiln.json`'s `reaudit` names, which is read again even then, as a round.
+- So each other change is read before it lands: a second merge after main moved during the landing, a turn a
+  usage limit cut short, and what the developer's own session left in the worktree.
+- The audit runs through `build.audit`, over the files changed since `kiln accept` and their directories, and
+  its prompt names them. It spends no round, as a fix's first audit spends none. Its findings go back to the
+  session with `fixAudited`.
+- A landing whose work is the commit the developer accepted runs no audit, and its commit gains no line.
 
 ### What the developer sees
 
@@ -202,10 +217,11 @@ The record gains the commit the developer accepted: the branch's tip when `accep
 - A stopped landing shows in `kiln status`, under the monitor's line, why it stopped and the next step.
   `kiln tui` shows the same summary and report, from the fix's stopped outcome in the ledger, as it shows any
   stopped fix today.
-- For a fix with a session, `fixStep` gives the step `nextStep`, in `stats.go`, gives a stopped build with a
-  session: the command that resumes the session in its worktree, then `kiln accept <name>` or
-  `kiln reject <name>`. `fixStep` and `landAgain` name `kiln reject` alone only for a conflicted fix with no
-  session.
+- For the stopped landing of an accepted fix with a session, `fixStep` gives the step `nextStep`, in
+  `stats.go`, gives a stopped build with a session: the command that resumes the session in its worktree, then
+  `kiln accept <name>` or `kiln reject <name>`. A stopped fix the developer never accepted keeps today's step,
+  since the book refuses both commands for it. `fixStep` and `landAgain` name `kiln reject` alone only for a
+  conflicted fix with no session.
 - An acceptance test reads a session's calls from the scripted claude, as `go doc ./internal/scenariotest` says.
   A session is an attempt, and each resume is its next call, so the fix's resumed session is
   `.claude-calls/<role>/1/2/`. Its `call.json` holds `"resume": true`, and its `prompt` file the message. Each
@@ -214,7 +230,8 @@ The record gains the commit the developer accepted: the branch's tip when `accep
 ### Tests and docs the plan changes
 
 - `uat/testdata/monitors/waits-for-accept.txtar` stays true: its fix is a command's, with no session.
-- `TestFixStep`, in `rules_test.go`: its conflicted row is a fix with no session. Add the row with one.
+- `TestFixStep`, in `rules_test.go`: its conflicted row is a fix with no session. Add the row with one, and
+  run its loop over each state with a session too.
 - The package doc of `internal/kiln`. The fix's diagram gains a line under "landing an accepted fix":
   "a conflict, or a failed gate, with a session ──▶ back to the session, as a round". Under Monitors, three
   sentences gain the landing's rule. "A fix that passes lands, or waits for kiln accept": a setback of an accepted
@@ -233,7 +250,8 @@ The record gains the commit the developer accepted: the branch's tip when `accep
 ### Risks the plan accepts
 
 - Work the developer never read lands. After a failed gate, the uat session may fold scenarios beyond those the
-  developer accepted. The audit reads them, and the commit names their files. Waiting for `kiln accept` again
+  developer accepted. The gate-time session may change the tests that judge its work, since its monitor says
+  `"tests": true`. The audit reads them, and the commit names their files. Waiting for `kiln accept` again
   would make it impossible, at the cost of a second accept for each landing main moved past.
 - A developer who resumes the stopped session, and leaves it open while `kiln accept` runs, gives that session two
   writers. A stopped build's step has the same risk today. `claude --resume <session> --fork-session` in the step
