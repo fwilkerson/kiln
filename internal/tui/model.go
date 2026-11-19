@@ -37,9 +37,11 @@ type model struct {
 	// keysTop is the first key the key list shows, where the list scrolls.
 	keysTop int
 
-	// The home screen's. The specs' first row stands for all of them, so sel[specsPane] is 0 there. On a spec, it is
-	// the spec's index in filtered, plus 1.
+	// The home screen's. Each side panel's first row stands for all it lists, so its sel is 0 there. On a spec or a
+	// monitor, it is the index in sideSpecs, plus 1. side is the side panel whose selection narrows the builds panel
+	// and the trend.
 	focus  pane
+	side   pane
 	filter string
 	typing bool
 	sel    [panes]int
@@ -50,6 +52,7 @@ type pane int
 
 const (
 	specsPane pane = iota
+	monitorsPane
 	nowPane
 	recentPane
 	panes
@@ -248,35 +251,71 @@ func (m *model) keep(specs []Spec) {
 	}
 }
 
-// picked is the spec selected in the specs panel, if one is. Its first row selects none, for the builds of all.
+// picked is the spec or monitor selected in the side panel that narrows the builds, if one is. A side panel's first
+// row selects none, for the builds of all it lists.
 func (m model) picked() (Spec, bool) {
-	specs := m.filtered()
-	if i := m.sel[specsPane] - 1; i >= 0 && i < len(specs) {
+	specs := m.sideSpecs(m.side)
+	if i := m.sel[m.side] - 1; i >= 0 && i < len(specs) {
 		return specs[i], true
 	}
 
 	return Spec{}, false
 }
 
-// pick selects the specs panel's first spec for which is reports true, or the row for all when none does.
+// pick selects the first spec, or else the first monitor, for which is reports true. When none does, it selects the
+// row for all.
 func (m *model) pick(is func(Spec) bool) bool {
-	i := slices.IndexFunc(m.filtered(), is)
-	m.selectSpec(i + 1)
-	return i >= 0
+	for _, p := range []pane{specsPane, monitorsPane} {
+		if i := slices.IndexFunc(m.sideSpecs(p), is); i >= 0 {
+			m.selectSide(p, i+1)
+			return true
+		}
+	}
+
+	m.selectSide(m.side, 0)
+	return false
 }
 
-// selectSpec selects row i of the specs panel, and the newest of the builds it narrows the builds panel to.
-func (m *model) selectSpec(i int) {
-	if i != m.sel[specsPane] {
-		m.sel[specsPane], m.sel[recentPane] = i, 0
+// selectSide selects row i of side panel p, which then narrows the builds panel, at its newest build.
+func (m *model) selectSide(p pane, i int) {
+	if p != m.side || i != m.sel[p] {
+		m.side, m.sel[p], m.sel[recentPane] = p, i, 0
 	}
 }
+
+// focusOn gives pane p the keys. A side panel's selection then narrows the builds panel.
+func (m *model) focusOn(p pane) {
+	m.focus = p
+	if p.side() {
+		m.selectSide(p, m.sel[p])
+	}
+}
+
+// side says whether p is a side panel, the specs' or the monitors'.
+func (p pane) side() bool { return p == specsPane || p == monitorsPane }
+
+// noun names n builds of what side panel p lists, without the count: a spec's builds, or a monitor's fixes.
+func (p pane) noun(n int) string {
+	switch {
+	case p == monitorsPane && n == 1:
+		return "fix"
+	case p == monitorsPane:
+		return "fixes"
+	case n == 1:
+		return "build"
+	}
+
+	return "builds"
+}
+
+// lists says whether side panel p lists s: the monitors' panel lists monitors, and the specs' panel the rest.
+func (p pane) lists(s Spec) bool { return (s.Monitor != nil) == (p == monitorsPane) }
 
 // homeBuild is the build home's pane p points at, if any. That is the selected spec's newest, the running one, or
 // the one selected among the builds.
 func (m model) homeBuild(p pane) (buildRef, bool) {
 	switch p {
-	case specsPane:
+	case specsPane, monitorsPane:
 		s, ok := m.picked()
 		return buildRef{s.ref(), len(s.Builds) - 1}, ok && len(s.Builds) > 0
 	case nowPane:
@@ -326,12 +365,13 @@ func (m *model) click(msg tea.MouseClickMsg) tea.Cmd {
 	}
 
 	t, _ := m.hit(msg.Mouse())
-	if t.to != toSpec {
+	p := pane(slices.Index(paneTargets[:], t.to))
+	if !p.side() {
 		return m.openTarget(t)
 	}
 
-	m.focus, m.typing = specsPane, false
-	m.selectSpec(t.i)
+	m.focus, m.typing = p, false
+	m.selectSide(p, t.i)
 	return nil
 }
 
@@ -367,7 +407,7 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-var paneTargets = [panes]string{specsPane: toSpec, nowPane: toNow, recentPane: toRecent}
+var paneTargets = [panes]string{specsPane: toSpec, monitorsPane: toMonitor, nowPane: toNow, recentPane: toRecent}
 
 // paneAt is the home screen's pane drawn under the pointer, if one is.
 func (m model) paneAt(at tea.Mouse) (pane, bool) {
@@ -383,7 +423,8 @@ func (m model) paneAt(at tea.Mouse) (pane, bool) {
 	return pane(p), p >= 0
 }
 
-// nextPane is the pane by panes on from the focused one. It skips the now line while nothing runs.
+// nextPane is the pane by panes on from the focused one. It skips the now line while nothing runs, and the monitors
+// panel where kiln.json names no monitor.
 func (m model) nextPane(by int) pane {
 	p := m.focus
 	for {
@@ -398,7 +439,13 @@ func (m model) nextPane(by int) pane {
 func (m model) items(p pane) int {
 	switch p {
 	case specsPane:
-		return len(m.filtered()) + 1
+		return len(m.sideSpecs(specsPane)) + 1
+	case monitorsPane:
+		if !slices.ContainsFunc(m.specs, monitorsPane.lists) {
+			return 0
+		}
+
+		return len(m.sideSpecs(monitorsPane)) + 1
 	case nowPane:
 		if _, _, ok := running(m.specs); ok {
 			return 1
@@ -412,8 +459,8 @@ func (m model) items(p pane) int {
 
 func (m *model) move(by int) {
 	to := max(0, min(m.items(m.focus)-1, m.sel[m.focus]+by))
-	if m.focus == specsPane {
-		m.selectSpec(to)
+	if m.focus.side() {
+		m.selectSide(m.focus, to)
 		return
 	}
 
@@ -434,8 +481,15 @@ func (m *model) typeFilter(k tea.KeyPressMsg) {
 		m.filter += k.Text
 	}
 
-	// The first spec the filter leaves, so Enter then opens it.
-	m.sel[specsPane], m.sel[recentPane] = min(1, len(m.filtered())), 0
+	// The first spec the filter leaves, or else its first monitor, so Enter then opens it.
+	p := specsPane
+	if len(m.sideSpecs(specsPane)) == 0 && len(m.sideSpecs(monitorsPane)) > 0 {
+		p = monitorsPane
+	}
+
+	m.focus = p
+	m.selectSide(p, min(1, len(m.sideSpecs(p))))
+	m.sel[recentPane] = 0
 }
 
 // selectRun selects run i of a build's screen, or the nearest run there is.
@@ -473,14 +527,14 @@ func (m *model) wheelPane(msg tea.MouseWheelMsg) {
 		return
 	}
 
-	m.focus = p
+	m.focusOn(p)
 	m.move(map[bool]int{true: 1, false: -1}[msg.Button == tea.MouseWheelDown])
 }
 
 // openTarget opens what a row names, as a click or Enter on it does.
 func (m *model) openTarget(t target) tea.Cmd {
 	switch t.to {
-	case toSpec:
+	case toSpec, toMonitor:
 		m.openPicked()
 	case toNow:
 		if ref, _, ok := running(m.specs); ok {
@@ -495,7 +549,7 @@ func (m *model) openTarget(t target) tea.Cmd {
 	return nil
 }
 
-// openPicked opens the newest build of the spec selected on home. On the row for all specs, it gives the builds
+// openPicked opens the newest build of the spec or monitor selected on home. On a row for all, it gives the builds
 // panel the keys instead.
 func (m *model) openPicked() {
 	if _, ok := m.picked(); !ok && m.items(recentPane) > 0 {
@@ -637,11 +691,21 @@ func (m model) runs(ref buildRef) []*Run {
 	return nil
 }
 
-// filtered are the specs whose names hold the filter's text.
-func (m model) filtered() []Spec {
+// sideSpecs are the specs side panel p lists whose names hold the filter's text.
+func (m model) sideSpecs(p pane) []Spec {
 	return slices.DeleteFunc(slices.Clone(m.specs), func(s Spec) bool {
-		return !strings.Contains(strings.ToLower(s.Name), strings.ToLower(m.filter))
+		return !p.lists(s) || !strings.Contains(strings.ToLower(s.Name), strings.ToLower(m.filter))
 	})
+}
+
+// shown are the specs whose builds home's builds panel and trend hold. That is the one selected, or else every one
+// the side panel lists, whatever the filter.
+func (m model) shown() []Spec {
+	if s, ok := m.picked(); ok {
+		return []Spec{s}
+	}
+
+	return slices.DeleteFunc(slices.Clone(m.specs), func(s Spec) bool { return !m.side.lists(s) })
 }
 
 // listed is a build, with the ref that names it.
@@ -650,15 +714,10 @@ type listed struct {
 	b *Build
 }
 
-// recent is every build of the spec selected on home, or of all specs when none is, newest first.
+// recent is every build of the specs home shows, newest first.
 func (m model) recent() []listed {
-	specs := m.specs
-	if s, ok := m.picked(); ok {
-		specs = []Spec{s}
-	}
-
 	var all []listed
-	for _, s := range specs {
+	for _, s := range m.shown() {
 		for i, b := range s.Builds {
 			all = append(all, listed{buildRef{s.ref(), i}, b})
 		}

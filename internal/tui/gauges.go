@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -73,16 +74,46 @@ func (m model) gaugeRows(w int) []row {
 	return rows
 }
 
-// gaugeRow draws the row title, its newest line, then the readings rs. A row too narrow for them all keeps the newest
-// that fit, and always the newest.
+// gaugeRow draws the row. It opens with ✓ or ✗, for whether the newest reading holds its line, or ? for one
+// unknown. The title and that line follow, then how many of the readings rs crossed it, where some did. The readings
+// close it. A row too narrow for them all keeps the newest that fit, and always the newest.
 func (t theme) gaugeRow(title string, rs []landingRead, w int) row {
-	line := rs[len(rs)-1].Line
-	head := t.bold.Render(title) + " " + t.dim.Render(line)
+	newest := rs[len(rs)-1]
+	line, verdict := newest.Line, t.passed.Render("✓")
+	switch {
+	case newest.Value == nil:
+		verdict = t.dim.Render("?")
+	case newest.Crossed:
+		verdict = t.failed.Render("✗")
+	}
+
+	head := verdict + " " + t.bold.Render(title) + " " + t.dim.Render(line)
+	crossed := tally(rs, landingRead.crossed)
+	count := t.dim.Render(" · ") + t.failed.Render(fmt.Sprintf("%d of %d %s", crossed, len(rs), side(line)))
+	// The count gives way where it would leave the newest reading no room.
+	if crossed > 0 && ansi.StringWidth(head+count)+2+ansi.StringWidth(newest.shown(t, line)) <= w {
+		head += count
+	}
+
 	return row{text: head + "  " + t.newestFitting(rs, line, w-ansi.StringWidth(head)-2)}
 }
 
-// shown is the reading beside its spec, where it has one. One that crossed its line is red beside ✗. One read against
-// a line other than line shows its own.
+func (r landingRead) crossed() bool { return r.Crossed }
+
+// side names the wrong side of a line, such as "below" for ≥ 80.
+func side(line string) string {
+	switch {
+	case strings.HasPrefix(line, "≥"):
+		return "below"
+	case strings.HasPrefix(line, "≤"):
+		return "above"
+	}
+
+	return "crossed"
+}
+
+// shown is the reading beside its spec, where it has one. One that crossed its line is red. One read against a line
+// other than line shows its own.
 func (r landingRead) shown(t theme, line string) string {
 	value := "?"
 	if r.Value != nil {
@@ -90,7 +121,7 @@ func (r landingRead) shown(t theme, line string) string {
 	}
 
 	if r.Crossed {
-		value = t.failed.Render("✗ " + value)
+		value = t.failed.Render(value)
 	}
 
 	if r.Line != line {

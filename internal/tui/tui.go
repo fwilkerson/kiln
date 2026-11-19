@@ -4,7 +4,8 @@
 //	  │                               ▲
 //	  └──── the "now" line, enter ────┘
 //
-//	home   side panel: specs, newest first, then monitors; / filters; the one selected narrows home's builds
+//	home   side panels: specs, newest first, and below them monitors; / filters both; the one selected narrows
+//	       home's builds and trend to its own
 //	s      on home, a build or a run: the spec, as the build's approval held it, then its amendments
 //	esc    back one screen; ? lists every key a screen takes; q quits
 //
@@ -24,15 +25,18 @@
 // orange marks a gate, a pause and a stop. Red marks what failed and green what passed, beside ✗ and ✓. On a terminal
 // that says its background is light, each hue is darker.
 //
-// The home screen's trend is the last 10 builds that ended, beside the 10 before them. Each number is the median of
-// the builds that know it. Below it is a bar for each build, oldest first, with the newest in kiln's orange. A number
+// The home screen's trend is the last 10 builds that ended, beside the 10 before them. With a monitor selected, or
+// all monitors, it is their fixes, with no tests or rounds to count. Each number is the median of the builds that
+// know it. A ▲ or ▼ beside it says it rose or fell from the median before. Red marks a move for the worse, and green
+// one for the better. Below it is a bar for each build, oldest first, with the newest in kiln's orange. A number
 // kiln could not read shows as ?, never as zero.
 //
-// Once a build or a monitor has a gauge's reading, a gauges panel spans the width below the trend. It holds a row per
-// gauge: its name and its newest line. Its readings of landings follow, oldest first, each beside the spec that landed
-// it. Below it, a gauge that monitors name has a row of their readings of the whole repository, named "repository".
-// A row too narrow for them all keeps the newest. A reading that crossed its line is red beside ✗. One read against
-// another line shows that line too. An unknown reading shows as ?.
+// Once a build or a monitor has a gauge's reading, a gauges panel spans the width below the trend. It holds a row
+// per gauge. Its ✓ or ✗ says whether the newest reading holds the gauge's line. The gauge's name and that line
+// follow. In red, the row counts the readings on the line's wrong side, where some are. Its readings of landings
+// follow, oldest first, each beside the spec that landed it. Below it, a gauge that monitors name has a row of their
+// readings of the whole repository, named "repository". A row too narrow for them all keeps the newest. A reading
+// that crossed its line is red. One read against another line shows that line too. An unknown reading shows as ?.
 package tui
 
 import (

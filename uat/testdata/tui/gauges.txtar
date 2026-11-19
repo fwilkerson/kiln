@@ -13,7 +13,7 @@ term 120 30 kiln tui
 
 # Then: kiln tui shows the gauge's line, and both readings, each beside the spec that landed it.
 screen '╭ gauges ─+╮$'
-screen '│count ≤ 5  a 1 · b 2 +│$'
+screen '│✓ count ≤ 5  a 1 · b 2 +│$'
 
 -- .kiln/kiln.json --
 {"gate": ["test -e ready"], "gauges": [{"name": "count", "command": "cat count", "max": 5}]}

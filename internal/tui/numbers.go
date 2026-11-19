@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"cmp"
 	"fmt"
 	"slices"
 	"time"
@@ -114,23 +113,25 @@ type measure struct {
 	shown func(float64) string
 	// judged is a number that is worse as it grows. One that is not is told in no color.
 	judged bool
+	// specOnly is a number only a spec's build has. A monitor's fix has no tests, and no rounds.
+	specOnly bool
 }
 
 var measures = []measure{
-	{"cost", (*Build).cost, func(v float64) string { return fmt.Sprintf("$%.2f", v) }, true},
+	{"cost", (*Build).cost, func(v float64) string { return fmt.Sprintf("$%.2f", v) }, true, false},
 	{"minutes", func(b *Build) (float64, bool) {
 		d, ok := b.took()
 		return d.Minutes(), ok
-	}, decimal, true},
+	}, decimal, true, false},
 	{"failed calls", func(b *Build) (float64, bool) {
 		n, _, ok := b.failed()
 		return float64(n), ok
-	}, decimal, true},
+	}, decimal, true, false},
 	{"rounds", func(b *Build) (float64, bool) {
 		n, ok := b.rounds()
 		return float64(n), ok
-	}, decimal, true},
-	{"size, tests", func(b *Build) (float64, bool) { return float64(b.Size), true }, decimal, false},
+	}, decimal, true, true},
+	{"size, tests", func(b *Build) (float64, bool) { return float64(b.Size), true }, decimal, false, true},
 }
 
 // window is how many builds the trend holds, and the previous builds beside it.
@@ -178,23 +179,6 @@ func (m measure) median(builds []*Build) (median float64, known int) {
 	}
 
 	return (values[n/2-1] + values[n/2]) / 2, n
-}
-
-// change says how the recent median moved from the previous one: +1 worse, -1 better. It is 0 when they show the
-// same, or one is unknown.
-func (m measure) change(recent, previous []*Build) int {
-	if !m.judged {
-		return 0
-	}
-
-	now, known := m.median(recent)
-	before, knownBefore := m.median(previous)
-	switch {
-	case known == 0, knownBefore == 0, m.shown(now) == m.shown(before):
-		return 0
-	}
-
-	return cmp.Compare(now, before)
 }
 
 func decimal(v float64) string {

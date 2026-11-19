@@ -31,10 +31,11 @@ type target struct {
 }
 
 const (
-	toSpec   = "spec"
-	toNow    = "now"
-	toRecent = "recent"
-	toRun    = "run"
+	toSpec    = "spec"
+	toMonitor = "monitor"
+	toNow     = "now"
+	toRecent  = "recent"
+	toRun     = "run"
 	// toPane names a home screen's pane, by its number. A click there opens nothing, and the wheel scrolls it.
 	toPane = "pane"
 )
@@ -51,7 +52,7 @@ func (t target) id() string {
 func parseTarget(id string) (target, bool) {
 	to, n, _ := strings.Cut(id, ":")
 	i, err := strconv.Atoi(n)
-	if err != nil || !slices.Contains([]string{toSpec, toNow, toRecent, toRun, toPane}, to) {
+	if err != nil || !slices.Contains([]string{toSpec, toMonitor, toNow, toRecent, toRun, toPane}, to) {
 		return target{}, false
 	}
 
@@ -219,6 +220,7 @@ func (m model) home() []*lipgloss.Layer {
 	rightW, h := m.w-sideW, m.h-1
 	now := m.nowRows()
 	tiles := m.trendRows(rightW - 2)
+	recentBuilds, previous := trend(m.shown())
 	gauges := m.gaugeRows(rightW - 2)
 	nowH := len(now) + 2
 	trendH := min(len(tiles)+2, max(3, h-nowH-5))
@@ -228,35 +230,46 @@ func (m model) home() []*lipgloss.Layer {
 	}
 
 	recentH := max(0, h-nowH-trendH-gaugesH)
+	monitorsH := 0
+	if n := m.items(monitorsPane); n > 0 {
+		monitorsH = min(n+2, h/2)
+	}
+
 	specsBox := panel{to: target{toPane, int(specsPane)}, title: "specs", lit: m.focus == specsPane,
-		area: area{sideW, h}}
+		area: area{sideW, h - monitorsH}}
+	monitorsBox := panel{to: target{toPane, int(monitorsPane)}, title: "monitors", lit: m.focus == monitorsPane,
+		y: h - monitorsH, area: area{sideW, monitorsH}}
 	nowBox := panel{to: target{toPane, int(nowPane)}, title: "now", lit: m.focus == nowPane, x: sideW,
 		area: area{rightW, nowH}}
-	trendBox := panel{title: trendTitle(trend(m.specs)), x: sideW, y: nowH, area: area{rightW, trendH}}
+	trendBox := panel{title: m.trendTitle(recentBuilds, previous), x: sideW, y: nowH, area: area{rightW, trendH}}
 	gaugesBox := panel{title: "gauges", x: sideW, y: nowH + trendH, area: area{rightW, gaugesH}}
 	recentBox := panel{to: target{toPane, int(recentPane)}, title: m.recentTitle(), lit: m.focus == recentPane,
 		x: sideW, y: nowH + trendH + gaugesH, area: area{rightW, recentH}}
 	layers := []*lipgloss.Layer{
-		specsBox.box(m.theme, m.side(specsBox.inside())),
+		specsBox.box(m.theme, m.sideRows(specsPane, specsBox.inside())),
 		nowBox.box(m.theme, now),
 		trendBox.box(m.theme, tiles),
 		recentBox.box(m.theme, m.recentRows(recentBox.inside())),
 		m.foot(homeScreen),
 	}
 
-	if gaugesH == 0 {
-		return layers
+	if monitorsH > 0 {
+		layers = append(layers, monitorsBox.box(m.theme, m.sideRows(monitorsPane, monitorsBox.inside())))
 	}
 
-	return append(layers, gaugesBox.box(m.theme, gauges))
+	if gaugesH > 0 {
+		layers = append(layers, gaugesBox.box(m.theme, gauges))
+	}
+
+	return layers
 }
 
-// recentTitle names the builds the builds panel lists: every spec's, or the selected spec's.
+// recentTitle names the builds the builds panel lists: every spec's, every monitor's, or the selected one's.
 func (m model) recentTitle() string {
 	s, ok := m.picked()
 	switch {
 	case !ok:
-		return "recent builds"
+		return "recent " + m.side.noun(2)
 	case s.Monitor != nil:
 		return monitorTitle(s)
 	case len(s.Builds) == 0:
@@ -266,7 +279,7 @@ func (m model) recentTitle() string {
 	return fmt.Sprintf("builds of %s · approved %s", s.Name, times(len(s.Builds)))
 }
 
-// sideWidth fits the specs panel to its longest row, but takes at most a third of the terminal.
+// sideWidth fits the side panels to their longest row, but takes at most a third of the terminal.
 func (m model) sideWidth() int {
 	need := 0
 	for _, s := range m.specs {
@@ -276,26 +289,32 @@ func (m model) sideWidth() int {
 	return max(20, min(need+2, 40, m.w/3))
 }
 
-// side lists the specs whose names hold the filter, in an area of the specs panel. Above them are the filter and a
-// row for all specs.
-func (m model) side(in area) []row {
-	rows := []row{{text: m.filterRow()}, {}}
-	specs := m.filtered()
+// sideRows draws side panel p in an area. Below a row for all, it lists each of its specs whose name holds the
+// filter. The specs panel holds the filter above them.
+func (m model) sideRows(p pane, in area) []row {
+	var rows []row
+	all, none := "≡ all monitors", "no monitor"
+	if p == specsPane {
+		rows = []row{{text: m.filterRow()}, {}}
+		all, none = "≡ all specs", "no spec"
+	}
+
+	specs := m.sideSpecs(p)
 	room := max(1, in.h-len(rows))
-	sel := m.sel[specsPane]
+	sel := m.sel[p]
 	for i := max(0, sel-room+1); i <= len(specs) && len(rows) < in.h; i++ {
-		text := "≡ all specs"
+		text := all
 		if i > 0 {
 			s := specs[i-1]
 			text = m.theme.marked(s.State) + " " + fit(s.Name, max(1, in.w-3-len(s.State))) + " " +
 				m.theme.stated(s.State)
 		}
 
-		rows = append(rows, row{m.theme.pick(text, m.focus == specsPane && i == sel), target{toSpec, i}})
+		rows = append(rows, row{m.theme.pick(text, m.focus == p && i == sel), target{paneTargets[p], i}})
 	}
 
 	if len(specs) == 0 && len(rows) < in.h {
-		rows = append(rows, row{text: m.theme.dim.Render("no spec")})
+		rows = append(rows, row{text: m.theme.dim.Render(none)})
 	}
 
 	return rows
@@ -463,8 +482,13 @@ func (m model) buildRows(in area) []row {
 	// A panel with room for one build or two lists them with no names above.
 	var rows []row
 	if in.h > 2 {
-		rows = []row{{text: m.theme.dim.Render(line("started", second, "outcome", "size", "time", "cost", "turns", "failed",
-			"rounds", ""))}}
+		size, rounds := "size", "rounds"
+		if m.side == monitorsPane {
+			size, rounds = "", ""
+		}
+
+		rows = []row{{text: m.theme.dim.Render(line("started", second, "outcome", size, "time", "cost", "turns", "failed",
+			rounds, ""))}}
 	}
 
 	sel := m.sel[recentPane]
@@ -472,6 +496,11 @@ func (m model) buildRows(in area) []row {
 		cells := m.recentCells(all[i], most)
 		if narrowed {
 			cells[1] = fmt.Sprintf("#%d", all[i].build+1)
+		}
+
+		// A fix has no tests, and no rounds.
+		if m.side == monitorsPane {
+			cells[3], cells[8] = "", ""
 		}
 
 		rows = append(rows, row{m.theme.pick(line(cells...), m.focus == recentPane && i == sel),
@@ -864,10 +893,10 @@ func streamFacts(c *claude.Recounted) []string {
 	return append(facts, plural(calls, "call"), fmt.Sprintf("%d refused", tally(c.Actions, isRefused)))
 }
 
-// tally counts the actions that is reports true for.
-func tally(actions []claude.Action, is func(claude.Action) bool) int {
+// tally counts the items that is reports true for.
+func tally[T any](items []T, is func(T) bool) int {
 	n := 0
-	for _, a := range actions {
+	for _, a := range items {
 		if is(a) {
 			n++
 		}

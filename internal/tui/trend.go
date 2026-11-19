@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // The trend's tiles are tileGap cells apart. A panel too narrow to give each tile tileMin cells draws a table.
@@ -13,31 +15,47 @@ const (
 )
 
 // trendTitle names the builds the trend holds, and the builds before them when there are some.
-func trendTitle(recent, previous []*Build) string {
+func (m model) trendTitle(recent, previous []*Build) string {
+	builds := m.side.noun(len(recent))
+	if s, ok := m.picked(); ok {
+		builds += " of " + s.Name
+	}
+
 	switch {
 	case len(recent) == 0:
 		return "trend"
 	case len(previous) == 0:
-		return fmt.Sprintf("last %s · median per build", plural(len(recent), "build"))
+		return fmt.Sprintf("last %d %s · median of each", len(recent), builds)
 	}
 
-	return fmt.Sprintf("last %s · median per build, beside the %d before", plural(len(recent), "build"), len(previous))
+	return fmt.Sprintf("last %d %s · median of each, and how it moved from the %d before", len(recent), builds,
+		len(previous))
+}
+
+// measures are the trend's measures of what the side panel lists. A fix has no tests, and no rounds.
+func (m model) measures() []measure {
+	if m.side != monitorsPane {
+		return measures
+	}
+
+	return slices.DeleteFunc(slices.Clone(measures), func(ms measure) bool { return ms.specOnly })
 }
 
 // trendRows draws the trend in w cells: a tile for each measure, side by side. Too narrow for tiles, it is a table
 // with no bars.
 func (m model) trendRows(w int) []row {
-	recent, previous := trend(m.specs)
-	tileW := (w - tileGap*(len(measures)-1)) / len(measures)
+	recent, previous := trend(m.shown())
+	ms := m.measures()
+	tileW := (w - tileGap*(len(ms)-1)) / len(ms)
 	switch {
 	case len(recent) == 0:
-		return []row{{text: m.theme.dim.Render("no build has ended yet")}}
+		return []row{{text: m.theme.dim.Render("no " + m.side.noun(1) + " has ended yet")}}
 	case tileW < tileMin:
-		return trendTable(m.theme, recent, previous)
+		return trendTable(m.theme, ms, recent, previous)
 	}
 
-	tiles := make([][]string, len(measures))
-	for i, ms := range measures {
+	tiles := make([][]string, len(ms))
+	for i, ms := range ms {
 		tiles[i] = ms.tile(m.theme, recent, previous, tileW)
 	}
 
@@ -54,20 +72,20 @@ func (m model) trendRows(w int) []row {
 	return rows
 }
 
-// trendTable is the trend as a row for each measure: its name, its median, and the median before.
-func trendTable(t theme, recent, previous []*Build) []row {
-	rows := make([]row, len(measures))
-	for i, ms := range measures {
-		rows[i].text = cols([]int{12, 18}, ms.short, ms.headline(t, recent, previous),
-			t.dim.Render(ms.before(previous)))
+// trendTable is the trend as a row for each measure: its name, then its median and how it moved.
+func trendTable(t theme, ms []measure, recent, previous []*Build) []row {
+	rows := make([]row, len(ms))
+	for i, m := range ms {
+		median, was := m.headline(t, recent, previous)
+		rows[i].text = cols([]int{12}, m.short, strings.TrimSpace(median+" "+was))
 	}
 
 	return rows
 }
 
-// tile is m's rows of the trend, each at most w cells. They are its name, its median, and its bars in two rows. Below
-// them are the newest build's number, in the color of its bar, then the lowest and the highest. With builds before
-// the recent ones, their median is its last row.
+// tile is m's rows of the trend, each at most w cells. They are its name, its headline, and its bars in two rows.
+// Below them are the newest build's number, in the color of its bar, then the lowest and the highest. A tile too
+// narrow for its headline on one row gives the median before the last row instead.
 func (m measure) tile(t theme, recent, previous []*Build, w int) []string {
 	top, bottom := m.bars(t, recent, w)
 	newest := "?"
@@ -75,43 +93,49 @@ func (m measure) tile(t theme, recent, previous []*Build, w int) []string {
 		newest = m.shown(v)
 	}
 
-	lines := []string{t.bold.Render(m.short), m.headline(t, recent, previous), top, bottom,
-		t.kiln.Render("newest " + newest), t.dim.Render(m.spread(recent))}
-	if len(previous) > 0 {
-		lines = append(lines, t.dim.Render(m.before(previous)))
+	name := t.bold.Render(m.short)
+	if known := len(m.values(recent)); known < len(recent) {
+		name += t.dim.Render(fmt.Sprintf(" %d/%d known", known, len(recent)))
 	}
 
-	return lines
-}
-
-// headline is m's median over the recent builds. One worse than before is red beside ✗, and a better one green
-// beside ✓. Where some builds do not know m, it says how many do.
-func (m measure) headline(t theme, recent, previous []*Build) string {
-	shown, known := m.shownMedian(recent)
-	switch m.change(recent, previous) {
-	case 1:
-		shown = t.failed.Render("✗ " + shown)
-	case -1:
-		shown = t.passed.Render("✓ " + shown)
+	median, was := m.headline(t, recent, previous)
+	last := t.dim.Render(m.spread(recent))
+	switch {
+	case was == "":
+	case ansi.StringWidth(median+" "+was) <= w:
+		median += " " + was
 	default:
-		shown = t.bold.Render(shown)
+		last = was
 	}
 
-	if known < len(recent) {
-		shown += t.dim.Render(fmt.Sprintf("  %d of %d", known, len(recent)))
-	}
-
-	return shown
+	return []string{name, median, top, bottom, t.kiln.Render("newest " + newest), last}
 }
 
-// before is m's median over the builds before the recent ones, or nothing when there are none.
-func (m measure) before(previous []*Build) string {
-	if len(previous) == 0 {
-		return ""
+// headline is m's median over the recent builds, then the median of the builds before. A rise puts ▲ beside the
+// median, and a fall ▼. Each is red for the worse and green for the better. The median before is "same" where both
+// show alike, and "" where either is unknown.
+func (m measure) headline(t theme, recent, previous []*Build) (median, was string) {
+	shown, _ := m.shownMedian(recent)
+	median = t.bold.Render(shown)
+	now, known := m.median(recent)
+	before, knownBefore := m.median(previous)
+	switch {
+	case known == 0, knownBefore == 0:
+		return median, ""
+	case m.shown(now) == m.shown(before):
+		return median, t.dim.Render("same")
 	}
 
-	was, _ := m.shownMedian(previous)
-	return "before " + was
+	arrow, style := "▲", t.failed
+	if now < before {
+		arrow, style = "▼", t.passed
+	}
+
+	if !m.judged {
+		style = t.dim
+	}
+
+	return median + " " + style.Render(arrow), style.Render("was " + m.shown(before))
 }
 
 // shownMedian is the median of m over the builds that know it, as shown, and how many do. It is — when none does.
@@ -131,7 +155,7 @@ func (m measure) spread(builds []*Build) string {
 		return ""
 	}
 
-	return m.shown(slices.Min(values)) + " – " + m.shown(slices.Max(values))
+	return "range " + m.shown(slices.Min(values)) + "–" + m.shown(slices.Max(values))
 }
 
 // bars draws m as a bar for each build, oldest first, in at most w cells. Each bar is two rows high: bars answers

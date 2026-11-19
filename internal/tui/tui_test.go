@@ -53,20 +53,20 @@ func TestTrend(t *testing.T) {
 	}{
 		{"the window holds the last 10 that ended, beside the 10 before them",
 			ended(9, 9, 9, 9, 9, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), 0,
-			`last 10 builds .* the 10 before .*\n.*││cost .*\n.*││✓ \$1\.00 .*\n.*\n.*││█ █ █ █ █ █ █ █ █ █ .*\n` +
-				`.*││newest \$1\.00 .*\n.*││\$1\.00 – \$1\.00 .*\n.*││before \$3\.00 `, "✓ $1.00", dark.passed.GetForeground()},
+			`last 10 builds .* the 10 before .*\n.*││cost .*\n.*││\$1\.00 ▼ was \$3\.00 .*\n.*\n.*││█ █ █ █ █ █ █ █ █ █ .*\n` +
+				`.*││newest \$1\.00 .*\n.*││range \$1\.00–\$1\.00 `, "▼ was $3.00", dark.passed.GetForeground()},
 		{"a build that has not ended is outside it", append(ended(1, 2, 4), running), 0,
 			`last 3 builds .*\n.*││cost .*\n.*││\$2\.00 .*\n.*││ {8}███ .*\n.*││▄▄▄ ███ ███ .*\n.*││newest \$4\.00 .*\n` +
-				`.*││\$1\.00 – \$4\.00 .*\n.*│╰`, "", nil},
+				`.*││range \$1\.00–\$4\.00 .*\n.*│╰`, "", nil},
 		{"a build whose number is unknown is left out of its median, and draws a dot", ended(1, -1, 3), 0,
-			`││\$2\.00  2 of 3 .*\n.*\n.*││▅▅▅ ··· ███ `, "$2.00  2 of 3", nil},
+			`││cost 2/3 known .*\n.*││\$2\.00 .*\n.*\n.*││▅▅▅ ··· ███ `, "2/3 known", dark.dim.GetForeground()},
 		{"a worse number is red", ended(1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2), 0,
-			`││✗ \$2\.00 .*\n(.*\n){4}.*││before \$1\.00 `, "✗ $2.00", dark.failed.GetForeground()},
+			`││\$2\.00 ▲ was \$1\.00 `, "▲ was $1.00", dark.failed.GetForeground()},
 		{"a trend too narrow for its tiles is a table with no bars", ended(1, 1), 74,
 			`│cost +\$1\.00 +│\n.*│minutes `, "", nil},
 		{"an 80-column terminal shows both medians",
 			ended(3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), 80,
-			`│cost +✓ \$1\.00 +before \$3\.00 *│`, "✓ $1.00", dark.passed.GetForeground()},
+			`│cost +\$1\.00 ▼ was \$3\.00 *│`, "▼ was $3.00", dark.passed.GetForeground()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			src := source{specs: []Spec{{Name: "x", State: UAT, Builds: tc.builds}}}
@@ -123,6 +123,35 @@ func TestMonitors(t *testing.T) {
 	}
 }
 
+// TestMonitorsPanel holds that the monitors have a panel of their own, below the specs. The specs' side lists and
+// trends spec builds alone. The monitors' side lists and trends fixes alone, with no tests or rounds.
+func TestMonitorsPanel(t *testing.T) {
+	now := time.Now()
+	ended := func(spec string, fix bool, size int, cost float64) *Build {
+		return &Build{Spec: spec, Started: now.Add(-time.Hour), Outcome: "landed", Fix: fix, Size: size,
+			Steps: []Step{&Run{Role: "build", Why: "first run", Start: now.Add(-time.Hour), End: now,
+				Totals: claude.Totals{CostUSD: &cost}}}}
+	}
+
+	src := source{specs: []Spec{{Name: "x", State: Accepted, Builds: []*Build{ended("x", false, 3, 2)}}},
+		monitors: []Spec{{Name: "deps", State: Healthy, Builds: []*Build{ended("deps", true, 0, 0.5)},
+			Monitor: &Monitor{Result: "healthy"}}}}
+	m := drive(t, src, "", sized(140, 30))
+	shows(t, m, `╭ monitors ─+╮`, `│≡ all monitors *│`, `╭ recent builds `, `last 1 build · `, `size, tests`,
+		` x +✓ landed +3 tests `)
+	if regexp.MustCompile(` deps +✓ landed`).MatchString(screenOf(m)) {
+		t.Errorf("the specs' side lists a fix:\n%s", screenOf(m))
+	}
+
+	m = sendAll(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	shows(t, m, `╭ recent fixes `, `last 1 fix · `, ` deps +✓ landed `)
+	for _, gone := range []string{` x +✓ landed`, `size, tests`, `rounds`, `0 tests`} {
+		if regexp.MustCompile(gone).MatchString(screenOf(m)) {
+			t.Errorf("the monitors' side shows %s:\n%s", gone, screenOf(m))
+		}
+	}
+}
+
 // TestMonitorSummaryLines holds that each line of a monitor's summary has a row, up to three, above its builds. A
 // cut summary ends in "…".
 func TestMonitorSummaryLines(t *testing.T) {
@@ -166,7 +195,7 @@ func TestMonitorNamedAsSpec(t *testing.T) {
 	src := source{specs: []Spec{{Name: "deps", State: Accepted, Builds: []*Build{build}}}, monitors: []Spec{
 		{Name: "deps", State: Running, Builds: []*Build{fix}, Monitor: &Monitor{Result: "running"}},
 	}, calls: map[string]claude.Recounted{"build": {Answer: "the build's answer"}, "fix": {Answer: "the fix's answer"}}}
-	m := drive(t, src, "", sized(140, 30), press('j'), press('j'), tick{})
+	m := drive(t, src, "", sized(140, 30), tea.KeyPressMsg{Code: tea.KeyTab}, press('j'), tick{})
 	shows(t, m, `╭ fixes of deps · `, `#1 +▶ running `)
 
 	m = sendAll(m, tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -184,8 +213,8 @@ func TestRoundsUnknown(t *testing.T) {
 	now := time.Now()
 	b := &Build{Spec: "x", Started: now, Outcome: "landed", Steps: []Step{&Run{Role: "build", Start: now, End: now}}}
 	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}}
-	if m := drive(t, src, "", sized(140, 30)); !regexp.MustCompile(`││—  0 of 1 +0 +0 +—  0 of 1 +0 *│`).MatchString(
-		screenOf(m)) {
+	tiles := `││cost 0/1 known +minutes +failed calls +rounds 0/1 known +size, tests *│\n.*││— +0 +0 +— +0 *│`
+	if m := drive(t, src, "", sized(140, 30)); !regexp.MustCompile(tiles).MatchString(screenOf(m)) {
 		t.Errorf("the trend counts the rounds:\n%s", screenOf(m))
 	}
 
@@ -650,8 +679,9 @@ func TestGauges(t *testing.T) {
 		State: UAT, Builds: []*Build{b}}}}
 	m := drive(t, src, "", sized(120, 30))
 	// The trend above it keeps its tiles.
-	for _, want := range []string{`╭ gauges ─+╮\n`, `│files changed ≤ 3  checkout-flow 2 \(≤ 9\) · billing ✗ 4 +│\n`,
-		`│mutation score ≥ 80  checkout-flow ✗ 70\.5 · billing \? +│\n`, `││newest `} {
+	for _, want := range []string{`╭ gauges ─+╮\n`,
+		`│✗ files changed ≤ 3 · 1 of 2 above  checkout-flow 2 \(≤ 9\) · billing 4 +│\n`,
+		`│\? mutation score ≥ 80 · 1 of 2 below  checkout-flow 70\.5 · billing \? +│\n`, `││newest `} {
 		if !regexp.MustCompile(want).MatchString(screenOf(m)) {
 			t.Errorf("no row matches %s on the screen\n%s", want, screenOf(m))
 		}
@@ -659,13 +689,13 @@ func TestGauges(t *testing.T) {
 
 	// In a narrow pane, the panels stay apart, and a row too narrow for every reading keeps the newest.
 	narrow := drive(t, src, "", sized(48, 20))
-	for _, want := range []string{`│◆ checkout-fl… UAT││cost `, `│mutation score ≥ 80  bill…│\n`} {
+	for _, want := range []string{`│◆ checkout-fl… UAT││cost `, `│\? mutation score ≥ 80  bi…│\n`} {
 		if !regexp.MustCompile(want).MatchString(screenOf(narrow)) {
 			t.Errorf("no row matches %s on the screen\n%s", want, screenOf(narrow))
 		}
 	}
 
-	if got := colorOf(t, m, "✗ 4"); !sameColor(got, dark.failed.GetForeground()) {
+	if got := colorOf(t, m, "70.5"); !sameColor(got, dark.failed.GetForeground()) {
 		t.Errorf("the crossed reading is drawn in %v, want red", got)
 	}
 }
@@ -688,7 +718,8 @@ func TestRepositoryGauge(t *testing.T) {
 	}
 
 	alone := drive(t, source{monitors: monitors}, "", sized(120, 30))
-	if want := `│health, repository ≥ 10  ✗ 8 · \? · ✗ 9 +│\n`; !regexp.MustCompile(want).MatchString(screenOf(alone)) {
+	want := `│✗ health, repository ≥ 10 · 2 of 3 below  8 · \? · 9 +│\n`
+	if !regexp.MustCompile(want).MatchString(screenOf(alone)) {
 		t.Errorf("no row matches %s on the screen\n%s", want, screenOf(alone))
 	}
 
@@ -696,7 +727,8 @@ func TestRepositoryGauge(t *testing.T) {
 		Readings: []Reading{read(30*time.Minute, value(9), true)}}
 	src := source{specs: []Spec{{Name: "languages", State: UAT, Builds: []*Build{landed}}}, monitors: monitors}
 	both := drive(t, src, "", sized(120, 30))
-	want := `│health ≥ 10  languages ✗ 9 +│\n[│ ]+│health, repository ≥ 10  ✗ 8 · \? · ✗ 9 +│\n`
+	want = `│✗ health ≥ 10 · 1 of 1 below  languages 9 +│\n[│ ]+` +
+		`│✗ health, repository ≥ 10 · 2 of 3 below  8 · \? · 9 +│\n`
 	if !regexp.MustCompile(want).MatchString(screenOf(both)) {
 		t.Errorf("no rows match %s on the screen\n%s", want, screenOf(both))
 	}

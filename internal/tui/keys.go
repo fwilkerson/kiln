@@ -53,11 +53,12 @@ func homeKeys() keyMap {
 		commands: []command{
 			{down, func(m *model, _ *screen) tea.Cmd { m.move(1); return nil }},
 			{up, func(m *model, _ *screen) tea.Cmd { m.move(-1); return nil }},
-			{tab, func(m *model, _ *screen) tea.Cmd { m.focus = m.nextPane(1); return nil }},
+			{tab, func(m *model, _ *screen) tea.Cmd { m.focusOn(m.nextPane(1)); return nil }},
 			{key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "panel before")),
-				func(m *model, _ *screen) tea.Cmd { m.focus = m.nextPane(-1); return nil }},
+				func(m *model, _ *screen) tea.Cmd { m.focusOn(m.nextPane(-1)); return nil }},
 			{filter, func(m *model, _ *screen) tea.Cmd {
-				m.typing, m.focus, m.sel[specsPane] = true, specsPane, 0
+				m.typing, m.focus = true, specsPane
+				m.selectSide(specsPane, 0)
 				return nil
 			}},
 			{open, func(m *model, _ *screen) tea.Cmd {
