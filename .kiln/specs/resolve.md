@@ -2,25 +2,23 @@
 
 Status: Proposed
 
-<!-- A starter, drafted on 2026-11-18, when the uat and docs monitors' accepted fixes could not land after the bugs
-monitor landed 35 fixes. Run /shape resolve to take it up: the skill resumes it from its Open Questions, then writes
-the acceptance tests and the Technical Plan. -->
-
 ## Overview
 
 A monitor with `"accept": true` leaves its fix waiting on its branch, `kiln/<name>`, until the developer runs
-`kiln accept <name>`. Main moves meanwhile. When the landing then fails, no session is there to bring the fix up to
-date, and the developer's only way on is to drop the fix.
+`kiln accept <name>`. Main moves meanwhile. When the landing then fails, no session runs to bring the fix up to
+date, and the developer's only way on is to drop the fix, or to do the work by hand.
 
 ```text
 today    kiln accept docs ── rebase: conflict ─────────────▶ stopped: run kiln reject docs
          kiln accept uat ─── rebase ── gate: check fails ──▶ stopped: fix main, and accept again
-with     kiln accept docs ── rebase: conflict ── resolve session merges main ── gate ──▶ lands
+with     kiln accept docs ── rebase: conflict ───────────── the fix's session merges main ──── gate ──▶ lands
+         kiln accept uat ─── rebase ── gate: check fails ── the fix's session fixes the rest ── gate ──▶ lands
 ```
 
-After this spec, an accepted fix whose landing stops because main moved goes to a session that resolves it: a new
-agent, `resolve`, whose only work is to bring a branch onto main. It merges main, resolves each conflict so that
-both main's change and the fix's intent hold, and ends its turn. kiln gates the result as it gates any fix.
+After this spec, an accepted fix whose landing meets a setback goes back to the session that made it, as a build's
+landing does. The session is the one the monitor's agent ran to make the fix. kiln resumes it, with the files in
+conflict or the gate's report. The session merges main, or fixes what the gate found, and ends its turn. kiln gates
+the result, and lands it.
 
 What showed the need: on 2026-11-17 the uat and docs monitors each left a fix waiting. The bugs monitor then
 landed 35 fixes, and main moved 32 commits past both. On 2026-11-18:
@@ -29,43 +27,192 @@ landed 35 fixes, and main moved 32 commits past both. On 2026-11-18:
   `internal/kiln/kiln.go`. kiln named `kiln reject docs`, which drops the fix and its cost, and lets the next run
   start over from main.
 - `kiln accept uat` rebased cleanly, but the gate failed: the uat check still asked for a fix, since main had
-  gained scenarios to fold. kiln named "fix main, and run kiln accept uat to land it again". The developer has
-  nothing on main to fix, and each accept stops the same way.
+  gained scenarios to fold. kiln named "fix main, and run kiln accept uat to land it again". The fix landed 78
+  minutes later, once a session the developer ran had folded those scenarios on main by hand.
+
+Each fix's session was there to resume. kiln's record of a waiting fix keeps its session, and its worktree. The docs
+session ended at 58k tokens of context, and the uat session at 111k.
 
 ## Goals
 
-- `kiln accept <name>` lands a fix whose branch conflicts with main, once the resolve session and the gate pass.
-- The developer never has to resolve a conflict by hand, or reject a fix only because main moved.
-- `kiln init` writes the `resolve` agent for any project, with kiln's contract after its body, as it writes the
-  others.
-- `kiln status` and `kiln tui` show a fix being resolved, and what stopped a resolve that failed.
+- `kiln accept <name>` lands a fix whose branch conflicts with main, once the fix's session merges main and the
+  gate passes.
+- It lands a fix that the gate fails on main as it moved, once the fix's session fixes what the gate found.
+- The developer never resolves a conflict by hand, or rejects an agent's fix only because main moved.
+- A landing that still fails keeps the fix. It stops, and takes `kiln accept` or `kiln reject`.
+- `kiln status` and `kiln tui` show the session at work on a landing, and what stopped a landing that failed.
 
 ## Non-goals
 
-- A spec build's conflict. It goes back to the build's own session, which knows the spec, as it does today.
+- A spec build's conflict. It goes back to the build's own session, as it does today.
 - Keeping a waiting fix up to date while it waits, by rebasing it as main moves.
-- A resolve for a branch nobody accepted. A fix that conflicts while its monitor runs goes back to its own
-  session, as today.
-
-`.kiln/specs/lanes.md` lists "a new agent that resolves a conflict" as a non-goal. This spec takes that agent up
-for accepted fixes only, so the lanes spec's non-goal still holds for builds.
+- A fix that a monitor's command made alone. It has no session. Its conflict stops the landing and names
+  `kiln reject`, as today, and the monitor's next run makes the fix anew from main, for the cost of the command.
+- An accepted fix whose work main already holds. Its landing stops as today.
 
 ## Open Questions
 
 <!-- Keep each question here, across sessions, until it is answered. Then move the answer to where it belongs. -->
 
-1. Which session takes a landing whose rebase was clean but whose gate failed, as uat's did? The conflict is the
-   resolve agent's work, but folding what main added is the monitor's own. Lean: a conflict goes to the resolve
-   agent, and a failed gate after a clean rebase goes to the monitor's agent, in a new session of the fix, with the
-   gate's report. A monitor with only a command stops as today.
-2. Does a resolved fix land at once, or wait for `kiln accept` again? The developer accepted a diff, and the
-   resolution changes it. Waiting may never end while another monitor lands each hour. Lean: it lands once its
-   gate passes, check included. The landing commit's body names each file the resolution changed beyond the
-   accepted fix, so `git show` shows what the developer did not read.
-3. Which kiln runs the resolve session? Today the kiln that lands an accepted fix is `kiln accept`, or the next
-   `kiln monitor run` for an accept that came while one ran. Lean: that same kiln, as a build's landing sends its
-   conflict back to its session in the kiln that lands it.
-4. How many tries does it get? Lean: the rounds of the gate, as `kiln.json` gives a fix. Past them it stops, and
-   `kiln status` names `kiln reject <name>`, as today.
-5. Does the audit read the resolution? It reads each fix whose agent ran. Lean: yes, over the files the resolution
-   changed, since a wrong merge is the error the gate is likeliest to miss.
+1. Which session brings an accepted fix onto main: the session that made the fix, resumed, or a session of a new
+   agent, `resolve`? The starter of this spec proposed the new agent. `.kiln/specs/lanes.md` lists "a new agent
+   that resolves a conflict" as a non-goal. Lean: the session that made the fix. A monitor's agent file holds the
+   rules its fix is judged by, such as `.kiln/agents/fold.md`'s "Keep each check", and a `resolve` agent would
+   hold none of them. A build's landing, and the landing of a fix that never waited, already go back to their own
+   session. The sections below are written under this lean. Under the other answer, the question of which session
+   takes a failed gate after a clean rebase comes back.
+2. Does the fix land as soon as the session's work passes the gate, or wait for `kiln accept` again? The developer
+   accepted a diff, and the session changes it. Waiting may never end while another monitor lands each hour. Lean:
+   it lands once its gate passes, check included. The landing commit's body names each file the session changed
+   beyond the accepted fix, so `git show` shows what the developer did not read.
+3. Does the audit read what the session changed in the landing? Today the audit reads a fix once, and reads it
+   again only for a path `kiln.json`'s `reaudit` names. Lean: yes, over the files the session changed since the
+   developer accepted, since a wrong merge is the error the gate is likeliest to miss.
+
+## Acceptance tests
+
+### 1. An accepted fix that conflicts with main lands
+
+- **Given**: a monitor whose fixes wait for `kiln accept`, and a fix its agent made, waiting on its branch. Main
+  changed since, in a line the fix changed.
+- **When**: the developer runs `kiln accept` with the monitor's name, and the fix's session merges main.
+- **Then**: kiln resumes the session that made the fix, and tells it each file in conflict. After the gate passes,
+  main holds both main's change and the fix's.
+
+### 2. An accepted fix that the gate fails on main as it moved lands
+
+- **Given**: such a fix, waiting on its branch. Main changed since, so that the fix rebases with no conflict, and
+  the monitor's check asks for a fix again.
+- **When**: the developer runs `kiln accept` with the monitor's name, and the fix's session fixes what the check
+  found.
+- **Then**: kiln resumes the session that made the fix, with the gate's report. After the gate passes, main holds
+  the session's work.
+
+### 3. A landing that still fails keeps the fix
+
+- **Given**: a fix as in test 1, whose session leaves the gate failing in each round `kiln.json` gives it.
+- **When**: the developer runs `kiln accept` with the monitor's name.
+- **Then**: `kiln accept` fails, and main is unchanged. `kiln status` shows the fix stopped, with why, and names
+  both `kiln accept` and `kiln reject`. A second `kiln accept` resumes the same session.
+
+### 4. A session that asks for the developer keeps the fix
+
+- **Given**: a fix as in test 1, whose session ends its turn asking for the developer.
+- **When**: the developer runs `kiln accept` with the monitor's name.
+- **Then**: the landing stops, and `kiln status` shows the session's report. The branch still holds the fix, and
+  both `kiln accept` and `kiln reject` take it.
+
+### 5. kiln status shows the session at work on a landing
+
+- **Given**: a fix as in test 1.
+- **When**: `kiln status` runs while the fix's session merges main.
+- **Then**: it shows the monitor's fix landing, and that its session is at work on a conflict with main.
+
+### 6. The landing's commit names what the session changed
+
+- **Given**: a fix as in test 1, which changed two files. Main changed one of them since.
+- **When**: the fix lands, after its session merged main.
+- **Then**: the commit that moved main names the file the session changed, and not the file that lands as the
+  developer accepted it.
+
+### 7. The audit reads what the session changed
+
+- **Given**: a fix as in test 6.
+- **When**: the fix's session merges main, and the gate passes.
+- **Then**: before main moves, the audit runs, and kiln tells it the file the session changed. The audit's
+  findings go back to the fix's session.
+
+## Technical Plan
+
+All of it is in `internal/kiln`. No command, flag or key of `kiln.json` is new, and `kiln init` writes nothing
+new.
+
+### The landing
+
+`landFix`, in `fix.go`, lands an accepted fix. Today each setback of `land` stops it. After this spec:
+
+| Setback of `land`                  | The fix has a session           | No session      |
+|------------------------------------|---------------------------------|-----------------|
+| a conflict with main               | back to the session, as a round | stops, as today |
+| the gate fails on the rebased work | back to the session, as a round | stops, as today |
+| the work changes nothing on main   | stops, as today                 | stops, as today |
+
+- A fix has a session when its record's `Session` is set: the monitor's agent ran. `fixLand` draws the same line
+  today for a fix that never waited.
+- "Back to the session" is `build.round`, then `fixLaunch` with resume, then the loop `fixAgent` runs: `talk`,
+  `heard`, `titleOf`, `fixGate`. Share that loop between `fixAgent` and `landFix`, rather than copy it.
+- The kiln that lands the fix runs the session: `kiln accept`, or the next `kiln monitor run` for an accept that
+  came while another kiln held the run lock. `Repo.Accept` already runs a build's session so, for accepted
+  amendments. A landing that `kiln monitor run` takes up opens its tab when it ends, as today.
+- The rounds are `kiln.json`'s. `acceptFix` sets the record's rounds to 0 today, and so does each later
+  `kiln accept`. Past the last round the landing stops.
+- The session's first message in a landing says the developer accepted the fix, and that main moved since. A
+  conflict's message names each file in conflict, one on a line, and asks the session to run `git merge main`,
+  keep both main's change and the fix's, and end its turn. A failed gate's message holds the gate's report.
+- Once the session's work passes the gate, `fixAfter` lands it. It never leaves an accepted fix waiting again:
+  today `fixAfter` ends each fix of a monitor with `"accept": true` as waiting.
+
+### What never drops an accepted fix
+
+`fixEnded` drops the record, the branch and the worktree of each fix that ends other than stopped or waiting. In
+a landing, each of these stops the landing instead, with the text as why:
+
+- the session asks for the developer, with `{"ask": true, "summary": "..."}`: its summary and its report
+- the session fails: its error
+- a usage limit ends the session: `landingStops` already stops the landing for it
+
+`contract/monitor.md` says of an ask that "kiln then drops what you changed". Add that in the landing of an
+accepted fix, kiln keeps the fix, and the developer reads the report. Add to "How the fix goes" that a fix the
+developer accepted may come back once more, after main moved.
+
+### What the session changed
+
+The record gains the commit the developer accepted: the branch's tip when `acceptFix` ran. A later `kiln accept`
+of a stopped landing keeps it.
+
+- The files the session changed are those whose own change differs between that commit and the work that lands.
+  `ownChange`, in `reaudit.go`, already reads a work's own change since it left main, so that the same change
+  reads the same on any base. Compare each file the two changed.
+- The landing commit's body gains one line when a session ran in the landing, before its `Build:` line:
+  `Changed since kiln accept: <path>, <path>`. With no such file, the line is absent.
+- The audit runs once the session's work passes the gate, before the landing, when that list holds a file outside
+  `.kiln/`. Its prompt is `auditingFix`'s, over those files and their directories. It counts as a round, as
+  `reauditRound` counts an audit past the first. Its findings go back to the session with `fixAudited`.
+
+### What the developer sees
+
+- `kiln accept <name>` prints each step as a fix's run does, and `<name>: landed` last. When the landing stops,
+  it exits non-zero, and its error names `kiln accept <name>` and `kiln reject <name>`.
+- While the session runs, `kiln status` shows the monitor's line as `<name>: accepted, landing: ` then why the
+  session runs, in the words `reason.shown` gives `kiln tui`: `conflict with main, round 1 of 3`, or
+  `landing gate failed, round 1 of 3`. `kiln tui` shows the run so today, from its start line in the ledger.
+- A stopped landing of a fix with a session shows, under the monitor's line in `kiln status`, why it stopped, then
+  `next: cd <worktree> && claude --resume <session>, to ask the session why;` and
+  `then run kiln accept <name> to land it again, or kiln reject <name>`. `fixStep` and `landAgain`, in
+  `stats.go` and `kiln.go`, name `kiln reject` alone only for a conflicted fix with no session.
+- The scripted claude records each call under `.claude-calls/<role>/<attempt>/<call>/`. A resumed call's
+  `call.json` holds `"resume": true` and the session's ID, and its `prompt` file holds the message.
+
+### Tests and docs the plan changes
+
+- `uat/testdata/monitors/waits-for-accept.txtar` stays true: its fix is a command's, with no session.
+- `TestFixStep`, in `rules_test.go`: its conflicted row is a fix with no session. Add the row with one.
+- The package doc of `internal/kiln`: the fix's line "stops ──▶ accept or reject again", the Monitors section, and
+  `Repo.Accept`'s doc, which says a conflicted landing waits for `kiln reject`.
+- `docs/reference.md`, under monitors: "kiln then drops what it changed", and the diagram's "waits for accept".
+
+## Alternatives Considered
+
+### Drop the fix, and run the monitor again from main
+
+- **Pros**: No merge. The new fix is made against main as it stands.
+- **Cons**: It pays for the whole fix again, and the developer reads a whole new diff. The uat fix of 2026-11-17
+  cost $3.39 and 16 minutes. Main may move again before the developer accepts the new one.
+- **Reason for Rejection**: It is what `kiln reject` gives today, and what showed the need.
+
+### Rebase a waiting fix each time main moves
+
+- **Pros**: The fix the developer reads is always up to date.
+- **Cons**: Each landing on main would start a session for each waiting fix, read or not. The diff the developer
+  is reading changes under them.
+- **Reason for Rejection**: Most landings touch no waiting fix. The landing is the one moment the work is needed.
