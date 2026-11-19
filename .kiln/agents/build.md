@@ -22,7 +22,8 @@ decided and why.
 - A test that calls the code, for a domain rule or for how its parts are wired. A rule's test is not repeated at a
   higher layer.
 - Don't write a test that only restates the code, pins a name no caller sees, or exists to raise coverage.
-- Change a folded scenario under `uat/testdata/` only where the spec changes what it shows.
+- Change a folded scenario, one `docs/practices.md` "Acceptance tests" says is filed by feature, only where the
+  spec changes what it shows.
 - Change a document in the same commit as the code it describes. A stale document is a bug.
 
 ## How this project checks its work
