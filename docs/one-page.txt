@@ -13,20 +13,18 @@ actor repo   repo   git, on main
 line arrow work moves
 line planned @kiln planned
 mark balloon part
-mark dot @you your attention
+mark dot @you your time
 mark more more
 
 ::: titleblock
-cell id | One developer, one Mac, some agents
+cell id | One developer, one Mac, many agents
 wordmark kiln
 motto Tooling in. Commits out.
 para kiln runs Claude Code in the background, on your Mac. Features land from the specs you approve, and chores get done on a schedule, so one developer keeps a whole repository moving.
 
-cell problem | Without kiln
-lead **You are the loop.**
-point P1 | You prompt, wait, read the diff, run the tests, and prompt again.
-point P2 | The session that wrote the code also wrote the tests that pass it.
-point P3 | Bugs, stale docs and slow tests wait for the day you get to them. | {1} {4} {3}
+cell problem | How agents get used
+lead **You take each task to an agent.**
+para You bring it the work, watch it go, check what it did, and bring the next. The agents work only while you sit with them.
 
 cell answer | With kiln
 big You shape the @you{specs} and build the tooling; kiln puts the @agent{agents} to work within it.
@@ -34,10 +32,10 @@ para **Specs become commits.** One session writes the code, another the tests fr
 para **Your checks decide.** kiln reads them from main, so no build can weaken them.
 para **kiln runs on itself.** Its monitors fix filed bugs with a test that fails first, refactor the lowest-scoring files, correct stale docs, and speed up a slowing gate.
 
-cell attn | Your attention goes only here
-item ●1 | **Shape and approve a spec.**
-item ●2 | **Tune the tooling**: your gate, a monitor's check, an agent's instructions.
-item ●3 | **Try what landed**, and answer a build that stops or asks.
+cell attn | Where your time goes
+item ●1 | **Ideas**: what to build next, shaped into a spec with `/shape`.
+item ●2 | **The system**: the gate, the monitors and the agents' instructions that every build runs within.
+item ●3 | **The product**: try what landed, and decide what comes next.
 :::
 
 view 2 BUILD | one spec, from a draft to main | after you approve it, no one waits at the keyboard
@@ -87,11 +85,11 @@ rung @agent | 2 · Amend | the build | A spec found wrong gets an amendment, and
 rung @you | 3 · Decide | you ●3 | Accept or reject the amendment, or fix the spec and queue it again.
 :::
 
-view 3 AUTOMATE | a check on a schedule, then a fix | four of the monitors kiln runs on its own repository
+view 3 AUTOMATE | what monitors and gauges could do | four kiln runs on its own repository, as examples
 
 ::: assembly
 box launchd @kiln A2-A3 | LAUNCHD | `kiln monitor run`, | each hour
-group monitors B1-B4 | KILN'S OWN MONITORS ●2
+group monitors B1-B4 | MONITORS, FOR EXAMPLE ●2
 box bugs @kiln B1 | BUGS {1} | every hour
 box health @kiln B2 | CODE HEALTH {2} | every day
 box gate-time @kiln B3 | GATE TIME {3} | every day
@@ -103,7 +101,7 @@ arrow launchd monitors
 arrow monitors fix
 arrow fix main via gate
 
-parts PARTS LIST | each monitor's check, and what its fix does
+parts PARTS LIST | a check or a gauge on a schedule, then an agent's fix
 part 1 @kiln | Bugs | a check lists `bugs/`; its fix takes the first report | Fixes each bug you file, one after another, with a test that fails first.
 part 2 @kiln | Code health | a gauge scores changed files | Refactors the three lowest-scoring files, and changes no behavior.
 part 3 @kiln | Gate time | a check compares the gate's recent times with the times before | Once the gate slows by half, speeds up the slowest tests without weakening one, and waits for you.

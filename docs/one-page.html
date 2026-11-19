@@ -10,7 +10,7 @@
   views, balloons that key a drawing into its parts list, and commands with
   their real output.
 
-  Self-contained: no fonts, scripts or images from elsewhere. Colour is who
+  Self-contained: no fonts, scripts or images from elsewhere. Color is who
   acts, as the legend says. Dashed is planned. Keys: F fits the whole sheet.
   A boxed plus opens its element's detail on a click. Drawn in the theme
   sheet/theme.css: one look, on screen and in print.
@@ -443,7 +443,7 @@
   .term .a { color: var(--theme-agent); }
 
   /* A themed sheet is read on a screen: a size larger, in two weights, and no symbol that the legend gives
-     another meaning. A grey actor's boxes take ink headings and strong edges, or they read as disabled. */
+     another meaning. A gray actor's boxes take ink headings and strong edges, or they read as disabled. */
   html, body { font: 400 14.5px/1.45 var(--sans); }
   b, strong { font-weight: 600; }
   .sh { font: 600 18px/1 var(--tech); margin: 30px 0 14px; }
@@ -570,19 +570,15 @@
 
 <header class="tblock">
   <div class="cell id">
-    <span class="lab">One developer, one Mac, some agents</span>
+    <span class="lab">One developer, one Mac, many agents</span>
     <div class="mark">kiln</div>
     <div class="motto">Tooling in. Commits out.</div>
     <p>kiln runs Claude Code in the background, on your Mac. Features land from the specs you approve, and chores get done on a schedule, so one developer keeps a whole repository moving.</p>
   </div>
   <div class="cell problem">
-    <span class="lab">Without kiln</span>
-    <p class="lead"><b>You are the loop.</b></p>
-    <div class="plist">
-      <b>P1</b><span>You prompt, wait, read the diff, run the tests, and prompt again.</span><span class="see"></span>
-      <b>P2</b><span>The session that wrote the code also wrote the tests that pass it.</span><span class="see"></span>
-      <b>P3</b><span>Bugs, stale docs and slow tests wait for the day you get to them.</span><span class="see"><span class="bal kiln" data-item="1">1</span> <span class="bal kiln" data-item="4">4</span> <span class="bal kiln" data-item="3">3</span></span>
-    </div>
+    <span class="lab">How agents get used</span>
+    <p class="lead"><b>You take each task to an agent.</b></p>
+    <p>You bring it the work, watch it go, check what it did, and bring the next. The agents work only while you sit with them.</p>
   </div>
   <div class="cell answer">
     <span class="lab">With kiln</span>
@@ -592,11 +588,11 @@
     <p><b>kiln runs on itself.</b> Its monitors fix filed bugs with a test that fails first, refactor the lowest-scoring files, correct stale docs, and speed up a slowing gate.</p>
   </div>
   <div class="cell attn">
-    <span class="lab">Your attention goes only here</span>
+    <span class="lab">Where your time goes</span>
     <ol>
-      <li><span class="disc" data-n="1"></span><span><b>Shape and approve a spec.</b></span></li>
-      <li><span class="disc" data-n="2"></span><span><b>Tune the tooling</b>: your gate, a monitor's check, an agent's instructions.</span></li>
-      <li><span class="disc" data-n="3"></span><span><b>Try what landed</b>, and answer a build that stops or asks.</span></li>
+      <li><span class="disc" data-n="1"></span><span><b>Ideas</b>: what to build next, shaped into a spec with <code>/shape</code>.</span></li>
+      <li><span class="disc" data-n="2"></span><span><b>The system</b>: the gate, the monitors and the agents' instructions that every build runs within.</span></li>
+      <li><span class="disc" data-n="3"></span><span><b>The product</b>: try what landed, and decide what comes next.</span></li>
     </ol>
   </div>
   <div class="legend">
@@ -612,7 +608,7 @@
     <span class="sym"><svg width="36" height="10"><line x1="1" y1="5" x2="35" y2="5" class="ph kiln"/></svg>planned</span>
     <span class="k">MARKS</span>
     <span class="sym"><span class="bal">1</span>part</span>
-    <span class="sym"><span class="disc" data-n="1"></span>your attention</span>
+    <span class="sym"><span class="disc" data-n="1"></span>your time</span>
     <span class="sym"><span class="more-mk"></span>more</span>
   </div>
 </header>
@@ -710,50 +706,50 @@
   </div>
 </div>
 
-<h2 class="sh"><span class="n">3</span><span class="t">AUTOMATE<small>a check on a schedule, then a fix</small></span><span class="rule"></span><span class="note">four of the monitors kiln runs on its own repository</span></h2>
+<h2 class="sh"><span class="n">3</span><span class="t">AUTOMATE<small>what monitors and gauges could do</small></span><span class="rule"></span><span class="note">four kiln runs on its own repository, as examples</span></h2>
 
 <div class="system">
 <svg class="assembly" width="960" height="392" viewBox="0 0 960 392">
-  <rect x="279" y="14" width="301" height="364" class="grp"/>
-  <rect x="289" y="6" width="210" height="16" class="tab"/>
-  <text x="295" y="18" class="tc">KILN'S OWN MONITORS</text><g class="disc" transform="translate(485,14)"><circle r="7"/><text y="3.5">2</text></g>
-  <rect x="28" y="124" width="217" height="144" class="bx kiln"/>
+  <rect x="273" y="14" width="319" height="364" class="grp"/>
+  <rect x="283" y="6" width="234" height="16" class="tab"/>
+  <text x="289" y="18" class="tc">MONITORS, FOR EXAMPLE</text><g class="disc" transform="translate(503,14)"><circle r="7"/><text y="3.5">2</text></g>
+  <rect x="28" y="124" width="211" height="144" class="bx kiln"/>
   <text x="37" y="142" class="tc f-kiln">LAUNCHD</text>
   <text x="37" y="161"><tspan class="tm">kiln monitor run</tspan><tspan class="ts">,</tspan></text>
   <text x="37" y="178" class="ts">each hour</text>
-  <rect x="293" y="28" width="273" height="48" class="bx kiln"/>
-  <text x="302" y="46" class="tc f-kiln">BUGS</text>
-  <text x="302" y="68" class="ts">every hour</text>
-  <rect x="293" y="124" width="273" height="48" class="bx kiln"/>
-  <text x="302" y="142" class="tc f-kiln">CODE HEALTH</text>
-  <text x="302" y="164" class="ts">every day</text>
-  <rect x="293" y="220" width="273" height="48" class="bx kiln"/>
-  <text x="302" y="238" class="tc f-kiln">GATE TIME</text>
-  <text x="302" y="260" class="ts">every day</text>
-  <rect x="293" y="316" width="273" height="48" class="bx kiln"/>
-  <text x="302" y="334" class="tc f-kiln">DOCS</text>
-  <text x="302" y="356" class="ts">every day</text>
-  <rect x="614" y="124" width="173" height="144" class="bx agent"/>
-  <text x="623" y="142" class="tc f-agent">A FIX</text>
-  <text x="623" y="164" class="ts">a session with</text>
-  <text x="623" y="181" class="ts">the monitor's</text>
-  <text x="623" y="198" class="ts">own agent</text>
-  <text x="889" y="40" class="tc f-repo">MAIN</text>
-  <path d="M883,28 V364" class="w heavy repo"/>
-  <path d="M245,196 H277" class="w kiln" marker-end="url(#a-kiln)"/>
-  <path d="M580,76 H590 V172 H612" class="w" marker-end="url(#a)"/>
-  <path d="M787,204 H883" class="w agent"/><circle cx="883" cy="204" r="4.5" class="dot repo"/>
-  <path d="M849,211 L857,204 L849,197 Z M865,211 L857,204 L865,197 Z" class="valve kiln"/>
-  <text x="837" y="230" class="tc f-kiln">GATE</text>
-  <g class="bal kiln" data-item="1" transform="translate(566,28)"><circle r="10"/><text y="4">1</text></g>
-  <g class="bal kiln" data-item="2" transform="translate(566,124)"><circle r="10"/><text y="4">2</text></g>
-  <g class="bal kiln" data-item="3" transform="translate(566,220)"><circle r="10"/><text y="4">3</text></g>
-  <g class="bal kiln" data-item="4" transform="translate(566,316)"><circle r="10"/><text y="4">4</text></g>
-  <g class="bal agent" data-item="5" transform="translate(787,124)"><circle r="10"/><text y="4">5</text></g>
+  <rect x="287" y="28" width="291" height="48" class="bx kiln"/>
+  <text x="296" y="46" class="tc f-kiln">BUGS</text>
+  <text x="296" y="68" class="ts">every hour</text>
+  <rect x="287" y="124" width="291" height="48" class="bx kiln"/>
+  <text x="296" y="142" class="tc f-kiln">CODE HEALTH</text>
+  <text x="296" y="164" class="ts">every day</text>
+  <rect x="287" y="220" width="291" height="48" class="bx kiln"/>
+  <text x="296" y="238" class="tc f-kiln">GATE TIME</text>
+  <text x="296" y="260" class="ts">every day</text>
+  <rect x="287" y="316" width="291" height="48" class="bx kiln"/>
+  <text x="296" y="334" class="tc f-kiln">DOCS</text>
+  <text x="296" y="356" class="ts">every day</text>
+  <rect x="626" y="124" width="167" height="144" class="bx agent"/>
+  <text x="635" y="142" class="tc f-agent">A FIX</text>
+  <text x="635" y="164" class="ts">a session with</text>
+  <text x="635" y="181" class="ts">the monitor's</text>
+  <text x="635" y="198" class="ts">own agent</text>
+  <text x="892" y="40" class="tc f-repo">MAIN</text>
+  <path d="M886,28 V364" class="w heavy repo"/>
+  <path d="M239,196 H271" class="w kiln" marker-end="url(#a-kiln)"/>
+  <path d="M592,76 H602 V172 H624" class="w" marker-end="url(#a)"/>
+  <path d="M793,204 H886" class="w agent"/><circle cx="886" cy="204" r="4.5" class="dot repo"/>
+  <path d="M852,211 L860,204 L852,197 Z M868,211 L860,204 L868,197 Z" class="valve kiln"/>
+  <text x="840" y="230" class="tc f-kiln">GATE</text>
+  <g class="bal kiln" data-item="1" transform="translate(578,28)"><circle r="10"/><text y="4">1</text></g>
+  <g class="bal kiln" data-item="2" transform="translate(578,124)"><circle r="10"/><text y="4">2</text></g>
+  <g class="bal kiln" data-item="3" transform="translate(578,220)"><circle r="10"/><text y="4">3</text></g>
+  <g class="bal kiln" data-item="4" transform="translate(578,316)"><circle r="10"/><text y="4">4</text></g>
+  <g class="bal agent" data-item="5" transform="translate(793,124)"><circle r="10"/><text y="4">5</text></g>
 </svg>
 
 <div class="bom">
-  <div class="ttl">PARTS LIST<span>each monitor's check, and what its fix does</span></div>
+  <div class="ttl">PARTS LIST<span>a check or a gauge on a schedule, then an agent's fix</span></div>
   <table>
     <thead><tr><th>ITEM</th><th>PART · WHAT IT IS</th><th>WHY IT EXISTS</th></tr></thead>
     <tbody>
