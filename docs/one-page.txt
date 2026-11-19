@@ -24,7 +24,8 @@ para kiln runs Claude Code in the background, on your Mac. Features land from th
 
 cell problem | How agents get used
 lead **You take each task to an agent.**
-para You bring it the work, watch it go, check what it did, and bring the next. The agents work only while you sit with them.
+para You bring it the work, watch it go, check what it did, and bring the next.
+para What if you built the system instead, and the agents got the work done inside it?
 
 cell answer | With kiln
 big You shape the @you{specs} and build the tooling; kiln puts the @agent{agents} to work within it.

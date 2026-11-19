@@ -73,3 +73,6 @@
 .sh .n { color: var(--kiln); text-shadow: 0 0 10px rgba(255, 120, 40, .55); }
 .sh .rule { height: 1px; border-top: 0; background: linear-gradient(90deg, var(--kiln), var(--line) 45%); }
 .motto { color: var(--kiln); }
+
+/* The problem cell sets each paragraph apart, as the answer cell does. */
+.tblock .problem p + p { margin-top: 10px; }

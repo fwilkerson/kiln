@@ -90,6 +90,9 @@
 .sh .n { color: var(--theme-kiln); text-shadow: 0 0 10px rgba(255, 120, 40, .55); }
 .sh .rule { height: 1px; border-top: 0; background: linear-gradient(90deg, var(--theme-kiln), var(--theme-line) 45%); }
 .motto { color: var(--theme-kiln); }
+
+
+.tblock .problem p + p { margin-top: 10px; }
   }
   @layer sheet {
   :root {
@@ -578,7 +581,8 @@
   <div class="cell problem">
     <span class="lab">How agents get used</span>
     <p class="lead"><b>You take each task to an agent.</b></p>
-    <p>You bring it the work, watch it go, check what it did, and bring the next. The agents work only while you sit with them.</p>
+    <p>You bring it the work, watch it go, check what it did, and bring the next.</p>
+    <p>What if you built the system instead, and the agents got the work done inside it?</p>
   </div>
   <div class="cell answer">
     <span class="lab">With kiln</span>
