@@ -49,23 +49,18 @@ session ended at 58k tokens of context, and the uat session at 111k.
 - A fix that a monitor's command made alone. It has no session. Its conflict stops the landing and names
   `kiln reject`, as today, and the monitor's next run makes the fix anew from main, for the cost of the command.
 - An accepted fix whose work main already holds. Its landing stops as today.
+- A new agent whose only work is to resolve a conflict. `.kiln/specs/lanes.md` lists it as a non-goal too, and
+  Alternatives Considered says why.
 
 ## Open Questions
 
 <!-- Keep each question here, across sessions, until it is answered. Then move the answer to where it belongs. -->
 
-1. Which session brings an accepted fix onto main: the session that made the fix, resumed, or a session of a new
-   agent, `resolve`? The starter of this spec proposed the new agent. `.kiln/specs/lanes.md` lists "a new agent
-   that resolves a conflict" as a non-goal. Lean: the session that made the fix. A monitor's agent file holds the
-   rules its fix is judged by, such as `.kiln/agents/fold.md`'s "Keep each check", and a `resolve` agent would
-   hold none of them. A build's landing, and the landing of a fix that never waited, already go back to their own
-   session. The sections below are written under this lean. Under the other answer, the question of which session
-   takes a failed gate after a clean rebase comes back.
-2. Does the fix land as soon as the session's work passes the gate, or wait for `kiln accept` again? The developer
+1. Does the fix land as soon as the session's work passes the gate, or wait for `kiln accept` again? The developer
    accepted a diff, and the session changes it. Waiting may never end while another monitor lands each hour. Lean:
    it lands once its gate passes, check included. The landing commit's body names each file the session changed
    beyond the accepted fix, so `git show` shows what the developer did not read.
-3. Does the audit read what the session changed in the landing? Today the audit reads a fix once, and reads it
+2. Does the audit read what the session changed in the landing? Today the audit reads a fix once, and reads it
    again only for a path `kiln.json`'s `reaudit` names. Lean: yes, over the files the session changed since the
    developer accepted, since a wrong merge is the error the gate is likeliest to miss.
 
@@ -202,6 +197,17 @@ of a stopped landing keeps it.
 - `docs/reference.md`, under monitors: "kiln then drops what it changed", and the diagram's "waits for accept".
 
 ## Alternatives Considered
+
+### A new agent, `resolve`, in a fresh session
+
+The starter of this spec proposed it: an agent `kiln init` writes, whose only work is to merge main into a branch.
+
+- **Pros**: A fresh session reads no old context. It covers a fix a command made alone, which has no session.
+- **Cons**: It holds none of the rules the fix is judged by, which the monitor's agent file holds, such as
+  `.kiln/agents/fold.md`'s "Keep each check". It knows the fix only from its diff. A failed gate after a clean
+  rebase is the monitor's own work, so it would need a second path, to the monitor's agent.
+- **Reason for Rejection**: The developer chose the fix's own session on 2026-11-18. A build's landing, and the
+  landing of a fix that never waited, already go back to their own session, so one path serves each setback.
 
 ### Drop the fix, and run the monitor again from main
 
