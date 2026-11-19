@@ -45,7 +45,9 @@ for macOS.
   write a test that only restates the code, pins a name no caller sees, or exists to raise coverage.
 - Folded scenarios: as `docs/practices.md` "Acceptance tests" says. No session loosens or removes a check its work
   leaves true. Folding, merging or dropping a scenario moves checks, so only the `uat` monitor does it, for the
-  developer to accept. What else a session may write under `uat/`, its agent file and kiln's contract say.
+  developer to accept. What its session folds while an accepted fix lands, after main moved, lands with that fix:
+  the audit reads it, and the commit's `Changed since kiln accept:` line names it. What else a session may write
+  under `uat/`, its agent file and kiln's contract say.
 - Terminal UI: the scenarios in `uat/testdata/tui/` drive `kiln tui` in a pseudo-terminal, which no sandboxed session
   can open, so `go test ./...` skips them inside a session and runs them in kiln's gate. Check a screen through the
   model's `Update` and `View` in a test of `internal/tui`, and read a failing terminal test from the gate's report.

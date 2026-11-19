@@ -285,7 +285,10 @@ func workPlace(rec record, tree git.Worktree) string {
 	}
 
 	what := "the work"
-	if rec.Accepted {
+	switch {
+	case rec.Accepted && rec.Monitor:
+		what = "the accepted fix"
+	case rec.Accepted:
 		what = "the accepted spec"
 	}
 
@@ -354,7 +357,7 @@ func nextStep(rec record, tree git.Worktree, landedAt git.Rev) string {
 	name := rec.Name
 	switch {
 	case rec.Monitor:
-		return fixStep(rec)
+		return fixStep(rec, tree)
 	case rec.State == landed:
 		return fmt.Sprintf("read it with git show %s, then run kiln accept %s, or change the spec and run "+
 			"kiln queue %s", short(landedAt), name, name)
@@ -369,8 +372,7 @@ func nextStep(rec record, tree git.Worktree, landedAt git.Rev) string {
 			"cd %s && claude --resume %s, to ask the verify session why;\n      then %s",
 			shellQuote(build), rec.Session, shellQuote(verify), rec.Verify, gateFix(rec))
 	case rec.Session != "":
-		return fmt.Sprintf("cd %s && claude --resume %s, to ask the session why;\n      then %s",
-			shellQuote(string(tree)), rec.Session, gateFix(rec))
+		return resumeStep(rec, tree)
 	case rec.Accepted:
 		return gateFix(rec)
 	}
@@ -378,8 +380,16 @@ func nextStep(rec record, tree git.Worktree, landedAt git.Rev) string {
 	return fmt.Sprintf("read kiln status, fix main or the spec, then run kiln queue %s", name)
 }
 
-// fixStep is what the developer runs next on the monitor's fix of rec. A landed fix leaves no record.
-func fixStep(rec record) string {
+// resumeStep is what the developer runs on the build of rec, stopped with a session. It resumes the session in tree,
+// to ask it why, then names what gateFix names.
+func resumeStep(rec record, tree git.Worktree) string {
+	return fmt.Sprintf("cd %s && claude --resume %s, to ask the session why;\n      then %s",
+		shellQuote(string(tree)), rec.Session, gateFix(rec))
+}
+
+// fixStep is what the developer runs next on the monitor's fix of rec, whose worktree is tree. A landed fix leaves no
+// record. The stopped landing of a fix with a session resumes that session first, as a stopped build's step does.
+func fixStep(rec record, tree git.Worktree) string {
 	switch {
 	case rec.fixHalted() && rec.Accepted:
 		return fmt.Sprintf("run kiln monitor run %s, which lands it", rec.Name)
@@ -389,6 +399,8 @@ func fixStep(rec record) string {
 		return "wait for it to end"
 	case rec.landing():
 		return "wait for the next kiln monitor run, which lands it"
+	case rec.Accepted && rec.Session != "":
+		return resumeStep(rec, tree)
 	case conflicted(rec):
 		return fmt.Sprintf("run kiln reject %s, and the monitor's next run fixes anew, from main", rec.Name)
 	case rec.Accepted:
@@ -419,9 +431,9 @@ func gateFix(rec record) string {
 	return fmt.Sprintf("fix main or the spec, and run kiln queue %s", rec.Name)
 }
 
-// conflicted reports whether rec is an accepted fix whose landing stopped on a conflict with main.
+// conflicted reports whether rec is an accepted fix with no session, whose landing stopped on a conflict with main.
 func conflicted(rec record) bool {
-	return rec.Monitor && rec.Accepted && strings.HasPrefix(rec.Why, fixConflicts)
+	return rec.Monitor && rec.Accepted && rec.Session == "" && strings.HasPrefix(rec.Why, fixConflicts)
 }
 
 // byKiln reports whether the build of rec stopped for an error of kiln's, not its gate's.

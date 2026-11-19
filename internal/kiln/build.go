@@ -332,8 +332,8 @@ func (b *build) ledger(ctx context.Context) {
 
 // gateWork commits what the session left, gates it, and takes the build on from the verdict, as after does.
 func (b *build) gateWork(ctx context.Context) (string, reason, error) {
-	if _, err := b.r.git.Commit(ctx, b.tree, b.message("the session's work")); err != nil {
-		return "", reason{}, err
+	if _, back, err := b.sessionWork(ctx); err != nil || back.why != "" {
+		return b.roundFor(back, err)
 	}
 
 	v, err := b.gate(ctx, false, b.allowed()...)
@@ -495,6 +495,27 @@ func (b *build) allowed() []string {
 	}
 
 	return nil
+}
+
+// sessionWork commits what the session left, and answers the commit. A merge the session left unfinished is no
+// work, so kiln never commits its conflict markers. sessionWork commits nothing then, and answers the merge as a
+// conflict, for the session.
+func (b *build) sessionWork(ctx context.Context) (git.Rev, setback, error) {
+	head, err := b.r.git.Commit(ctx, b.tree, b.message("the session's work"))
+	if u, ok := errors.AsType[*git.Unmerged](err); ok && b.rec.Session != "" {
+		return "", setback{whyConflict, fmt.Sprintf(unfinished, strings.Join(u.Files, "\n")), u.Files}, nil
+	}
+
+	return head, setback{}, err
+}
+
+// roundFor sends back to the session, as round does, unless err is set: it answers err then.
+func (b *build) roundFor(back setback, err error) (string, reason, error) {
+	if err != nil {
+		return "", reason{}, err
+	}
+
+	return b.round(back)
 }
 
 // setback is what kept the work from passing, for the session. It is a failed gate, or a conflict with main. It is
@@ -725,7 +746,12 @@ func (b *build) landing() string {
 		message = b.rec.Title + "\n" + body
 	}
 
-	return message + "\nBuild: " + b.r.summary(b.rec.Build) + "\n"
+	message += "\n"
+	if b.fix != nil && len(b.fix.since) > 0 {
+		message += "Changed since kiln accept: " + strings.Join(b.fix.since, ", ") + "\n"
+	}
+
+	return message + "Build: " + b.r.summary(b.rec.Build) + "\n"
 }
 
 // gate runs the gate on the build's worktree, and writes it to the ledger. landing is the gate on the work rebased
@@ -787,6 +813,8 @@ const (
 		"%s. Read each for a check it weakened."
 	conflicts = "Main moved, and your work conflicts with it in these files:\n%s\n\nMerge main into your " +
 		"branch with git merge main, resolve each conflict, commit, and end your turn."
+	unfinished = "Your merge is unfinished: these files still conflict:\n%s\n\nResolve each conflict, commit, " +
+		"and end your turn."
 	unchanged   = "Your work changes nothing on main, so it can't land. Build the spec, and end your turn."
 	limitReset  = "The usage limit has reset. Go on where you stopped."
 	interrupted = "kiln stopped while you worked. Go on where you stopped."

@@ -10,6 +10,8 @@ type history struct {
 	last, lastFix entry
 	// outcomes holds the last outcome line of each of its fixes' builds.
 	outcomes map[string]entry
+	// running holds the start line of each of its fixes' session runs that has no end line yet, by build.
+	running map[string]entry
 }
 
 // histories reads each monitor's history from the ledger, by its name.
@@ -17,7 +19,7 @@ func histories(entries []entry) map[Spec]*history {
 	all := map[Spec]*history{}
 	of := func(name Spec) *history {
 		if all[name] == nil {
-			all[name] = &history{outcomes: map[string]entry{}}
+			all[name] = &history{outcomes: map[string]entry{}, running: map[string]entry{}}
 		}
 
 		return all[name]
@@ -35,6 +37,13 @@ func histories(entries []entry) map[Spec]*history {
 			}
 		case e.Kind == outcomeKind && fixes[e.Build] != "":
 			of(fixes[e.Build]).outcomes[e.Build] = e
+		case e.Kind == startKind && fixes[e.Build] != "":
+			of(fixes[e.Build]).running[e.Build] = e
+		case e.Kind == endKind && fixes[e.Build] != "":
+			h := of(fixes[e.Build])
+			if h.running[e.Build].Session == e.Session {
+				delete(h.running, e.Build)
+			}
 		}
 	}
 

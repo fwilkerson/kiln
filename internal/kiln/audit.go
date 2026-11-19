@@ -25,10 +25,15 @@ func (b *build) audit(ctx context.Context) (string, error) {
 	}
 
 	b.say("the audit reads %s", strings.Join(dirs, " "))
-	prompt := fmt.Sprintf(auditing, "`"+strings.Join(dirs, "`, `")+"`", b.rec.Name.file(), strings.Join(files, ", "))
-	if b.fix != nil {
-		prompt = fmt.Sprintf(auditingFix, "`"+strings.Join(dirs, "`, `")+"`", b.rec.Name, strings.Join(files, ", "))
+	about, subject := auditing, b.rec.Name.file()
+	switch {
+	case b.fix != nil && b.rec.Accepted:
+		about, subject = auditingLanding, string(b.rec.Name)
+	case b.fix != nil:
+		about, subject = auditingFix, string(b.rec.Name)
 	}
+
+	prompt := fmt.Sprintf(about, "`"+strings.Join(dirs, "`, `")+"`", subject, strings.Join(files, ", "))
 
 	harness, err := b.auditedHarness(ctx)
 	if err != nil {
@@ -101,32 +106,43 @@ func findingsOf(text string) string {
 	return text
 }
 
-// changedFiles answers the build's commit, and the files its work changed since it left main, outside .kiln/. It
-// answers their directories too, as changedDirs names them.
+// changedFiles answers the build's commit, and the files its work changed since it left main, outside .kiln/. In
+// an accepted fix's landing, they are the files changed since kiln accept, as changedSince lists them. It answers
+// their directories too, as changedDirs names them.
 func (b *build) changedFiles(ctx context.Context) (head git.Rev, dirs, files []string, err error) {
-	main, err := b.r.mainTip(ctx)
-	if err != nil {
-		return "", nil, nil, err
-	}
-
 	head, err = b.r.git.Head(ctx, b.tree)
 	if err != nil {
 		return "", nil, nil, err
 	}
 
-	base, err := b.r.git.MergeBase(ctx, main, head)
+	changed, err := b.ownFiles(ctx, head)
 	if err != nil {
 		return "", nil, nil, err
 	}
 
-	changed, err := b.r.git.Changed(ctx, base, head)
-	if err != nil {
-		return "", nil, nil, err
-	}
-
-	files = slices.DeleteFunc(changed, func(p string) bool { return strings.HasPrefix(p, kilnDir+"/") })
+	files = slices.DeleteFunc(changed, func(p string) bool { return !outsideKiln(p) })
 	dirs, err = b.changedDirs(ctx, head, files)
 	return head, dirs, files, err
+}
+
+// ownFiles lists the files the work at head changed since it left main. An accepted fix's landing lists those changed
+// since kiln accept.
+func (b *build) ownFiles(ctx context.Context, head git.Rev) ([]string, error) {
+	if b.fix != nil && b.rec.Accepted {
+		return b.r.changedSince(ctx, b.rec.AcceptedAt, head)
+	}
+
+	main, err := b.r.mainTip(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	base, err := b.r.git.MergeBase(ctx, main, head)
+	if err != nil {
+		return nil, err
+	}
+
+	return b.r.git.Changed(ctx, base, head)
 }
 
 // changedDirs are the directories at head that hold paths, sorted, each once: . for the top, or the directory's path.

@@ -62,6 +62,8 @@ type record struct {
 	// Accepted is a spec the developer accepted while it waited on its branch. kiln lands it as a build does, then
 	// retires it.
 	Accepted bool `json:"accepted,omitempty"`
+	// AcceptedAt is the commit of a monitor's fix the developer accepted: its branch's tip when kiln accept took it.
+	AcceptedAt git.Rev `json:"accepted_at,omitempty"`
 	// Before is the commit kiln/<name> stood at when its landing began. It is set only while a landing runs. A
 	// landing that doesn't move main puts the branch back there.
 	Before git.Rev `json:"before,omitempty"`
@@ -281,8 +283,9 @@ func (b *book) queue(name Spec, main git.Rev, changed func(since git.Rev) (bool,
 }
 
 // accept answers the record of a spec the developer accepts, as it stood. A stopped landing of accepted amendments is
-// queued again afresh. It keeps only its build, sessions and audit, and that it lands accepted amendments. It keeps a
-// branch a landing left to put back, too.
+// queued again afresh. It keeps only its build, sessions, turns cut short and audit, and that it lands accepted
+// amendments. It keeps a branch a landing left to put back, too. It keeps the rounds' limit, the title and the
+// commit the developer accepted. Without the limit, a fix's landing that goes back to its session has no round.
 func (b *book) accept(name Spec) (record, error) {
 	if err := b.may(acceptCommand, name, nil); err != nil {
 		return record{}, err
@@ -292,8 +295,9 @@ func (b *book) accept(name Spec) (record, error) {
 	was := *r
 	if r.Accepted {
 		*r = record{Name: name, State: queued, Approved: r.Approved, Build: r.Build, Session: r.Session,
-			Verify: r.Verify, OldTests: r.OldTests, Told: r.Told, Audited: r.Audited, Accepted: true, Before: r.Before,
-			Monitor: r.Monitor}
+			Verify: r.Verify, OldTests: r.OldTests, Told: r.Told, Running: r.Running, Limit: r.Limit,
+			Audited: r.Audited, Accepted: true, AcceptedAt: r.AcceptedAt, Before: r.Before, Monitor: r.Monitor,
+			Title: r.Title}
 	}
 
 	return was, nil

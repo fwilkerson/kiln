@@ -1,0 +1,71 @@
+# 4. A session that asks for the developer keeps the fix.
+
+env KILN_OPEN=true
+
+# Given: a fix as in test 1,
+exec sh -c 'kiln monitor run || true'
+exec kiln status
+stdout 'stale.*waiting'
+exec sh -c 'printf "title\nstale, by hand\n" >doc.txt && git commit -qam "docs: edit by hand"'
+exec git rev-parse main
+cp stdout .tmp/main-before
+
+# whose session starts the merge, meets the conflict, and ends its turn asking for the developer.
+
+# When: the developer runs kiln accept with the monitor's name.
+exec sh -c 'kiln accept stale || true'
+
+# Then: the landing stops, and kiln status shows the session's report.
+exec git rev-parse main
+cmp stdout .tmp/main-before
+exec kiln status
+stdout 'stale.*stopped'
+stdout 'which edit of doc.txt wins'
+stdout 'main rewrote the line the fix marks'
+
+# The branch still holds the fix,
+exec git show kiln/stale:doc.txt
+stdout 'fixed'
+
+# and both kiln accept and kiln reject take it. kiln accept resumes the session, which asks
+# again, so main is still unchanged.
+exec kiln status
+stdout 'kiln accept stale'
+stdout 'kiln reject stale'
+exec sh -c 'kiln accept stale || true'
+grep '"resume": ?true' .claude-calls/stale/1/3/call.json
+exec git rev-parse main
+cmp stdout .tmp/main-before
+exec kiln reject stale
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "rounds": 3, "monitors": [
+ {"name": "stale", "every": "24h", "check": "sh .kiln/monitors/stale", "agent": ".kiln/agents/stale.md", "prompt": "Mark the doc fixed.", "accept": true}
+]}
+-- .kiln/monitors/stale --
+if grep -q fixed doc.txt; then
+  echo '{"fix": false, "summary": "doc.txt is fixed"}'
+else
+  echo '{"fix": true, "summary": "doc.txt is stale"}'
+fi
+-- .kiln/agents/stale.md --
+Mark the doc fixed.
+-- doc.txt --
+title
+stale
+-- claude.json --
+{
+ "stale": {"1": {
+  "1": [
+   {"tool": {"name": "Bash", "input": {"command": "printf 'title\\nfixed\\n' >doc.txt"}}},
+   {"result": {"result": "Marked the doc fixed.\n{\"title\": \"fix(doc): mark the doc fixed\"}"}}
+  ],
+  "2": [
+   {"tool": {"name": "Bash", "input": {"command": "git merge main || true"}}},
+   {"result": {"result": "Main and the fix each rewrote the second line: which edit of doc.txt wins?\n{\"ask\": true, \"summary\": \"main rewrote the line the fix marks\"}"}}],
+  "3": [{"result": {"result": "Main and the fix each rewrote the second line: which edit of doc.txt wins?\n{\"ask\": true, \"summary\": \"main rewrote the line the fix marks\"}"}}]
+ }},
+ "audit": {
+  "1": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}
+ }
+}

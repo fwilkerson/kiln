@@ -1,6 +1,7 @@
 package git_test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,6 +30,10 @@ func TestConfig(t *testing.T) {
 			call: func(t *testing.T, s scratch) error {
 				return s.git.Clone(t.Context(), git.Worktree(filepath.Join(t.TempDir(), "clone")), "main", "x")
 			},
+		},
+		"merge.directoryRenames=true still conflicts on a file added in a renamed directory": {
+			repoConfig: "git config merge.directoryRenames true",
+			call:       mergeIntoRenamed,
 		},
 		"log.showSignature keeps a signed commit's author": {
 			repoConfig: signingKey("") + " && git config log.showSignature true",
@@ -104,6 +109,31 @@ func mergeDiverged(t *testing.T, s scratch) error {
 	return err
 }
 
+// mergeIntoRenamed merges main into a branch that moved todo/ to done/, after main added todo/b. Neither side's
+// commit says where todo/b belongs, so the merge conflicts, and changes nothing.
+func mergeIntoRenamed(t *testing.T, s scratch) error {
+	sh(t, s.repo, "mkdir todo && echo a >todo/a && git add todo && git commit --quiet -m a")
+	tree := filepath.Join(t.TempDir(), "tree")
+	if err := s.git.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main"); err != nil {
+		return err
+	}
+
+	sh(t, tree, "mkdir done && git mv todo/a done/a && git commit --quiet -m move")
+	sh(t, s.repo, "echo b >todo/b && git add todo && git commit --quiet -m b")
+	conflict, err := s.git.Merge(t.Context(), git.Worktree(tree), "main", "merge main")
+	if err != nil || conflict == nil {
+		return fmt.Errorf("the merge answered %+v, %v; want a conflict", conflict, err)
+	}
+
+	for _, p := range []string{"todo/b", "done/b"} {
+		if _, err := os.Stat(filepath.Join(tree, p)); err == nil {
+			return fmt.Errorf("the conflicting merge left %s", p)
+		}
+	}
+
+	return nil
+}
+
 // landSigned rebases a commit signed with the repository's key, and checks the landing's author.
 func landSigned(t *testing.T, s scratch) error {
 	tree := filepath.Join(t.TempDir(), "tree")
@@ -173,4 +203,41 @@ func makeScratch(t *testing.T, repoConfig, globalConfig string) scratch {
 
 	s.git = g
 	return s
+}
+
+// TestCommitUnmerged holds that Commit never commits a merge whose conflicts remain, which would commit their markers.
+// It commits a merge whose conflicts were all resolved, as the merge.
+func TestCommitUnmerged(t *testing.T) {
+	for name, tc := range map[string]struct {
+		resolve string
+		// refused names the files the refusal names, and parents counts the parents of the commit at HEAD after.
+		refused []string
+		parents int
+	}{
+		"a conflict left as git left it": {resolve: "true", refused: []string{"first"}, parents: 1},
+		"a conflict resolved and added":  {resolve: "echo both >first && git add first", parents: 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := makeScratch(t, "", "")
+			tree := filepath.Join(t.TempDir(), "tree")
+			if err := s.git.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main"); err != nil {
+				t.Fatal(err)
+			}
+
+			sh(t, tree, "echo work >first && git commit --quiet -am work")
+			sh(t, s.repo, "echo main >first && git commit --quiet -am main")
+			sh(t, tree, "git merge --quiet main >/dev/null 2>&1 || true; "+tc.resolve)
+			_, err := s.git.Commit(t.Context(), git.Worktree(tree), "the session's work")
+			var refused []string
+			if u, ok := errors.AsType[*git.Unmerged](err); ok {
+				refused, err = u.Files, nil
+			}
+
+			parents := len(strings.Fields(sh(t, tree, "git log -1 --format=%P")))
+			got := fmt.Sprintf("error %v, refused %q, %d parents", err, refused, parents)
+			if want := fmt.Sprintf("error <nil>, refused %q, %d parents", tc.refused, tc.parents); got != want {
+				t.Errorf("Commit answered %s; want %s", got, want)
+			}
+		})
+	}
 }

@@ -47,7 +47,9 @@ organize current work by stories, then reorganize it by functional area. A story
   does, such as review a build. Name a folded scenario for what it shows. From then on it follows the product, not
   the retired spec's wording or numbers.
 - Fold in a change that touches the tests alone. Only the `uat` monitor folds or merges, for the developer to
-  accept: another session that did would rewrite the tests that judge its own code.
+  accept: another session that did would rewrite the tests that judge its own code. What its session folds while an
+  accepted fix lands, after main moved, lands with that fix: the audit reads it, and the commit's
+  `Changed since kiln accept:` line names it.
 - Merge two scenarios that build the same Given, so one build carries the checks of both. Three of kiln's specs
   each described one state from their own side: nine of their scenarios held one of three fixtures, byte for byte.
 - Drop a scenario when a unit table's row holds its rule, and another scenario runs the same wiring through the

@@ -19,7 +19,8 @@ writes under `.claude/`. Don't write such a file: name it in your last reply, wi
 
 When what the monitor found needs a person, not a fix, end your last reply with one line, a JSON object:
 `{"ask": true, "summary": "..."}`, with one line that sums it up. The rest of your reply is your report to the
-developer. kiln then drops what you changed, and main stays as it was. Ask only when no fix you could make is right.
+developer. kiln then drops what you changed, and main stays as it was. In the landing of a fix the developer
+accepted, kiln keeps the fix, and the developer reads your report. Ask only when no fix you could make is right.
 
 ### The commit's title
 
@@ -32,7 +33,8 @@ lands your work as one commit, under that title. Write it as a Conventional Comm
   name: the commit's body names the monitor.
 - The summary says what the change does, in the imperative, such as `keep each gauge row's cost linear`.
 
-kiln keeps the title of your last reply that gave one. Without one, the title is `fix(%[1]s): land the monitor's fix`.
+kiln keeps the title of your last reply that gave one, until the developer accepts the fix. Without one, the title is
+`fix(%[1]s): land the monitor's fix`.
 
 ### How the fix goes
 
@@ -43,3 +45,6 @@ gauge, where it names one, over what the fix changed, and fails while that readi
 failing gate comes back to you,
 and so do the audit's findings. Work that changes nothing on main never lands. Never push, and never move or reset
 main: kiln lands your work.
+
+A fix the developer accepted comes back to you when main moved before it landed, with the files in conflict or the
+gate's report. Merge main, or fix what the gate found, and end your turn.

@@ -1,0 +1,64 @@
+# 2. An accepted fix that the gate fails on main as it moved lands.
+
+env KILN_OPEN=true
+
+# Given: such a fix, waiting on its branch: its agent marked each note done.
+exec sh -c 'kiln monitor run || true'
+exec kiln status
+stdout 'notes.*waiting'
+
+# Main changed since, so that the fix rebases with no conflict, and the monitor's check asks for a fix again: main
+# added a note not marked done.
+exec sh -c 'echo b >notes/b.txt && git add notes/b.txt && git commit -qm "notes: add b"'
+
+# When: the developer runs kiln accept with the monitor's name, and the fix's session fixes what the check found.
+exec kiln accept notes
+
+# Then: kiln resumes the session that made the fix, with the gate's report,
+! exists .claude-calls/notes/2
+grep '"resume": ?true' .claude-calls/notes/1/2/call.json
+grep 'notes wait to be done' .claude-calls/notes/1/2/prompt
+
+# in a worktree that holds main's change. The session copied what it saw of notes/b.txt.
+exists .tmp/seen-b
+
+# After the gate passes, main holds the session's work.
+exec git show main:notes/b.txt
+stdout '^done$'
+exec git show main:notes/a.txt
+stdout '^done$'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "rounds": 3, "monitors": [
+ {"name": "notes", "every": "24h", "check": "sh .kiln/monitors/notes", "agent": ".kiln/agents/notes.md", "prompt": "Mark each note done.", "accept": true}
+]}
+-- .kiln/monitors/notes --
+found=$(grep -L '^done$' notes/*.txt)
+if [ -n "$found" ]; then
+  echo "$found"
+  echo '{"fix": true, "summary": "notes wait to be done"}'
+else
+  echo '{"fix": false, "summary": "each note is done"}'
+fi
+-- .kiln/agents/notes.md --
+Mark each note done.
+-- notes/a.txt --
+a
+-- claude.json --
+{
+ "notes": {"1": {
+  "1": [
+   {"tool": {"name": "Bash", "input": {"command": "echo done >>notes/a.txt"}}},
+   {"result": {"result": "Marked a done.\n{\"title\": \"fix(notes): mark each note done\"}"}}
+  ],
+  "2": [
+   {"tool": {"name": "Bash", "input": {"command": "cp notes/b.txt \"$WORK/.tmp/seen-b\" && echo done >>notes/b.txt"}}},
+   {"result": {"result": "Marked b done, which main added."}}
+  ]
+ }},
+ "audit": {
+  "1": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
+  "2": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
+  "3": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}
+ }
+}

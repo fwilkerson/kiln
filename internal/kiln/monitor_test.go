@@ -280,23 +280,34 @@ func TestNamedRun(t *testing.T) {
 }
 
 // TestAcceptedLandingStops holds that an accepted fix's landing only lands or stops. An error of any kind stops it,
-// so its record and branch stay for kiln accept. Only an interrupt leaves it as it was.
+// so its record and branch stay for kiln accept. So does a session that asks for the developer, or fails, with its
+// summary and report as why. Only an interrupt leaves it as it was.
 func TestAcceptedLandingStops(t *testing.T) {
 	for name, tc := range map[string]struct {
 		accepted bool
 		err      error
-		stops    bool
+		outcome  string
+		why      string
 	}{
-		"a landing whose check couldn't run":  {accepted: true, err: &checkFailed{line: "dial tcp"}, stops: true},
-		"a landing kiln could not go on with": {accepted: true, err: errors.New("no disk"), stops: true},
-		"a landing that landed":               {accepted: true},
+		"a landing whose check couldn't run":  {accepted: true, err: &checkFailed{line: "dial tcp"}, why: "dial tcp"},
+		"a landing kiln could not go on with": {accepted: true, err: errors.New("no disk"), why: "no disk"},
+		"a landing whose session asks":        {accepted: true, outcome: outNeedsYou, why: "look\nthe report"},
+		"a landing whose session fails":       {accepted: true, outcome: outFailed, why: "look\nthe report"},
+		"a landing that landed":               {accepted: true, outcome: outLanded},
 		"a fix, not accepted, that couldn't":  {err: &checkFailed{line: "dial tcp"}},
+		"a fix, not accepted, that asks":      {outcome: outNeedsYou},
 	} {
 		t.Run(name, func(t *testing.T) {
-			b := &build{rec: record{Accepted: tc.accepted}}
-			_, stops := errors.AsType[*outOfRounds](b.landingStops(t.Context(), tc.err))
-			if stops != tc.stops {
-				t.Errorf("stops %v, want %v", stops, tc.stops)
+			b := &build{rec: record{Accepted: tc.accepted}, fix: &fixing{}}
+			b.fix.end(tc.outcome, "look", "the report")
+			stop, stops := errors.AsType[*outOfRounds](b.landingStops(t.Context(), tc.err))
+			why := ""
+			if stops {
+				why = stop.why
+			}
+
+			if stops != (tc.why != "") || !strings.HasSuffix(why, tc.why) {
+				t.Errorf("stops %v, as %q; want a stop %v, as %q", stops, why, tc.why != "", tc.why)
 			}
 		})
 	}
@@ -324,7 +335,7 @@ func TestMonitorStatusLines(t *testing.T) {
 			report: "the long report"}, want: "kiln monitor run m"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			lines := strings.Join(tc.s.lines("m", tc.rec), "\n")
+			lines := strings.Join(tc.s.lines("m", tc.rec, "/trees/m"), "\n")
 			if !strings.Contains(lines, tc.want) {
 				t.Errorf("%q holds no %q", lines, tc.want)
 			}
@@ -341,7 +352,7 @@ func TestStoppedWhyOnce(t *testing.T) {
 	first := "main changed what the fix changed, in these files:"
 	h := histories([]entry{{Kind: monitorKind, Monitor: "m", Found: foundFix, Build: "b"},
 		{Kind: outcomeKind, Build: "b", Outcome: outStopped, Summary: first, Report: first + "\ndocs.txt"}})["m"]
-	lines := strings.Join(h.standing(monitor{Name: "m"}, nil).lines("m", nil), "\n")
+	lines := strings.Join(h.standing(monitor{Name: "m"}, nil).lines("m", nil, "/trees/m"), "\n")
 	if strings.Count(lines, first) != 1 || !strings.Contains(lines, "docs.txt") {
 		t.Errorf("%q holds %q other than once, or no docs.txt", lines, first)
 	}
@@ -361,9 +372,33 @@ func TestAcceptedLanding(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			s := h.standing(monitor{Name: "docs"}, &record{Name: "docs", State: tc.landing, Accepted: true,
-				Monitor: true})
+				Monitor: true, Build: "b"})
 			if got := s.state(); got != tc.want || strings.Contains(s.result, "waiting") {
 				t.Errorf("stands %q, as %q; want %q, and no wait on the developer", got, s.result, tc.want)
+			}
+		})
+	}
+}
+
+// TestLandingSession holds that kiln status names why the session of an accepted fix's landing runs, while it runs.
+func TestLandingSession(t *testing.T) {
+	conflict := entry{Kind: startKind, Build: "b", Session: "s",
+		Why: whyConflict, Round: 1, Rounds: 3}
+	for name, tc := range map[string]struct {
+		lines []entry
+		want  string
+	}{
+		"while the session works":  {lines: []entry{conflict}, want: "accepted, landing: conflict with main, round 1 of 3"},
+		"once its turn has ended":  {lines: []entry{conflict, {Kind: endKind, Build: "b", Session: "s"}}, want: "accepted, landing"},
+		"before the session works": {want: "accepted, landing"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			entries := append([]entry{{Kind: monitorKind, Monitor: "docs", Found: foundFix, Build: "b"},
+				{Kind: outcomeKind, Build: "b", Outcome: outWaits}}, tc.lines...)
+			rec := &record{Name: "docs", State: building, Accepted: true, Monitor: true, Build: "b",
+				PID: os.Getpid()}
+			if got := histories(entries)["docs"].standing(monitor{Name: "docs"}, rec).result; got != tc.want {
+				t.Errorf("kiln status shows %q; want %q", got, tc.want)
 			}
 		})
 	}

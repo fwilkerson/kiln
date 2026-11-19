@@ -1,0 +1,66 @@
+# 8. A fix whose session leaves nothing to land is kept.
+
+env KILN_OPEN=true
+
+# Given: a fix as in test 1. Main's edit of the line marks it fixed too, so main's side passes the check.
+exec sh -c 'kiln monitor run || true'
+exec kiln status
+stdout 'stale.*waiting'
+exec sh -c 'printf "title\nfixed by hand\n" >doc.txt && git commit -qam "docs: edit by hand"'
+exec git rev-parse main
+cp stdout .tmp/main-before
+
+# whose session merges main by taking main's side of each conflict.
+
+# When: the developer runs kiln accept with the monitor's name.
+! exec kiln accept stale
+
+# Then: kiln accept fails, and main is unchanged.
+exec git rev-parse main
+cmp stdout .tmp/main-before
+
+# kiln status shows the landing stopped, since the work changes nothing on main.
+exec kiln status
+stdout 'stale.*stopped'
+stdout '(?i)changes nothing on main|unchanged'
+
+# The branch is still there, and both kiln accept and kiln reject take the fix.
+stdout 'kiln accept stale'
+stdout 'kiln reject stale'
+exec git rev-parse --verify kiln/stale
+exec kiln reject stale
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "rounds": 3, "monitors": [
+ {"name": "stale", "every": "24h", "check": "sh .kiln/monitors/stale", "agent": ".kiln/agents/stale.md", "prompt": "Mark the doc fixed.", "accept": true}
+]}
+-- .kiln/monitors/stale --
+if grep -q fixed doc.txt; then
+  echo '{"fix": false, "summary": "doc.txt is fixed"}'
+else
+  echo '{"fix": true, "summary": "doc.txt is stale"}'
+fi
+-- .kiln/agents/stale.md --
+Mark the doc fixed.
+-- doc.txt --
+title
+stale
+-- claude.json --
+{
+ "stale": {"1": {
+  "1": [
+   {"tool": {"name": "Bash", "input": {"command": "printf 'title\\nfixed\\n' >doc.txt"}}},
+   {"result": {"result": "Marked the doc fixed.\n{\"title\": \"fix(doc): mark the doc fixed\"}"}}
+  ],
+  "2": [
+   {"tool": {"name": "Bash", "input": {"command": "git merge --quiet --no-edit -X theirs main"}}},
+   {"result": {"result": "Merged main, taking main's side."}}
+  ],
+  "3": [{"result": {"result": "Nothing more to do."}}],
+  "4": [{"result": {"result": "Nothing more to do."}}]
+ }},
+ "audit": {
+  "1": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
+  "2": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}
+ }
+}

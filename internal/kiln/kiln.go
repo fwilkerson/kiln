@@ -36,7 +36,10 @@
 //	                                                               ├─ reject ──▶ (no record)
 //	                                                               └─ accept ──▶ landing an accepted fix
 //	                                                                             ├─ lands ──▶ (no record)
-//	                                                                             └─ stops ──▶ accept or reject again
+//	                                                                             ├─ stops ──▶ accept or reject again
+//	                                                                             └─ a conflict, or a failed gate,
+//	                                                                                with a session ──▶ back to the
+//	                                                                                session, as a round
 //
 // kiln queue refuses a fix's record, and a spec kiln.json names a monitor of.
 //
@@ -108,7 +111,7 @@
 //
 //	checkout   kiln/<name>, from main's tip, in <trees>/<name>
 //	session    the build session works, and ends its turn
-//	commit     kiln commits whatever the session left
+//	commit     kiln commits whatever the session left; a merge it left in conflict: back, as a round
 //	gate       fails: back, as a round; past kiln.json's rounds, the build stops
 //	audit      a session of its own, in <trees>/.audit-<name>, up to 3 tries; findings: back, with no round spent
 //	           none when the build changed nothing outside .kiln/
@@ -204,10 +207,17 @@
 // Its session reads what the check printed above its last line, what the gate printed, then the prompt. Without a
 // prompt, it reads "Fix what the monitor <name> found, and end your turn." The gate adds the check, unless gates is
 // false, and fails while it asks for a fix. A fix that passes lands, or waits for kiln accept when accept is true.
+// In an accepted fix's landing, a conflict with main or a failed gate goes back to the fix's session. Each spends a
+// round. Before a failed gate goes back, kiln merges main into the branch. A fix with no session stops instead.
 // Work that changes nothing ends unchanged. An agent's reply whose last line is {"ask": true, "summary": "..."} ends
 // the fix needs you, with its report. One whose last line is {"title": "type(scope): summary"}, of at most 72
-// characters, titles the commit that lands the fix. A failed session ends it session failed. A usage limit ends it
-// at once, never waiting for the reset. Only a fix whose agent ran gets the audit.
+// characters, titles the commit that lands the fix. A landing keeps the title of the fix the developer accepted. A
+// failed session ends it session failed. A usage limit ends it at once, never waiting for the reset. In a landing,
+// each of these stops it and keeps the fix. So does work that changes nothing on main. Only a fix whose agent ran
+// gets the audit. A landing's audit reads each file whose own change since main differs from the accepted commit's.
+// It runs when the work so differs from the commit the audit last read, outside .kiln/. It skips the session's
+// answer to its findings, but for a path kiln.json's reaudit names. A landing whose turn kiln cut short resumes
+// that turn first.
 //
 // A monitor may name a gauge in place of a check, as "gauge": "health". Its run reads the gauge over the whole
 // repository. It reads in the check's worktree at main's tip, with git's empty tree in $KILN_BASE. A reading that
@@ -242,7 +252,10 @@
 // Each queue is a new build, with its own ID. kiln's ledger records every build, session run and gate, and how each
 // build ended. A build's time is its session runs' time plus its gates'. A pause for a usage limit adds nothing. Its
 // turns, cost and failed calls sum its runs. A number kiln could not read shows as unknown, never as zero. A landed
-// build's commit holds its time, cost, turns and failed calls.
+// build's commit holds its time, cost, turns and failed calls. An accepted fix's landing commit adds a line before
+// them, which names each file changed since kiln accept:
+//
+//	Changed since kiln accept: <path>, <path>
 //
 // # Gauges
 //
@@ -886,9 +899,10 @@ func (r *record) status(out io.Writer) {
 //
 // A monitor's fix waiting on its branch is rebased onto main, and gated again, check included. Then main moves onto
 // it if main hasn't moved. It retires nothing. While another kiln holds the run lock, the next kiln monitor run lands
-// it. A landing that stops on the gate waits for kiln accept again. One that conflicts with main waits for kiln
-// reject. A stopped landing lands again afresh, its rounds at 0, with no second fold. An accepted landing that stops
-// fails Accept.
+// it. A conflict or a failing gate goes back to the fix's session, as a round, and Accept runs that session. A
+// landing that stops waits for kiln accept again, or kiln reject. One with no session that conflicts with main waits
+// for kiln reject. A stopped landing lands again afresh, its rounds at 0, with no second fold. An accepted landing
+// that stops fails Accept.
 func (r *Repo) Accept(ctx context.Context, name Spec, out io.Writer) error {
 	// Accept takes the lock before it changes anything, so a reinstall that refuses it leaves the spec as it was.
 	unshare, err := shareBuilds()
@@ -977,9 +991,17 @@ func (r *Repo) acceptAmended(ctx context.Context, b *build) error {
 	return r.landAccepted(ctx, b)
 }
 
-// acceptFix queues the landing of b's fix, which waits on its branch, and lands it.
+// acceptFix queues the landing of b's fix, which waits on its branch, and lands it. The commit the developer
+// accepted is the commit the audit last read.
 func (r *Repo) acceptFix(ctx context.Context, b *build) error {
-	err := r.store.set(b.rec.Name, func(s *record) { s.State, s.Accepted, s.Rounds = queued, true, 0 })
+	tip, err := r.git.Head(ctx, b.tree)
+	if err != nil {
+		return err
+	}
+
+	err = r.store.set(b.rec.Name, func(s *record) {
+		s.State, s.Accepted, s.Rounds, s.AcceptedAt, s.Audited = queued, true, 0, tip, tip
+	})
 	if err != nil {
 		return err
 	}
@@ -1014,7 +1036,8 @@ func (r *Repo) landAccepted(ctx context.Context, b *build) error {
 	return err
 }
 
-// landAgain says what the developer runs on the stopped landing of rec. No kiln accept lands a fix that conflicts.
+// landAgain says what the developer runs on the stopped landing of rec. No kiln accept lands a fix with no session
+// that conflicts.
 func landAgain(rec record) string {
 	if conflicted(rec) {
 		return fmt.Sprintf("main changed what the fix changed, so kiln reject %s drops it", rec.Name)

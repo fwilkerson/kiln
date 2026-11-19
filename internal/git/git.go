@@ -17,12 +17,13 @@
 // printed. A branch is named by its short name, as refs/heads/ holds it. A relative path is the main checkout's.
 //
 // Every call runs with hooks, signature checks, autostash, update-refs, fsmonitor, submodule recursion and background
-// maintenance off. A merge may make a merge commit, and a clone names its remote origin. kiln passes that config in the
-// environment, so neither the developer's config nor the repository's turns them on. A commit's author comes from
-// config or the environment. With neither, it fails rather than guess one from the host. A commit is signed as the
-// developer's config says. A signing key that would ask for its passphrase fails the call at once, and the error says
-// so. No call opens an editor, prompts for a password, or takes an optional lock. Every call runs in the C locale, so
-// git's words are never translated. Each runs in a process group of its own, which the terminal's Ctrl-C does not
+// maintenance off. A merge may make a merge commit, and a clone names its remote origin. A file one side added in a
+// directory the other side renamed is a conflict. kiln passes that config in the environment, so neither the
+// developer's config nor the repository's changes it. A commit's author comes from config or the environment. With
+// neither, it fails rather than guess one from the host. A commit is signed as the developer's config says. A signing
+// key that would ask for its passphrase fails the call at once, and the error says so. No call opens an editor,
+// prompts for a password, or takes an optional lock. Every call runs in the C locale, so git's words are never
+// translated. Each runs in a process group of its own, which the terminal's Ctrl-C does not
 // reach. When ctx ends, the call's git is killed. [Git.Move]'s fast-forward alone runs to its end, so the checkout is
 // never left half-updated.
 //
@@ -52,10 +53,11 @@ import (
 )
 
 // pinned overrides, for every call, what config could otherwise make git do. It could run a hook or a monitor. It
-// could stash the developer's changes, move other branches in a rebase, or start work
-// in the background. It could refuse kiln's unsigned commits, or a merge that is not a fast-forward. It could name a
-// clone's remote other than origin, or print a signature's check where kiln reads an author. Without an identity, it
-// could guess one from the account and host, where git commit should refuse.
+// could stash the developer's changes, move other branches in a rebase, or start work in the background. It could
+// move a file one side added into a directory the other side renamed. It could refuse kiln's unsigned commits, or a
+// merge that is not a fast-forward. It could name a clone's remote other than origin, or print a signature's check
+// where kiln reads an author. Without an identity, it could guess one from the account and host, where git commit
+// should refuse.
 var pinned = [][2]string{
 	{"core.hooksPath", "/dev/null"},
 	{"core.fsmonitor", "false"},
@@ -67,6 +69,7 @@ var pinned = [][2]string{
 	{"maintenance.auto", "false"},
 	{"merge.verifySignatures", "false"},
 	{"merge.ff", "true"},
+	{"merge.directoryRenames", "conflict"},
 	{"clone.defaultRemoteName", "origin"},
 	{"log.showSignature", "false"},
 	{"user.useConfigOnly", "true"},
@@ -418,11 +421,16 @@ func (g *Git) Head(ctx context.Context, checkout Worktree) (Rev, error) {
 }
 
 // Commit commits every change at checkout, untracked files included, and answers the commit at HEAD. With no change it
-// commits nothing.
+// commits nothing. A merge whose conflicts remain is refused as an [*Unmerged], and nothing changes. A merge whose
+// conflicts were all resolved is committed as the merge.
 func (g *Git) Commit(ctx context.Context, checkout Worktree, message string) (Rev, error) {
-	out, err := g.in(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	out, err := g.in(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
 	if err != nil {
 		return "", err
+	}
+
+	if files := unmerged(out); len(files) > 0 {
+		return "", &Unmerged{Files: files}
 	}
 
 	if out != "" {
@@ -437,6 +445,27 @@ func (g *Git) Commit(ctx context.Context, checkout Worktree, message string) (Re
 	}
 
 	return g.Head(ctx, checkout)
+}
+
+// Unmerged is a commit that [Git.Commit] refused, since a merge at its checkout still conflicts in Files.
+type Unmerged struct {
+	Files []string
+}
+
+func (u *Unmerged) Error() string {
+	return "a merge is unfinished, with conflicts in " + strings.Join(u.Files, ", ")
+}
+
+// unmerged lists the paths that git status -z --porcelain=v1 --no-renames printed as still in conflict.
+func unmerged(status string) []string {
+	var files []string
+	for _, p := range paths(status) {
+		if slices.Contains([]string{"DD", "AU", "UD", "UA", "DU", "AA", "UU"}, p[:min(2, len(p))]) {
+			files = append(files, p[min(3, len(p)):])
+		}
+	}
+
+	return files
 }
 
 // Status lists each path at checkout that differs from the commit at HEAD, untracked files included.
@@ -584,9 +613,11 @@ func (g *Git) Changed(ctx context.Context, from, to Rev) ([]string, error) {
 	return paths(out), err
 }
 
-// Diff is the patch from the commit from to the commit to, of paths alone, with no line of context.
+// Diff is the patch from the commit from to the commit to, of paths alone, with no line of context. A binary file's
+// patch holds its content.
 func (g *Git) Diff(ctx context.Context, from, to Rev, paths ...string) (string, error) {
-	diff := []string{"--literal-pathspecs", "diff", "--no-renames", "--no-ext-diff", "--no-color", "--unified=0"}
+	diff := []string{"--literal-pathspecs", "diff", "--no-renames", "--no-ext-diff", "--no-color", "--unified=0",
+		"--binary"}
 	return g.in(ctx, g.repo, append(append(diff, string(from), string(to), "--"), paths...)...)
 }
 

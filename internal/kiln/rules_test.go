@@ -444,7 +444,8 @@ func givenBook(given string) book {
 	given, landing := strings.CutSuffix(given, " landing")
 	given, fix := strings.CutPrefix(given, "fix ")
 	return book{Specs: []*record{{Name: "x", State: state(given), Accepted: landing, Approved: "old", Session: "s",
-		Build: "b", Rounds: 2, Audited: "read", Why: "w", FailingAtMain: []string{"TestF"}, Monitor: fix}}}
+		Build: "b", Rounds: 2, Limit: new(3), Audited: "read", Why: "w", FailingAtMain: []string{"TestF"},
+		Monitor: fix, AcceptedAt: "taken", Title: "fix(x): t", Running: []string{"m"}}}}
 }
 
 // commanded is what a command left of the spec x. It holds x's state, as a row's then words it, its error and
@@ -491,7 +492,7 @@ func (tc specState) want() commanded {
 }
 
 // carries is what x's record should carry of the build before, if the row checks it. A new queue carries nothing.
-// A landing accepted again keeps its build, session and audit.
+// A landing accepted again keeps its build, session, audit, rounds' limit, title, accepted commit and cut turns.
 func (tc specState) carries() (carried, bool) {
 	switch {
 	case tc.then == "":
@@ -499,7 +500,7 @@ func (tc specState) carries() (carried, bool) {
 	case tc.command == "queue":
 		return carried{approved: "new"}, true
 	case strings.HasSuffix(tc.then, "queued landing"):
-		return carried{approved: "old", session: "s", oldBuild: true, audited: true}, true
+		return carried{approved: "old", session: "s", oldBuild: true, audited: true, landing: true}, true
 	}
 
 	return carried{}, false
@@ -512,11 +513,15 @@ type carried struct {
 	oldBuild, noBuild, audited bool
 	rounds                     int
 	failingAtMain              bool
+	// landing is what a landing keeps to go back to its session: its limit, title, accepted commit and cut turns.
+	landing bool
 }
 
 func carriedOf(r *record) carried {
+	landing := r.Limit != nil && r.Title != "" && r.AcceptedAt != "" && r.Running != nil
 	return carried{approved: r.Approved, session: r.Session, why: r.Why, oldBuild: r.Build == "b",
-		noBuild: r.Build == "", audited: r.Audited != "", rounds: r.Rounds, failingAtMain: r.FailingAtMain != nil}
+		noBuild: r.Build == "", audited: r.Audited != "", rounds: r.Rounds, failingAtMain: r.FailingAtMain != nil,
+		landing: landing}
 }
 
 // thenOf words the state of r as a row's then does.
@@ -778,19 +783,39 @@ func TestNextStep(t *testing.T) {
 	}
 }
 
-// TestFixStep holds a fix's next step to spec 4's table in every state, accepted or not. A new state needs no row. An
-// accepted fix that conflicts with main names kiln reject alone, since no session resolves the conflict.
+// TestFixStep holds a fix's next step to spec 4's table in every state, accepted or not, session or none. A
+// new state needs no row. An accepted fix that conflicts with main, with no session, names kiln reject alone. No
+// session resolves its conflict. One with a session resumes it, then names kiln accept and kiln reject.
 func TestFixStep(t *testing.T) {
 	for _, s := range []state{queued, building, stopped, landed, amended, waiting} {
 		for _, accepted := range []bool{false, true} {
-			rec := record{Name: "x", State: s, Accepted: accepted, Monitor: true}
-			namedIn(t, fixStep(rec), &rec)
+			for _, session := range []string{"", "s"} {
+				rec := record{Name: "x", State: s, Accepted: accepted, Monitor: true, Session: session}
+				namedIn(t, fixStep(rec, "/trees/x"), &rec)
+			}
 		}
 	}
 
-	rec := record{Name: "x", State: stopped, Accepted: true, Monitor: true, Why: fixConflicts + "docs.txt"}
-	if named := namedIn(t, fixStep(rec), &rec); !slices.Equal(named, []string{"reject"}) {
-		t.Errorf("a conflicted fix's step %q names kiln %v; want kiln reject alone", fixStep(rec), named)
+	for name, tc := range map[string]struct {
+		session string
+		want    []string
+		resumes bool
+	}{
+		"a conflicted fix with no session": {want: []string{"reject"}},
+		"a conflicted fix with a session":  {session: "s", want: []string{"accept", "reject"}, resumes: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := record{Name: "x", State: stopped, Accepted: true, Monitor: true, Session: tc.session,
+				Why: fixConflicts + "docs.txt"}
+			next := fixStep(rec, "/trees/x")
+			named := namedIn(t, next, &rec)
+			slices.Sort(named)
+			resumes := strings.HasPrefix(next, "cd /trees/x && claude --resume s, ")
+			if !slices.Equal(named, tc.want) || resumes != tc.resumes {
+				t.Errorf("the step %q names kiln %v, resumes the session %v; want %v, %v", next, named, resumes,
+					tc.want, tc.resumes)
+			}
+		})
 	}
 }
 
@@ -1250,6 +1275,47 @@ func TestBlindTranscripts(t *testing.T) {
 			denyRead, _, deny := r.blinds("x", buildRole)
 			if !slices.Contains(denyRead, want) || !slices.Contains(deny, "Read(/"+want+"/**)") {
 				t.Errorf("blinds deny %v and %v, want both to hold %s", denyRead, deny, want)
+			}
+		})
+	}
+}
+
+// TestChangedSince holds which files changed since kiln accept: each whose own change differs from the commit the
+// developer accepted. Main's changes never count, and a binary file counts by its content.
+func TestChangedSince(t *testing.T) {
+	for name, tc := range map[string]struct {
+		main, work string
+		want       []string
+	}{
+		"nothing since":                  {},
+		"a merge of main's other change": {main: "echo c >c.txt", work: "git merge --quiet main"},
+		"a merge that resolves a conflict": {main: "echo main >a.txt",
+			work: "git merge --quiet main || { echo main fix >a.txt && git add a.txt && git commit --quiet --no-edit; }",
+			want: []string{"a.txt"}},
+		"a binary file's new content": {work: "printf 'p\\000\\002' >p.bin && git commit --quiet -am p",
+			want: []string{"p.bin"}},
+		"a file the work no longer changes": {work: "git checkout --quiet HEAD^ -- b.txt && git commit --quiet -m b",
+			want: []string{"b.txt"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b, repo, _ := landingBuild(t)
+			tree := string(b.tree)
+			shell(t, repo, "echo one >a.txt && echo bee >b.txt && printf 'p\\000\\001' >p.bin && git add . && "+
+				"git commit --quiet -m files")
+			shell(t, tree, "git merge --quiet main && echo fix >a.txt && echo fix bee >b.txt && "+
+				"printf 'p\\000\\003' >p.bin && git commit --quiet -am fix")
+			accepted := git.Rev(shell(t, tree, "git rev-parse HEAD"))
+			if tc.main != "" {
+				shell(t, repo, tc.main+" && git add . && git commit --quiet -m main")
+			}
+
+			if tc.work != "" {
+				shell(t, tree, tc.work)
+			}
+
+			got, err := b.r.changedSince(t.Context(), accepted, git.Rev(shell(t, tree, "git rev-parse HEAD")))
+			if err != nil || !slices.Equal(got, tc.want) {
+				t.Errorf("changed since kiln accept: %q, %v; want %q", got, err, tc.want)
 			}
 		})
 	}

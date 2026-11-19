@@ -1,0 +1,76 @@
+# 3. A landing that still fails keeps the fix.
+
+env KILN_OPEN=true
+
+# Given: a fix as in test 1,
+exec sh -c 'kiln monitor run || true'
+exec kiln status
+stdout 'stale.*waiting'
+exec sh -c 'printf "title\nstale, by hand\n" >doc.txt && git commit -qam "docs: edit by hand"'
+exec git rev-parse main
+cp stdout .tmp/main-before
+
+# whose session leaves the gate failing in each round kiln.json gives it: its merge drops the fix's word.
+
+# When: the developer runs kiln accept with the monitor's name.
+! exec kiln accept stale
+
+# Then: kiln accept fails, and main is unchanged.
+exec git rev-parse main
+cmp stdout .tmp/main-before
+
+# kiln status shows the fix stopped, with why, and names both kiln accept and kiln reject.
+exec kiln status
+stdout 'stale.*stopped'
+stdout 'doc.txt is stale'
+stdout 'kiln accept stale'
+stdout 'kiln reject stale'
+
+# A second kiln accept resumes the same session.
+exec sh -c 'ls .claude-calls/stale/1 | wc -l'
+cp stdout .tmp/calls-before
+! exec kiln accept stale
+! exists .claude-calls/stale/2
+exec sh -c 'ls .claude-calls/stale/1 | wc -l'
+! cmp stdout .tmp/calls-before
+exec sh -c 'grep -l "\"resume\": true" .claude-calls/stale/1/$(ls .claude-calls/stale/1 | sort -n | tail -1)/call.json'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "rounds": 2, "monitors": [
+ {"name": "stale", "every": "24h", "check": "sh .kiln/monitors/stale", "agent": ".kiln/agents/stale.md", "prompt": "Mark the doc fixed.", "accept": true}
+]}
+-- .kiln/monitors/stale --
+if grep -q fixed doc.txt; then
+  echo '{"fix": false, "summary": "doc.txt is fixed"}'
+else
+  echo '{"fix": true, "summary": "doc.txt is stale"}'
+fi
+-- .kiln/agents/stale.md --
+Mark the doc fixed.
+-- doc.txt --
+title
+stale
+-- claude.json --
+{
+ "stale": {"1": {
+  "1": [
+   {"tool": {"name": "Bash", "input": {"command": "printf 'title\\nfixed\\n' >doc.txt"}}},
+   {"result": {"result": "Marked the doc fixed.\n{\"title\": \"fix(doc): mark the doc fixed\"}"}}
+  ],
+  "2": [
+   {"tool": {"name": "Bash", "input": {"command": "git merge main; printf 'title\\nbroken, by hand\\n' >doc.txt && git add doc.txt && git commit -q --no-edit"}}},
+   {"result": {"result": "Merged main."}}
+  ],
+  "3": [{"result": {"result": "I could not fix it."}}],
+  "4": [{"result": {"result": "I could not fix it."}}],
+  "5": [{"result": {"result": "I could not fix it."}}],
+  "6": [{"result": {"result": "I could not fix it."}}],
+  "7": [{"result": {"result": "I could not fix it."}}],
+  "8": [{"result": {"result": "I could not fix it."}}]
+ }},
+ "audit": {
+  "1": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
+  "2": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
+  "3": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}
+ }
+}
