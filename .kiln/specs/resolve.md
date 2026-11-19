@@ -56,11 +56,7 @@ session ended at 58k tokens of context, and the uat session at 111k.
 
 <!-- Keep each question here, across sessions, until it is answered. Then move the answer to where it belongs. -->
 
-1. Does the fix land as soon as the session's work passes the gate, or wait for `kiln accept` again? The developer
-   accepted a diff, and the session changes it. Waiting may never end while another monitor lands each hour. Lean:
-   it lands once its gate passes, check included. The landing commit's body names each file the session changed
-   beyond the accepted fix, so `git show` shows what the developer did not read.
-2. Does the audit read what the session changed in the landing? Today the audit reads a fix once, and reads it
+1. Does the audit read what the session changed in the landing? Today the audit reads a fix once, and reads it
    again only for a path `kiln.json`'s `reaudit` names. Lean: yes, over the files the session changed since the
    developer accepted, since a wrong merge is the error the gate is likeliest to miss.
 
@@ -145,7 +141,8 @@ new.
   conflict's message names each file in conflict, one on a line, and asks the session to run `git merge main`,
   keep both main's change and the fix's, and end its turn. A failed gate's message holds the gate's report.
 - Once the session's work passes the gate, `fixAfter` lands it. It never leaves an accepted fix waiting again:
-  today `fixAfter` ends each fix of a monitor with `"accept": true` as waiting.
+  today `fixAfter` ends each fix of a monitor with `"accept": true` as waiting. The developer reads what the
+  session changed after the landing, from the commit's `Changed since kiln accept:` line.
 
 ### What never drops an accepted fix
 
@@ -208,6 +205,15 @@ The starter of this spec proposed it: an agent `kiln init` writes, whose only wo
   rebase is the monitor's own work, so it would need a second path, to the monitor's agent.
 - **Reason for Rejection**: The developer chose the fix's own session on 2026-11-18. A build's landing, and the
   landing of a fix that never waited, already go back to their own session, so one path serves each setback.
+
+### The fix waits for `kiln accept` again, once the session changed it
+
+- **Pros**: Nothing of a monitor with `"accept": true` lands unread. That holds for new work after a failed gate
+  too, such as scenarios the uat session folds beyond those the developer accepted.
+- **Cons**: The developer accepts twice. Main may move between the two, and a new conflict starts another round.
+- **Reason for Rejection**: The developer chose the landing on 2026-11-18. A spec's build lands before the
+  developer reads it too, and waits for UAT on main. The landing is one commit, which `git revert` undoes, and its
+  body names each file the session changed.
 
 ### Drop the fix, and run the monitor again from main
 
