@@ -56,9 +56,7 @@ session ended at 58k tokens of context, and the uat session at 111k.
 
 <!-- Keep each question here, across sessions, until it is answered. Then move the answer to where it belongs. -->
 
-1. Does the audit read what the session changed in the landing? Today the audit reads a fix once, and reads it
-   again only for a path `kiln.json`'s `reaudit` names. Lean: yes, over the files the session changed since the
-   developer accepted, since a wrong merge is the error the gate is likeliest to miss.
+None remain.
 
 ## Acceptance tests
 
@@ -214,6 +212,13 @@ The starter of this spec proposed it: an agent `kiln init` writes, whose only wo
 - **Reason for Rejection**: The developer chose the landing on 2026-11-18. A spec's build lands before the
   developer reads it too, and waits for UAT on main. The landing is one commit, which `git revert` undoes, and its
   body names each file the session changed.
+
+### The gate alone judges what the session changed
+
+- **Pros**: No second audit, and no round spent on one. A build's merge of main lands so today.
+- **Cons**: A merge that drops one side's line can compile, and pass each test.
+- **Reason for Rejection**: The developer chose the audit on 2026-11-18. The session's work lands before the
+  developer reads it, so the audit is its only reader before main moves.
 
 ### Drop the fix, and run the monitor again from main
 
