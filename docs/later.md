@@ -135,3 +135,34 @@ agent that hands to a separate fix agent.
 
 - **Build it when:** a project needs a workflow of several roles of its own, or another order of build, verify and
   audit.
+
+## A gate's kind in the ledger
+
+The `gate-time` monitor compares the upper quartile of the last 20 passing gates' times with the 20 before. A gate
+that also runs main's checks, to excuse a test that fails at main too, takes about twice as long. The ledger's entry
+for a gate does not say whether it ran them, so a run of such gates reads as a slower suite.
+
+- **Why it was left out:** on 2026-11-18 the check read +5% against a +50% line, so the noise stayed far below it.
+- **Build it when:** the monitor fires on gates that ran main's checks, rather than on slower tests.
+
+## `kiln tui` on a light terminal
+
+The view asks the terminal for its background, and draws the sheet's colors darkened on a light one. Three
+refinements came up on 2026-11-18:
+
+- A glyph beside the selected row. The row is marked by a tint alone, which is faint on some light terminals.
+- `COLORFGBG` as a fallback. A terminal that never answers the question about its background is drawn dark.
+- A heavier border on the focused panel, which reads lighter on white than on black.
+
+- **Build it when:** the developer, or a user, works in a light terminal and finds the selection or focus hard to
+  see, or the view draws dark on a light terminal.
+
+## The one-page sheet's renderer
+
+Two changes to `onepage`, seen on `docs/one-page.html`:
+
+- A detail's tag, such as Detail A, is drawn as a circle, which elsewhere marks a part. A rounded square would tell
+  them apart.
+- The parts list reads as a table. It could read as a list of parts, each with its why.
+
+- **Build it when:** the sheet changes again, or another repository's sheet hits the same confusion.
