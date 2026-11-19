@@ -15,6 +15,8 @@ import (
 const (
 	treePoll   = 50 * time.Millisecond
 	treeRounds = 100
+	// treeSettle is how long a killed process has to become a zombie before the next look.
+	treeSettle = 5 * time.Millisecond
 )
 
 // tree looks again at each fork. A shell that starts a command and exits at once orphans it before a poll.
@@ -152,24 +154,45 @@ func (t *tree) kill() {
 	close(t.quit)
 	<-t.done
 	t.forks.close()
+	t.stop()
+	// A stopped process still finishes a fork it is inside, and its child can land after the last look. So each round
+	// kills whatever lives, until the tree holds nothing alive.
+	for range treeRounds {
+		alive := t.find()
+		if len(alive) == 0 {
+			return
+		}
+
+		for pid := range alive {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+
+		time.Sleep(treeSettle)
+	}
+}
+
+// stop stops each process of the tree, round after round, until a round finds none it has not stopped. A stopped
+// process forks no more, so the kill that follows finds the tree whole.
+func (t *tree) stop() {
 	stopped := map[int]bool{}
 	for range treeRounds {
 		more := false
-		t.adopt()
-		for pid := range t.look() {
+		for pid := range t.find() {
 			if !stopped[pid] && syscall.Kill(pid, syscall.SIGSTOP) == nil {
 				stopped[pid], more = true, true
 			}
 		}
 
 		if !more {
-			break
+			return
 		}
 	}
+}
 
-	for pid := range stopped {
-		_ = syscall.Kill(pid, syscall.SIGKILL)
-	}
+// find adopts the tree's orphans, then answers each process of the tree that still lives.
+func (t *tree) find() map[int]int64 {
+	t.adopt()
+	return t.look()
 }
 
 // adopt finds orphans by their place. Once a shell exits before a look and its child calls setsid, nothing leads

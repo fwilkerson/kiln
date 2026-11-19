@@ -140,6 +140,9 @@ never waited, and sends each setback back to the fix's session. After this spec 
 - "Back to the session" is what `fixLand` does today. `build.round` counts the round and words the message, and
   `fixLaunch` resumes the session. Then the fix goes on as `fixAgent` runs it: the session's turn, a commit of
   what it left, the gate with the monitor's check, and the landing again. Share that loop, rather than copy it.
+- Main never gains a merge commit. A merge of main is a commit on the fix's branch alone, the session's or kiln's.
+  `land` then puts the branch's whole change on main's tip as one commit with one parent, as `Git.Rebase` makes
+  it for each landing today.
 - The messages are today's: `conflicts`, in `build.go`, names each file in conflict and asks for
   `git merge main`, and `gateFailed` holds the gate's report.
 - Before a failed landing gate goes back, kiln merges main into the branch, with `Git.Merge`. `land` puts the
