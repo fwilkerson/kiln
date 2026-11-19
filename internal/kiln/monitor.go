@@ -325,13 +325,14 @@ const checkTree = ".monitor-check"
 
 // firstCheck runs m's check, or reads its gauge, in a worktree of its own at main. c is kiln.json at main. A monitor
 // with neither asks for a fix each time.
-func (r *Repo) firstCheck(ctx context.Context, c config, m monitor, main git.Rev) (checked, error) {
+func (held commands) firstCheck(ctx context.Context, c config, m monitor, main git.Rev) (checked, error) {
+	r := held.r
 	if !m.finds() {
 		return checked{ran: true, fix: true}, nil
 	}
 
 	g, _ := c.gaugeNamed(m.Gauge)
-	tree, err := r.scratchTree(ctx, checkTree, main)
+	tree, err := held.scratchTree(ctx, checkTree, main)
 	switch {
 	case errors.Is(ctx.Err(), context.Canceled):
 		return checked{}, ctx.Err()

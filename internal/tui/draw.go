@@ -370,26 +370,40 @@ func (t theme) look(s State) (lipgloss.Style, string) {
 	return lipgloss.NewStyle(), "◌"
 }
 
+// nowRows are the now pane's rows: two for the run at work in each lane, the spec's above the fix's. With no spec's
+// run at work, a paused spec takes the spec's place, in one row.
 func (m model) nowRows() []row {
-	ref, r, ok := running(m.specs)
-	if i := slices.IndexFunc(m.specs, func(s Spec) bool { return s.State == Paused }); !ok && i >= 0 {
-		return []row{{text: m.theme.kiln.Render("‖ " + m.specs[i].Name + " · paused for a usage limit")}}
+	var rows []row
+	if _, ok := running(m.specs, false); !ok {
+		if i := slices.IndexFunc(m.specs, func(s Spec) bool { return s.State == Paused }); i >= 0 {
+			rows = append(rows, row{text: m.theme.kiln.Render("‖ " + m.specs[i].Name + " · paused for a usage limit")})
+		}
 	}
 
-	t := m.theme
-	if !ok {
-		return []row{{text: t.dim.Render("nothing is running")}}
+	for i, ref := range atWork(m.specs) {
+		rows = append(rows, m.runRows(ref, i)...)
 	}
 
+	if len(rows) == 0 {
+		return []row{{text: m.theme.dim.Render("nothing is running")}}
+	}
+
+	return rows
+}
+
+// runRows are the two rows of the run ref, at work, which the now pane lists i-th among its runs.
+func (m model) runRows(ref runRef, i int) []row {
+	t, r := m.theme, find(m.specs, ref)
 	first := t.dotted(t.agent.Render("▶")+" "+t.bold.Render(ref.spec), t.agent.Render(r.Role)+" role", r.why(),
 		"running "+span(m.now.Sub(r.Start)))
 	second := t.dim.Render("reading its stream")
-	if m.live != nil {
-		second = strings.Join(m.liveFacts(r, m.live), t.dim.Render("  ·  "))
+	if live := m.live[ref]; live != nil {
+		second = strings.Join(m.liveFacts(r, live), t.dim.Render("  ·  "))
 	}
 
-	to := target{toNow, 0}
-	return []row{{t.pick(first, m.focus == nowPane), to}, {second, to}}
+	to := target{toNow, i}
+	picked := m.focus == nowPane && i == min(m.sel[nowPane], len(atWork(m.specs))-1)
+	return []row{{t.pick(first, picked), to}, {second, to}}
 }
 
 // liveFacts are what a running run's stream says. They are how long since it was written, the call open, its

@@ -216,7 +216,7 @@ func TestStateOf(t *testing.T) {
 			rec.Name = "x"
 			b := book{Specs: []*record{&rec}}
 			if tc.next {
-				b.next("", os.Getpid())
+				b.next(specsLane, "", os.Getpid())
 			}
 
 			if got := stateOf(&rec); got != tc.want {

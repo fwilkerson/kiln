@@ -7,14 +7,17 @@ import (
 	"io"
 	"slices"
 	"time"
+
+	"github.com/fwilkerson/kiln/internal/git"
 )
 
 // MonitorRun runs, at main's tip, each monitor kiln.json names that is due, one at a time. With a name, it runs that
 // monitor alone, due or not, and held or not by its last fix. It never starts a second fix while one builds, waits or
-// lands. It refuses while another kiln builds in the repository, and while kiln is being reinstalled. First it drops
-// each fix a kiln cut short, and lands each accepted landing that is queued.
+// lands. It works in the monitors' lane, beside a kiln fire. It refuses while another kiln monitor run, or a kiln
+// accept that lands a fix, holds that lane. It refuses while kiln is being reinstalled. First it drops each fix a kiln
+// cut short, and lands each fix's accepted landing that is queued.
 func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {
-	unlock, err := r.lockRun(monitorHolder)
+	unlock, err := r.lockLane(monitorsLane, monitorHolder)
 	if err != nil {
 		return err
 	}
@@ -70,14 +73,15 @@ func (r *Repo) monitorRun(ctx context.Context, name Spec, out io.Writer) (*monit
 	return run, []monitor{m}, nil
 }
 
-// recover takes the repository up where kilns left it. It ends their lost runs, and drops each fix cut short that the
-// developer hadn't accepted. Then it lands each accepted landing that is queued, a spec's or a fix's.
+// recover takes the monitors' lane up where kilns left it. It ends their lost runs of fixes, and drops each fix cut
+// short that the developer hadn't accepted. Then it lands each fix's accepted landing that is queued. It leaves every
+// spec's record as it stands.
 func (r *Repo) recover(ctx context.Context, out io.Writer) error {
-	r.recount(ctx, out)
+	r.recount(ctx, out, monitorsLane)
 	var lost []record
 	err := r.store.update(func(b *book) error {
-		b.requeue()
-		lost = b.dropLost()
+		b.requeue(monitorsLane)
+		lost = b.dropLost(monitorsLane)
 		return nil
 	})
 	if err != nil {
@@ -90,22 +94,7 @@ func (r *Repo) recover(ctx context.Context, out io.Writer) error {
 		}
 	}
 
-	return r.buildEach(ctx, out, landings, func() {})
-}
-
-// dropLost drops from the book each fix left building, which requeue left there, and answers them.
-func (b *book) dropLost() []record {
-	var lost []record
-	b.Specs = slices.DeleteFunc(b.Specs, func(s *record) bool {
-		if s.Monitor && s.State == building {
-			lost = append(lost, *s)
-			return true
-		}
-
-		return false
-	})
-
-	return lost
+	return r.buildEach(ctx, out, inLane{lane: monitorsLane, only: landings, unlock: func() {}})
 }
 
 // dropLost ends the build of rec, a fix a kiln cut short, dropped, and removes its branch and checkouts. A fix
@@ -188,12 +177,7 @@ func (run *monitorRunning) pass(ctx context.Context, m monitor, dueOrNot bool) (
 // unless the monitor is held. h is m's history, and rec its fix's record, if it has one. It answers whether the
 // fix landed.
 func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec *record) (landed bool, err error) {
-	main, err := run.r.mainTip(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	found, err := run.r.firstCheck(ctx, run.c, m, main)
+	main, found, err := run.checkMain(ctx, m)
 	if err != nil {
 		return false, err
 	}
@@ -215,6 +199,24 @@ func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec
 	}
 
 	return run.fix(ctx, newFixing(run.c, m, found), line, h)
+}
+
+// checkMain runs m's check, or reads its gauge, at main's tip, and answers that tip and what it found. It holds
+// commandsLock from before it reads the tip, so the other lane moves no main under the check.
+func (run *monitorRunning) checkMain(ctx context.Context, m monitor) (git.Rev, checked, error) {
+	held, err := run.r.lockCommands(ctx, m.Name, run.out)
+	if err != nil {
+		return "", checked{}, err
+	}
+
+	defer held.release()
+	main, err := run.r.mainTip(ctx)
+	if err != nil {
+		return "", checked{}, err
+	}
+
+	found, err := held.firstCheck(ctx, run.c, m, main)
+	return main, found, err
 }
 
 // fix runs the fix f that the monitor line started. It opens a tab when the developer should see how it ended. h

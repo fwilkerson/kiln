@@ -90,15 +90,22 @@ func (b *build) readGauges(ctx context.Context) error {
 	return nil
 }
 
-// readEach reads the gauges, one at a time, in a worktree of their own at the landed commit. It takes no main.lock, so
-// a kiln accept's gate at main never waits on a slow gauge.
+// readEach reads the gauges, one at a time, in a worktree of their own at the landed commit. It holds commandsLock
+// while it reads. So no gate runs beside a gauge, and one kiln at a time uses the worktree.
 func (b *build) readEach(ctx context.Context) error {
 	gauges, err := b.r.gauges(ctx)
 	if err != nil || len(gauges) == 0 {
 		return err
 	}
 
-	tree, treeErr := b.r.scratchTree(ctx, gaugeTree, b.landed)
+	held, err := b.r.lockCommands(ctx, b.rec.Name, b.out)
+	if err != nil {
+		return err
+	}
+
+	defer held.release()
+
+	tree, treeErr := held.scratchTree(ctx, gaugeTree, b.landed)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -128,7 +135,8 @@ func (b *build) readEach(ctx context.Context) error {
 // scratchTree checks out at in the worktree name, under the cache directory, where a check or a gauge runs. A command
 // may leave a file git can't remove, such as one in a read-only directory. Then the worktree is made anew. So one
 // command can't stop every later run there.
-func (r *Repo) scratchTree(ctx context.Context, name string, at git.Rev) (git.Worktree, error) {
+func (held commands) scratchTree(ctx context.Context, name string, at git.Rev) (git.Worktree, error) {
+	r := held.r
 	tree := git.Worktree(filepath.Join(r.trees, name))
 	err := r.git.Detached(ctx, tree, at)
 	if err == nil || ctx.Err() != nil {

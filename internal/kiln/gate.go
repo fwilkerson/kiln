@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 
 	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/kiln/internal/proc"
@@ -276,7 +275,8 @@ func (c check) namesNothing() bool {
 // kiln.json's commands there, and at main's tip. It checks the paths each guard's work changed since it left
 // main, as that guard says. without holds the paths kiln removed from the work. Main is gated without them too.
 // Their removal is no write of the work's.
-func (r *Repo) gate(ctx context.Context, without []string, guards ...guard) (verdict, error) {
+func (held commands) gate(ctx context.Context, without []string, guards ...guard) (verdict, error) {
+	r := held.r
 	main, err := r.mainTip(ctx)
 	if err != nil {
 		return verdict{}, err
@@ -302,7 +302,7 @@ func (r *Repo) gate(ctx context.Context, without []string, guards ...guard) (ver
 		return verdict{}, err
 	}
 
-	atMain, err := r.atMain(ctx, main, c.Gate, without)
+	atMain, err := held.atMain(ctx, main, c.Gate, without)
 	if err != nil {
 		return verdict{}, err
 	}
@@ -380,20 +380,14 @@ func (r *Repo) removed(ctx context.Context, head git.Rev, p string, without []st
 // no check an older kiln kept is read.
 const checksVersion = 2
 
-// atMain runs commands at main's tip, less the paths without, in a worktree of its own. It keeps the checks, and
-// runs them again only once main, without or the commands change. kiln fire and kiln accept share the worktree, one
-// at a time.
-func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string, without []string) ([]check, error) {
-	unlock, err := r.store.lock(mainLock, syscall.LOCK_EX)
-	if err != nil {
-		return nil, err
-	}
-
-	defer unlock()
-
+// atMain runs gate, the gate's commands, at main's tip, less the paths without, in a worktree of its own. It keeps
+// the checks, and runs them again only once main, without or the commands change. It runs under held, so every kiln
+// shares the worktree, one at a time.
+func (held commands) atMain(ctx context.Context, main git.Rev, gate []string, without []string) ([]check, error) {
+	r := held.r
 	// The count of without tells where its paths end and the commands begin.
 	parts := append([]string{fmt.Sprint(checksVersion), string(main), fmt.Sprint(len(without))}, without...)
-	key := strings.Join(append(parts, commands...), "\x00")
+	key := strings.Join(append(parts, gate...), "\x00")
 	b, err := r.store.read()
 	if err != nil {
 		return nil, err
@@ -415,7 +409,7 @@ func (r *Repo) atMain(ctx context.Context, main git.Rev, commands []string, with
 		}
 	}
 
-	checks, err := runChecks(ctx, tree, commands, r.env)
+	checks, err := runChecks(ctx, tree, gate, r.env)
 	if err != nil {
 		return nil, err
 	}

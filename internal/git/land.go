@@ -314,8 +314,12 @@ func overlap(a, b string) bool {
 // Remove removes the worktree at path, if it is there, and then branch, if it is not "". It refuses a path that holds
 // the main checkout, or a directory that is not a worktree.
 func (g *Git) Remove(ctx context.Context, path Worktree, branch Branch) error {
-	g.worktrees.Lock()
-	defer g.worktrees.Unlock()
+	unlock, err := g.lockWorktrees(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer unlock()
 	path = g.at(path)
 	if err := g.removeTree(ctx, path); err != nil {
 		return err

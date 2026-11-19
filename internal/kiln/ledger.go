@@ -247,11 +247,12 @@ func size(spec string) int {
 	return len(acceptanceTest.FindAllString(tests, -1))
 }
 
-// recount ends each run that has a start line but no end line. kiln leaves one when it dies mid-run. It totals the
-// run from its session's stream, past the length the start line holds. It ends the run as the stream shows: with a
-// result only if the stream holds one. A lost audit run's end line names what it changed in its worktree, as talk's
-// would. kiln fire calls it under its lock, before any build goes on, so no run is still running.
-func (r *Repo) recount(ctx context.Context, out io.Writer) {
+// recount ends each run of the lane l that has a start line but no end line. kiln leaves one when it dies mid-run. It
+// totals the run from its session's stream, past the length the start line holds. It ends the run as the stream
+// shows: with a result only if the stream holds one. A lost audit run's end line names what it changed in its
+// worktree, as talk's would. A kiln calls it as it takes the lane's lock, before any build goes on there. So no run
+// of l is still running, while the other lane's may be.
+func (r *Repo) recount(ctx context.Context, out io.Writer, l lane) {
 	say := func(format string, args ...any) { fmt.Fprintf(out, "kiln: "+format+"\n", args...) }
 	entries, err := r.store.entries()
 	if err != nil {
@@ -261,6 +262,10 @@ func (r *Repo) recount(ctx context.Context, out io.Writer) {
 
 	lost := lostRuns(entries)
 	for _, start := range lost.starts {
+		if lost.lanes[start.Build] != l {
+			continue
+		}
+
 		if err := r.store.write(r.lostEnd(ctx, start, lost.specs[start.Build], say)); err != nil {
 			say("kiln could not write its ledger: %v", err)
 		}
@@ -268,20 +273,22 @@ func (r *Repo) recount(ctx context.Context, out io.Writer) {
 }
 
 // lost is the start lines of the runs that have no end line. They are in the order their sessions first ran. It keeps
-// each build's spec.
+// each build's spec, and its lane: a build line that names a monitor is a fix's.
 type lost struct {
 	starts []entry
 	specs  map[string]Spec
+	lanes  map[string]lane
 }
 
 func lostRuns(entries []entry) lost {
 	open := map[string]entry{}
 	var order []string
-	l := lost{specs: map[string]Spec{}}
+	l := lost{specs: map[string]Spec{}, lanes: map[string]lane{}}
 	for _, e := range entries {
 		switch e.Kind {
 		case builtKind:
 			l.specs[e.Build] = e.Spec
+			l.lanes[e.Build] = laneOf(&record{Monitor: e.Monitor != ""})
 		case startKind:
 			order = append(order, e.Session)
 			open[e.Session] = e

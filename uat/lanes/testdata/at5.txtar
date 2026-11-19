@@ -1,0 +1,85 @@
+# 5. A build whose kiln stopped is taken up while a monitor's fix is at work.
+
+env KILN_OPEN=true
+
+# Given: a spec whose kiln fire was interrupted while its build session worked. The session's first call touches
+# .tmp/building, then waits for a file no step makes.
+exec kiln queue x
+! exec kiln fire &fire&
+exec sh -c 'i=0; while [ ! -e .tmp/building ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/building ]'
+kill -INT fire
+wait fire
+exec kiln status
+stdout '^x: halted'
+
+# kiln monitor run is at work on a fix. Its session touches .tmp/fixing, then waits for .tmp/fix-go.
+exec kiln monitor run &mon&
+exec sh -c 'i=0; while [ ! -e .tmp/fixing ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/fixing ]'
+
+# When: the developer runs kiln fire.
+exec kiln fire
+
+# Then: the build goes on in the session it had,
+grep '"resume": ?true' .claude-calls/build/1/2/call.json
+! exists .claude-calls/build/2
+
+# and lands.
+stdout '^x: landed on main at [0-9a-f]+, and waits for UAT'
+exec git show main:x.txt
+stdout '^x$'
+
+# The fix is not dropped:
+! stdout 'dropped'
+exec kiln status
+stdout '^notes: fix building, '
+
+# once its session ends its turn, the fix lands.
+exec touch .tmp/fix-go
+wait mon
+! stdout 'dropped'
+! exists .claude-calls/notes/2
+exec git show main:note.txt
+stdout '^noted$'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "monitors": [
+ {"name": "notes", "every": "24h", "check": "sh .kiln/monitors/notes", "agent": ".kiln/agents/notes.md", "prompt": "Write the note."}
+]}
+-- .kiln/monitors/notes --
+if [ -e note.txt ]; then
+  echo '{"fix": false, "summary": "note.txt is there"}'
+else
+  echo '{"fix": true, "summary": "note.txt is missing"}'
+fi
+-- .kiln/agents/notes.md --
+Write the missing note.
+-- .kiln/specs/x.md --
+### 1. X is there
+
+- **Given**: nothing.
+- **When**: the developer reads x.txt.
+- **Then**: it says x.
+-- _given/x/x.txt --
+x
+-- claude.json --
+{
+ "notes": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/fixing\"; i=0; while [ ! -e \"$WORK/.tmp/fix-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; echo noted >note.txt"}}},
+  {"result": {"result": "Wrote note.txt.\n{\"title\": \"fix(notes): write the missing note\"}"}}
+ ]}},
+ "build": {"1": {
+  "1": [
+   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; i=0; while [ ! -e \"$WORK/.tmp/never\" ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done"}}},
+   {"result": {"result": "Cut short."}}
+  ],
+  "2": [
+   {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+   {"result": {"result": "Built x."}}
+  ]
+ }},
+ "audit": {
+  "1": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
+  "2": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
+  "3": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}
+ }
+}

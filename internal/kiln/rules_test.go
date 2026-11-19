@@ -606,14 +606,65 @@ func TestBuildLock(t *testing.T) {
 	release()
 }
 
+// TestLanes holds that kiln fire and kiln monitor run each take a lane, side by side. A second kiln in a lane is
+// refused, and the refusal names the kiln that holds the lane.
+func TestLanes(t *testing.T) {
+	r := &Repo{store: store{dir: t.TempDir()}}
+	for l, holder := range map[lane]string{specsLane: runHolder, monitorsLane: monitorHolder} {
+		unlock, err := r.lockLane(l, holder)
+		if err != nil {
+			t.Fatalf("%s could not take the %s' lane beside the other: %v", holder, l, err)
+		}
+
+		defer unlock()
+	}
+
+	for l, holder := range map[lane]string{specsLane: runHolder, monitorsLane: monitorHolder} {
+		_, err := r.lockLane(l, acceptHolder)
+		if !errors.Is(err, errRefused) || !strings.Contains(fmt.Sprint(err), holder) {
+			t.Errorf("a second kiln in the %s' lane answered %v, want it refused, naming %s", l, err, holder)
+		}
+	}
+}
+
+// TestCommandsLock holds that a kiln waits for commands.lock while another holds it, and says so once. An interrupt
+// ends the wait.
+func TestCommandsLock(t *testing.T) {
+	r := &Repo{store: store{dir: t.TempDir()}}
+	other, err := r.store.lock(commandsLock, syscall.LOCK_EX)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 3*commandsRetry)
+	defer cancel()
+	var out strings.Builder
+	if _, err := r.lockCommands(ctx, "x", &out); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("the wait ended with %v, want the interrupt", err)
+	}
+
+	if out.String() != "x: waits while another kiln runs the project's commands\n" {
+		t.Errorf("the waiting kiln said %q, want one line that it waits", out.String())
+	}
+
+	other()
+	out.Reset()
+	held, err := r.lockCommands(t.Context(), "x", &out)
+	if err != nil || out.Len() > 0 {
+		t.Fatalf("once free, the lock answered %v, and the kiln said %q", err, out.String())
+	}
+
+	held.release()
+}
+
 // TestNext holds which queued spec a kiln fire takes. One started for a single spec, as kiln accept starts it, takes
-// every landing of accepted amendments too. A kiln accept that found it holding the lock counts on it to.
+// every landing of accepted amendments too. A kiln accept that found it holding the specs' lane counts on it to.
 func TestNext(t *testing.T) {
 	b := book{Specs: []*record{{Name: "y", State: queued}, {Name: "x", State: queued, Accepted: true},
 		{Name: "z", State: queued, Accepted: true}}}
 	var took []Spec
 	for {
-		r, found := b.next("z", 1)
+		r, found := b.next(specsLane, "z", 1)
 		if !found {
 			break
 		}
@@ -626,29 +677,69 @@ func TestNext(t *testing.T) {
 	}
 }
 
-// TestNextFix holds that a fix's record is taken only as an accepted landing. A run started for its name or for the
-// landings takes it. kiln fire takes none, so a monitor's fix is never a spec's build.
+// TestNextFix holds that each lane takes its own records. The monitors' lane takes a fix's record only as an
+// accepted landing. A run started for its name or for the landings takes it. The specs' lane takes no fix, so a
+// monitor's fix is never a spec's build. The monitors' lane takes no spec.
 func TestNextFix(t *testing.T) {
 	for name, tc := range map[string]struct {
+		lane lane
 		only Spec
 		want []Spec
 	}{
-		"kiln fire":                 {only: "", want: []Spec{"s", "y"}},
-		"a kiln accept of the fix":  {only: "f", want: []Spec{"f", "y"}},
-		"a kiln accept of a spec":   {only: "s", want: []Spec{"s", "y"}},
-		"kiln monitor run, landing": {only: landings, want: []Spec{"f", "y"}},
+		"kiln fire":                 {lane: specsLane, want: []Spec{"s", "y"}},
+		"a kiln accept of the fix":  {lane: monitorsLane, only: "f", want: []Spec{"f"}},
+		"a kiln accept of a spec":   {lane: specsLane, only: "s", want: []Spec{"s", "y"}},
+		"kiln monitor run, landing": {lane: monitorsLane, only: landings, want: []Spec{"f"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			b := book{Specs: []*record{{Name: "f", State: queued, Accepted: true, Monitor: true},
 				{Name: "g", State: queued, Monitor: true}, {Name: "s", State: queued},
 				{Name: "y", State: queued, Accepted: true}}}
 			var took []Spec
-			for r, found := b.next(tc.only, 1); found; r, found = b.next(tc.only, 1) {
+			for r, found := b.next(tc.lane, tc.only, 1); found; r, found = b.next(tc.lane, tc.only, 1) {
 				took = append(took, r.Name)
 			}
 
 			if !slices.Equal(took, tc.want) {
 				t.Errorf("took %q, want %q", took, tc.want)
+			}
+		})
+	}
+}
+
+// TestRecoverLane holds what a kiln recovers as it takes its lane. It queues again each of its own records left
+// building that goes on. kiln monitor run drops each fix cut short. Every record of the other lane stays building,
+// since a live kiln may be at work on it.
+func TestRecoverLane(t *testing.T) {
+	for name, tc := range map[string]struct {
+		lane                    lane
+		requeued, dropped, left []Spec
+	}{
+		"kiln fire":        {lane: specsLane, requeued: []Spec{"s", "y"}, left: []Spec{"f", "g"}},
+		"kiln monitor run": {lane: monitorsLane, requeued: []Spec{"f"}, dropped: []Spec{"g"}, left: []Spec{"s", "y"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b := book{Specs: []*record{{Name: "f", State: building, Accepted: true, Monitor: true},
+				{Name: "g", State: building, Monitor: true}, {Name: "s", State: building},
+				{Name: "y", State: building, Accepted: true}}}
+			b.requeue(tc.lane)
+			var requeued, dropped, left []Spec
+			for _, r := range b.dropLost(tc.lane) {
+				dropped = append(dropped, r.Name)
+			}
+
+			for _, r := range b.Specs {
+				if r.State == queued {
+					requeued = append(requeued, r.Name)
+				} else {
+					left = append(left, r.Name)
+				}
+			}
+
+			if !claim.Holds(slices.Equal(requeued, tc.requeued), slices.Equal(dropped, tc.dropped),
+				slices.Equal(left, tc.left)) {
+				t.Errorf("queued %q, dropped %q, left building %q; want %q, %q and the other lane's %q", requeued,
+					dropped, left, tc.requeued, tc.dropped, tc.left)
 			}
 		})
 	}
@@ -861,8 +952,35 @@ func TestLandChanges(t *testing.T) {
 			if got != want {
 				t.Errorf("landed %q, main at %s, setback %+v: %+v; want %+v", landed, tip, back, got, want)
 			}
+
+			// The ledger tells the landing's gate from a gate of the work, which runs once the landing ends.
+			if _, err := b.gate(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+
+			gates := map[bool]string{true: "[true false]", false: "[false]"}[tc.landed]
+			if got := gateLines(t, b.r); got != gates {
+				t.Errorf("the gate lines say landing %s, want %s", got, gates)
+			}
 		})
 	}
+}
+
+// gateLines says, of each gate line in r's ledger, whether it gated a landing.
+func gateLines(t *testing.T, r *Repo) string {
+	entries, err := r.store.entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var landings []bool
+	for _, e := range entries {
+		if e.Kind == gateKind {
+			landings = append(landings, e.Landing)
+		}
+	}
+
+	return fmt.Sprint(landings)
 }
 
 // TestLandedBefore holds what the next kiln makes of an accepted landing that moved main before kiln died. kiln fire
@@ -946,7 +1064,7 @@ func landingBuild(t *testing.T) (*build, string, git.Rev) {
 		t.Fatal(err)
 	}
 
-	rec := record{Name: "x", State: building}
+	rec := record{Name: "x", State: building, Build: "b1"}
 	if err := r.store.update(func(k *book) error { k.Specs = []*record{&rec}; return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -1092,11 +1210,23 @@ func TestGaugeTree(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	held := heldBy(t, r)
 	for _, m := range []monitor{{Name: "m", Gauge: "n"}, {Name: "m", Gauge: "n"}, {Name: "u", Check: checkHealthy}} {
-		if found, err := r.firstCheck(t.Context(), c, m, "main"); err != nil || !found.ran {
+		if found, err := held.firstCheck(t.Context(), c, m, "main"); err != nil || !found.ran {
 			t.Errorf("%s's run answers %v, %q; want it ran", m.Name, err, found.summary)
 		}
 	}
+}
+
+// heldBy takes commandsLock in r, as a gate's kiln does, until the test ends.
+func heldBy(t *testing.T, r *Repo) commands {
+	held, err := r.lockCommands(t.Context(), "", io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(held.release)
+	return held
 }
 
 // checkHealthy is a check that finds nothing to fix.
@@ -1130,7 +1260,7 @@ func TestGatedGauge(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			b := gaugedFix(t, tc.fix, monitor{Name: "m", Gauge: cmp.Or(tc.gauge, "count")})
-			v, err := b.gatedCheck(t.Context(), verdict{passed: true})
+			v, err := b.gatedCheck(t.Context(), heldBy(t, b.r), verdict{passed: true})
 			if err != nil {
 				t.Fatal(err)
 			}

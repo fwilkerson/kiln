@@ -92,7 +92,7 @@ type checkFailed struct {
 func (c *checkFailed) Error() string { return "the monitor's check couldn't run: " + c.line }
 
 // errLimitEnded is a fix's session that a usage limit ended. kiln never waits for the limit to reset, since it would
-// hold the run lock until then.
+// hold the monitors' lane until then.
 var errLimitEnded = errors.New("a usage limit ended the session")
 
 // startFix starts the fix f, from main's tip as the monitor line says, and runs it until it ends. A stopped fix of
@@ -162,7 +162,7 @@ func (b *build) commandGate(ctx context.Context) (verdict, error) {
 		return verdict{}, err
 	}
 
-	return b.gate(ctx, false)
+	return b.gate(ctx)
 }
 
 // lastLines is the last n lines of text.
@@ -318,7 +318,7 @@ func (b *build) fixGate(ctx context.Context) (string, reason, error) {
 		}
 	}
 
-	v, err := b.gate(ctx, false)
+	v, err := b.gate(ctx)
 	switch {
 	case err != nil:
 		return "", reason{}, err
@@ -705,12 +705,12 @@ const (
 
 // gatedCheck adds a fix's gated check, or its gauge, to the gate's verdict v. The gate fails while the check asks for a
 // fix, whatever it exits with. A check that couldn't run is a checkFailed.
-func (b *build) gatedCheck(ctx context.Context, v verdict) (verdict, error) {
+func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdict, error) {
 	switch {
 	case b.fix == nil || !b.fix.monitor.gated():
 		return v, nil
 	case b.fix.monitor.Gauge != "":
-		return b.gatedGauge(ctx, v)
+		return b.gatedGauge(ctx, held, v)
 	}
 
 	command := b.fix.monitor.Check
@@ -738,7 +738,7 @@ func (b *build) gatedCheck(ctx context.Context, v verdict) (verdict, error) {
 // gatedGauge adds the reading of a fix's gauge, over what the fix changed, to the gate's verdict v. The gate fails
 // while the reading crosses the gauge's line, or its command fails. A reading of no number never crossed. The gauge's
 // command and line are kiln.json's at main's tip, which may no longer name the gauge.
-func (b *build) gatedGauge(ctx context.Context, v verdict) (verdict, error) {
+func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdict, error) {
 	main, err := b.r.mainTip(ctx)
 	if err != nil {
 		return v, err
@@ -754,7 +754,7 @@ func (b *build) gatedGauge(ctx context.Context, v verdict) (verdict, error) {
 		return v, nil
 	}
 
-	rd, err := b.readFix(ctx, g)
+	rd, err := b.readFix(ctx, held, g)
 	if err != nil {
 		return v, err
 	}
@@ -778,13 +778,13 @@ func (b *build) gatedGauge(ctx context.Context, v verdict) (verdict, error) {
 
 // readFix reads g over what the fix changed, at its commit. It reads in the monitor's check's worktree, never the
 // fix's, so a file the gauge leaves never lands. It answers an error only once kiln is interrupted, or git fails.
-func (b *build) readFix(ctx context.Context, g gauge) (gaugeRead, error) {
+func (b *build) readFix(ctx context.Context, held commands, g gauge) (gaugeRead, error) {
 	head, base, err := b.fixBase(ctx)
 	if err != nil {
 		return gaugeRead{}, err
 	}
 
-	tree, err := b.r.scratchTree(ctx, checkTree, head)
+	tree, err := held.scratchTree(ctx, checkTree, head)
 	if err != nil {
 		return gaugeRead{}, err
 	}

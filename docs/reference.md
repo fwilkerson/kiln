@@ -206,8 +206,9 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 - `"drain": true` is for a queue that each fix takes one item from, such as a folder of bug reports. After a fix
   lands, kiln runs the check again at once, due or not, and starts the next fix. The run ends when the check asks
   for no fix, when the monitor is held, or when a fix does not land. It needs a check or a gauge.
-- `kiln monitor run` refuses while `kiln fire` builds, another `kiln monitor run` runs, or `kiln accept` lands,
-  and `kiln fire` while it runs. So a long run, such as one that drains, is never joined by the next hour's.
+- `kiln monitor run` refuses only while another `kiln monitor run` runs, or `kiln accept` lands a fix. So a long
+  run, such as one that drains, is never joined by the next hour's. It runs beside `kiln fire`, which builds specs
+  meanwhile. The package doc of `internal/kiln` says how the two share the gate, under Lanes: `go doc ./internal/kiln`.
 
 A monitor is held, and starts no fix, by how its last fix ended, until a change releases it. The package doc of
 `internal/kiln` lists each hold and what releases it, under Monitors: `go doc ./internal/kiln`.

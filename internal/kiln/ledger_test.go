@@ -44,8 +44,8 @@ func TestRecount(t *testing.T) {
 	b.record(entry{Kind: startKind, Role: "build", Session: buildSession, Streamed: int64(len(ended))})
 	b.record(entry{Kind: startKind, Role: "audit", Session: auditSession})
 
-	r.recount(t.Context(), io.Discard)
-	r.recount(t.Context(), io.Discard)
+	r.recount(t.Context(), io.Discard, specsLane)
+	r.recount(t.Context(), io.Discard, specsLane)
 	entries, err := r.store.entries()
 	if err != nil {
 		t.Fatal(err)
@@ -68,6 +68,43 @@ func TestRecount(t *testing.T) {
 
 	if n := len(entries); n != 7 {
 		t.Errorf("the ledger holds %d lines, want 7: a second recount ends nothing", n)
+	}
+}
+
+// TestRecountLane holds that a kiln recounts the lost runs of its own lane alone. A run of the other lane may be a
+// live kiln's, still running. A build line that names a monitor is a fix's, in the monitors' lane.
+func TestRecountLane(t *testing.T) {
+	r := &Repo{store: store{dir: t.TempDir()}, claude: claude.New(claude.Config{Sessions: t.TempDir()})}
+	spec := &build{r: r, rec: record{Name: "x", Build: "b1"}, out: io.Discard}
+	fix := &build{r: r, rec: record{Name: "deps", Build: "b2", Monitor: true}, out: io.Discard}
+	spec.record(entry{Kind: builtKind, Spec: "x"})
+	spec.record(entry{Kind: startKind, Role: buildRole, Session: "s"})
+	fix.record(entry{Kind: builtKind, Spec: "deps", Monitor: "deps"})
+	fix.record(entry{Kind: startKind, Role: "deps", Session: "f"})
+	ended := func() []string {
+		entries, err := r.store.entries()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var names []string
+		for _, e := range entries {
+			if e.Kind == endKind {
+				names = append(names, e.Session)
+			}
+		}
+
+		return names
+	}
+
+	r.recount(t.Context(), io.Discard, specsLane)
+	if got := ended(); !slices.Equal(got, []string{"s"}) {
+		t.Errorf("the specs' lane ended the runs of %q, want only the spec's, s", got)
+	}
+
+	r.recount(t.Context(), io.Discard, monitorsLane)
+	if got := ended(); !slices.Equal(got, []string{"s", "f"}) {
+		t.Errorf("then the monitors' lane left the runs of %q ended, want the fix's, f, too", got)
 	}
 }
 
@@ -110,7 +147,7 @@ func TestRecountAudit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r.recount(t.Context(), io.Discard)
+	r.recount(t.Context(), io.Discard, specsLane)
 	entries, err := r.store.entries()
 	if err != nil {
 		t.Fatal(err)

@@ -8,7 +8,7 @@ exec kiln fire
 stdout '^x: waits on kiln/x'
 stdout '^y: waits on kiln/y'
 
-# When: the developer accepts x, and accepts y while x's landing holds the run lock,
+# When: the developer accepts x, and accepts y while x's landing holds the specs' lane,
 exec sh -c 'touch "$HOME/.hold"; kiln accept x >"$HOME/x.out" 2>&1 & while [ ! -f "$HOME/.gating" ]; do sleep 0.1; done; kiln accept y; s=$?; touch "$HOME/.go"; wait $!; exit $s'
 
 # Then: the reply names the kiln accept that is landing, and no kiln fire, since none runs.

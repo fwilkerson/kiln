@@ -1,0 +1,82 @@
+# 8. One gate runs at a time.
+
+env KILN_OPEN=true
+
+# Given: a monitor's fix, made by the monitor's command, which touches .tmp/fixing, then waits for .tmp/fix-go. The
+# gate, gate.sh, logs each run in a .gate-* checkout, and logs an overlap when another such run has not ended. Its
+# run at x's commit touches .tmp/gating, then waits for .tmp/gate-go.
+exec sh -c 'exec kiln monitor run >.tmp/mon.out 2>&1' &mon&
+exec sh -c 'i=0; while [ ! -e .tmp/fixing ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/fixing ]'
+
+# A spec's build, ready for its gate.
+exec kiln queue x
+exec kiln fire &fire&
+
+# When: both reach the gate: x's first, then the fix's.
+exec sh -c 'i=0; while [ ! -e .tmp/gating ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/gating ]'
+exec touch .tmp/fix-go
+
+# Then: the kiln that waits says that it waits,
+exec sh -c 'i=0; while ! grep -q "^bump: waits while another kiln runs the project''s commands$" .tmp/mon.out && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; cat .tmp/mon.out'
+stdout '^bump: waits while another kiln runs the project''s commands$'
+
+# and the fix's gate has not started while x's runs.
+grep -count=1 '^start ' .tmp/gates.log
+
+# The second gate starts only once the first has ended.
+exec touch .tmp/gate-go
+wait fire
+stdout '^x: landed on main at [0-9a-f]+, and waits for UAT'
+wait mon
+grep '^start \.gate-bump$' .tmp/gates.log
+! grep 'overlap' .tmp/gates.log
+exec git show main:state.txt
+stdout '^current$'
+exec git show main:x.txt
+stdout '^x$'
+
+-- .kiln/kiln.json --
+{"gate": ["sh gate.sh"], "monitors": [
+ {"name": "bump", "every": "24h", "check": "sh .kiln/monitors/bump",
+  "command": "touch \"$WORK/.tmp/fixing\"; i=0; while [ ! -e \"$WORK/.tmp/fix-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; echo current >state.txt"}
+]}
+-- gate.sh --
+d=$(basename "$PWD")
+case "$d" in .gate-*) ;; *) exit 0 ;; esac
+log="$WORK/.tmp/gates.log"
+mkdir "$WORK/.tmp/in-gate" 2>/dev/null || echo "overlap at $d" >>"$log"
+echo "start $d" >>"$log"
+if [ "$d" = .gate-x ] && [ ! -e "$WORK/.tmp/gate-go" ]; then
+  touch "$WORK/.tmp/gating"
+  i=0; while [ ! -e "$WORK/.tmp/gate-go" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done
+fi
+echo "end $d" >>"$log"
+rmdir "$WORK/.tmp/in-gate" 2>/dev/null
+exit 0
+-- .kiln/monitors/bump --
+if grep -qx current state.txt; then
+  echo '{"fix": false, "summary": "state.txt is current"}'
+else
+  echo '{"fix": true, "summary": "state.txt is stale"}'
+fi
+-- state.txt --
+stale
+-- .kiln/specs/x.md --
+### 1. X is there
+
+- **Given**: nothing.
+- **When**: the developer reads x.txt.
+- **Then**: it says x.
+-- _given/x/x.txt --
+x
+-- claude.json --
+{
+ "build": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+  {"result": {"result": "Built x."}}
+ ]}},
+ "audit": {
+  "1": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
+  "2": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}
+ }
+}

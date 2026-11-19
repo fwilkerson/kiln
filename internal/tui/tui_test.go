@@ -816,3 +816,32 @@ func TestNarrowGauge(t *testing.T) {
 		}
 	}
 }
+
+// TestNowLanes holds that the now pane shows the run at work in each lane, the spec's above the fix's. A fix's
+// session that sits idle shows there too, marked as idle. Enter opens the run selected there.
+func TestNowLanes(t *testing.T) {
+	now := time.Now()
+	build := &Run{Role: "build", Session: "b", Why: "first run", Start: now, To: -1}
+	fix := &Run{Role: "deps", Session: "f", Why: "first run", Start: now.Add(-10 * time.Minute), To: -1}
+	src := source{
+		specs: []Spec{{Name: "x", State: Running, Builds: []*Build{{Spec: "x", Steps: []Step{build}}}}},
+		monitors: []Spec{{Name: "deps", State: Running, Monitor: &Monitor{Result: "fix building"},
+			Builds: []*Build{{Spec: "deps", Fix: true, Steps: []Step{fix}}}}},
+		calls: map[string]claude.Recounted{"b": {Written: now}, "f": {Written: now.Add(-5 * time.Minute)}},
+	}
+
+	m := drive(t, src, "", sized(140, 30))
+	_, specAt := locate(t, m, "▶ x · build role")
+	_, fixAt := locate(t, m, "▶ deps · deps role")
+	_, idleAt := locate(t, m, "▶ idle 5:00, in no call")
+	if specAt >= fixAt || idleAt != fixAt+1 {
+		t.Errorf("the spec's run is on row %d, the fix's on %d, and its idle line on %d; want the spec's above, "+
+			"and the fix's idle line below its own:\n%s", specAt, fixAt, idleAt, screenOf(m))
+	}
+
+	m = sendAll(m, press(tea.KeyTab), press(tea.KeyTab), press('j'), press(tea.KeyEnter))
+	if s := m.top(); s.kind != runScreen || s.spec != "deps" {
+		t.Errorf("enter on the fix's run opened screen %v of %q, want the fix's run:\n%s", s.kind, s.spec,
+			screenOf(m))
+	}
+}

@@ -1,0 +1,70 @@
+# 2. A monitor runs while a spec builds.
+
+env KILN_OPEN=true
+
+# Given: kiln fire at work on a spec, whose build session has not ended its turn. The session touches .tmp/building,
+# then waits for .tmp/build-go.
+exec kiln queue x
+exec kiln fire &fire&
+exec sh -c 'i=0; while [ ! -e .tmp/building ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/building ]'
+
+# A monitor is due: it never ran.
+
+# When: kiln monitor run runs.
+exec kiln monitor run
+
+# Then: the monitor's check runs, and its fix lands on main,
+grep 'ran' .tmp/check.log
+exec git show main:state.txt
+stdout '^current$'
+
+# while the build session is still at work.
+! exists .tmp/build-go
+! exec git cat-file -e main:x.txt
+
+# After that run ends, kiln status still shows the spec building.
+exec kiln status
+stdout '^x: building'
+stdout '^bump: landed, '
+
+# Once the session ends its turn, the build lands, and main holds both.
+exec touch .tmp/build-go
+wait fire
+stdout '^x: landed on main at [0-9a-f]+, and waits for UAT'
+exec git show main:x.txt
+stdout '^x$'
+exec git show main:state.txt
+stdout '^current$'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "monitors": [
+ {"name": "bump", "every": "24h", "check": "sh .kiln/monitors/bump", "command": "echo current >state.txt"}
+]}
+-- .kiln/monitors/bump --
+echo ran >>"$WORK/.tmp/check.log"
+if grep -qx current state.txt; then
+  echo '{"fix": false, "summary": "state.txt is current"}'
+else
+  echo '{"fix": true, "summary": "state.txt is stale"}'
+fi
+-- state.txt --
+stale
+-- .kiln/specs/x.md --
+### 1. X is there
+
+- **Given**: nothing.
+- **When**: the developer reads x.txt.
+- **Then**: it says x.
+-- _given/x/x.txt --
+x
+-- claude.json --
+{
+ "build": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; i=0; while [ ! -e \"$WORK/.tmp/build-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; cp -R \"$WORK/_given/x/.\" ."}}},
+  {"result": {"result": "Built x."}}
+ ]}},
+ "audit": {
+  "1": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
+  "2": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}
+ }
+}

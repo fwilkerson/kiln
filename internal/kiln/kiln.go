@@ -67,8 +67,10 @@
 //	<git common dir>/kiln/         shared by every worktree of the repository
 //	  state.json                   each spec's state, and the gate's last checks at main
 //	  lock                         held while kiln changes state.json
-//	  run.lock                     held by the one kiln fire, kiln monitor run or landing kiln accept that builds
-//	  main.lock                    held while the gate runs at main
+//	  specs.lock                   held by the one kiln at work in the specs' lane, and names it
+//	  monitors.lock                held by the one kiln at work in the monitors' lane, and names it
+//	  commands.lock                held while kiln runs what judges the work or moves main, as Lanes says
+//	  worktrees.lock               held while git adds or removes a worktree, which writes the shared config
 //	  ledger.jsonl                 every build, session run, gate, outcome, gauge reading and monitor run
 //	  monitor.log                  what the launchd job of kiln monitor install printed
 //	  sessions/<id>/               each session's files, as go doc ./internal/claude lists them
@@ -85,7 +87,8 @@
 //	    .monitor-check/            where a monitor's check runs, or its gauge
 //
 // kiln removes every checkout a build made once it lands, is accepted, rejected or queued anew. A build that stopped,
-// or waits on its branch, keeps them.
+// or waits on its branch, keeps them. Only a kiln that holds commands.lock uses .main or .gauges. Only the kiln that
+// holds the monitors' lane uses .monitor-check.
 //
 // # Agents
 //
@@ -123,6 +126,9 @@
 //	           main moved: rebase and gate again, with no round spent
 //	           main's checkout busy, or the developer's files in the way: the build stops
 //
+// Each gate waits for commands.lock, as Lanes says. A landing's try holds it from reading main's tip until main
+// moves, or the work goes back. Its gate takes none of its own.
+//
 // The audit reads each directory holding a file the build changed outside .kiln/. For a directory it emptied, it reads
 // the nearest above. Nothing the audit writes reaches the build, and kiln removes its worktree once it ends. A
 // landing that doesn't move main leaves the branch as it stood before the landing began. Should kiln die once main
@@ -154,7 +160,8 @@
 // output. Or it writes them as JUnit XML, to the path kiln gives it in $KILN_JUNIT. A failure that names no test is
 // never excused. With JUnit XML, a run cut short fails too: each test run at main must run at the build's commit.
 // kiln keeps the last 16 KiB of each command's output. It runs them at main again only once
-// main or the commands change.
+// main or the commands change. The gate holds commands.lock, with the check or gauge it reads, so no gate runs beside
+// another. Its line in the ledger starts once it holds the lock, so a build's time counts no wait.
 //
 // The gate also fails on a change to a guarded path, however the path was written. A session's hook refuses an Edit
 // or a Write there before it happens. Each name is folded as APFS folds it:
@@ -183,13 +190,14 @@
 //
 // One kiln monitor run:
 //
-//	lock       run.lock alone, so no kiln fire builds meanwhile; build.lock shared
-//	recover    drop each fix a kiln cut short, or end it landed when main holds its landing; then land each accepted
-//	           landing that is queued
+//	lock       monitors.lock, the monitors' lane, beside any kiln fire; build.lock shared
+//	recover    the monitors' lane alone, as Lanes says: drop each fix a kiln cut short, or end it landed when main
+//	           holds its landing; then land each fix's accepted landing that is queued, but no spec's
 //	each monitor kiln.json names, in its order, or the one named:
 //	  due?     skipped unless due, or named
 //	  held?    held while a fix of it builds, waits or lands; held by its last fix, as below, unless named
-//	  check    sh -c in <trees>/.monitor-check at main's tip, or its gauge there; no finding: healthy
+//	  check    sh -c in <trees>/.monitor-check at main's tip, or its gauge there; no finding: healthy; it holds
+//	           commands.lock from before it reads main's tip, so it runs at the main its fix starts from
 //	  fix      a build with no spec on kiln/<name>, from main's tip
 //	           command   first, outside the sandbox, then the gate; fails with no agent: stopped
 //	           agent     while the gate fails, or with no command; kiln.json's rounds, and the audit
@@ -247,6 +255,38 @@
 // summary, report or error, and the next command. A session that failed as the last run did opens none. A landing
 // kiln accept makes opens none, and one that kiln monitor run takes up as it starts opens one.
 //
+// # Lanes
+//
+// A lane is the work that one kiln at a time may do in a repository. The specs' lane builds specs, and the monitors'
+// lane fixes for monitors. A record in state.json belongs to one lane: a fix's to the monitors', and a spec's to the
+// specs'. kiln fire works in the specs' lane, and kiln monitor run in the monitors', at the same time:
+//
+//	kiln monitor run ── fix ── fix ── fix ──▶      the monitors' lane
+//	kiln fire ───────── build x ── build y ──▶     the specs' lane
+//
+// kiln accept takes the lane of the record it lands, and holds it through the whole landing. A kiln accept that
+// retires a spec waiting for UAT takes none. A second kiln in a lane refuses at once, and names the kiln that holds
+// it. A kiln accept that finds its lane held leaves its landing queued. The kiln at work in the specs' lane lands a
+// spec's, or the next kiln fire should it stop first. The next kiln monitor run lands a fix's.
+//
+// As it takes its lane, a kiln recovers what a dead kiln left there. It leaves the other lane's records as they stand,
+// since a live kiln may work on them. The lane's lock decides, and no process ID:
+//
+//	                          the specs' lane                    the monitors' lane
+//	lost runs, in the ledger  ends each lost run of a build      ends each lost run of a fix
+//	records left building     queues each spec's again           queues each fix's accepted landing again
+//	a fix left building       never                              kiln monitor run drops each not yet accepted
+//
+// The sessions of both lanes run side by side. Across both, kiln runs one at a time what judges the work, or moves
+// main. That is each gate, with the check or gauge it reads, and each try of a landing. It is a monitor's check or
+// gauge at main's tip, and the read of the gauges after a landing. Each holds commands.lock. A kiln that finds it held
+// prints one line. It tries the lock again each 200 ms, until it holds it or kiln is interrupted:
+//
+//	<name>: waits while another kiln runs the project's commands
+//
+// A session, an audit, a monitor's command and a pause for a usage limit hold no lock. kiln precommit takes none. A
+// kiln takes its lane first, then commands.lock, and never takes a lane while it holds commands.lock.
+//
 // # The ledger
 //
 // Each queue is a new build, with its own ID. kiln's ledger records every build, session run and gate, and how each
@@ -272,7 +312,8 @@
 // says why, by the last line of its stderr, or of its stdout. kiln writes each reading to its ledger with its line, and
 // judges it against that line wherever it shows. A reading below min, or above max, crossed its line. An unknown one
 // never did. The kiln that landed the build prints the readings after its summary, and only then starts the next build.
-// A gauge never blocks a landing, and nothing reads a landing kiln missed.
+// A gauge never blocks a landing, and nothing reads a landing kiln missed. The read holds commands.lock, so it waits
+// for a gate, and a gate waits for it.
 //
 // # Notifications
 //
@@ -872,6 +913,9 @@ func (r *record) status(out io.Writer) {
 	switch {
 	case r.halted():
 		fmt.Fprintf(out, "\n  %s", haltedNext)
+	case r.Accepted && r.State == queued:
+		// kiln status takes no lane's lock to learn its holder. A kiln fire started meanwhile would find it held.
+		fmt.Fprintf(out, "\n  %s", queuedLands)
 	case r.State == building && !r.Paused.IsZero():
 		fmt.Fprintf(out, ", paused for a usage limit until %s", r.Paused.Local().Format("15:04:05 on Jan 2"))
 	case r.State == amended:
@@ -890,21 +934,25 @@ func (r *record) status(out io.Writer) {
 	}
 }
 
+// queuedLands is what kiln status says of a spec's queued landing, whichever kiln holds the specs' lane.
+const queuedLands = "the kiln at work on specs lands it, or the next kiln fire"
+
 // Accept takes the developer's work on a spec. The spec is deleted from main, and PRODUCT.md gains a line that names
-// the commit that last held it. The commit that moves main is gated first, on main as it stands.
+// the commit that last held it. The commit that moves main is gated first, on main as it stands. For a spec waiting
+// for UAT, Accept takes no lane.
 //
-// A spec waiting on its branch first folds its amendments into the spec, and lands as a build does. A conflict or a
-// failing gate goes back to its build's session. While another kiln fire or kiln accept holds the run lock, that run
-// lands it instead. While a kiln monitor run builds, the next kiln fire or kiln monitor run lands it.
+// A spec waiting on its branch first folds its amendments into the spec. It lands as a build does, in the specs'
+// lane. A conflict or a failing gate goes back to its build's session. While a kiln fire or another kiln accept holds
+// that lane, that kiln lands it. Should it stop first, the next kiln fire does.
 //
 // A monitor's fix waiting on its branch is rebased onto main, and gated again, check included. Then main moves onto
-// it if main hasn't moved. It retires nothing. While another kiln holds the run lock, the next kiln monitor run lands
-// it. A conflict or a failing gate goes back to the fix's session, as a round, and Accept runs that session. A
-// landing that stops waits for kiln accept again, or kiln reject. One with no session that conflicts with main waits
-// for kiln reject. A stopped landing lands again afresh, its rounds at 0, with no second fold. An accepted landing
-// that stops fails Accept.
+// it if main hasn't moved. It retires nothing. It lands in the monitors' lane, which Accept holds through the whole
+// landing. While another kiln holds that lane, the next kiln monitor run lands it. A conflict or a failing gate goes
+// back to the fix's session, as a round, and Accept runs that session. A landing that stops waits for kiln accept
+// again, or kiln reject. One with no session that conflicts with main waits for kiln reject. A stopped landing lands
+// again afresh, its rounds at 0, with no second fold. An accepted landing that stops fails Accept.
 func (r *Repo) Accept(ctx context.Context, name Spec, out io.Writer) error {
-	// Accept takes the lock before it changes anything, so a reinstall that refuses it leaves the spec as it was.
+	// Accept takes build.lock before it changes anything, so a reinstall that refuses it leaves the spec as it was.
 	unshare, err := shareBuilds()
 	if err != nil {
 		return err
@@ -1009,14 +1057,13 @@ func (r *Repo) acceptFix(ctx context.Context, b *build) error {
 	return r.landAccepted(ctx, b)
 }
 
-// landAccepted lands the queued landing of b's accepted spec or fix, unless another kiln holds the run lock. A kiln
-// fire or kiln accept that holds it lands a spec's then. Otherwise the next kiln monitor run lands it, or for a spec,
-// a kiln fire.
+// landAccepted lands the queued landing of b's accepted spec or fix, in its record's lane. While another kiln holds
+// that lane, that kiln lands a spec's. The next kiln monitor run lands a fix's.
 func (r *Repo) landAccepted(ctx context.Context, b *build) error {
 	name := b.rec.Name
-	err := r.run(ctx, b.out, acceptHolder, name)
-	if errors.Is(err, errRunning) {
-		fmt.Fprintf(b.out, "%s: accepted; %s lands it\n", name, r.landsAccepted(b.rec))
+	err := r.run(ctx, b.out, laneOf(&b.rec), name)
+	if held, ok := errors.AsType[*laneHeld](err); ok {
+		fmt.Fprintf(b.out, "%s: accepted; %s lands it\n", name, landsAccepted(held))
 		return nil
 	}
 
@@ -1046,14 +1093,12 @@ func landAgain(rec record) string {
 	return fmt.Sprintf("kiln accept %s lands it again, and kiln reject %s drops it", rec.Name, rec.Name)
 }
 
-// landsAccepted names the kiln that lands the accepted landing of rec, while another kiln holds the run lock.
-func (r *Repo) landsAccepted(rec record) string {
+// landsAccepted names the kiln that lands an accepted landing, queued while held refused its lane.
+func landsAccepted(held *laneHeld) string {
 	switch {
-	case rec.Monitor:
+	case held.lane == monitorsLane:
 		return "the next kiln monitor run"
-	case r.runHeld() == monitorHolder:
-		return "the next kiln fire or kiln monitor run"
-	case r.runHeld() == acceptHolder:
+	case held.holder == acceptHolder:
 		return "the kiln accept that is landing"
 	}
 

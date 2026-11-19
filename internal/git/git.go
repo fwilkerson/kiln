@@ -30,6 +30,9 @@
 // kiln needs git 2.55 or later, whose hook.<event>.enabled turns off a hook that config defines. kiln asks xcrun once
 // for the git behind /usr/bin/git, since that shim near doubles each call's time.
 //
+// A call that adds or removes a worktree waits for every other such call, in this process or another kiln's. Meanwhile
+// it holds the lock of <git common dir>/kiln/worktrees.lock, since each such call writes the shared config.
+//
 // A worktree or clone kiln makes holds each symbolic link as a plain file that holds its target. Claude Code's sandbox
 // refuses a shell's write through a link under .claude/. The main checkout keeps its links, and so does each commit.
 package git
@@ -48,6 +51,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/fwilkerson/kiln/internal/proc"
 )
@@ -294,20 +298,67 @@ func (g *Git) CommonDir(ctx context.Context) (string, error) {
 // Checkout puts branch, made from the commit at, in a new worktree at path. If that fails part way, it removes what
 // it made.
 func (g *Git) Checkout(ctx context.Context, path Worktree, branch Branch, at Rev) error {
-	g.worktrees.Lock()
-	defer g.worktrees.Unlock()
+	unlock, err := g.lockWorktrees(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer unlock()
 	path = g.at(path)
 	if _, err := g.in(ctx, g.repo, "worktree", "prune"); err != nil {
 		return err
 	}
 
 	_, there := os.Lstat(string(path))
-	err := g.addWorktree(ctx, path, "-b", string(branch), string(path), string(at))
+	err = g.addWorktree(ctx, path, "-b", string(branch), string(path), string(at))
 	if err == nil {
 		return nil
 	}
 
 	return errors.Join(err, g.unmade(ctx, path, there != nil, branch))
+}
+
+// worktreesLock is the file a call locks while it adds or removes a worktree. It is in kiln's directory under the git
+// common directory.
+const worktreesLock = "kiln/worktrees.lock"
+
+// lockWorktrees holds g's worktrees mutex, and the file lock worktreesLock, until unlock. Each call that adds or
+// removes a worktree writes the repository's shared config. git fails a write that finds the config locked. The
+// mutex holds for one process, and the file lock for each kiln of the repository.
+func (g *Git) lockWorktrees(ctx context.Context) (unlock func(), err error) {
+	g.worktrees.Lock()
+	f, err := g.flockWorktrees(ctx)
+	if err != nil {
+		g.worktrees.Unlock()
+		return nil, err
+	}
+
+	return func() { f.Close(); g.worktrees.Unlock() }, nil
+}
+
+// flockWorktrees opens worktreesLock, and waits until it holds the file's lock.
+func (g *Git) flockWorktrees(ctx context.Context) (*os.File, error) {
+	common, err := g.CommonDir(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	path := filepath.Join(common, worktreesLock)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return nil, err
+	}
+
+	return f, nil
 }
 
 // worktree add makes the branch before the tree, and can fail between them.
@@ -332,8 +383,12 @@ func (g *Git) unmade(ctx context.Context, path Worktree, madePath bool, branch B
 // Detached puts commit in a worktree at path with no branch, making the worktree if it is not there yet. It removes
 // every file the commit does not hold, ignored ones included, so what runs there sees only the commit.
 func (g *Git) Detached(ctx context.Context, path Worktree, commit Rev) error {
-	g.worktrees.Lock()
-	defer g.worktrees.Unlock()
+	unlock, err := g.lockWorktrees(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer unlock()
 	path = g.at(path)
 	if _, err := os.Stat(filepath.Join(string(path), ".git")); err != nil {
 		if _, err := g.in(ctx, g.repo, "worktree", "prune"); err != nil {

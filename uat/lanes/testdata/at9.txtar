@@ -1,0 +1,89 @@
+# 9. A landing waits for the other lane's landing.
+
+env KILN_OPEN=true
+
+# Given: a monitor's fix ready to land: its work passed its gate, and its audit, the first, touches .tmp/auditing,
+# then waits for .tmp/fix-go. The gate, gate.sh, logs the checkout of each run in a .gate-* checkout.
+exec sh -c 'exec kiln monitor run >.tmp/mon.out 2>&1' &mon&
+exec sh -c 'i=0; while [ ! -e .tmp/auditing ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/auditing ]'
+grep -count=1 '^\.gate-notes$' .tmp/gates.log
+
+# A spec's build whose landing gate runs: x's second gate touches .tmp/landing, then waits for .tmp/land-go.
+exec kiln queue x
+exec kiln fire &fire&
+exec sh -c 'i=0; while [ ! -e .tmp/landing ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/landing ]'
+
+# When: the fix reaches its landing, and waits for the build's.
+exec touch .tmp/fix-go
+exec sh -c 'i=0; while ! grep -q "^notes: waits while another kiln runs the project''s commands$" .tmp/mon.out && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; cat .tmp/mon.out'
+stdout '^notes: waits while another kiln runs the project''s commands$'
+exec touch .tmp/land-go
+wait fire
+stdout '^x: landed on main at [0-9a-f]+, and waits for UAT'
+! stdout 'main moved while the gate ran'
+wait mon
+exec cat .tmp/mon.out
+! stdout 'main moved while the gate ran'
+
+# Then: the fix lands after the build, on a main that holds the build's work.
+exec git show main:note.txt
+stdout '^noted$'
+exec git show main:x.txt
+stdout '^x$'
+exec git show main^:x.txt
+stdout '^x$'
+! exec git cat-file -e main^:note.txt
+
+# Each ran its landing gate once: its gate of the work, then its landing gate.
+grep -count=2 '^\.gate-x$' .tmp/gates.log
+grep -count=2 '^\.gate-notes$' .tmp/gates.log
+
+-- .kiln/kiln.json --
+{"gate": ["sh gate.sh"], "monitors": [
+ {"name": "notes", "every": "24h", "check": "sh .kiln/monitors/notes", "agent": ".kiln/agents/notes.md", "prompt": "Write the note."}
+]}
+-- gate.sh --
+d=$(basename "$PWD")
+case "$d" in .gate-*) ;; *) exit 0 ;; esac
+log="$WORK/.tmp/gates.log"
+echo "$d" >>"$log"
+if [ "$d" = .gate-x ] && [ "$(grep -cxF .gate-x "$log")" -eq 2 ]; then
+  touch "$WORK/.tmp/landing"
+  i=0; while [ ! -e "$WORK/.tmp/land-go" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done
+fi
+exit 0
+-- .kiln/monitors/notes --
+if [ -e note.txt ]; then
+  echo '{"fix": false, "summary": "note.txt is there"}'
+else
+  echo '{"fix": true, "summary": "note.txt is missing"}'
+fi
+-- .kiln/agents/notes.md --
+Write the missing note.
+-- .kiln/specs/x.md --
+### 1. X is there
+
+- **Given**: nothing.
+- **When**: the developer reads x.txt.
+- **Then**: it says x.
+-- _given/x/x.txt --
+x
+-- claude.json --
+{
+ "notes": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "echo noted >note.txt"}}},
+  {"result": {"result": "Wrote note.txt.\n{\"title\": \"fix(notes): write the missing note\"}"}}
+ ]}},
+ "build": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+  {"result": {"result": "Built x."}}
+ ]}},
+ "audit": {
+  "1": {"1": [
+   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/auditing\"; i=0; while [ ! -e \"$WORK/.tmp/fix-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done"}}},
+   {"result": {"result": "read 1 directories, found 0"}}
+  ]},
+  "2": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
+  "3": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}
+ }
+}

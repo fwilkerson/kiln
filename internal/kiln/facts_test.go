@@ -15,5 +15,6 @@ func TestFacts(t *testing.T) {
 		"its interval, less 30 minutes, ago":   slack == 30*time.Minute,
 		"up to 3 tries":                        auditTries == 3,
 		"of at most 72":                        titleMax == 72,
+		"tries the lock again each 200 ms":     commandsRetry == 200*time.Millisecond,
 	})
 }

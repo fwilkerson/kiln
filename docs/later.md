@@ -166,3 +166,31 @@ Two changes to `onepage`, seen on `docs/one-page.html`:
 - The parts list reads as a table. It could read as a list of parts, each with its why.
 
 - **Build it when:** the sheet changes again, or another repository's sheet hits the same confusion.
+
+## Two builds, or two fixes, at once
+
+Spec 15, lanes, lets a spec's build and a monitor's fix run side by side, each in a lane that one kiln at a time
+holds. Two builds in the specs' lane, or two fixes in the monitors' lane, were left out. Each would need its own
+lane, its own recovery, and a gate that waits for both.
+
+- **Build it when:** a spec waits for another spec's build long enough that the developer runs it by hand, or a
+  monitor waits for another monitor's fix to end.
+
+## A share of the usage limit for each lane
+
+Both lanes draw on one account's usage limit, so they reach it sooner than either alone. A build then pauses until
+the limit resets, and a fix ends at once. Each lane could keep a share of the limit instead.
+
+- **Why it was left out:** on 2026-11-19 the ledger held no build and no fix that a usage limit ended.
+- **Build it when:** the ledger shows a build paused, or a fix ended, by a usage limit while the other lane worked.
+
+## A conflict with the other lane that costs no round
+
+A landing's conflict with main goes back to the session that made the work, as a round. With two lanes, the
+monitors' landings can conflict with a build's more often, and spend its rounds. A count of conflicts apart from
+the rounds would end that, at the cost of a second limit, with its own test and its own line in each doc that names
+the rounds.
+
+- **Why it was left out:** the developer chose the round on 2026-11-19. A merge of main is a turn of the session, as
+  a failed gate's fix is.
+- **Build it when:** a build stops out of rounds that conflicts with the other lane's landings spent.

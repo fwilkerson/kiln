@@ -3,7 +3,9 @@ package git_test
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/fwilkerson/kiln/internal/git"
 )
@@ -117,5 +119,49 @@ func TestDetached(t *testing.T) {
 		}
 
 		sh(t, tree, "echo 42 >x.golden")
+	}
+}
+
+// TestCheckoutWaits holds that a checkout waits while another kiln adds or removes a worktree. Each such call writes
+// the shared config, which git refuses to write while another call holds it.
+func TestCheckoutWaits(t *testing.T) {
+	repo := t.TempDir()
+	sh(t, repo, "git init --quiet -b main")
+	sh(t, repo, "git -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m first")
+	g, err := git.New(repo, os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lock := filepath.Join(repo, ".git", "kiln", "worktrees.lock")
+	if err := os.MkdirAll(filepath.Dir(lock), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	other, err := os.OpenFile(lock, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := syscall.Flock(int(other.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatal(err)
+	}
+
+	tree := filepath.Join(t.TempDir(), "tree")
+	done := make(chan error)
+	go func() { done <- g.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main") }()
+	select {
+	case err := <-done:
+		t.Fatalf("the checkout ended, with %v, while another kiln held the lock", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	other.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(tree, ".git")); err != nil {
+		t.Errorf("once the lock was free, the checkout made no worktree: %v", err)
 	}
 }

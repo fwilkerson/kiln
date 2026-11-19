@@ -1,4 +1,4 @@
-# A monitor waits for a running build.
+# A monitor runs beside a running build: the specs' lane and the monitors' lane each hold one kiln.
 
 env KILN_OPEN=true
 
@@ -11,15 +11,15 @@ exec sh -c 'i=0; while [ ! -e waiting ] && [ $i -lt 900 ]; do sleep 0.1; i=$((i+
 # When: the developer runs kiln monitor run,
 exec sh -c 'kiln monitor run || true'
 
-# Then: the first run runs no check,
-! grep 'ran' $WORK/_given/check.log
+# Then: the run runs the monitor's check, while the build still runs.
+grep -count=1 'ran' $WORK/_given/check.log
 
-# When: and then runs it again once the build has ended.
+# When: the build ends, and the developer runs kiln monitor run again,
 exec touch done
 wait
 exec kiln monitor run
 
-# Then: and the second runs the monitor's check.
+# Then: the monitor is not due, so its check ran once in all.
 grep -count=1 'ran' $WORK/_given/check.log
 
 -- .kiln/kiln.json --

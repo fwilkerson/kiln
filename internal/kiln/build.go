@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/claude"
@@ -21,19 +20,23 @@ import (
 // unknownReset is how long a usage limit that names no reset pauses a build.
 const unknownReset = 5 * time.Minute
 
-// Fire builds each queued spec, one at a time, until none is queued. A build that was building when kiln last stopped
-// goes on first, in the same session. Fire refuses while another kiln builds in the repository, and while kiln is being
-// reinstalled. It skips a monitor's fix.
+// Fire builds each queued spec, one at a time, until none is queued. It works in the specs' lane, beside a kiln
+// monitor run. A build that was building when kiln last stopped goes on first, in the same session. So does a queued
+// landing of accepted amendments, which a kiln accept left. Fire refuses while another kiln fire, or a kiln accept that
+// lands a spec, holds the specs' lane. It refuses while kiln is being reinstalled. It skips a monitor's fix.
 func (r *Repo) Fire(ctx context.Context, out io.Writer) error {
-	return r.run(ctx, out, runHolder, "")
+	return r.run(ctx, out, specsLane, "")
 }
 
-var errRunning = fmt.Errorf("%w: another kiln builds in this repository", errRefused)
+// run builds the queued records of the lane l, or only the one named only, if it is not "". kiln accept starts a run
+// for a name, and kiln fire one for each spec. It first recovers what a dead kiln left in l.
+func (r *Repo) run(ctx context.Context, out io.Writer, l lane, only Spec) error {
+	holder := runHolder
+	if only != "" {
+		holder = acceptHolder
+	}
 
-// run builds the queued specs, or only the one named only, if it is not "". holder names the kiln that runs it, as
-// lockRun says.
-func (r *Repo) run(ctx context.Context, out io.Writer, holder string, only Spec) error {
-	unlock, err := r.lockRun(holder)
+	unlock, err := r.lockLane(l, holder)
 	if err != nil {
 		return err
 	}
@@ -47,18 +50,26 @@ func (r *Repo) run(ctx context.Context, out io.Writer, holder string, only Spec)
 
 	defer unshare()
 
-	r.recount(ctx, out)
-	if err := r.store.update(func(b *book) error { b.requeue(); return nil }); err != nil {
+	r.recount(ctx, out, l)
+	if err := r.store.update(func(b *book) error { b.requeue(l); return nil }); err != nil {
 		return err
 	}
 
-	return r.buildEach(ctx, out, only, unlock)
+	return r.buildEach(ctx, out, inLane{lane: l, only: only, unlock: unlock})
 }
 
-// buildEach builds each spec take marks building, until none is left.
-func (r *Repo) buildEach(ctx context.Context, out io.Writer, only Spec, unlock func()) error {
+// inLane is what a kiln builds in the lane it holds. It builds each record of lane, or only the one named only, if it
+// is not "". unlock frees the lane once take finds no record left.
+type inLane struct {
+	lane   lane
+	only   Spec
+	unlock func()
+}
+
+// buildEach builds each record that take marks building in the lane, until none is left.
+func (r *Repo) buildEach(ctx context.Context, out io.Writer, in inLane) error {
 	for {
-		rec, found, err := r.take(only, unlock)
+		rec, found, err := r.take(in)
 		if err != nil || !found {
 			return err
 		}
@@ -69,49 +80,21 @@ func (r *Repo) buildEach(ctx context.Context, out io.Writer, only Spec, unlock f
 		}
 
 		b.waits(ctx)
-		b.notifyLanding(ctx, only)
+		b.notifyLanding(ctx, in.only)
 		if err := b.readGauges(ctx); err != nil {
 			return err
 		}
 	}
 }
 
-// lockRun takes the run lock, which one kiln in the repository holds at a time. holder names the kiln that takes it,
-// for a kiln accept that finds it held.
-func (r *Repo) lockRun(holder string) (unlock func(), err error) {
-	unlock, err = r.store.lock(runLock, syscall.LOCK_EX|syscall.LOCK_NB)
-	if errors.Is(err, syscall.EWOULDBLOCK) {
-		return nil, errRunning
-	}
-
-	if err == nil {
-		err = os.WriteFile(filepath.Join(r.store.dir, runLock), []byte(holder), 0o600)
-	}
-
-	return unlock, err
-}
-
-// The kilns that hold the run lock, as lockRun writes them into it.
-const (
-	runHolder     = "kiln fire"
-	monitorHolder = "kiln monitor run"
-	acceptHolder  = "kiln accept"
-)
-
-// runHeld is the kiln that holds the run lock, or last held it.
-func (r *Repo) runHeld() string {
-	held, _ := os.ReadFile(filepath.Join(r.store.dir, runLock))
-	return string(held)
-}
-
-// take marks the next spec building, as book.next picks it. Once none is left, it unlocks the run.
-func (r *Repo) take(only Spec, unlock func()) (rec record, found bool, err error) {
+// take marks the next record of the lane building, as book.next picks it. Once none is left, it unlocks the lane.
+func (r *Repo) take(in inLane) (rec record, found bool, err error) {
 	err = r.store.update(func(b *book) error {
-		rec, found = b.next(only, os.Getpid())
-		// A landing queued after this update finds the run lock free, so no kiln accept counts on this run. kiln
-		// monitor run never unlocks here: it lands queued landings only as it starts.
+		rec, found = b.next(in.lane, in.only, os.Getpid())
+		// A landing queued after this update finds the lane free, so no kiln accept counts on this run. kiln monitor
+		// run never unlocks here: it lands queued landings only as it starts.
 		if !found {
-			unlock()
+			in.unlock()
 		}
 
 		return nil
@@ -336,7 +319,7 @@ func (b *build) gateWork(ctx context.Context) (string, reason, error) {
 		return b.roundFor(back, err)
 	}
 
-	v, err := b.gate(ctx, false, b.allowed()...)
+	v, err := b.gate(ctx, b.allowed()...)
 	if err != nil {
 		return "", reason{}, err
 	}
@@ -754,10 +737,21 @@ func (b *build) landing() string {
 	return message + "Build: " + b.r.summary(b.rec.Build) + "\n"
 }
 
-// gate runs the gate on the build's worktree, and writes it to the ledger. landing is the gate on the work rebased
-// onto main. A fix's gate keeps it to its side.
-func (b *build) gate(ctx context.Context, landing bool, allowed ...string) (verdict, error) {
-	return b.gated(ctx, landing, nil, b.treeGuard(allowed...))
+// gate runs the gate on the build's worktree, as judgeWork does. A fix's gate keeps it to its side.
+func (b *build) gate(ctx context.Context, allowed ...string) (verdict, error) {
+	return b.judgeWork(ctx, nil, b.treeGuard(allowed...))
+}
+
+// judgeWork takes commandsLock, and runs the gate under it, as gated does. A landing's try holds the lock already, and
+// calls gated itself.
+func (b *build) judgeWork(ctx context.Context, without []string, guards ...guard) (verdict, error) {
+	held, err := b.r.lockCommands(ctx, b.rec.Name, b.out)
+	if err != nil {
+		return verdict{}, err
+	}
+
+	defer held.release()
+	return b.gated(ctx, held, without, guards...)
 }
 
 // treeGuard is the guard on the build's worktree, which lets the build change allowed. A fix's keeps it to its side.
@@ -771,16 +765,17 @@ func (b *build) treeGuard(allowed ...string) guard {
 	return g
 }
 
-// gated runs the gate as Repo.gate does, and writes it to the ledger. landing is the gate on the work rebased onto
-// main.
-func (b *build) gated(ctx context.Context, landing bool, without []string, guards ...guard) (verdict, error) {
+// gated runs the gate under held, as commands.gate does, and writes it to the ledger. Its line starts once the lock
+// is held, so a build's time counts no wait. Only a landing sets the record's Before. A gate while it is set is the
+// landing's gate, on the work rebased onto main.
+func (b *build) gated(ctx context.Context, held commands, without []string, guards ...guard) (verdict, error) {
 	start := time.Now()
-	v, err := b.r.gate(ctx, without, guards...)
+	v, err := held.gate(ctx, without, guards...)
 	if err == nil {
-		v, err = b.gatedCheck(ctx, v)
+		v, err = b.gatedCheck(ctx, held, v)
 	}
 
-	b.record(entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed, Landing: landing})
+	b.record(entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed, Landing: b.now().Before != ""})
 	if err == nil {
 		b.set(func(r *record) { r.Limit = &v.rounds })
 	}

@@ -324,7 +324,7 @@ func (b *build) gateBuild(ctx context.Context) (verdict, error) {
 		without = g.side.acceptance
 	}
 
-	v, err := b.gated(ctx, false, without, g)
+	v, err := b.judgeWork(ctx, without, g)
 	if err == nil {
 		b.keepFailingAtMain(v.atMain)
 	}
@@ -347,7 +347,7 @@ func (b *build) gateStack(ctx context.Context) (turn, error) {
 		return turn{}, err
 	}
 
-	v, err := b.gated(ctx, false, nil, b.treeGuard(b.allowed()...), g)
+	v, err := b.judgeWork(ctx, nil, b.treeGuard(b.allowed()...), g)
 	if err != nil || v.passed {
 		return turn{}, err
 	}

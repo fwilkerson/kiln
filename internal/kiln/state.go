@@ -318,12 +318,13 @@ func (b *book) retire(name Spec) {
 	b.Specs = slices.DeleteFunc(b.Specs, func(r *record) bool { return r.Name == name })
 }
 
-// next takes the first queued spec, and marks it building by the kiln fire pid. With only, it takes the spec named
-// only, or a landing of accepted amendments. A kiln accept leaves such a landing for the kiln fire that holds the lock.
-// It takes a fix's record only as an accepted landing, for a run started for its name or for landings.
-func (b *book) next(only Spec, pid int) (record, bool) {
+// next takes the first queued record of the lane l, which the caller holds. It marks it building by the kiln pid. In
+// the specs' lane, with only, it takes the spec named only, or a landing of accepted amendments. A kiln accept leaves
+// such a landing for the kiln that holds the lane. In the monitors' lane, it takes only a fix's accepted landing. The
+// run must be started for the fix's name, or for landings.
+func (b *book) next(l lane, only Spec, pid int) (record, bool) {
 	for _, r := range b.Specs {
-		if r.State == queued && r.runsFor(only) {
+		if r.State == queued && r.runsFor(l, only) {
 			r.State, r.runner = building, runner{PID: pid}
 			return *r, true
 		}
@@ -332,15 +333,15 @@ func (b *book) next(only Spec, pid int) (record, bool) {
 	return record{}, false
 }
 
-// runsFor is whether a kiln fire started for only builds the spec of r. Every run builds a landing of accepted
-// amendments, and a run started for no spec builds every spec. A run started for landings builds only accepted
-// landings, a fix's too. A fix's accepted landing is built otherwise only by a run started for its name.
-func (r *record) runsFor(only Spec) bool {
+// runsFor is whether a run of the lane l started for only builds the record r. A run builds no record of the other
+// lane. A run started for no spec builds every spec, and every run builds a landing of accepted amendments. A fix's
+// accepted landing is built only by a run started for its name, or for landings.
+func (r *record) runsFor(l lane, only Spec) bool {
 	switch {
+	case !l.holds(r):
+		return false
 	case r.Monitor:
 		return r.Accepted && (r.Name == only || only == landings)
-	case only == landings:
-		return r.Accepted
 	}
 
 	return only == "" || r.Name == only || r.Accepted
@@ -350,11 +351,12 @@ func (r *record) runsFor(only Spec) bool {
 // name starts with a dot.
 const landings Spec = ".landings"
 
-// requeue queues again each spec a kiln fire that stopped left building. A build that was building goes on first. It
-// queues a fix's accepted landing again, and leaves any other fix.
-func (b *book) requeue() {
+// requeue queues again each record of the lane l, which the caller holds, that a kiln that stopped left building. A
+// build that was building goes on first. In the monitors' lane, it queues a fix's accepted landing again, and leaves
+// any other fix for dropLost.
+func (b *book) requeue(l lane) {
 	for _, s := range b.Specs {
-		if s.State == building && s.goesOnAfterKiln() {
+		if l.leftBuilding(s) && s.goesOnAfterKiln() {
 			s.State = queued
 		}
 	}
@@ -362,10 +364,26 @@ func (b *book) requeue() {
 	slices.SortStableFunc(b.Specs, func(x, y *record) int { return goesOn(y) - goesOn(x) })
 }
 
-// goesOnAfterKiln is whether a kiln fire that stopped leaves the build of r to go on. A spec's does, and a fix's
-// accepted landing. Any other fix is dropped, by kiln monitor run.
+// goesOnAfterKiln is whether a kiln that stopped leaves the build of r to go on. A spec's does, and a fix's accepted
+// landing. Any other fix is dropped, by kiln monitor run.
 func (r *record) goesOnAfterKiln() bool {
 	return !r.Monitor || r.Accepted
+}
+
+// dropLost drops each record of the lane l that a kiln left building, and that does not go on. That is a fix the
+// developer had not accepted. The caller holds l. It answers the fixes dropped. The specs' lane drops none.
+func (b *book) dropLost(l lane) []record {
+	var lost []record
+	b.Specs = slices.DeleteFunc(b.Specs, func(s *record) bool {
+		if l.leftBuilding(s) && !s.goesOnAfterKiln() {
+			lost = append(lost, *s)
+			return true
+		}
+
+		return false
+	})
+
+	return lost
 }
 
 func goesOn(r *record) int {
@@ -384,8 +402,6 @@ type store struct {
 const (
 	bookFile = "state.json"
 	lockFile = "lock"
-	runLock  = "run.lock"
-	mainLock = "main.lock"
 	// buildLock is the lock every kiln that drives a build session shares, in kiln's directory under the user's cache
 	// directory. The reinstall takes it alone.
 	buildLock = "build.lock"

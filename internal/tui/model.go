@@ -23,8 +23,8 @@ type model struct {
 	err   error
 	// now is when the source was last read. Every time shown is counted to it.
 	now time.Time
-	// live is the running run's stretch of its stream, for the now line.
-	live *claude.Recounted
+	// live is each running run's stretch of its stream, for its now line, by the run.
+	live map[runRef]*claude.Recounted
 	w, h int
 	// theme is the dark one until the terminal says its background is light.
 	theme theme
@@ -100,7 +100,7 @@ type loaded struct {
 	at    time.Time
 	specs []Spec
 	err   error
-	live  *claude.Recounted
+	live  map[runRef]*claude.Recounted
 	// opened is the run the top screen showed when the read began, and open its stretch of the stream.
 	opened runRef
 	open   *claude.Recounted
@@ -158,8 +158,12 @@ func (m model) load() tea.Cmd {
 		specs, err := src.Specs(context.Background())
 		monitors, monitorsErr := src.Monitors(context.Background())
 		specs, err = append(specs, monitors...), errors.Join(err, monitorsErr)
-		_, live, _ := running(specs)
-		msg := loaded{at: time.Now(), specs: specs, err: err, live: recount(src, live), opened: opened}
+		live := map[runRef]*claude.Recounted{}
+		for _, ref := range atWork(specs) {
+			live[ref] = recount(src, find(specs, ref))
+		}
+
+		msg := loaded{at: time.Now(), specs: specs, err: err, live: live, opened: opened}
 		if open {
 			msg.open = recount(src, find(specs, opened))
 		}
@@ -319,7 +323,7 @@ func (m model) homeBuild(p pane) (buildRef, bool) {
 		s, ok := m.picked()
 		return buildRef{s.ref(), len(s.Builds) - 1}, ok && len(s.Builds) > 0
 	case nowPane:
-		ref, _, ok := running(m.specs)
+		ref, ok := m.nowPicked()
 		return ref.buildRef, ok
 	}
 
@@ -447,11 +451,7 @@ func (m model) items(p pane) int {
 
 		return len(m.sideSpecs(monitorsPane)) + 1
 	case nowPane:
-		if _, _, ok := running(m.specs); ok {
-			return 1
-		}
-
-		return 0
+		return len(atWork(m.specs))
 	}
 
 	return len(m.recent())
@@ -537,8 +537,9 @@ func (m *model) openTarget(t target) tea.Cmd {
 	case toSpec, toMonitor:
 		m.openPicked()
 	case toNow:
-		if ref, _, ok := running(m.specs); ok {
-			return m.openRun(ref)
+		// A lane whose run ended since leaves the selection past the last run.
+		if refs := atWork(m.specs); len(refs) > 0 {
+			return m.openRun(refs[min(t.i, len(refs)-1)])
 		}
 	case toRecent:
 		m.openRecent(t)
@@ -727,18 +728,45 @@ func (m model) recent() []listed {
 	return all
 }
 
-// running finds the run that is running, if one is.
-func running(specs []Spec) (runRef, *Run, bool) {
+// atWork finds the run at work in each lane, if one is: a spec's, then a fix's. Each is the first running run among
+// its lane's specs, or among the monitors.
+func atWork(specs []Spec) []runRef {
+	var refs []runRef
+	for _, fixes := range []bool{false, true} {
+		if ref, ok := running(specs, fixes); ok {
+			refs = append(refs, ref)
+		}
+	}
+
+	return refs
+}
+
+// nowPicked is the run selected in the now pane, if a run is at work.
+func (m model) nowPicked() (runRef, bool) {
+	refs := atWork(m.specs)
+	if len(refs) == 0 {
+		return runRef{}, false
+	}
+
+	return refs[min(m.sel[nowPane], len(refs)-1)], true
+}
+
+// running finds the first run that is running among the monitors when fixes is true, or else among the specs.
+func running(specs []Spec, fixes bool) (runRef, bool) {
 	for _, s := range specs {
+		if (s.Monitor != nil) != fixes {
+			continue
+		}
+
 		for bi, b := range s.Builds {
 			runs := b.runs()
 			if ri := slices.IndexFunc(runs, (*Run).running); ri >= 0 {
-				return runRef{buildRef{s.ref(), bi}, ri}, runs[ri], true
+				return runRef{buildRef{s.ref(), bi}, ri}, true
 			}
 		}
 	}
 
-	return runRef{}, nil, false
+	return runRef{}, false
 }
 
 func find(specs []Spec, ref runRef) *Run {

@@ -70,9 +70,17 @@ func (b *build) heldAnyway(ctx context.Context, err error) (git.Rev, error) {
 // errMainMoved is a landing that main's move refused, since main moved while the gate ran.
 var errMainMoved = errors.New("main moved while the gate ran")
 
-// landOnce tries the landing once, onto main's tip. It answers errMainMoved when main moved meanwhile.
+// landOnce tries the landing once, onto main's tip. It answers errMainMoved when main moved meanwhile. It holds
+// commandsLock from the read of main's tip until main moved, or the try answers. So the other lane moves no main
+// under its gate. A setback goes back to the session with the lock free.
 func (b *build) landOnce(ctx context.Context, from git.Rev, retire func(ctx context.Context, held git.Rev) error,
 	allowed []string) (git.Rev, setback, error) {
+	held, err := b.r.lockCommands(ctx, b.rec.Name, b.out)
+	if err != nil {
+		return "", setback{}, err
+	}
+
+	defer held.release()
 	onto, err := b.r.mainTip(ctx)
 	if err != nil {
 		return "", setback{}, err
@@ -83,7 +91,7 @@ func (b *build) landOnce(ctx context.Context, from git.Rev, retire func(ctx cont
 		return "", back, err
 	}
 
-	v, err := b.gate(ctx, true, allowed...)
+	v, err := b.gated(ctx, held, nil, b.treeGuard(allowed...))
 	if err != nil || !v.passed {
 		return "", setback{whyLanding, v.report, v.failing}, err
 	}
