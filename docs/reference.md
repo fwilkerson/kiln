@@ -99,8 +99,9 @@ session ──▶ gate ──passes──▶ audit ──no findings──▶ la
 - Each host is a bare host name, such as `proxy.golang.org` or `*.example.org`, with no scheme, port or path. kiln
   refuses any other. A `writable` command prints only absolute paths, or no session starts.
 - They may listen on a local port, so a test that starts a server runs in a session.
-- An MCP server runs outside the sandbox. So do the gate's commands, a gauge, a monitor's check and its `command`,
-  each with the developer's environment. The gate runs the code a session wrote.
+- An MCP server runs outside the sandbox. So does each script kiln runs: the gate's commands, a gauge's, a monitor's
+  scripts and the `notify` program, each with the developer's environment. `$KILN` holds the kiln that runs it, as
+  `go doc ./internal/kiln` says under Files. The gate runs the code a session wrote.
 - A session's file tools are held by kiln's hook, not by the sandbox.
 
 ### acceptance
@@ -167,7 +168,7 @@ A monitor's `gauge` is a gauge too, named for the monitor, with its line in the 
   to decide whether anything changed.
 
 A gauge can read kiln's own numbers from `kiln ledger`, as [What kiln records](#what-kiln-records) says. It runs
-`"$KILN"`, the kiln that reads it, as `go doc ./internal/kiln` says under Files. The median cost of the last ten
+`"$KILN"`, the kiln that reads it. The median cost of the last ten
 builds that ended, in dollars:
 
 ```sh
@@ -189,12 +190,54 @@ printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seco
 
 Each takes its output whole first, so a failed `kiln ledger` fails the gauge, rather than reading no number.
 
+### notify
+
+kiln notifies you when a build or a fix needs you. Without `notify`, it prints each notification in its output as
+OSC 9, which a terminal such as Ghostty shows with `desktop-notifications` on. `notify` names a program that
+receives each one instead:
+
+```json
+{"notify": ".kiln/notify"}
+```
+
+- kiln reads the key at main's tip, and runs it with `sh -c` at the top of the checkout kiln runs in, outside the
+  sandbox, with your environment. A script it names is that checkout's copy. `$KILN_NOTICE` holds the notice, as
+  JSON. What the program prints goes to kiln's output.
+- The package doc of `internal/kiln` lists the notice's fields, when a build or a fix notifies, and how long kiln
+  waits, under Notifications: `go doc ./internal/kiln`.
+- A program that fails, hangs or is missing changes no build's or fix's result. kiln says why in its output, then
+  prints the notification as OSC 9.
+- `kiln monitor install`'s job writes kiln's output to `.git/kiln/monitor.log`, where no terminal shows OSC 9. To
+  hear of a fix that job makes, name a `notify` program.
+- That job passes on only your `PATH` and `TMPDIR`, beside launchd's own `HOME`. Keep a secret, such as a
+  webhook's URL, in a file under your home directory, never in the repository.
+
+This `.kiln/notify` posts each notification to a Slack incoming webhook. Make it executable, and commit it:
+
+```sh
+#!/bin/sh
+set -eu
+printf '%s' "$KILN_NOTICE" |
+  jq '{text: "kiln: \(.name) \(.state)\n\(.summary)\nnext: \(.next)"}' |
+  curl --silent --show-error --fail --max-time 10 --header 'Content-Type: application/json' \
+    --data-binary @- "$(cat "$HOME/.config/kiln/slack-webhook")" >/dev/null
+```
+
+Drop the `jq` line to post the notice as it is, for a webhook that reads kiln's JSON. macOS ships `jq` in
+`/usr/bin`.
+
+kiln's own repository keeps a `.kiln/notify` for Ghostty. A monitor's fix opens a tab that runs
+`"$KILN" monitor show <name>`, behind the tab you work in. The tab notifies you, and a click on the notification brings it
+forward. On the first tab, macOS asks to let kiln control Ghostty. Without that, the tab never opens, and the output
+says why.
+
 ## Monitors
 
 A monitor looks for a problem on a schedule, and fixes it. It is a directory under `.kiln/monitors/`, named for the
 monitor, and its fix builds on the branch `kiln/<name>`. kiln reads each file below at main's tip, each optional,
 and runs each script by its path. So a script's first line, such as `#!/usr/bin/env python3`, picks its language.
-kiln refuses a script git holds without the executable bit: `chmod +x` it, and commit.
+kiln refuses a script git holds without the executable bit: `chmod +x` it, and commit. `kiln doctor` reads each
+monitor in the working tree, before you commit it, and prints each refusal `kiln monitor run` would make of it.
 
 `kiln monitor add bugs` writes the `bugs` monitor kiln ships into `.kiln/monitors/bugs/`, and
 `kiln monitor add ../monitors/deps` the one in that directory. Commit what it writes on main, where kiln reads it. The
@@ -254,47 +297,6 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 
 A monitor is held, and starts no fix, by how its last fix ended, until a change releases it. The package doc of
 `internal/kiln` lists each hold and what releases it, under Monitors: `go doc ./internal/kiln`.
-
-### notify
-
-kiln notifies you when a build or a fix needs you. Without `notify`, it prints each notification in its output as
-OSC 9, which a terminal such as Ghostty shows with `desktop-notifications` on. `notify` names a program that
-receives each one instead:
-
-```json
-{"notify": ".kiln/notify"}
-```
-
-- kiln reads the key at main's tip, and runs it with `sh -c` at the top of the checkout kiln runs in, outside the
-  sandbox, with your environment. A script it names is that checkout's copy. `$KILN_NOTICE` holds the notice, as
-  JSON. What the program prints goes to kiln's output.
-- The package doc of `internal/kiln` lists the notice's fields, when a build or a fix notifies, and how long kiln
-  waits, under Notifications: `go doc ./internal/kiln`.
-- A program that fails, hangs or is missing changes no build's or fix's result. kiln says why in its output, then
-  prints the notification as OSC 9.
-- `kiln monitor install`'s job writes kiln's output to `.git/kiln/monitor.log`, where no terminal shows OSC 9. To
-  hear of a fix that job makes, name a `notify` program.
-- That job passes on only your `PATH` and `TMPDIR`, beside launchd's own `HOME`. Keep a secret, such as a
-  webhook's URL, in a file under your home directory, never in the repository.
-
-This `.kiln/notify` posts each notification to a Slack incoming webhook. Make it executable, and commit it:
-
-```sh
-#!/bin/sh
-set -eu
-printf '%s' "$KILN_NOTICE" |
-  jq '{text: "kiln: \(.name) \(.state)\n\(.summary)\nnext: \(.next)"}' |
-  curl --silent --show-error --fail --max-time 10 --header 'Content-Type: application/json' \
-    --data-binary @- "$(cat "$HOME/.config/kiln/slack-webhook")" >/dev/null
-```
-
-Drop the `jq` line to post the notice as it is, for a webhook that reads kiln's JSON. macOS ships `jq` in
-`/usr/bin`.
-
-kiln's own repository keeps a `.kiln/notify` for Ghostty. A monitor's fix opens a tab that runs
-`kiln monitor show <name>`, behind the tab you work in. The tab notifies you, and a click on the notification brings it
-forward. On the first tab, macOS asks to let kiln control Ghostty. Without that, the tab never opens, and the output
-says why.
 
 ## Agents
 

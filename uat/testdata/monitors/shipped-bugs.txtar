@@ -1,7 +1,5 @@
 # A monitor kiln ships, added with one command, fixes each bug filed under bugs/, one fix at a time.
 
-env KILN_OPEN=true
-
 # Given: two bugs filed under bugs/, and the bugs monitor kiln ships, added and committed on main.
 exec kiln monitor add bugs
 stdout '^wrote \.kiln/monitors/bugs/check$'

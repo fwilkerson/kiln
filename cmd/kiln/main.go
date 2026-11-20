@@ -5,7 +5,7 @@
 //	                         from the preset .kiln/init.json records, or Go's; and install the pre-commit hook
 //	kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 //	kiln fire                build each queued spec, one at a time, until none is queued
-//	kiln status              show where each spec stands, each gauge's latest reading, and whether .kiln/ is behind
+//	kiln status              show the specs, the monitors, each gauge's reading, and whether .kiln/ is behind
 //	kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
 //	kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
 //	kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
@@ -65,7 +65,7 @@ const usage = `usage:
                            from the preset .kiln/init.json records, or Go's; and install the pre-commit hook
   kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
   kiln fire                build each queued spec, one at a time, until none is queued
-  kiln status              show where each spec stands, each gauge's latest reading, and whether .kiln/ is behind
+  kiln status              show the specs, the monitors, each gauge's reading, and whether .kiln/ is behind
   kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
   kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
   kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix

@@ -28,8 +28,9 @@ The archive holds `_kiln`, the zsh completion, too. Put it in a directory that `
 
 ## Quick start
 
-**1. Set the project up.** `kiln init` writes kiln's settings, agents and the `/shape` skill into `.kiln/`, and
-installs a pre-commit hook that runs your gate. The preset is `go`, or `python` for uv, pytest, ruff and ty.
+**1. Set the project up.** `kiln init` writes kiln's settings, agents, and the `/shape` skill with its reviewers into
+`.kiln/`, and installs a pre-commit hook that runs your gate. The preset is `go`, or `python` for uv, pytest, ruff and
+ty.
 
 ```console
 $ cd my-project                      # a git repository, on the branch main
@@ -38,9 +39,13 @@ wrote .kiln/agents/audit.md
 wrote .kiln/agents/build.md
 ...
 wrote .kiln/kiln.json
-...
 wrote .kiln/kiln.schema.json
+wrote .kiln/reviewers/comprehension.md
+...
+wrote .kiln/init.json
 linked .claude/skills/shape to ../../.kiln/skills/shape
+linked .claude/agents/comprehension.md to ../../.kiln/reviewers/comprehension.md
+...
 commit .kiln/ on main: kiln reads it there
 the pre-commit hook runs the gate on each commit to main, so make its commands pass before you commit .kiln/:
   go vet ./...
@@ -84,8 +89,8 @@ refuse or fail on later, with its fix:
 ```console
 $ kiln doctor
 .kiln/kiln.json names the host "https://proxy.golang.org/": name a bare host, such as "proxy.golang.org", or "*.example.org"
-.kiln/kiln.json runs .kiln/monitors/deps, which is not executable: run chmod +x .kiln/monitors/deps, and commit it
-note: .kiln/kiln.json differs from main's in hosts, monitors: kiln acts on main's, so commit it to main to act on yours
+the working tree holds .kiln/monitors/deps/check without the executable bit, so kiln cannot run it: run chmod +x .kiln/monitors/deps/check, and commit it
+note: .kiln/kiln.json differs from main's in hosts: kiln acts on main's, so commit it to main to act on yours
 kiln doctor: found 2 problems
 ```
 
@@ -210,20 +215,26 @@ unattended session runs under the sign-in `claude` has on the machine.
 ## Commands
 
 ```text
-kiln init [--preset <preset>]    write kiln's defaults into .kiln/, or update them, and install the pre-commit hook
-kiln queue <name>                queue a build of .kiln/specs/<name>.md, as main holds it
-kiln fire                        build each queued spec, one at a time, until none is queued
-kiln status                      show where specs and monitors stand, each gauge's reading, and whether .kiln/ is behind
-kiln tui [<name>]                show every build, live and past, in a full-screen view
-kiln accept <name>               take the work: retire the spec, land its amendments, or land a waiting fix
-kiln reject <name>               turn the amendments away, or drop a waiting fix
-kiln monitor add <name>|<dir>    add a monitor kiln ships, or one from a directory, to .kiln/monitors/
-kiln monitor install             set up the launchd job that runs kiln monitor run each hour
-kiln monitor run [<name>]        run each monitor that is due, or one now
-kiln monitor show <name>         show how a monitor's last run ended
-kiln doctor [<name>]             print each problem in the setup, with its fix; or a spec's form too
+kiln init [--preset go|python|<dir>]
+                         write a preset of kiln's defaults into .kiln/, or merge a newer kiln's into yours,
+                         from the preset .kiln/init.json records, or Go's; and install the pre-commit hook
+kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
+kiln fire                build each queued spec, one at a time, until none is queued
+kiln status              show the specs, the monitors, each gauge's reading, and whether .kiln/ is behind
+kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
+kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
+kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
+kiln monitor add <name>|<dir>
+                         copy a monitor into .kiln/monitors/: one kiln ships, such as bugs or go/docs, or the
+                         one in a directory, by a path that starts with . or /
+kiln monitor install     set up a launchd job that runs kiln monitor run in the repository each hour
+kiln monitor run [<name>]
+                         run each monitor that is due; or run one now, due or not
+kiln monitor show <name> show how a monitor's last run ended, then wait for return
+kiln doctor [<name>]     print each problem in the project's setup, with its fix; or a spec's form too
 kiln ledger [--kind <kind>] [--name <name>] [--last <n>]
-                                 print what kiln's ledger holds, one JSON object a line, for a script
+                         print what kiln's ledger holds, one JSON object a line, for a script to read
+kiln help                print this usage, as kiln --help and kiln -h do
 ```
 
 ## Read more
