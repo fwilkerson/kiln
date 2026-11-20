@@ -1,12 +1,14 @@
 package kiln
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -186,7 +188,6 @@ func TestStatusSaysInitBehind(t *testing.T) {
 func TestInitRefusesPreset(t *testing.T) {
 	for _, tt := range []refusedInit{
 		{name: "a kiln.json kiln can't read", config: "{"},
-		{name: "a kiln.json with no rounds", config: `{"gate": ["make"], "acceptance": "a/{spec}/"}`},
 		{name: "a name kiln doesn't know", named: "rust", usage: true},
 		// The test runs in internal/kiln, which holds presets/go, a directory laid out as a preset.
 		{name: "a path that starts with neither . nor /", named: "presets/go", usage: true,
@@ -205,6 +206,29 @@ func TestInitRefusesPreset(t *testing.T) {
 					err, stat == nil, tt.usage, tt.said)
 			}
 		})
+	}
+}
+
+// TestInitFillsSharedKeys holds that a preset's kiln.json may lack $schema and rounds. kiln init writes each into the
+// project's kiln.json, as a built-in preset holds it, and keeps every other key.
+func TestInitFillsSharedKeys(t *testing.T) {
+	r, repo := scratchRepo(t)
+	team := teamPreset(t, t.TempDir())
+	shell(t, team, `echo '{"gate": ["make"], "acceptance": "a/{spec}/"}' >kiln.json`)
+	if err := r.Init(t.Context(), new(strings.Builder), InitOptions{Preset: team}); err != nil {
+		t.Fatal(err)
+	}
+
+	var got map[string]any
+	raw, err := os.ReadFile(filepath.Join(repo, configFile))
+	if err == nil {
+		err = json.Unmarshal(raw, &got)
+	}
+
+	want := map[string]any{"$schema": "./kiln.schema.json", "rounds": 3.0, "gate": []any{"make"},
+		"acceptance": "a/{spec}/"}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("kiln init wrote kiln.json:\n%s\n%v; want %v", raw, err, want)
 	}
 }
 

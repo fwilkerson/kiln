@@ -76,10 +76,10 @@ type InitOptions struct {
 // It prints kiln.json's gate, the commands the pre-commit hook runs on each commit to main. The hook refuses a commit
 // to main that fails them. Last, Init installs the hook, or says why it installed none, as installHook says.
 //
-// Before it writes anything, Init refuses a preset it does not know or cannot use. A preset's kiln.json must hold
-// rounds. Init refuses a reviewer Claude Code could not run before it writes anything too. Such a reviewer's
-// frontmatter has no description, or a name other than its file's, without .md. It refuses the checkout's kiln.json
-// then, where kiln could not use it.
+// Before it writes anything, Init refuses a preset it does not know or cannot use. A preset's kiln.json may lack
+// $schema and rounds, and Init then adds each as sharedDefaults holds it. Init refuses a reviewer Claude Code could not
+// run before it writes anything too. Such a reviewer's frontmatter has no description, or a name other than its file's,
+// without .md. It refuses the checkout's kiln.json then, where kiln could not use it.
 func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	last, err := r.lastInit()
 	if err != nil {
@@ -605,6 +605,9 @@ func writeFile(target string, raw []byte) error {
 // sharedKeys are the keys of kiln.json whose default is the same in every preset. A re-run of kiln init adds only
 // these, so it never adds one language's commands to a project in another.
 var sharedKeys = []string{"$schema", "rounds"}
+
+// sharedDefaults holds the default of each of sharedKeys, which kiln init adds to a preset's kiln.json that lacks it.
+const sharedDefaults = `{"$schema": "./kiln.schema.json", "rounds": 3}`
 
 // addKeys adds to the JSON object old each of sharedKeys that it lacks, as from holds it. It keeps each byte of old,
 // and puts each added key after the last, indented as that key. It answers nil when old lacks none.

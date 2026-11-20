@@ -2,7 +2,6 @@ package kiln
 
 import (
 	"embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -41,7 +40,7 @@ var marker = regexp.MustCompile(`(?m)^<!-- kiln:preset ([a-z-]+) -->\n`)
 func presetFiles(p preset) (map[string][]byte, error) {
 	config, err := fs.ReadFile(p.files, "kiln.json")
 	if err == nil {
-		err = usableConfig(config)
+		config, err = withSharedKeys(config)
 	}
 
 	if err != nil {
@@ -66,23 +65,19 @@ func presetFiles(p preset) (map[string][]byte, error) {
 	return files, err
 }
 
-// usableConfig refuses raw, a preset's kiln.json, when kiln could not use it, or it lacks rounds. kiln init then
-// refuses the preset before it writes anything. $schema may be missing, since kiln reads kiln.json without it.
-func usableConfig(raw []byte) error {
+// withSharedKeys is raw, a preset's kiln.json, with each of sharedKeys it lacks, as sharedDefaults holds it. It
+// refuses a kiln.json kiln could not use, so kiln init refuses the preset before it writes anything.
+func withSharedKeys(raw []byte) ([]byte, error) {
 	if _, err := parseConfig(raw); err != nil {
-		return fmt.Errorf("kiln.json: %w", err)
+		return nil, fmt.Errorf("kiln.json: %w", err)
 	}
 
-	var keys map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &keys); err != nil {
-		return err
+	added, err := addKeys(raw, []byte(sharedDefaults))
+	if added == nil {
+		return raw, err
 	}
 
-	if _, ok := keys["rounds"]; !ok {
-		return errors.New("kiln.json lacks rounds, which every preset holds")
-	}
-
-	return nil
+	return added, err
 }
 
 // detects answers the paths p's detectFile lists, and whether the directory top holds every one. A preset without
