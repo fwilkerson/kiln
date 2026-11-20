@@ -11,6 +11,7 @@ import (
 // TestDoctor holds what kiln doctor finds in a project's files, once a change breaks a rule.
 // Each row names the lines Doctor prints, in order, by a part of each. A line that starts "note:" is no problem.
 func TestDoctor(t *testing.T) {
+	project := doctorProject(t)
 	const monitor = `{"name": "deps", "every": "24h", "check": ".kiln/monitors/deps", "agent": "deps.md"}`
 	const launchd = "names monitors, but no launchd job runs them: run kiln monitor install"
 	for name, tc := range map[string]doctorCase{
@@ -43,24 +44,22 @@ func TestDoctor(t *testing.T) {
 			want: []string{"runs .kiln/monitors/deps, which is not executable: run chmod +x .kiln/monitors/deps",
 				launchd, "note:"},
 		},
-		"a spec that leaves the form": {
-			spec: "x",
-			change: "mkdir -p .kiln/specs && sed '/^## Goals/d; s/^### 1\\./### 2./; /Then/d' " +
-				".kiln/skills/shape/template.md >.kiln/specs/x.md",
-			want: []string{"x.md leaves /shape's template: its acceptance test \"2. <Title>\" is not ### 1.",
-				"x.md leaves /shape's template: its acceptance test 1 holds no Then",
-				"x.md leaves /shape's template: it lacks the section ## Goals"},
+		"a spec that leaves the form": {spec: "form",
+			want: []string{"form.md leaves /shape's template: its acceptance test \"2. <Title>\" is not ### 1.",
+				"form.md leaves /shape's template: its acceptance test 1 holds no Then",
+				"form.md leaves /shape's template: it lacks the section ## Goals"},
 		},
 		"a spec the working tree lacks": {spec: "x",
 			want: []string{"the working tree holds no .kiln/specs/x.md: write it with /shape"}},
 	} {
-		t.Run(name, tc.check)
+		t.Run(name, tc.check(project))
 	}
 }
 
 // TestDoctorMainAndTools holds what kiln doctor finds missing outside .kiln/: main, its kiln.json, claude and the
 // pre-commit hook. It notes where main's kiln.json differs.
 func TestDoctorMainAndTools(t *testing.T) {
+	project := doctorProject(t)
 	for name, tc := range map[string]doctorCase{
 		"kiln.json main lacks": {change: "git rm --quiet --cached .kiln/kiln.json && git commit --quiet --no-verify -m x",
 			want: []string{"main holds no .kiln/kiln.json, which kiln reads there: commit it to main"}},
@@ -79,7 +78,7 @@ func TestDoctorMainAndTools(t *testing.T) {
 			want:   []string{".githooks/pre-commit is not executable, so git skips it"},
 		},
 	} {
-		t.Run(name, tc.check)
+		t.Run(name, tc.check(project))
 	}
 }
 
@@ -90,14 +89,41 @@ type doctorCase struct {
 	want         []string
 }
 
-// check runs kiln doctor on tc's project, and its spec when tc names one.
-func (tc doctorCase) check(t *testing.T) {
+// doctorProject is a project kiln init set up on main, which each row of a test reads. Its working tree holds a
+// spec, form, that leaves /shape's template, which a row names to read it.
+func doctorProject(t *testing.T) string {
 	r, repo := scratchRepo(t)
 	if err := r.Init(t.Context(), &bytes.Buffer{}, InitOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
-	shell(t, repo, "git add -A && git commit --quiet --no-verify -m start && "+cmpOr(tc.change, "true"))
+	shell(t, repo, "git add -A && git commit --quiet --no-verify -m start && mkdir .kiln/specs && "+
+		"sed '/^## Goals/d; s/^### 1\\./### 2./; /Then/d' .kiln/skills/shape/template.md >.kiln/specs/form.md")
+	return repo
+}
+
+// check runs kiln doctor on project, and on tc's spec when it names one. A row that changes the project changes a
+// copy of it, so the rows that change nothing share it.
+func (tc doctorCase) check(project string) func(t *testing.T) {
+	return func(t *testing.T) {
+		repo := project
+		if tc.change != "" {
+			repo = t.TempDir()
+			shell(t, project, "cp -Rp . "+repo)
+			shell(t, repo, tc.change)
+		}
+
+		tc.doctor(t, repo)
+	}
+}
+
+// doctor runs kiln doctor in repo, and holds that it prints tc's lines.
+func (tc doctorCase) doctor(t *testing.T, repo string) {
+	r, err := Open(t.Context(), repo, os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	bin := t.TempDir()
 	if !tc.noClaude {
 		shell(t, bin, "printf '#!/bin/sh\\n' >claude && chmod +x claude")
@@ -105,7 +131,7 @@ func (tc doctorCase) check(t *testing.T) {
 
 	r.env = append(r.env, "PATH="+bin)
 	var out bytes.Buffer
-	err := r.Doctor(t.Context(), Spec(tc.spec), &out)
+	err = r.Doctor(t.Context(), Spec(tc.spec), &out)
 	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
 	if len(lines) != len(tc.want) {
 		t.Fatalf("doctor printed %d lines, want %d:\n%s", len(lines), len(tc.want), out.String())
