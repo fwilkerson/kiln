@@ -188,9 +188,10 @@ rather than reading no number.
 
 ### notify
 
-kiln notifies you when a build or a fix needs you. Without `notify`, it prints each notification in its output as
-OSC 9, which a terminal such as Ghostty shows with `desktop-notifications` on. `notify` names a program that
-receives each one instead:
+kiln notifies you when a build or a fix needs you. Without `notify`, it prints each notification in its output as OSC 9,
+which a terminal such as Ghostty shows with `desktop-notifications` on. `kiln monitor show` prints its own OSC 9 even
+with `notify` set, by design: a `notify` program may open a tab that runs it, and that tab is what notifies. `notify`
+names a program that receives each notification instead:
 
 ```json
 {"notify": ".kiln/notify"}
@@ -251,8 +252,9 @@ monitor in the working tree, before you commit it, and prints each refusal `kiln
 
 `kiln monitor add bugs` writes the `bugs` monitor kiln ships into `.kiln/monitors/bugs/`, and
 `kiln monitor add ../monitors/deps` the one in that directory, named as `--preset` names one. Commit what it writes on
-main, where kiln reads it. The project owns it from then on. `kiln monitor add` with neither lists the monitors kiln
-ships, and the preset each fits. `kiln help monitors` says what `kiln monitor add` refuses.
+main, where kiln reads it. The project owns it from then on. It makes each script it copies executable, as kiln needs.
+`kiln monitor add` with neither lists the monitors kiln ships, and the preset each fits. `kiln help monitors` says what
+`kiln monitor add` refuses.
 
 `kiln monitor add` records what it wrote in `.kiln/init.json`, with where it came from. When kiln ships a newer
 `bugs`, or your team changes `../monitors/deps`, `kiln status` says the monitor is behind. `kiln init` then merges
@@ -438,6 +440,9 @@ $ kiln ledger --kind build --last 1 | jq .
 }
 ```
 
-A landed build's commit message holds its time, cost, turns and failed calls too. kiln removes every checkout a
-build made once the build lands, is accepted, is rejected or is queued anew. A build that stopped, or waits on its
-branch, keeps them.
+A landed build's commit message holds its time, cost, turns and failed calls too. kiln removes every checkout a build
+made once the build lands, is accepted, is rejected or is queued anew. A build that stopped, or waits on its branch,
+keeps them. Three checkouts belong to no build, and stay as worktrees `git worktree list` shows, for kiln to reuse:
+`.main/`, where the gate runs at main, `.gauges/`, where gauges are read after a landing, and `.monitor-check/`, where a
+monitor's check or gauge runs. Each sits beside the builds' checkouts, under `~/Library/Caches/kiln/`, as
+`kiln help files` lists them.
