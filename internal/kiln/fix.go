@@ -26,9 +26,9 @@ import (
 //	  │ asks for the developer ─▶ needs you    │ fails ─▶ session failed    │ usage limit ─▶ usage limit
 //
 // A gated check that couldn't run ends the fix couldn't run. A gauge in the gate whose command fails goes back to the
-// agent, as a crossed reading does. Past the last round, or on a command alone that the gate fails, it stops. An
-// accepted fix's landing sends each setback to the agent's session, through the same loop. Each ending but landed
-// stops it.
+// agent, as a crossed reading does. One whose command ran past kiln.json's timeout stops the fix. Past the last
+// round, or on a command alone that the gate fails, it stops. An accepted fix's landing sends each setback to the
+// agent's session, through the same loop. Each ending but landed stops it.
 
 var (
 	//go:embed contract/monitor.md

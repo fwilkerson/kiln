@@ -1,10 +1,12 @@
 // Package claude runs Claude Code sessions headless, as claude -p, and reads how each one ended.
 //
 //	c := claude.New(claude.Config{Program: "claude", Env: os.Environ(), Sessions: dir})
-//	ended, err := c.Run(ctx, claude.Launch{Session: id, Role: "build", System: role, Prompt: prompt, Dir: tree})
+//	l := claude.Launch{Session: id, Role: "build", System: role, Prompt: prompt, Dir: tree, Silence: time.Hour}
+//	ended, err := c.Run(ctx, l)
 //	for err == nil && ended.Limit != nil {
 //		time.Sleep(time.Until(ended.Limit.Resets))
-//		ended, err = c.Run(ctx, claude.Launch{Session: id, Resume: true, Prompt: "Go on.", ...})
+//		l.Resume, l.Prompt = true, "Go on."
+//		ended, err = c.Run(ctx, l)
 //	}
 //
 // Run starts claude in Launch.Dir, with Launch.Prompt on its standard input:
@@ -165,7 +167,8 @@ const (
 var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // Run starts the session l names and waits for it to end. Its error is one that kept the session from starting, or
-// from being read. A session that failed is an Ended, not an error.
+// from being read. It is a *Silent for a session Run killed as hung. Any other session that failed is an Ended,
+// not an error.
 func (c Claude) Run(ctx context.Context, l Launch) (Ended, error) {
 	if err := c.check(l); err != nil {
 		return Ended{}, err

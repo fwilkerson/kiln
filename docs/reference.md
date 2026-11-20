@@ -223,9 +223,9 @@ A monitor is held, and starts no fix, by how its last fix ended, until a change 
 
 - It bounds each command kiln runs for you: the gate's, a monitor's check and command, a gauge, and a `writable`
   command. It bounds how long a session may print nothing, too.
-- Past it, kiln kills the command or session, with every process it started. The build or fix stops, or the check
-  couldn't run, with words that name what ran past, the limit and this key. The package doc of `internal/kiln`
-  gives the default, and what each ends in, under Hangs: `go doc ./internal/kiln`.
+- Past it, kiln kills a command with its process group, and a session with each process it started. The build or
+  fix stops, or the check couldn't run, with words that name what ran past, the limit and this key. The package doc
+  of `internal/kiln` gives the default, and what each ends in, under Hangs: `go doc ./internal/kiln`.
 - It bounds a hang, not a slow run, so set it well above your gate's slowest run on a loaded machine. A suite that
   took 2 minutes alone took up to 27 with eight sessions beside it.
 
