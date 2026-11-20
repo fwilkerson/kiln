@@ -1204,9 +1204,10 @@ func TestGaugeTree(t *testing.T) {
 		t.Errorf("the landings read %v, want a reading of 1 for each of 2", read)
 	}
 
-	// A monitor's run reads its gauge in the monitors' own worktree, which a check then shares.
+	// A monitor's run reads its gauge in the monitors' own worktree, which a check then shares. u's check is awk, which
+	// runs only by its path.
 	writeMonitor(t, repo, "m", map[string]string{"gauge": leavesReadOnly, "monitor.json": `{"max": 5}`})
-	writeMonitor(t, repo, "u", map[string]string{"check": checkHealthy})
+	writeMonitor(t, repo, "u", map[string]string{"check": checkInAwk})
 	shell(t, repo, "git add . && git commit --quiet -m monitors")
 	gauged := monitor{Name: "m", finder: gaugeScript, Max: new(5.0)}
 	held := heldBy(t, r)
@@ -1216,6 +1217,9 @@ func TestGaugeTree(t *testing.T) {
 		}
 	}
 }
+
+// checkInAwk is a healthy check whose first line runs it with awk. sh cannot read it.
+const checkInAwk = "#!/usr/bin/awk -f\nBEGIN { print \"{\\\"fix\\\": false, \\\"summary\\\": \\\"fine\\\"}\" }\n"
 
 // heldBy takes commandsLock in r, as a gate's kiln does, until the test ends.
 func heldBy(t *testing.T, r *Repo) commands {

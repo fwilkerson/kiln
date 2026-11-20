@@ -148,7 +148,7 @@ func (b *build) fixWork(ctx context.Context) error {
 
 // commandGate runs the monitor's command in the fix's worktree, outside the sandbox, then commits and gates its work.
 func (b *build) commandGate(ctx context.Context) (verdict, error) {
-	command := b.fix.monitor.script(commandScript)
+	command := b.fix.monitor.path(commandScript)
 	out, err := runShell(ctx, b.tree, command, proc.Shell.Env(b.r.env))
 	if ctx.Err() != nil {
 		return verdict{}, ctx.Err()
@@ -227,11 +227,11 @@ func (f *fixing) prompt(gateReport string) string {
 	var parts []string
 	if m.finds() {
 		found := cmpOr(f.checked.found, "(nothing)")
-		parts = append(parts, fmt.Sprintf(foundBy[m.finder], m.script(m.finder), f.checked.summary, found))
+		parts = append(parts, fmt.Sprintf(foundBy[m.finder], m.path(m.finder), f.checked.summary, found))
 	}
 
 	if gateReport != "" {
-		parts = append(parts, fmt.Sprintf(commandFailed, m.script(commandScript), gateReport))
+		parts = append(parts, fmt.Sprintf(commandFailed, m.path(commandScript), gateReport))
 	}
 
 	parts = append(parts, fmt.Sprintf(fixWhat, m.Name))
@@ -714,7 +714,7 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 		return b.gatedGauge(ctx, held, v)
 	}
 
-	command := b.fix.monitor.script(checkScript)
+	command := b.fix.monitor.path(checkScript)
 	c, err := b.r.runMonitorCheck(ctx, b.tree, command)
 	switch {
 	case err != nil:

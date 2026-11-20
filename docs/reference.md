@@ -152,7 +152,8 @@ A monitor's `gauge` is a gauge too, named for the monitor, with its line in the 
 
 A monitor looks for a problem on a schedule, and fixes it. It is a directory under `.kiln/monitors/`, named for the
 monitor, and its fix builds on the branch `kiln/<name>`. kiln reads each file below at main's tip, each optional,
-and runs each script with `sh`, so none needs to be executable.
+and runs each script by its path. So a script's first line, such as `#!/usr/bin/env python3`, picks its language.
+kiln refuses a script git holds without the executable bit: `chmod +x` it, and commit.
 
 `kiln monitor add bugs` writes the `bugs` monitor kiln ships into `.kiln/monitors/bugs/`, and
 `kiln monitor add ../monitors/deps` the one in that directory. Commit what it writes on main, where kiln reads it. The

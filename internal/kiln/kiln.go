@@ -179,7 +179,7 @@
 // # Monitors
 //
 // A monitor is a directory under .kiln/monitors/, named for the monitor. kiln monitor run runs it at main's tip once
-// its interval has passed. kiln reads the files below, each optional, and runs each script with sh:
+// its interval has passed. kiln reads the files below, each optional, and runs each script by its path:
 //
 //	.kiln/monitors/deps/
 //	  check          finds a problem: its last line of stdout is {"fix": true|false, "summary": "..."}
@@ -192,9 +192,10 @@
 // or 24 when unset. 0 runs it at each kiln monitor run. kiln refuses a file directly under .kiln/monitors/, and a
 // monitor whose name no spec could have. It refuses a file directly in a monitor's directory that is none of the five
 // above. It refuses a key it does not know, and a value of the wrong type. It refuses a check beside a gauge, a gauge
-// with no line, and a line with no gauge. It refuses a monitor with no command and no agent.md. It refuses a monitor
-// that may not write the tests while kiln cannot guard them. acceptance then names no path, or one with no part before
-// {spec}. It refuses a gauge whose monitor's name a gauge in kiln.json has.
+// with no line, and a line with no gauge. It refuses a check, gauge or command git holds without the executable bit. It
+// refuses a monitor with no command and no agent.md. It refuses a monitor that may not write the tests while kiln
+// cannot guard them. acceptance then names no path, or one with no part before {spec}. It refuses a gauge whose
+// monitor's name a gauge in kiln.json has.
 //
 // One kiln monitor run:
 //
@@ -204,7 +205,7 @@
 //	each monitor main's tip holds, by name, or the one named:
 //	  due?     skipped unless due, or named
 //	  held?    held while a fix of it builds, waits or lands; held by its last fix, as below, unless named
-//	  check    sh in <trees>/.monitor-check at main's tip, or its gauge there; no finding: healthy; it holds
+//	  check    run in <trees>/.monitor-check at main's tip, or its gauge there; no finding: healthy; it holds
 //	           commands.lock from before it reads main's tip, so it runs at the main its fix starts from
 //	  fix      a build with no spec on kiln/<name>, from main's tip
 //	           command   first, outside the sandbox, then the gate; fails with no agent: stopped

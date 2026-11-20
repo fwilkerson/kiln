@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -12,26 +13,31 @@ import (
 )
 
 // TestMonitorAdd holds what kiln monitor add copies into .kiln/monitors/, and what it refuses before it writes. A
-// source is a monitor kiln ships, by name, or a directory, by a path.
+// source is a monitor kiln ships, by name, or a directory, by a path. kiln writes each script it runs executable, and
+// each file the source holds executable. want marks those with a *, as ls -F does.
 func TestMonitorAdd(t *testing.T) {
 	team := t.TempDir()
 	writeAll(t, team, map[string]string{"deps/command": "go get -u ./...", "deps/monitor.json": `{"hours": 168}`,
-		"deps/notes/why.md": "Why deps.", "broken/check": "true"})
+		"deps/notes/why.md": "Why deps.", "deps/lib/run": "go get -u ./...", "broken/check": "true"})
+	if err := os.Chmod(filepath.Join(team, "deps/lib/run"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
 	for name, tc := range map[string]struct {
 		source         string
 		there          bool
 		refused, usage bool
 		want           []string
 	}{
-		"a monitor kiln ships": {source: "bugs", want: []string{"bugs/agent.md", "bugs/check", "bugs/monitor.json"}},
-		"one under its preset": {source: "go/docs", want: []string{"docs/agent.md", "docs/check", "docs/monitor.json"}},
+		"a monitor kiln ships": {source: "bugs", want: []string{"bugs/agent.md", "bugs/check*", "bugs/monitor.json"}},
+		"one under its preset": {source: "go/docs", want: []string{"docs/agent.md", "docs/check*", "docs/monitor.json"}},
 		"a team's directory": {source: team + "/deps",
-			want: []string{"deps/command", "deps/monitor.json", "deps/notes/why.md"}},
+			want: []string{"deps/command*", "deps/lib/run*", "deps/monitor.json", "deps/notes/why.md"}},
 		"a preset, which is no monitor": {source: "go", refused: true, usage: true},
 		"a name kiln ships nothing of":  {source: "deps", refused: true, usage: true},
 		"a path to no directory":        {source: "./nowhere", refused: true, usage: true},
 		"a monitor kiln could not run":  {source: team + "/broken", refused: true},
-		"a name already there":          {source: "bugs", there: true, refused: true, want: []string{"bugs/command"}},
+		"a name already there":          {source: "bugs", there: true, refused: true, want: []string{"bugs/command*"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := &Repo{top: t.TempDir()}
@@ -87,16 +93,19 @@ func TestShippedMonitors(t *testing.T) {
 	}
 }
 
-// filesUnder lists each file under dir, by its slash path from dir, or nil when dir holds none.
+// filesUnder lists each file under dir, by its slash path from dir, or nil when dir holds none. An executable file
+// ends in a *.
 func filesUnder(t *testing.T, dir string) []string {
 	t.Helper()
 	var files []string
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
-			rel, _ := filepath.Rel(dir, p)
-			files = append(files, filepath.ToSlash(rel))
+		if err != nil || d.IsDir() {
+			return err
 		}
 
+		rel, _ := filepath.Rel(dir, p)
+		info, err := d.Info()
+		files = append(files, filepath.ToSlash(rel)+map[bool]string{true: "*"}[err == nil && info.Mode()&0o111 != 0])
 		return err
 	})
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {

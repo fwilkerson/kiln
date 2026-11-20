@@ -61,6 +61,7 @@
 //     the tools Read, Grep, Glob and Bash.
 //   - A spec under .kiln/specs/ that holds only its acceptance tests, from "### 1." on, gets the other sections of
 //     /shape's template, empty, and Status Approved. It is spec N, by its name's place among the script's specs.
+//   - Each check, gauge and command under .kiln/monitors/ gets the executable bit, as kiln runs each by its path.
 //
 // A script drives a full-screen program in a pseudo-terminal, such as kiln tui. Its commands are term, keys, click,
 // wheel, screen and color. No sandboxed session can open a pseudo-terminal, so term skips such a script inside one.

@@ -25,7 +25,8 @@ const shippedDir = "monitors"
 // MonitorAdd copies a monitor into .kiln/monitors/<name>/ in the checkout, for the developer to commit on main. source
 // names a monitor kiln ships, such as bugs. One that needs a language's tools sits under its preset's name, such as
 // go/docs. A source that starts with a dot or a slash is a directory. The monitor's name is source's last element.
-// Before it writes, it refuses a monitor kiln could not run, and a name already there.
+// Before it writes, it refuses a monitor kiln could not run, and a name already there. It writes each script kiln runs
+// with the executable bit.
 func (r *Repo) MonitorAdd(source string, out io.Writer) error {
 	from, err := monitorSource(source)
 	if err != nil {
@@ -48,7 +49,7 @@ func (r *Repo) MonitorAdd(source string, out io.Writer) error {
 			return err
 		}
 
-		if err := os.WriteFile(target, raw, 0o644); err != nil {
+		if err := os.WriteFile(target, raw, addedMode(from, f)); err != nil {
 			return err
 		}
 
@@ -57,6 +58,20 @@ func (r *Repo) MonitorAdd(source string, out io.Writer) error {
 
 	fmt.Fprintf(out, "commit %s/ on main: kiln reads it there\n", m.path(""))
 	return nil
+}
+
+// addedMode is the mode kiln monitor add writes file with. A script kiln runs is executable, as is a file the source
+// holds so.
+func addedMode(from fs.FS, file string) fs.FileMode {
+	info, err := fs.Stat(from, file)
+	switch {
+	case slices.Contains(roleScripts, file):
+		return 0o755
+	case err == nil && info.Mode()&0o111 != 0:
+		return 0o755
+	}
+
+	return 0o644
 }
 
 // monitorSource is the directory source names: a monitor kiln ships, or a path starting with a dot or a slash. It

@@ -41,7 +41,7 @@ func seed(work string) error {
 		return nil
 	}
 
-	for _, step := range []func(string) error{seedConfig, seedAgents, seedSpecs} {
+	for _, step := range []func(string) error{seedConfig, seedAgents, seedSpecs, seedMonitors} {
 		if err := step(work); err != nil {
 			return fmt.Errorf("scenariotest: seeding the scratch repository: %w", err)
 		}
@@ -125,4 +125,23 @@ func writeMissing(path, content string) error {
 	}
 
 	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+// seedMonitors makes each monitor's check, gauge and command executable, since a script's files keep no mode. kiln
+// runs each by its path.
+func seedMonitors(work string) error {
+	for _, script := range []string{"check", "gauge", "command"} {
+		found, err := filepath.Glob(filepath.Join(work, ".kiln", "monitors", "*", script))
+		if err != nil {
+			return err
+		}
+
+		for _, p := range found {
+			if err := os.Chmod(p, 0o755); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }

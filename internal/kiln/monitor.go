@@ -23,8 +23,8 @@ import (
 // monitorsDir holds a directory for each monitor, named for the monitor.
 const monitorsDir = kilnDir + "/monitors"
 
-// The files of a monitor's directory. kiln runs each script with sh, at the top of a worktree, so none needs to be
-// executable.
+// The files of a monitor's directory. kiln runs each script by its path, at the top of a worktree. So its first line
+// picks its language, and git holds it with the executable bit.
 const (
 	// settingsFile is how often the monitor runs, its gauge's line, and what its fix may do.
 	settingsFile = "monitor.json"
@@ -38,8 +38,11 @@ const (
 	monitorAgent = "agent.md"
 )
 
+// roleScripts are the files of a monitor's directory that kiln runs.
+var roleScripts = []string{checkScript, gaugeScript, commandScript}
+
 // roleFiles are the files kiln reads directly in a monitor's directory. Any other file there sits in a subdirectory.
-var roleFiles = []string{checkScript, gaugeScript, commandScript, monitorAgent, settingsFile}
+var roleFiles = slices.Concat(roleScripts, []string{monitorAgent, settingsFile})
 
 // monitor is a directory under .kiln/monitors/, which kiln monitor run runs once its interval has passed. Its check or
 // its gauge finds a problem, and its command, its agent or both fix it.
@@ -92,14 +95,9 @@ func (m monitor) path(file string) string {
 	return path.Join(monitorsDir, string(m.Name), file)
 }
 
-// script is the command that runs the script file of m's directory.
-func (m monitor) script(file string) string {
-	return "sh " + m.path(file)
-}
-
 // gauge is m's gauge, named for m. It is a gauge only when m's directory holds one.
 func (m monitor) gauge() gauge {
-	return gauge{Name: string(m.Name), Command: m.script(gaugeScript), gaugeLine: m.gaugeLine}
+	return gauge{Name: string(m.Name), Command: m.path(gaugeScript), gaugeLine: m.gaugeLine}
 }
 
 // hashOf is a short hash of text.
@@ -131,11 +129,12 @@ func (r *Repo) monitors(ctx context.Context, at git.Rev) (config, []monitor, err
 	return c, monitors, nil
 }
 
-// monitorDir is a monitor's directory at a commit: its name, git's ID of it, and the files it holds.
+// monitorDir is a monitor's directory at a commit: its name, git's ID of it, and the files it holds. plain is a
+// script of roleScripts that git holds without the executable bit, or "".
 type monitorDir struct {
-	name  Spec
-	tree  string
-	files []string
+	name        Spec
+	tree, plain string
+	files       []string
 }
 
 // monitorDirs lists each monitor's directory under .kiln/monitors/ at the commit at, by name, with each file under
@@ -143,7 +142,7 @@ type monitorDir struct {
 func (r *Repo) monitorDirs(ctx context.Context, at git.Rev) ([]monitorDir, error) {
 	entries, err := r.git.Tree(ctx, at, monitorsDir)
 	var dirs []monitorDir
-	files := map[string][]string{}
+	files, plain := map[string][]string{}, map[string]string{}
 	for _, e := range entries {
 		name, file, inside := strings.Cut(e.Path, "/")
 		switch {
@@ -154,11 +153,14 @@ func (r *Repo) monitorDirs(ctx context.Context, at git.Rev) ([]monitorDir, error
 				monitorsDir)
 		case !e.Dir:
 			files[name] = append(files[name], file)
+			if !e.Exec && slices.Contains(roleScripts, file) {
+				plain[name] = file
+			}
 		}
 	}
 
 	for i, d := range dirs {
-		dirs[i].files = files[string(d.name)]
+		dirs[i].files, dirs[i].plain = files[string(d.name)], plain[string(d.name)]
 	}
 
 	return dirs, err
@@ -176,6 +178,11 @@ func (r *Repo) readDir(ctx context.Context, at git.Rev, c config, d monitorDir) 
 
 	m, err := c.readMonitor(d.name, d.files, raw)
 	m.tree = d.tree
+	if err == nil && d.plain != "" {
+		err = fmt.Errorf("%s holds %s without the executable bit, so kiln cannot run it: run chmod +x %[2]s, "+
+			"and commit it", at, m.path(d.plain))
+	}
+
 	return m, err
 }
 
@@ -405,7 +412,7 @@ func (held commands) firstCheck(ctx context.Context, m monitor, main git.Rev) (c
 	case err != nil:
 		return couldNotCheck(m, fmt.Sprintf("kiln could not check out main for the check: %v", err)), nil
 	case m.finder == checkScript:
-		return r.runMonitorCheck(ctx, tree, m.script(checkScript))
+		return r.runMonitorCheck(ctx, tree, m.path(checkScript))
 	}
 
 	empty, err := r.git.EmptyTree(ctx)

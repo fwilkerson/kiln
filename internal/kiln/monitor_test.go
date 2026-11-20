@@ -71,7 +71,8 @@ func TestMonitorConfig(t *testing.T) {
 }
 
 // TestMonitorDirs holds that kiln reads each directory under .kiln/monitors/ at a commit as a monitor, by name. One
-// with no monitor.json runs daily. A file directly under .kiln/monitors/ is refused, since a monitor is a directory.
+// with no monitor.json runs daily. A script kiln runs that git holds without the executable bit is refused. So is a
+// file directly under .kiln/monitors/, since a monitor is a directory.
 func TestMonitorDirs(t *testing.T) {
 	r, repo := scratchRepo(t)
 	shell(t, repo, `mkdir .kiln && echo '{"gate": ["true"], "acceptance": "uat/{spec}/"}' >.kiln/kiln.json`)
@@ -93,6 +94,11 @@ func TestMonitorDirs(t *testing.T) {
 		t.Errorf("b, with no monitor.json, runs every %v, want every 24h", b.interval())
 	}
 
+	shell(t, repo, "chmod -x .kiln/monitors/b/command && git commit --quiet -am plain")
+	if _, _, err := r.monitors(t.Context(), "main"); err == nil || !strings.Contains(err.Error(), "chmod +x") {
+		t.Errorf("a command git holds without the executable bit answers %v, want it refused, naming chmod +x", err)
+	}
+
 	shell(t, repo, "echo true >.kiln/monitors/stray && git add . && git commit --quiet -m stray")
 	if _, _, err := r.monitors(t.Context(), "main"); err == nil || !strings.Contains(err.Error(), "is a file") {
 		t.Errorf("a file under .kiln/monitors/ answers %v, want it refused as a file", err)
@@ -100,9 +106,18 @@ func TestMonitorDirs(t *testing.T) {
 }
 
 // writeMonitor writes the monitor name's directory under .kiln/monitors/ in repo, with each of files by its path.
+// Each script kiln runs is executable.
 func writeMonitor(t *testing.T, repo string, name string, files map[string]string) {
 	t.Helper()
-	writeAll(t, filepath.Join(repo, monitorsDir, name), files)
+	dir := filepath.Join(repo, monitorsDir, name)
+	writeAll(t, dir, files)
+	for _, script := range roleScripts {
+		if _, there := files[script]; there {
+			if err := os.Chmod(filepath.Join(dir, script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 }
 
 // writeAll writes each of files under dir, by its path from dir, with the directories it needs.

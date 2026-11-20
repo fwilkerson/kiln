@@ -730,8 +730,8 @@ func (g *Git) Files(ctx context.Context, at Rev, dir string) ([]string, error) {
 type Entry struct {
 	// Path is the entry's path from the directory Git.Tree lists.
 	Path string
-	// Dir is true of a directory.
-	Dir bool
+	// Dir is true of a directory, and Exec of a file git holds with the executable bit.
+	Dir, Exec bool
 	// ID is git's ID of the entry's content. A directory's changes with any file under it.
 	ID string
 }
@@ -747,7 +747,8 @@ func (g *Git) Tree(ctx context.Context, at Rev, dir string) ([]Entry, error) {
 		fields := strings.Fields(about)
 		// -t lists the directories above dir too, which hold no path under it.
 		if rel, under := strings.CutPrefix(p, dir+"/"); under && len(fields) == 3 {
-			entries = append(entries, Entry{Path: rel, Dir: fields[1] == "tree", ID: fields[2]})
+			entries = append(entries, Entry{Path: rel, Dir: fields[1] == "tree", Exec: fields[0] == "100755",
+				ID: fields[2]})
 		}
 	}
 
