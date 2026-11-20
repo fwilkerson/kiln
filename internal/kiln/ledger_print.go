@@ -15,9 +15,9 @@ import (
 type LedgerOptions struct {
 	// Kind keeps the lines of one kind, such as gate.
 	Kind string
-	// Name keeps the lines of one spec's builds, or of one monitor's runs and fixes.
+	// Name keeps the lines of that name: a spec's builds, and a monitor's runs and fixes.
 	Name Spec
-	// Last keeps the last lines, of those Kind and Name keep. Below 1, it keeps them all.
+	// Last keeps the last lines, of those Kind and Name keep. 0 keeps them all.
 	Last int
 }
 

@@ -130,7 +130,7 @@ func (c *collector) end(s *buildStats, e entry) {
 func (s *buildStats) brief() string {
 	t := total(s.runs, s.gates)
 	return fmt.Sprintf("%s · %s · %s · %s", t.time.duration("time"), t.cost.dollars("cost"), t.turns.count("turn"),
-		plural(t.failed.known, "failed call"))
+		t.failed.count("failed call"))
 }
 
 // sums are what a build's runs and gates add up to, which kiln ledger prints and kiln tui shows. A nil sum is

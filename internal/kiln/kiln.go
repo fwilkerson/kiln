@@ -300,11 +300,12 @@
 //
 // # kiln ledger
 //
-// kiln ledger prints the ledger for a script, one JSON object a line, oldest first by when each started:
+// kiln ledger prints the ledger for a script, one JSON object a line, oldest first by at:
 //
 //	kiln ledger --kind build --last 10 | jq -s 'map(.cost_usd // empty)'
 //
-// Its options keep one kind, the lines of one spec or monitor, or the last few. It reads the one ledger that every
+// Its options keep one kind, the lines of one name, or the last few. A name keeps a spec's builds and a monitor's
+// runs and fixes. A spec and a monitor that held one name in turn print together. It reads the one ledger that every
 // worktree shares. It takes no lock: kiln appends each line whole, and kiln ledger skips a line cut short.
 //
 // Each object holds kind, then the fields its kind lists below, in that order. A time is RFC 3339, in UTC, to the
@@ -342,7 +343,7 @@
 //	  at            time           when it started, once it held commands.lock
 //	  end           time           when it ended
 //	  seconds       number         its time
-//	  passed        bool           whether it passed
+//	  passed        bool           whether it passed; a gate that stopped on an error did not
 //	  landing       bool           whether it gated a landing, the work rebased onto main
 //	  ran_main      bool|null      whether it ran the commands at main too, rather than read the checks kept there
 //	reading                        a gauge's reading of a landing
@@ -355,7 +356,7 @@
 //	  crossed       bool           whether it crossed its line
 //	monitor                        a monitor's run
 //	  name          string         the monitor's name
-//	  at            time           when it started
+//	  at            time           when kiln wrote it, once its check or gauge ended
 //	  main          string         main's tip as it started
 //	  found         string         what it found: healthy, couldn't run, held or fix
 //	  build         string|null    the ID of the fix it started
@@ -366,8 +367,9 @@
 //
 // A sum, such as a build's cost, is null while one of its runs lacks its part. A run lacks its time and failed calls
 // until it ends. A build's rounds are null while a run's start line does not say why it started. A gate's ran_main is
-// null for a gate kiln recorded before it said. A build's outcome is landed, stopped, waits on its branch, dropped or
-// accepted. A fix's may also be needs you, session failed, usage limit, couldn't run, unchanged or rejected.
+// null for a gate older than the field, or one that stopped on an error first. A build's outcome is landed, stopped,
+// waits on its branch, dropped or accepted. A fix's may also be needs you, session failed, usage limit, couldn't run,
+// unchanged or rejected.
 //
 // # Gauges
 //

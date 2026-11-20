@@ -31,7 +31,8 @@ exec kiln status
 stdout '^x: waiting for UAT$'
 ! stdout 'stopped|amendments'
 
-# kiln ledger prints the build for a script, with the sums its summary shows.
+# kiln ledger prints the build for a script: the cost, turns and failed calls its summary shows, its rounds, and the
+# audit's one read, whose findings went back.
 exec kiln ledger --kind build --name x
 stdout -count=1 '^\{'
 stdout '^\{"kind":"build","build":"[a-z0-9]{12}","name":"x","fix":false,.*"outcome":"landed","seconds":[0-9.]+,"cost_usd":0\.42,"turns":3,"failed_calls":1,"rounds":0,"audits":1,"findings":1\}$'
