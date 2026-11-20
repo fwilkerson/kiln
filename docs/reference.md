@@ -10,9 +10,7 @@ commands in use.
   agents/build.md            the build agent: frontmatter, then its prompt
   agents/verify.md           how the acceptance tests' code is written, and the verify agent of a split build
   agents/audit.md            the audit, which reads the work once the gate passes
-  agents/zoom-out.md         the three reviewers /shape runs on a spec before you approve it
-  agents/comprehension.md
-  agents/critic.md
+  reviewers/<name>.md        each reviewer /shape runs on a spec before you approve it, as Reviewers below says
   skills/shape/SKILL.md      /shape, which writes a spec with you
   skills/shape/template.md   the form kiln queue holds a spec to
   monitors/                  the scripts a monitor's check runs
@@ -20,8 +18,8 @@ commands in use.
 ```
 
 `kiln init` writes these from a preset, each only where `.kiln/` holds no file of its name, and links `/shape` and
-its reviewers into `.claude/`. The project owns them from then on. Run again, it writes each file `.kiln/` lacks,
-and adds to `kiln.json` only `rounds`.
+each reviewer into `.claude/`. The project owns them from then on. Run again, it writes each file `.kiln/` lacks,
+and adds to `kiln.json` only `rounds`. It writes the default reviewers only where `.kiln/` holds no `reviewers/`.
 
 A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
 as a new agent, is yours to commit: a build names it in its last reply instead of writing it.
@@ -234,6 +232,40 @@ You audit a build's work. ...
   with them.
 - Without the split workflow, the build session writes the tests too, so the verify agent's body follows the build
   agent's.
+
+## Reviewers
+
+A reviewer reads a spec for `/shape` before you approve it, and changes nothing. Each is a Claude Code agent's file in
+`.kiln/reviewers/`, and `/shape` runs every one there. kiln's builds never run one. `kiln init` writes three:
+`zoom-out`, `comprehension` and `critic`.
+
+To add one, write its file, then run `kiln init`, which links it as `.claude/agents/<name>.md`, where Claude Code
+finds it. Commit both. Here a project whose stored records outlive its code adds a reader for them, in
+`.kiln/reviewers/upgrade.md`:
+
+```markdown
+---
+name: upgrade
+description: Reads a spec in .kiln/specs/ before it is approved, and reports each stored record that would read wrong once it is built. It changes nothing. Give it the spec's path.
+tools: Read, Grep, Glob
+model: opus
+# A fix to one record's form can strand another, so /shape runs it once more.
+rerun: true
+---
+
+You read a spec before anyone builds it. You change nothing.
+
+For each file, table or JSON record whose form the Technical Plan changes, find the code that reads it today. Report
+each record already written that the new code would refuse or read wrong, with the line of the spec that changes it.
+
+End with one line: `read N files, found M`.
+```
+
+- `name` is the file's name without `.md`, and `description` says when to run it. Claude Code runs a subagent only
+  with both, so `kiln init` refuses a reviewer that lacks one, or names another.
+- `/shape` reads two keys of its own, `uncontested` and `rerun`. Step 4 of `.kiln/skills/shape/SKILL.md` says
+  what each does.
+- To remove a reviewer, delete its file and run `kiln init`, which removes its link.
 
 ## When a build waits on you
 

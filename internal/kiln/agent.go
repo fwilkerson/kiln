@@ -46,12 +46,11 @@ func parseAgent(raw string) (agent, error) {
 
 // read reads one line of the frontmatter into a. It skips a # line, and a line with no colon.
 func (a *agent) read(line string) error {
-	key, value, ok := strings.Cut(line, ":")
-	key, value = strings.TrimSpace(key), strings.Trim(strings.TrimSpace(value), `"'`)
+	key, value, ok := field(line)
 	// A YAML list would read as no tools, which gives every tool: the opposite of what its writer meant.
 	noNames := value == "" || strings.HasPrefix(value, "[")
 	switch {
-	case !ok, strings.HasPrefix(key, "#"):
+	case !ok:
 		return nil
 	case key == "tools" && noNames:
 		return fmt.Errorf("its tools are not tool names, separated by commas, on the line of tools:")
@@ -91,6 +90,14 @@ func (a *agent) set(key, value string) {
 	case "advisor":
 		a.advisor = value
 	}
+}
+
+// field splits a line of frontmatter into its key and its value, unquoted. It answers false for a # line, or a line
+// with no colon.
+func field(line string) (key, value string, ok bool) {
+	key, value, ok = strings.Cut(line, ":")
+	key, value = strings.TrimSpace(key), strings.Trim(strings.TrimSpace(value), `"'`)
+	return key, value, ok && !strings.HasPrefix(key, "#")
 }
 
 // frontmatter splits a file into its frontmatter and its body. A file whose first line is not --- has none.

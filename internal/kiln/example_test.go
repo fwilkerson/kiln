@@ -36,17 +36,17 @@ func Example() {
 	// Output:
 	// wrote .kiln/agents/audit.md
 	// wrote .kiln/agents/build.md
-	// wrote .kiln/agents/comprehension.md
-	// wrote .kiln/agents/critic.md
 	// wrote .kiln/agents/verify.md
-	// wrote .kiln/agents/zoom-out.md
 	// wrote .kiln/kiln.json
+	// wrote .kiln/reviewers/comprehension.md
+	// wrote .kiln/reviewers/critic.md
+	// wrote .kiln/reviewers/zoom-out.md
 	// wrote .kiln/skills/shape/SKILL.md
 	// wrote .kiln/skills/shape/template.md
 	// linked .claude/skills/shape to ../../.kiln/skills/shape
-	// linked .claude/agents/zoom-out.md to ../../.kiln/agents/zoom-out.md
-	// linked .claude/agents/comprehension.md to ../../.kiln/agents/comprehension.md
-	// linked .claude/agents/critic.md to ../../.kiln/agents/critic.md
+	// linked .claude/agents/comprehension.md to ../../.kiln/reviewers/comprehension.md
+	// linked .claude/agents/critic.md to ../../.kiln/reviewers/critic.md
+	// linked .claude/agents/zoom-out.md to ../../.kiln/reviewers/zoom-out.md
 	// commit .kiln/ on main: kiln reads it there
 	// kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main
 	// the pre-commit hook runs the gate on each commit to main, so make its commands pass before you commit .kiln/:

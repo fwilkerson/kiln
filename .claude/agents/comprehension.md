@@ -1,1 +1,1 @@
-../../.kiln/agents/comprehension.md
+../../.kiln/reviewers/comprehension.md

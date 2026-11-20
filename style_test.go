@@ -32,7 +32,8 @@ var held = map[string]string{
 // TestNames fails on a code span in a doc that names nothing declared in kiln's Go code. It skips lower-case words
 // and names in capitals. It also skips Markdown file names and names from packages outside kiln.
 func TestNames(t *testing.T) {
-	repotest.Names(t, ".kiln/agents/*.md", ".kiln/skills/*/*.md", "README.md", "docs/reference.md")
+	repotest.Names(t, ".kiln/agents/*.md", ".kiln/reviewers/*.md", ".kiln/skills/*/*.md", "README.md",
+		"docs/reference.md")
 }
 
 // TestLinks fails on a link in a doc whose target is a path that names no file.

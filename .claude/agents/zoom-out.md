@@ -1,1 +1,1 @@
-../../.kiln/agents/zoom-out.md
+../../.kiln/reviewers/zoom-out.md
