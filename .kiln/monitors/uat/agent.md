@@ -31,7 +31,7 @@ folder of a spec the developer accepted, or scenarios that bring the same fixtur
 
 - Run `go vet ./...` and `go test ./...`.
 - Run `sh .kiln/monitors/uat/check`. Its last line says `"fix": false` once nothing is left to fold.
-- Run `sh .kiln/monitors/uat/lost main`. It lists each check no scenario holds any more.
+- Run `sh .kiln/monitors/uat/lib/lost main`. It lists each check no scenario holds any more.
 
 ## Your last reply
 

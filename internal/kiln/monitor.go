@@ -38,6 +38,9 @@ const (
 	monitorAgent = "agent.md"
 )
 
+// roleFiles are the files kiln reads directly in a monitor's directory. Any other file there sits in a subdirectory.
+var roleFiles = []string{checkScript, gaugeScript, commandScript, monitorAgent, settingsFile}
+
 // monitor is a directory under .kiln/monitors/, which kiln monitor run runs once its interval has passed. Its check or
 // its gauge finds a problem, and its command, its agent or both fix it.
 type monitor struct {
@@ -140,8 +143,8 @@ type monitorDir struct {
 	files []string
 }
 
-// monitorDirs lists each monitor's directory under .kiln/monitors/ at the commit at, by name. It refuses a file
-// directly there, since a monitor is a directory.
+// monitorDirs lists each monitor's directory under .kiln/monitors/ at the commit at, by name, with each file under
+// it. It refuses a file directly under .kiln/monitors/, since a monitor is a directory.
 func (r *Repo) monitorDirs(ctx context.Context, at git.Rev) ([]monitorDir, error) {
 	entries, err := r.git.Tree(ctx, at, monitorsDir)
 	var dirs []monitorDir
@@ -149,13 +152,13 @@ func (r *Repo) monitorDirs(ctx context.Context, at git.Rev) ([]monitorDir, error
 	for _, e := range entries {
 		name, file, inside := strings.Cut(e.Path, "/")
 		switch {
-		case inside:
-			files[name] = append(files[name], file)
-		case !e.Dir:
+		case e.Dir && !inside:
+			dirs = append(dirs, monitorDir{name: Spec(name), tree: e.ID})
+		case !inside:
 			return nil, fmt.Errorf("%s/%s is a file: a monitor is a directory, such as %s/deps/", monitorsDir, name,
 				monitorsDir)
-		default:
-			dirs = append(dirs, monitorDir{name: Spec(name), tree: e.ID})
+		case !e.Dir:
+			files[name] = append(files[name], file)
 		}
 	}
 
@@ -213,9 +216,13 @@ func (c config) readMonitor(name Spec, files []string, raw []byte) (monitor, err
 
 // monitorRefusal says why kiln may not run m, whose directory holds files, or "".
 func (c config) monitorRefusal(m monitor, files []string) string {
+	stray := strayFile(files)
 	switch {
 	case !specName.MatchString(string(m.Name)):
 		return "has a name no spec could have, such as deps"
+	case stray != "":
+		return fmt.Sprintf("holds %s, a file kiln does not read: a monitor's own files are %s, and a helper goes in "+
+			"a subdirectory, such as lib/", stray, strings.Join(roleFiles, ", "))
 	case m.Every != "" && !wholeHours(m.Every):
 		return "runs every interval that is not whole hours, at least 1h, such as \"24h\""
 	case slices.Contains(files, checkScript) && slices.Contains(files, gaugeScript):
@@ -228,6 +235,17 @@ func (c config) monitorRefusal(m monitor, files []string) string {
 		return "holds no command and no agent.md, so it fixes nothing"
 	case !m.Tests && c.unguarded():
 		return "may not write the tests, while acceptance names no path before {spec} for kiln to guard"
+	}
+
+	return ""
+}
+
+// strayFile is the first of files that sits directly in a monitor's directory, and is none of roleFiles, or "".
+func strayFile(files []string) string {
+	for _, f := range files {
+		if !strings.Contains(f, "/") && !slices.Contains(roleFiles, f) {
+			return f
+		}
 	}
 
 	return ""

@@ -54,7 +54,7 @@ organize current work by stories, then reorganize it by functional area. A story
   each described one state from their own side: nine of their scenarios held one of three fixtures, byte for byte.
 - Drop a scenario when a unit table's row holds its rule, and another scenario runs the same wiring through the
   command line. Keep one scenario for each transport, such as Go's test output and JUnit XML.
-- A fold keeps each check, or says why it went. `sh .kiln/monitors/uat/lost <commit>` lists the checks no scenario
+- A fold keeps each check, or says why it went. `sh .kiln/monitors/uat/lib/lost <commit>` lists the checks no scenario
   has held since that commit.
 - Never merge a scenario that needs a pseudo-terminal with one that needs none. A sandboxed session runs only the
   second kind.

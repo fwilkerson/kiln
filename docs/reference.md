@@ -185,8 +185,9 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 - `kiln monitor install` gives the launchd job the `PATH` it was run with, and its `TMPDIR` if it has one. The
   gate's tests write their temporary files there. Spotlight watches macOS's own temporary directory, so a heavy
   suite runs lighter with `TMPDIR` on a volume that holds `.metadata_never_index`. Set it, then install again.
-- A monitor holds a `command`, an `agent.md` or both, and a `check` or a `gauge`, never both. A script finds its
-  own directory as `$(dirname "$0")`, and the monitor's name as that directory's.
+- A monitor holds a `command`, an `agent.md` or both, and a `check` or a `gauge`, never both. A helper a script
+  runs goes in a subdirectory, such as `lib/`: kiln refuses any other file directly in the monitor's directory. A
+  script finds its own directory as `$(dirname "$0")`, and the monitor's name as that directory's.
 - The rest of a check's stdout goes to the agent. A check that exits non-zero, or prints no such last line, couldn't
   run, and starts no fix. So does a gauge kiln could not read.
 - The agent's first message holds what the check or gauge printed, and what the gate printed after `command`. Then
