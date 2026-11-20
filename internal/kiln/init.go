@@ -570,7 +570,7 @@ func (r *Repo) unlinkGone(out io.Writer) error {
 	return nil
 }
 
-// reviewers names each reviewer's file in .kiln/reviewers/. It refuses one that badReviewer refuses.
+// reviewers names each reviewer's file in .kiln/reviewers/. It refuses each that badReviewer refuses, with each reason.
 func (r *Repo) reviewers() ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(r.top, reviewersDir))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -578,6 +578,7 @@ func (r *Repo) reviewers() ([]string, error) {
 	}
 
 	var files []string
+	var refused refusals
 	for _, e := range entries {
 		if e.IsDir() || path.Ext(e.Name()) != ".md" {
 			continue
@@ -589,22 +590,24 @@ func (r *Repo) reviewers() ([]string, error) {
 			return nil, err
 		}
 
-		if err := badReviewer(e.Name(), string(raw)); err != nil {
-			return nil, fmt.Errorf("%w: %s: %w", errRefused, rel, err)
-		}
-
+		refused = append(refused, badReviewer(e.Name(), string(raw)).about(rel+",")...)
 		files = append(files, e.Name())
+	}
+
+	if len(refused) > 0 {
+		return nil, fmt.Errorf("%w: %w", errRefused, refused)
 	}
 
 	return files, nil
 }
 
-// badReviewer says why Claude Code could not run the reviewer that raw holds as a subagent, or answers nil. Claude Code
-// needs a name and a description. The name must be the file's, without .md, so /shape and the link agree on it.
-func badReviewer(file, raw string) error {
+// badReviewer says why Claude Code could not run the reviewer that raw holds as a subagent. Claude Code needs a name
+// and a description. The name must be the file's, without .md, so /shape and the link agree on it.
+func badReviewer(file, raw string) refusals {
 	front, _, err := frontmatter(raw)
-	if err != nil {
-		return err
+	// frontmatter refuses only with refusals.
+	if refused, ok := errors.AsType[refusals](err); ok {
+		return refused
 	}
 
 	keys := map[string]string{}
@@ -614,16 +617,13 @@ func badReviewer(file, raw string) error {
 		}
 	}
 
-	switch name := strings.TrimSuffix(file, ".md"); {
-	case keys["name"] != name:
-		return refusals{{fmt.Sprintf("its frontmatter's name is %q", keys["name"]),
-			fmt.Sprintf("make it %q, its file's name", name)}}
-	case keys["description"] == "":
-		return refusals{{"its frontmatter has no description, which Claude Code needs to run it",
-			"add one that says what the reviewer reads for"}}
-	}
-
-	return nil
+	name := strings.TrimSuffix(file, ".md")
+	return broken(
+		rule{keys["name"] != name, refusal{fmt.Sprintf("its frontmatter's name is %q", keys["name"]),
+			fmt.Sprintf("make it %q, its file's name", name)}},
+		rule{keys["description"] == "", refusal{"its frontmatter has no description, which Claude Code needs to run it",
+			"add one that says what the reviewer reads for"}},
+	)
 }
 
 // goneReviewer answers the reviewer's file that the link at reaches, from the checkout's top, when that file is gone.

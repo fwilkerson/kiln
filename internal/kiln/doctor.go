@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -22,14 +23,14 @@ import (
 
 // Doctor prints each problem kiln's commands would refuse or fail on, in the project as its working tree holds it.
 // Each names its fix. Doctor reads kiln.json, and refuses it as every kiln command would. It reads the build,
-// verify and audit agents as kiln queue reads them. It reads each monitor under .kiln/monitors/ as kiln monitor run
-// reads it at main's tip. It reads the files git would commit there, and agent.md as the fix's session reads it.
-// Where a command of kiln.json starts with a path, Doctor reads the script there. It needs the branch main, a claude
-// on the PATH, and a pre-commit hook that runs kiln precommit. With a monitor, it needs a launchd job in a checkout
-// of the repository.
-// With a name, it reads that spec as kiln queue would, but not its Status. It notes each key of kiln.json that
-// differs from main's, which kiln acts on. Doctor writes nothing, and calls no model and no network. It fails when it
-// found a problem.
+// verify and audit agents as kiln queue reads them. It reads the reviewers as kiln init does, and each file kiln init
+// recorded, for a conflict it left there. It reads each monitor under .kiln/monitors/ as kiln monitor run reads it at
+// main's tip. It reads the files git would commit there, and agent.md as the fix's session reads it. Where a command
+// of kiln.json starts with a path, such as notify's, Doctor reads the script there. It needs the branch main, a
+// claude on the PATH, and a pre-commit hook that runs kiln precommit. With a monitor, it needs a launchd job in a
+// checkout of the repository. With a name, it reads that spec as kiln queue would, but not its Status. It notes each
+// key of kiln.json that differs from main's, which kiln acts on. Doctor writes nothing, and calls no model and no
+// network. It fails when it found a problem.
 func (r *Repo) Doctor(ctx context.Context, name Spec, out io.Writer) error {
 	d, err := r.diagnose(ctx, name)
 	if err != nil {
@@ -114,9 +115,10 @@ func (d *diagnosis) config(raw []byte) (config, bool) {
 	return c, true
 }
 
-// diagnoseProject adds to d what kiln queue refuses in c and the agents' files. It adds what kiln monitor run refuses
-// in each of monitors, and each agent.md a fix's session could not read. It adds each script of kiln.json's commands
-// that is missing, or not executable.
+// diagnoseProject adds to d what kiln queue refuses in c and the agents' files. It adds what kiln init refuses in the
+// reviewers, and each conflict kiln init left in a file it recorded. It adds what kiln monitor run refuses in each of
+// monitors, and each agent.md a fix's session could not read. It adds each script of kiln.json's commands that is
+// missing, or not executable.
 func (r *Repo) diagnoseProject(ctx context.Context, c config, monitors []monitorDir, d *diagnosis) error {
 	tree := r.workingTree()
 	refused, err := c.readiness(ctx, tree)
@@ -125,6 +127,17 @@ func (r *Repo) diagnoseProject(ctx context.Context, c config, monitors []monitor
 	}
 
 	d.found = append(d.found, refused...)
+	_, err = r.reviewers()
+	if err := d.found.add(err); err != nil {
+		return err
+	}
+
+	conflicts, err := initConflicts(ctx, tree)
+	if err != nil {
+		return err
+	}
+
+	d.found = append(d.found, conflicts...)
 	for _, dir := range monitors {
 		m, err := c.readDir(ctx, tree, dir)
 		if err := d.found.add(err); err != nil {
@@ -141,6 +154,35 @@ func (r *Repo) diagnoseProject(ctx context.Context, c config, monitors []monitor
 
 	d.found = append(d.found, c.scriptRefusals(r.top)...)
 	return nil
+}
+
+// initConflicts refuse each file kiln init recorded that f holds with a conflict's marker, but an agent's file. kiln
+// queue reads the agents' files, and refuses a marker there itself. A record kiln cannot read is refused too.
+func initConflicts(ctx context.Context, f files) (refusals, error) {
+	raw, found, err := f.read(ctx, initFile)
+	if err != nil || !found {
+		return nil, err
+	}
+
+	rec, err := parseInit(raw)
+	if err != nil {
+		return refusals{{err.Error(), "restore it from git, as kiln init wrote it"}}, nil
+	}
+
+	var refused refusals
+	for _, name := range slices.Sorted(maps.Keys(rec.Files)) {
+		file := path.Join(kilnDir, name)
+		raw, _, err := f.read(ctx, file)
+		if err != nil {
+			return nil, err
+		}
+
+		if path.Dir(name) != "agents" {
+			refused = append(refused, conflictIn(string(raw)).about(file)...)
+		}
+	}
+
+	return refused, nil
 }
 
 // workingMonitors lists each monitor's directory under .kiln/monitors/ in the working tree, by name, with each file
@@ -349,9 +391,9 @@ func (c config) scriptRefusals(top string) refusals {
 	return refused
 }
 
-// commands are the commands of c that kiln runs with sh -c: the gate's, writable's and each gauge's.
+// commands are the commands of c that kiln runs with sh -c: the gate's, writable's, each gauge's and notify's.
 func (c config) commands() []string {
-	commands := slices.Concat(c.Gate, c.Writable)
+	commands := slices.Concat(c.Gate, c.Writable, []string{c.Notify})
 	for _, g := range c.Gauges {
 		commands = append(commands, g.Command)
 	}

@@ -62,6 +62,17 @@ func TestDoctor(t *testing.T) {
 			want: []string{"the working tree holds .kiln/monitors/deps/command without the executable bit, so kiln " +
 				"cannot run it: run chmod +x .kiln/monitors/deps/command, and commit it", launchd},
 		},
+		"a notify program the working tree lacks": {change: withKeys(`"notify": ".kiln/notify-me",`),
+			want: []string{".kiln/kiln.json runs .kiln/notify-me, which the working tree lacks: write it",
+				"note: .kiln/kiln.json differs from main's in notify"}},
+		"each refusal of a reviewer, and a conflict kiln init left": {
+			change: "printf -- '---\\nname: other\\n---\\n' >.kiln/reviewers/critic.md && " +
+				"printf '<<<<<<< .kiln/skills/shape/SKILL.md\\nmine\\n' >>.kiln/skills/shape/SKILL.md",
+			want: []string{`.kiln/reviewers/critic.md, its frontmatter's name is "other": make it "critic"`,
+				".kiln/reviewers/critic.md, its frontmatter has no description",
+				`.kiln/skills/shape/SKILL.md holds a conflict's marker, "<<<<<<< .kiln/skills/shape/SKILL.md": resolve`}},
+		"a record of kiln init that is no JSON": {change: "echo '{' >.kiln/init.json",
+			want: []string{".kiln/init.json: "}},
 		"a spec that leaves the form": {spec: "form",
 			want: []string{"form.md leaves /shape's template: its acceptance test \"2. <Title>\" is not ### 1.",
 				"form.md leaves /shape's template: its acceptance test 1 holds no Then",

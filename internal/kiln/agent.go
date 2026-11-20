@@ -29,6 +29,16 @@ type agent struct {
 // conflictMarker is a line that opens or closes a merge conflict. A line of = alone may underline a heading.
 var conflictMarker = regexp.MustCompile(`(?m)^(<{7}|>{7})( .*)?$`)
 
+// conflictIn refuses raw, a file's text, where it holds a conflict's marker, as kiln init leaves one.
+func conflictIn(raw string) refusals {
+	m := conflictMarker.FindString(raw)
+	if m == "" {
+		return nil
+	}
+
+	return refusals{{fmt.Sprintf("holds a conflict's marker, %q", m), "resolve the conflict, then commit the file"}}
+}
+
 // efforts are the efforts an agent's file may name.
 var efforts = []string{"low", "medium", "high", "xhigh", "max"}
 
@@ -39,9 +49,8 @@ var efforts = []string{"low", "medium", "high", "xhigh", "max"}
 // leaves one.
 func parseAgent(raw string) (agent, error) {
 	a := agent{model: "opus"}
-	if m := conflictMarker.FindString(raw); m != "" {
-		return a, refusals{{fmt.Sprintf("it holds a conflict's marker, %q", m),
-			"resolve the conflict, then commit the file"}}
+	if refused := conflictIn(raw); refused != nil {
+		return a, refused.about("it")
 	}
 
 	front, body, err := frontmatter(raw)
