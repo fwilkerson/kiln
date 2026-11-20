@@ -2,6 +2,7 @@ package kiln
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,6 +101,28 @@ func TestDoctorJobWithoutDir(t *testing.T) {
 	t.Chdir(project)
 	doctorCase{want: []string{"note: .kiln/monitors/ holds monitors, but no launchd job runs them",
 		"found no problem"}}.doctor(t, project)
+}
+
+// TestDoctorAddedConflict holds that kiln doctor reads each file kiln monitor add recorded, for a conflict kiln init
+// left there.
+func TestDoctorAddedConflict(t *testing.T) {
+	project := doctorProject(t)
+	team := filepath.Join(t.TempDir(), "deps")
+	writeAll(t, team, map[string]string{commandScript: "lib/run\n", "lib/run": "true\n"})
+	r, err := Open(t.Context(), project, os.Environ())
+	if err == nil {
+		err = r.MonitorAdd(team, io.Discard)
+	}
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shell(t, project, "chmod +x .kiln/monitors/deps/command && printf '<<<<<<< .kiln/monitors/deps/lib/run\\n' "+
+		">>.kiln/monitors/deps/lib/run")
+	doctorCase{want: []string{`.kiln/monitors/deps/lib/run holds a conflict's marker, ` +
+		`"<<<<<<< .kiln/monitors/deps/lib/run": resolve the conflict, then commit the file`,
+		"note: .kiln/monitors/ holds monitors, but no launchd job runs them"}}.doctor(t, project)
 }
 
 // TestDoctorMainAndTools holds what kiln doctor finds missing outside .kiln/: main, its kiln.json, claude and the

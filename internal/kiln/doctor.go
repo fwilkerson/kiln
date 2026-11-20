@@ -176,8 +176,8 @@ func (r *Repo) reviewerLinks(files []string) refusals {
 	return refused
 }
 
-// initConflicts refuse each file kiln init recorded that f holds with a conflict's marker, but an agent's file. kiln
-// queue reads the agents' files, and refuses a marker there itself. A record kiln cannot read is refused too.
+// initConflicts refuse each file recordedFiles names that f holds with a conflict's marker. A record kiln cannot read
+// is refused too.
 func initConflicts(ctx context.Context, f files) (refusals, error) {
 	raw, found, err := f.read(ctx, initFile)
 	if err != nil || !found {
@@ -190,19 +190,38 @@ func initConflicts(ctx context.Context, f files) (refusals, error) {
 	}
 
 	var refused refusals
-	for _, name := range slices.Sorted(maps.Keys(rec.Files)) {
-		file := path.Join(kilnDir, name)
+	for _, file := range recordedFiles(rec) {
 		raw, _, err := f.read(ctx, file)
 		if err != nil {
 			return nil, err
 		}
 
-		if path.Dir(name) != "agents" {
-			refused = append(refused, conflictIn(string(raw)).about(file)...)
-		}
+		refused = append(refused, conflictIn(string(raw)).about(file)...)
 	}
 
 	return refused, nil
+}
+
+// recordedFiles are the files rec records, by path from the checkout's top. They are each default, and each file of a
+// monitor kiln monitor add wrote. They leave out the agents' files and the monitors' role files, whose readers refuse a
+// marker themselves.
+func recordedFiles(rec initRecord) []string {
+	var files []string
+	for _, name := range slices.Sorted(maps.Keys(rec.Files)) {
+		if path.Dir(name) != "agents" {
+			files = append(files, path.Join(kilnDir, name))
+		}
+	}
+
+	for _, name := range slices.Sorted(maps.Keys(rec.Monitors)) {
+		for _, f := range slices.Sorted(maps.Keys(rec.Monitors[name].Files)) {
+			if !slices.Contains(roleFiles, f) {
+				files = append(files, monitor{Name: name}.path(f))
+			}
+		}
+	}
+
+	return files
 }
 
 // workingMonitors lists each monitor's directory under .kiln/monitors/ in the working tree, by name, with each file

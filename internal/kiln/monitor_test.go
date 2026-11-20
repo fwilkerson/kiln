@@ -2,6 +2,7 @@ package kiln
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -157,6 +158,26 @@ func writeMonitor(t *testing.T, repo string, name string, files map[string]strin
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+// TestMonitorConflict holds that kiln refuses a monitor at main's tip whose script or monitor.json holds a conflict's
+// marker. kiln init leaves one there in a merge. It is refused as an agent's file that holds one is.
+func TestMonitorConflict(t *testing.T) {
+	for file, marker := range map[string]string{commandScript: "<<<<<<< ours", settingsFile: ">>>>>>> theirs"} {
+		t.Run(file, func(t *testing.T) {
+			r, repo := scratchRepo(t)
+			writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptance": "a/{spec}/"}`})
+			writeMonitor(t, repo, "deps", map[string]string{commandScript: "true\n", settingsFile: "{}\n"})
+			shell(t, repo, "printf '"+marker+"\\n' >>"+monitor{Name: "deps"}.path(file)+
+				" && git add -A && git commit --quiet -m x")
+			_, _, err := r.monitors(t.Context(), "main")
+			want := fmt.Sprintf("%s holds a conflict's marker, %q: resolve the conflict, then commit the file",
+				monitor{Name: "deps"}.path(file), marker)
+			if fmt.Sprint(err) != want {
+				t.Errorf("kiln reads the monitors: %v; want %s", err, want)
+			}
+		})
 	}
 }
 

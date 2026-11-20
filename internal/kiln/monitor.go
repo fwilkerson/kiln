@@ -179,17 +179,16 @@ func strayMonitor(name string) refusal {
 }
 
 // readDir reads the monitor whose directory is d, with its monitor.json as f holds it. c is kiln.json beside it. It
-// refuses a script kiln runs that is not executable, beside each refusal of readMonitor.
+// refuses a script kiln runs that is not executable, beside each refusal of readMonitor. It refuses a script or a
+// monitor.json that holds a conflict's marker, as an agent's file is refused.
 func (c config) readDir(ctx context.Context, f files, d monitorDir) (monitor, error) {
-	var raw []byte
-	if slices.Contains(d.files, settingsFile) {
-		var err error
-		if raw, _, err = f.read(ctx, path.Join(monitorsDir, string(d.name), settingsFile)); err != nil {
-			return monitor{}, err
-		}
+	raw, refused, err := roleConflicts(ctx, f, d)
+	if err != nil {
+		return monitor{}, err
 	}
 
-	m, refused := c.readMonitor(d.name, monitor{Name: d.name}.path(""), d.files, raw)
+	m, broke := c.readMonitor(d.name, monitor{Name: d.name}.path(""), d.files, raw)
+	refused = append(refused, broke...)
 	m.tree = d.tree
 	if d.plain != "" {
 		refused = append(refused, refusal{fmt.Sprintf("%s holds %s without the executable bit, so kiln cannot run "+
@@ -197,6 +196,34 @@ func (c config) readDir(ctx context.Context, f files, d monitorDir) (monitor, er
 	}
 
 	return m, refused.err()
+}
+
+// roleConflicts refuse each script and monitor.json in d, as f holds it, that holds a conflict's marker. They answer
+// the monitor.json, or nil where d lacks one. One that holds a marker answers nil too, since nothing more is read
+// there.
+func roleConflicts(ctx context.Context, f files, d monitorDir) ([]byte, refusals, error) {
+	var settings []byte
+	var refused refusals
+	for _, role := range slices.Concat(roleScripts, []string{settingsFile}) {
+		if !slices.Contains(d.files, role) {
+			continue
+		}
+
+		file := monitor{Name: d.name}.path(role)
+		raw, _, err := f.read(ctx, file)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		conflict := conflictIn(string(raw)).about(file)
+		if role == settingsFile && len(conflict) == 0 {
+			settings = raw
+		}
+
+		refused = append(refused, conflict...)
+	}
+
+	return settings, refused, nil
 }
 
 // readMonitor reads the monitor name from the files its directory, dir, holds, and from raw, its monitor.json or nil.
