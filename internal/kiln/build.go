@@ -265,12 +265,7 @@ func (b *build) untilDone(ctx context.Context) error {
 			return err
 		}
 
-		l, err := b.launch(ctx, true, next)
-		if err != nil {
-			return err
-		}
-
-		if _, err := b.talk(ctx, l, why); err != nil {
+		if err := b.tell(ctx, true, next, why); err != nil {
 			return err
 		}
 	}
@@ -288,13 +283,7 @@ func (b *build) goOn(ctx context.Context) error {
 	case b.rec.Session == "":
 		return b.start(ctx)
 	case !b.rec.Accepted:
-		l, err := b.launch(ctx, true, interrupted)
-		if err != nil {
-			return err
-		}
-
-		_, err = b.talk(ctx, l, reason{Why: whyInterrupted, Round: b.rec.Rounds})
-		return err
+		return b.tell(ctx, true, interrupted, reason{Why: whyInterrupted, Round: b.rec.Rounds})
 	}
 
 	return nil
@@ -552,24 +541,25 @@ func (b *build) start(ctx context.Context) error {
 	b.set(func(r *record) { r.Session = session })
 	b.say("building on %s, in %s", b.rec.Name.branch(), b.tree)
 	prompt := fmt.Sprintf(starting, b.rec.Name.file(), short(b.rec.Approved), b.rec.Name.branch())
-	l, err := b.launch(ctx, false, prompt)
-	if err != nil {
-		return err
-	}
-
-	_, err = b.talk(ctx, l, reason{Why: whyFirst})
-	return err
+	return b.tell(ctx, false, prompt, reason{Why: whyFirst})
 }
 
-// launch is a run of the build agent's session, which resume says resumes it.
-func (b *build) launch(ctx context.Context, resume bool, prompt string) (claude.Launch, error) {
-	return b.agentLaunch(ctx, buildRole, claude.Launch{
+// tell runs the build agent's session on prompt, for why, until its turn ends, as talk does. resume says it resumes
+// the session.
+func (b *build) tell(ctx context.Context, resume bool, prompt string, why reason) error {
+	l, err := b.agentLaunch(ctx, buildRole, claude.Launch{
 		Session: b.rec.Session,
 		Resume:  resume,
 		Prompt:  prompt,
 		Dir:     string(b.tree),
 		Hook:    b.treeGuard().hookCommand(b.r.exe),
 	})
+	if err != nil {
+		return err
+	}
+
+	_, err = b.talk(ctx, l, why)
+	return err
 }
 
 // talk runs the session l launches, and answers how it ended. A usage limit pauses the build until it resets, and the

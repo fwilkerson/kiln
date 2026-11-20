@@ -264,8 +264,8 @@ func (b *build) splitStep(ctx context.Context) (turn, error) {
 	case err != nil:
 		return turn{}, err
 	case !v.passed:
-		_, why, err := b.round(setback{why: whyGate, report: v.report, failing: v.failing})
-		return turn{build: fmt.Sprintf(gateFailed, v.report), why: why}, err
+		prompt, why, err := b.round(setback{why: whyGate, report: v.report, failing: v.failing})
+		return turn{build: prompt, why: why}, err
 	}
 
 	back, err := b.stack(ctx)
