@@ -8,7 +8,6 @@ import (
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
-	"github.com/fwilkerson/kiln/internal/proc"
 )
 
 // sandboxed adds to l what every session of a build holds to. No agent's file changes the denied commands and
@@ -49,20 +48,15 @@ func (b *build) kept(s sides, role string) string {
 }
 
 // reached adds to l what kiln.json at main's tip says a session reaches. Those are the hosts its commands reach, the
-// paths beside its worktree they write, and the MCP servers it calls.
+// paths beside its worktree they write, and the MCP servers it calls. It adds how long the session may print nothing.
 func (r *Repo) reached(ctx context.Context, l claude.Launch) (claude.Launch, error) {
-	main, err := r.mainTip(ctx)
-	if err != nil {
-		return l, err
-	}
-
-	c, err := r.config(ctx, main)
+	c, err := r.tipConfig(ctx)
 	if err != nil {
 		return l, err
 	}
 
 	for _, command := range c.Writable {
-		paths, err := r.printed(ctx, command)
+		paths, err := r.printed(ctx, c.shell(r.env), command)
 		if err != nil {
 			return l, err
 		}
@@ -70,20 +64,20 @@ func (r *Repo) reached(ctx context.Context, l claude.Launch) (claude.Launch, err
 		l.Writable = append(l.Writable, paths...)
 	}
 
-	l.Domains, l.MCP = c.Hosts, c.MCP
+	l.Domains, l.MCP, l.Silence = c.Hosts, c.MCP, c.killAfter()
 	return l, nil
 }
 
 // printed answers the paths command prints, a field each. It runs command once per kiln command, in the checkout
-// kiln runs in, with sh -c. A command that fails, or prints a path that is not absolute, is an error.
-func (r *Repo) printed(ctx context.Context, command string) ([]string, error) {
+// kiln runs in, as s runs it. A command that fails, or prints a path that is not absolute, is an error.
+func (r *Repo) printed(ctx context.Context, s projectShell, command string) ([]string, error) {
 	r.writableMu.Lock()
 	defer r.writableMu.Unlock()
 	if paths, ok := r.writable[command]; ok {
 		return paths, nil
 	}
 
-	out, err := runShell(ctx, git.Worktree(r.top), command, proc.Shell.Env(r.env))
+	out, err := s.run(ctx, git.Worktree(r.top), command)
 	if err != nil {
 		return nil, fmt.Errorf("%s's writable command %q: %w", configFile, command, err)
 	}

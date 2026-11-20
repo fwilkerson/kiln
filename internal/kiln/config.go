@@ -9,9 +9,11 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/kiln/internal/proc"
 )
 
 // config is .kiln/kiln.json, read from main's tip, so a build cannot weaken the gate it is held to.
@@ -41,6 +43,42 @@ type config struct {
 	Reaudit []string `json:"reaudit,omitempty"`
 	// Monitors are the jobs kiln monitor run runs on their schedule, each of which may start a fix.
 	Monitors []monitor `json:"monitors,omitempty"`
+	// Timeout is how long a project's command may run, or a session print nothing, before kiln kills it. It is
+	// defaultTimeout when unset.
+	Timeout timeout `json:"timeout,omitempty"`
+}
+
+// defaultTimeout is the timeout of a kiln.json that names none. It is over twice the longest gate seen on a loaded
+// machine.
+const defaultTimeout = time.Hour
+
+// timeoutKey names the setting in the messages of what kiln killed.
+const timeoutKey = "kiln.json's timeout"
+
+// timeout is a Go duration above zero, such as "2h". kiln.json refuses any other.
+type timeout time.Duration
+
+func (t *timeout) UnmarshalJSON(raw []byte) error {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		if d, err := time.ParseDuration(text); err == nil && d > 0 {
+			*t = timeout(d)
+			return nil
+		}
+	}
+
+	return fmt.Errorf("timeout %s is no Go duration above zero: name one such as \"2h\", or none for %s", raw,
+		shownDuration(defaultTimeout))
+}
+
+// killAfter is how long a project's command may run, or a session print nothing, before kiln kills it.
+func (c config) killAfter() time.Duration {
+	return cmpOr(time.Duration(c.Timeout), defaultTimeout)
+}
+
+// shell runs the project's commands with env, a kiln's environment, for as long as c lets one run.
+func (c config) shell(env []string) projectShell {
+	return projectShell{env: proc.Shell.Env(env), limit: c.killAfter()}
 }
 
 // splitWorkflow is the workflow whose build session writes the code, and whose verify session writes the tests.
@@ -210,6 +248,16 @@ func (c config) checkGauges() error {
 	}
 
 	return nil
+}
+
+// tipConfig is kiln.json at main's tip.
+func (r *Repo) tipConfig(ctx context.Context) (config, error) {
+	main, err := r.mainTip(ctx)
+	if err != nil {
+		return config{}, err
+	}
+
+	return r.config(ctx, main)
 }
 
 func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {

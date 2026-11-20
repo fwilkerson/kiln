@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/fwilkerson/kiln/internal/claude"
 )
@@ -32,7 +33,7 @@ func Example() {
 	c := claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: sessions})
 	id := "0b8e6c1e-2f4d-4f6a-9b1c-3d5e7f9a1b2c"
 	ended, err := c.Run(context.Background(), claude.Launch{
-		Session: id, Role: "build", System: "You build specs.", Prompt: "Build x.", Dir: dir,
+		Session: id, Role: "build", System: "You build specs.", Prompt: "Build x.", Dir: dir, Silence: time.Hour,
 	})
 	fmt.Println(ended.Text, ended.Failed, ended.Limit, *ended.Totals.Turns, err)
 

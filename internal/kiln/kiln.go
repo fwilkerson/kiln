@@ -287,6 +287,27 @@
 // A session, an audit, a monitor's command and a pause for a usage limit hold no lock. kiln precommit takes none. A
 // kiln takes its lane first, then commands.lock, and never takes a lane while it holds commands.lock.
 //
+// # Hangs
+//
+// No wait of kiln's lasts forever, so a hang never holds a lane, commands.lock or the launchd job. kiln.json's
+// timeout, a Go duration read at main's tip, bounds two waits. It is 1 hour when unset:
+//
+//	a command kiln runs for the project    the gate's, a monitor's check or command, a gauge, a writable command
+//	a session                              how long it prints nothing
+//
+// kiln kills what runs past the timeout, with each process of its group. Its words name what ran past, the timeout
+// and the setting:
+//
+//	what ran past                                          ends in
+//	a gate's command, a writable command, a monitor's      a stopped build or fix, with those words as its why
+//	command, a gauge in a fix's gate, or a session
+//	a monitor's check, or its gauge at main's tip          couldn't run, with those words as its summary
+//	a gauge read after a landing                           unknown, with those words as why
+//
+// The timeout counts only the time the Mac is awake, as Go's timers do. It never sends work back as a round. A round
+// would wait out the same hang again, holding the same lock. A pause for a usage limit lasts until the limit resets.
+// A wait for commands.lock lasts as long as the bounded work that holds it.
+//
 // # The ledger
 //
 // Each queue is a new build, with its own ID. kiln's ledger records every build, session run and gate, and how each

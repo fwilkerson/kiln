@@ -86,8 +86,9 @@ func locate(path string) string {
 	return top
 }
 
-// TestOneShell holds that internal/kiln runs a command from kiln.json with sh -c only in runShell, in monitor.go.
-// runShell ends a command whose child holds its output, so no other caller can wait on that child forever.
+// TestOneShell holds that internal/kiln runs a command from kiln.json with sh -c only in projectShell.run, in
+// shell.go. run ends a command that runs past kiln.json's timeout, or whose child holds its output. No caller waits
+// forever.
 func TestOneShell(t *testing.T) {
 	files, err := filepath.Glob("internal/kiln/*.go")
 	if err != nil {
@@ -100,12 +101,12 @@ func TestOneShell(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if file == "internal/kiln/monitor.go" || strings.HasSuffix(file, "_test.go") {
+		if file == "internal/kiln/shell.go" || strings.HasSuffix(file, "_test.go") {
 			continue
 		}
 
 		if shells := strings.Count(string(code), `"/bin/sh", "-c",`); shells > 0 {
-			t.Errorf("%s runs sh -c %d times: run the command with runShell", file, shells)
+			t.Errorf("%s runs sh -c %d times: run the command with projectShell.run", file, shells)
 		}
 	}
 }

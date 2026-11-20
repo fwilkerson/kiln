@@ -607,6 +607,11 @@ func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claud
 	b.record(entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed, PID: os.Getpid(),
 		reason: why, Read: read})
 	ended, err := b.r.claude.Run(ctx, l)
+	if silent, ok := errors.AsType[*claude.Silent](err); ok {
+		err = fmt.Errorf("the %s session printed nothing past %s of %s, so kiln killed it", l.Role, timeoutKey,
+			shownDuration(silent.For))
+	}
+
 	end := entry{Kind: endKind, Session: l.Session, Ended: how(ended), Totals: &ended.Totals}
 	end.Streamed, _ = b.r.claude.Streamed(l.Session)
 	var undone error

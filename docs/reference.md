@@ -40,7 +40,8 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
   "harness": ["internal/testutil/"],
   "reaudit": ["migrations/"],
   "gauges": [{"name": "test-seconds", "command": ".kiln/gauges/test-seconds", "max": 60}],
-  "monitors": [{"name": "deps", "every": "24h", "check": ".kiln/monitors/deps", "agent": "deps.md"}]
+  "monitors": [{"name": "deps", "every": "24h", "check": ".kiln/monitors/deps", "agent": "deps.md"}],
+  "timeout": "2h"
 }
 ```
 
@@ -57,6 +58,7 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 | `reaudit`    | Paths the audit reads again whenever the work changes them                  | main's tip        |
 | `gauges`     | Numbers kiln reads after each landing                                       | main's tip        |
 | `monitors`   | Jobs kiln runs on a schedule, each of which may start a fix                 | main's tip        |
+| `timeout`    | How long a command may run, or a session be silent, before kiln kills it    | main's tip        |
 
 kiln reads the gate from main's tip, never from the build's checkout, so a build cannot weaken its own gate. It
 refuses a `kiln.json` with a key it does not know.
@@ -212,6 +214,20 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 
 A monitor is held, and starts no fix, by how its last fix ended, until a change releases it. The package doc of
 `internal/kiln` lists each hold and what releases it, under Monitors: `go doc ./internal/kiln`.
+
+### timeout
+
+```json
+{"timeout": "2h"}
+```
+
+- It bounds each command kiln runs for you: the gate's, a monitor's check and command, a gauge, and a `writable`
+  command. It bounds how long a session may print nothing, too.
+- Past it, kiln kills the command or session, with every process it started. The build or fix stops, or the check
+  couldn't run, with words that name what ran past, the limit and this key. The package doc of `internal/kiln`
+  gives the default, and what each ends in, under Hangs: `go doc ./internal/kiln`.
+- It bounds a hang, not a slow run, so set it well above your gate's slowest run on a loaded machine. A suite that
+  took 2 minutes alone took up to 27 with eight sessions beside it.
 
 ## Agents
 

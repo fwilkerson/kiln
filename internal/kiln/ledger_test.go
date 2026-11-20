@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
@@ -250,7 +251,8 @@ func verifyRuns(t *testing.T, replies string, asked bool) ([]reason, error) {
 	sessions := filepath.Join(dir, "sessions")
 	r := &Repo{store: store{dir: dir}, claude: claude.New(claude.Config{Program: program, Sessions: sessions})}
 	b := &build{r: r, rec: record{Name: "x", Build: "b1", Asked: asked}, out: io.Discard}
-	l := claude.Launch{Session: "5f0c1a54-2a8e-4b0e-9a65-0d1f6b8c2e11", Role: verifyRole, Prompt: "Verify x.", Dir: dir}
+	l := claude.Launch{Session: "5f0c1a54-2a8e-4b0e-9a65-0d1f6b8c2e11", Role: verifyRole, Prompt: "Verify x.", Dir: dir,
+		Silence: time.Hour}
 	conversed := b.converse(t.Context(), l, reason{Why: whyFirst})
 	entries, err := r.store.entries()
 	if err != nil {

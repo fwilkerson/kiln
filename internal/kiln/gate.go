@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/fwilkerson/kiln/internal/git"
-	"github.com/fwilkerson/kiln/internal/proc"
 )
 
 // check is one gate command's run.
@@ -45,10 +44,12 @@ const outputKept = 16 << 10
 // junitVar names the file a gate command may write JUnit XML to, so kiln learns the tests that failed.
 const junitVar = "KILN_JUNIT"
 
-func runChecks(ctx context.Context, dir git.Worktree, commands, env []string) ([]check, error) {
+// runChecks runs each of commands in dir, in turn, as s runs them. A command that ran past s's limit is no check: it
+// answers a *ranPast, which stops the work.
+func runChecks(ctx context.Context, dir git.Worktree, commands []string, s projectShell) ([]check, error) {
 	var checks []check
 	for _, command := range commands {
-		c, err := runCheck(ctx, dir, command, env)
+		c, err := runCheck(ctx, dir, command, s)
 		if err != nil {
 			return nil, err
 		}
@@ -60,7 +61,7 @@ func runChecks(ctx context.Context, dir git.Worktree, commands, env []string) ([
 }
 
 // runCheck runs one gate command in dir. Its JUnit XML goes to a new directory, so no earlier run's file is read.
-func runCheck(ctx context.Context, dir git.Worktree, command string, env []string) (check, error) {
+func runCheck(ctx context.Context, dir git.Worktree, command string, s projectShell) (check, error) {
 	tmp, err := os.MkdirTemp("", "kiln-junit-")
 	if err != nil {
 		return check{}, err
@@ -68,7 +69,7 @@ func runCheck(ctx context.Context, dir git.Worktree, command string, env []strin
 
 	defer os.RemoveAll(tmp)
 	junit := filepath.Join(tmp, "junit.xml")
-	printed, err := runShell(ctx, dir, command, append(slices.Clone(proc.Shell.Env(env)), junitVar+"="+junit))
+	printed, err := s.with(junitVar+"="+junit).run(ctx, dir, command)
 	out := []byte(printed.both)
 	cut := max(0, len(out)-outputKept)
 	c := check{Command: command, Output: string(out[cut:]), Cut: cut}
@@ -297,12 +298,12 @@ func (held commands) gate(ctx context.Context, without []string, guards ...guard
 		maps.Copy(refused, found)
 	}
 
-	tip, err := r.atCommit(ctx, guards[0], c.Gate)
+	tip, err := r.atCommit(ctx, guards[0], c)
 	if err != nil {
 		return verdict{}, err
 	}
 
-	atMain, err := held.atMain(ctx, main, c.Gate, without)
+	atMain, err := held.atMain(ctx, main, c, without)
 	if err != nil {
 		return verdict{}, err
 	}
@@ -312,9 +313,9 @@ func (held commands) gate(ctx context.Context, without []string, guards ...guard
 	return v, nil
 }
 
-// atCommit runs commands on the commit checked out at g's place, in the gate's own worktree. The gate then judges
+// atCommit runs c's gate on the commit checked out at g's place, in the gate's own worktree. The gate then judges
 // what lands. It never sees a file the session left that the commit lacks. The session's worktree stays as it was.
-func (r *Repo) atCommit(ctx context.Context, g guard, commands []string) ([]check, error) {
+func (r *Repo) atCommit(ctx context.Context, g guard, c config) ([]check, error) {
 	head, err := r.git.Head(ctx, g.place)
 	if err != nil {
 		return nil, err
@@ -325,7 +326,7 @@ func (r *Repo) atCommit(ctx context.Context, g guard, commands []string) ([]chec
 		return nil, err
 	}
 
-	return runChecks(ctx, tree, commands, r.env)
+	return runChecks(ctx, tree, c.Gate, c.shell(r.env))
 }
 
 // refused says, by path, why the build may not change each path its work changed since it left main. A path under
@@ -380,11 +381,11 @@ func (r *Repo) removed(ctx context.Context, head git.Rev, p string, without []st
 // no check an older kiln kept is read.
 const checksVersion = 2
 
-// atMain runs gate, the gate's commands, at main's tip, less the paths without, in a worktree of its own. It keeps
-// the checks, and runs them again only once main, without or the commands change. It runs under held, so every kiln
-// shares the worktree, one at a time.
-func (held commands) atMain(ctx context.Context, main git.Rev, gate []string, without []string) ([]check, error) {
-	r := held.r
+// atMain runs c's gate at main's tip, less the paths without, in a worktree of its own. It keeps the checks, and
+// runs them again only once main, without or the commands change. It runs under held, so every kiln shares the
+// worktree, one at a time.
+func (held commands) atMain(ctx context.Context, main git.Rev, c config, without []string) ([]check, error) {
+	r, gate := held.r, c.Gate
 	// The count of without tells where its paths end and the commands begin.
 	parts := append([]string{fmt.Sprint(checksVersion), string(main), fmt.Sprint(len(without))}, without...)
 	key := strings.Join(append(parts, gate...), "\x00")
@@ -409,7 +410,7 @@ func (held commands) atMain(ctx context.Context, main git.Rev, gate []string, wi
 		}
 	}
 
-	checks, err := runChecks(ctx, tree, gate, r.env)
+	checks, err := runChecks(ctx, tree, gate, c.shell(r.env))
 	if err != nil {
 		return nil, err
 	}
@@ -438,7 +439,7 @@ func Precommit(ctx context.Context, dir string, env []string, out *os.File) erro
 		return err
 	}
 
-	checks, err := runChecks(ctx, git.Worktree(dir), c.Gate, env)
+	checks, err := runChecks(ctx, git.Worktree(dir), c.Gate, c.shell(env))
 	if err != nil {
 		return err
 	}

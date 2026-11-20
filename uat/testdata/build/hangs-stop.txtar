@@ -1,0 +1,56 @@
+# A session that falls silent, and a gate command that hangs, each stop their build. kiln says what ran past, for
+# how long, and which setting bounds it.
+
+# Given: two approved specs, and a kiln.json whose timeout is 5 seconds. y's session runs a command that never ends,
+# and prints nothing while it runs. x's session ends its turn, and the gate's one command never ends.
+exec kiln queue y
+exec kiln queue x
+
+# When: the developer runs kiln fire, and walks away.
+exec kiln fire
+cp stdout .tmp/run
+
+# Then: each build stops, and the output holds a notification for each.
+stdout '^y: stopped: kiln could not go on with the build: the build session printed nothing past kiln.json''s timeout of 5s, so kiln killed it$'
+stdout '^x: stopped: kiln could not go on with the build: the gate''s "sleep 600": ran past kiln.json''s timeout of 5s, so kiln killed it$'
+stdout '^\x1b\]9;kiln: y stopped\x07'
+stdout '^\x1b\]9;kiln: x stopped\x07'
+
+# kiln status shows both stopped, each with why.
+exec kiln status
+stdout '^y: stopped$'
+stdout 'the build session printed nothing past kiln.json''s timeout of 5s'
+stdout '^x: stopped$'
+stdout 'the gate''s "sleep 600": ran past kiln.json''s timeout of 5s'
+
+# Each summary's last line says what to do next.
+exec cat .tmp/run
+stdout '^  next: fix what the error names, then run kiln queue y, which builds anew$'
+stdout '^  next: fix what the error names, then run kiln queue x, which builds anew$'
+
+-- .kiln/kiln.json --
+{"gate": ["sleep 600"], "timeout": "5s"}
+-- .kiln/specs/y.md --
+### 1. Y answers
+
+- **Given**: nothing.
+- **When**: Y is called.
+- **Then**: it answers 42.
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "sleep 600"}}},
+      {"result": {"result": "Built y."}}
+    ]},
+    "2": {"1": [
+      {"result": {"result": "Built x."}}
+    ]}
+  }
+}

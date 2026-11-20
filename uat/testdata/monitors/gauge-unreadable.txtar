@@ -2,8 +2,8 @@
 
 env KILN_OPEN=true
 
-# Given: a monitor that names a gauge whose command fails, and a second monitor that names a gauge whose command
-# prints no number.
+# Given: a monitor that names a gauge whose command fails, a second monitor that names a gauge whose command
+# prints no number, and a third that names a gauge whose command runs past kiln.json's timeout.
 
 # When: kiln monitor run runs.
 exec sh -c 'kiln monitor run || true'
@@ -17,14 +17,18 @@ stdout '^broken: couldn''t run, .*runs at the next kiln monitor run$'
 stdout 'the tool is missing'
 stdout '^silent: couldn''t run, .*runs at the next kiln monitor run$'
 stdout 'quiet: its command''s last line is no number'
+stdout '^stuck: couldn''t run, .*runs at the next kiln monitor run$'
+stdout 'slow: its command ran past kiln.json''s timeout of 3s, so kiln killed it'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "gauges": [
+{"gate": ["true"], "timeout": "3s", "gauges": [
  {"name": "fails", "command": "echo 'the tool is missing' >&2; exit 3", "max": 0},
- {"name": "quiet", "command": "echo 'nothing to count'", "max": 0}
+ {"name": "quiet", "command": "echo 'nothing to count'", "max": 0},
+ {"name": "slow", "command": "echo 1; sleep 600", "max": 0}
 ], "monitors": [
  {"name": "broken", "every": "24h", "gauge": "fails", "agent": ".kiln/agents/fixer.md"},
- {"name": "silent", "every": "24h", "gauge": "quiet", "agent": ".kiln/agents/fixer.md"}
+ {"name": "silent", "every": "24h", "gauge": "quiet", "agent": ".kiln/agents/fixer.md"},
+ {"name": "stuck", "every": "24h", "gauge": "slow", "agent": ".kiln/agents/fixer.md"}
 ]}
 -- .kiln/agents/fixer.md --
 Fix the files the gauge names.

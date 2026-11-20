@@ -162,6 +162,7 @@ func TestCheck(t *testing.T) {
 		command        string
 		ran, fix       bool
 		summary, found string
+		limit          time.Duration
 	}{
 		"healthy":                {command: `echo '{"fix": false, "summary": "fine"}'`, ran: true, summary: "fine"},
 		"a finding above it":     {command: `echo CVE-1; echo '{"fix": true, "summary": "one"}'`, ran: true, fix: true, summary: "one", found: "CVE-1"},
@@ -171,10 +172,11 @@ func TestCheck(t *testing.T) {
 		"an object with no fix":  {command: `echo '{"summary": "s"}'`, summary: `{"summary": "s"}`},
 		"nothing at all":         {command: `true`, summary: "the check printed nothing"},
 		"an exit with no output": {command: `exit 3`, summary: "the check failed: exit status 3"},
+		"one that runs past":     {command: `echo '{"fix": true, "summary": "s"}'; sleep 30`, limit: 500 * time.Millisecond, summary: "the check ran past kiln.json's timeout of 500ms, so kiln killed it"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := &Repo{env: os.Environ()}
-			c, err := r.runMonitorCheck(t.Context(), git.Worktree(t.TempDir()), tc.command)
+			s := config{Timeout: timeout(tc.limit)}.shell(os.Environ())
+			c, err := s.runMonitorCheck(t.Context(), git.Worktree(t.TempDir()), tc.command)
 			if err != nil {
 				t.Fatal(err)
 			}
