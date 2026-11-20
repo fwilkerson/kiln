@@ -196,7 +196,7 @@ kiln monitor show <name>         show how a monitor's last run ended
 ## Working on kiln
 
 ```sh
-go test ./...                 # the gate. The terminal UI's scenarios need a real terminal, and skip in a sandbox.
+go test -timeout 30m ./...    # the gate. The terminal UI's scenarios need a real terminal, and skip in a sandbox.
 go run ./tools/install        # reinstall kiln and its zsh completion from main's tip
 ```
 
