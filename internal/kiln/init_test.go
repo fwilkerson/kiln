@@ -184,11 +184,7 @@ func TestStatusSaysInitBehind(t *testing.T) {
 // TestInitRefusesPreset holds that kiln init refuses a preset it can't use before it writes anything. A usage error
 // is the developer's argument alone, never what .kiln/init.json records.
 func TestInitRefusesPreset(t *testing.T) {
-	for _, tt := range []struct {
-		name, config, record, named string
-		usage                       bool
-		said                        string // a part of the refusal
-	}{
+	for _, tt := range []refusedInit{
 		{name: "a kiln.json kiln can't read", config: "{"},
 		{name: "a kiln.json with no rounds", config: `{"gate": ["make"], "acceptance": "a/{spec}/"}`},
 		{name: "a name kiln doesn't know", named: "rust", usage: true},
@@ -196,23 +192,11 @@ func TestInitRefusesPreset(t *testing.T) {
 		{name: "a path that starts with neither . nor /", named: "presets/go", usage: true,
 			said: "or a directory, by a path that starts with . or /, such as ./presets/go"},
 		{name: "a recorded name kiln doesn't know", record: `{"preset": "rust"}`},
+		{name: "the checkout's kiln.json, with a key kiln does not read", checkout: `{"gate": ["true"], "rouns": 3}`,
+			said: `holds "rouns", a key kiln does not read: name it "rounds"`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			r, repo := scratchRepo(t)
-			team := teamPreset(t, t.TempDir())
-			if tt.config != "" {
-				shell(t, team, "echo '"+tt.config+"' >kiln.json")
-			}
-
-			if tt.record != "" {
-				shell(t, repo, "mkdir .kiln && echo '"+tt.record+"' >"+initFile)
-			}
-
-			named := tt.named
-			if named == "" && tt.record == "" {
-				named = team
-			}
-
+			r, repo, named := tt.setUp(t)
 			err := r.Init(t.Context(), new(strings.Builder), InitOptions{Preset: named})
 			_, stat := os.Stat(filepath.Join(repo, agentFile(buildRole)))
 			said := strings.Contains(fmt.Sprint(err), tt.said)
@@ -222,6 +206,38 @@ func TestInitRefusesPreset(t *testing.T) {
 			}
 		})
 	}
+}
+
+// refusedInit is a row of TestInitRefusesPreset. A row that names no preset, and records none, names a team's.
+type refusedInit struct {
+	name     string
+	config   string // the team preset's kiln.json
+	record   string // .kiln/init.json
+	checkout string // the checkout's own kiln.json
+	named    string
+	usage    bool
+	said     string // a part of the refusal
+}
+
+// setUp is the repository the row starts from, at its path, and the preset kiln init is named.
+func (tt refusedInit) setUp(t *testing.T) (r *Repo, repo, named string) {
+	r, repo = scratchRepo(t)
+	team := teamPreset(t, t.TempDir())
+	for dir, f := range map[string][2]string{team: {tt.config, "kiln.json"}, repo: {tt.record, initFile}} {
+		if f[0] != "" {
+			shell(t, dir, "mkdir -p "+filepath.Dir(f[1])+" && echo '"+f[0]+"' >"+f[1])
+		}
+	}
+
+	if tt.checkout != "" {
+		shell(t, repo, "mkdir -p .kiln && echo '"+tt.checkout+"' >"+configFile)
+	}
+
+	if tt.named == "" && tt.record == "" {
+		return r, repo, team
+	}
+
+	return r, repo, tt.named
 }
 
 // TestInitPicksPreset holds which preset kiln init writes when the developer names none. It picks the one built-in

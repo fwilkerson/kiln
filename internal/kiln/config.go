@@ -1,12 +1,16 @@
 package kiln
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/json/jsontext"
 	jsonv2 "encoding/json/v2"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -70,8 +74,8 @@ func (t *timeout) UnmarshalJSON(raw []byte) error {
 		}
 	}
 
-	return fmt.Errorf("timeout %s is no Go duration above zero: name one such as \"2h\", or none for %s", raw,
-		shownDuration(defaultTimeout))
+	return refusals{{fmt.Sprintf("%s names the timeout %s, which is no Go duration above zero", configFile, raw),
+		fmt.Sprintf("name one such as \"2h\", or none for %s", shownDuration(defaultTimeout))}}
 }
 
 // killAfter is how long a project's command may run, or a session print nothing, before kiln kills it.
@@ -203,16 +207,167 @@ func pathRefusal(p string) (refusals, bool) {
 
 const configFile = kilnDir + "/kiln.json"
 
-// parseConfig reads kiln.json. A file that is no JSON object of its keys, each as kiln.schema.json spells it, fails
-// as unreadable. Otherwise the error holds each of its refusals, and c is what the file holds.
+// parseConfig reads kiln.json. A file that is no JSON object of the keys kiln reads fails as unreadable, as
+// configRefusals words it. Otherwise the error holds each of its refusals, and c is what the file holds.
 func parseConfig(raw []byte) (c config, err error) {
 	// json/v2 matches a key's case exactly, as the schema does, where v1 would take "Gate" for gate.
 	if err := jsonv2.Unmarshal(raw, &c, jsonv2.RejectUnknownMembers(true)); err != nil {
-		return c, unreadable{refusals{{fmt.Sprintf("%s: %v", configFile, err),
-			"fix its JSON, and spell each key as kiln.schema.json does"}}}
+		return c, unreadable{configRefusals(raw, err)}
 	}
 
 	return c, c.refusals().err()
+}
+
+// movedKeys are the keys of kiln.json that kiln once read, each with where its setting went.
+var movedKeys = map[string]string{
+	"monitors": "each monitor is a directory of its own now, " + monitorsDir + "/<name>/: move each there, or add one " +
+		"with kiln monitor add",
+}
+
+// configRefusals word err, json/v2's error for raw, as kiln's own refusal. A key kiln does not read is named with the
+// nearest key it does, or where it went. A syntax error is named by its line and column. A value of the wrong type is
+// named with the type its key takes.
+func configRefusals(raw []byte, err error) refusals {
+	if own, ok := errors.AsType[refusals](err); ok {
+		return own
+	}
+
+	if syn, ok := errors.AsType[*jsontext.SyntacticError](err); ok {
+		return refusals{syntaxRefusal(raw, syn)}
+	}
+
+	sem, ok := errors.AsType[*jsonv2.SemanticError](err)
+	switch {
+	case !ok:
+		return refusals{{fmt.Sprintf("%s: %v", configFile, err), "fix its JSON"}}
+	case errors.Is(err, jsonv2.ErrUnknownName):
+		return refusals{unknownKey(sem)}
+	}
+
+	at := strings.TrimPrefix(string(sem.JSONPointer), "/")
+	return refusals{{fmt.Sprintf("%s's %s is %s", configFile, at, kindWords[sem.JSONKind]), "make it " +
+		typeWords(sem.GoType)}}
+}
+
+// syntaxRefusal names the line and the column of syn, a syntax error in raw.
+func syntaxRefusal(raw []byte, syn *jsontext.SyntacticError) refusal {
+	at := min(int(syn.ByteOffset), len(raw))
+	line := bytes.Count(raw[:at], []byte("\n")) + 1
+	column := at - bytes.LastIndexByte(raw[:at], '\n')
+	what := syn.Err.Error()
+	// jsontext names a comma before a closing bracket as a value that starts badly.
+	if trailingComma(raw[at:]) {
+		what = "a comma with nothing after it"
+	}
+
+	return refusal{fmt.Sprintf("%s is no JSON at line %d, column %d: %s", configFile, line, column, what),
+		"fix its JSON there"}
+}
+
+// trailingComma is whether text, from a syntax error on, starts with a comma that only a closing bracket follows.
+func trailingComma(text []byte) bool {
+	rest, comma := bytes.CutPrefix(text, []byte(","))
+	closes := bytes.IndexAny(bytes.TrimLeft(rest, " \t\r\n"), "}]") == 0
+	return comma && closes
+}
+
+// unknownKey refuses the key sem names, which kiln does not read. It says where a key kiln once read went. Otherwise it
+// names the key kiln reads there that is nearest in spelling.
+func unknownKey(sem *jsonv2.SemanticError) refusal {
+	key, parent := sem.JSONPointer.LastToken(), strings.TrimPrefix(string(sem.JSONPointer.Parent()), "/")
+	if went, ok := movedKeys[key]; ok && parent == "" {
+		return refusal{fmt.Sprintf("%s holds %q, a key kiln no longer reads", configFile, key), went}
+	}
+
+	where := ""
+	if parent != "" {
+		where = " in " + parent
+	}
+
+	problem := fmt.Sprintf("%s holds %q%s, a key kiln does not read", configFile, key, where)
+	keys := jsonKeys(sem.GoType)
+	if near := nearest(key, keys); near != "" {
+		return refusal{problem, fmt.Sprintf("name it %q", near)}
+	}
+
+	return refusal{problem, "remove it, or name one kiln reads: " + strings.Join(keys, ", ")}
+}
+
+// jsonKeys are the keys kiln reads in an object of the struct type t, in the struct's order.
+func jsonKeys(t reflect.Type) []string {
+	var keys []string
+	for f := range t.Fields() {
+		if name, _, _ := strings.Cut(f.Tag.Get("json"), ","); name != "" && name != "-" {
+			keys = append(keys, name)
+		}
+	}
+
+	return keys
+}
+
+// nearest is the one of keys that key misspells, by case or by two letters at most. It answers "" for none.
+func nearest(key string, keys []string) string {
+	best, bestCost := "", 3
+	for _, k := range keys {
+		if cost := editCost(strings.ToLower(key), strings.ToLower(k)); cost < bestCost {
+			best, bestCost = k, cost
+		}
+	}
+
+	return best
+}
+
+// editCost is how many letters to insert, delete or replace to turn a into b.
+func editCost(a, b string) int {
+	row := make([]int, len(b)+1)
+	for j := range row {
+		row[j] = j
+	}
+
+	for i := 1; i <= len(a); i++ {
+		diagonal := row[0]
+		row[0] = i
+		for j := 1; j <= len(b); j++ {
+			replace := diagonal + boolInt(a[i-1] != b[j-1])
+			diagonal = row[j]
+			row[j] = min(row[j]+1, row[j-1]+1, replace)
+		}
+	}
+
+	return row[len(b)]
+}
+
+// boolInt is 1 for true, and 0 for false.
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+
+	return 0
+}
+
+// kindWords name each kind of JSON value, as a refusal of one of the wrong type says it is.
+var kindWords = map[jsontext.Kind]string{jsontext.KindNull: "null", jsontext.KindFalse: "false",
+	jsontext.KindTrue: "true", jsontext.KindString: "a string", jsontext.KindNumber: "a number",
+	jsontext.KindBeginObject: "an object", jsontext.KindBeginArray: "a list"}
+
+// scalarWords name the JSON value each kind of Go value reads from, with an example.
+var scalarWords = map[reflect.Kind]string{reflect.Int: "a whole number, such as 3",
+	reflect.Float64: "a number, such as 0.5", reflect.String: `a string, such as "x"`,
+	reflect.Bool: "true or false", reflect.Struct: "an object", reflect.Map: "an object"}
+
+// typeWords name the JSON value kiln reads into a Go value of type t, with an example.
+func typeWords(t reflect.Type) string {
+	switch {
+	case t.Kind() == reflect.Pointer:
+		return typeWords(t.Elem())
+	case t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.String:
+		return `a list of strings, such as ["go test ./..."]`
+	case t.Kind() == reflect.Slice:
+		return "a list of objects"
+	}
+
+	return cmpOr(scalarWords[t.Kind()], "the type the reference gives it")
 }
 
 // refusals say why kiln refuses c, but for its acceptance, which kiln queue alone refuses.

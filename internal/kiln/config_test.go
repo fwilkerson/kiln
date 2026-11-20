@@ -33,6 +33,42 @@ func TestAcceptanceForms(t *testing.T) {
 	}
 }
 
+// TestConfigWords holds how kiln words a kiln.json it cannot read, as its own refusal with one fix. It names a key it
+// does not read, with the nearest it does, or where that key went. It names a syntax error's line and column, and the
+// type a key takes.
+func TestConfigWords(t *testing.T) {
+	for name, tc := range map[string]struct{ config, said string }{
+		"a key kiln once read": {config: `{"gate": ["true"], "monitors": []}`,
+			said: `.kiln/kiln.json holds "monitors", a key kiln no longer reads: each monitor is a directory of its own ` +
+				`now, .kiln/monitors/<name>/: move each there, or add one with kiln monitor add`},
+		"a key misspelled": {config: `{"gate": ["true"], "rouns": 3}`,
+			said: `.kiln/kiln.json holds "rouns", a key kiln does not read: name it "rounds"`},
+		"a key in other letters": {config: `{"Gate": ["true"]}`,
+			said: `.kiln/kiln.json holds "Gate", a key kiln does not read: name it "gate"`},
+		"a gauge's key misspelled": {config: `{"gate": ["true"], "gauges": [{"name": "g", "comand": "x", "max": 1}]}`,
+			said: `.kiln/kiln.json holds "comand" in gauges/0, a key kiln does not read: name it "command"`},
+		"a key near none": {config: `{"gate": ["true"], "colour": "red"}`,
+			said: `.kiln/kiln.json holds "colour", a key kiln does not read: remove it, or name one kiln reads: ` +
+				`$schema, gate, rounds, hosts, writable, mcp, gauges, workflow, acceptance, harness, reaudit, ` +
+				`notify, timeout`},
+		"a trailing comma": {config: "{\n  \"gate\": [\"true\"],\n}",
+			said: ".kiln/kiln.json is no JSON at line 2, column 19: a comma with nothing after it: fix its JSON there"},
+		"a number as a string": {config: `{"gate": ["true"], "rounds": "3"}`,
+			said: ".kiln/kiln.json's rounds is a string: make it a whole number, such as 3"},
+		"a string where a list goes": {config: `{"gate": "go test ./..."}`,
+			said: `.kiln/kiln.json's gate is a string: make it a list of strings, such as ["go test ./..."]`},
+		"a timeout of zero": {config: `{"gate": ["true"], "timeout": "0s"}`,
+			said: `.kiln/kiln.json names the timeout "0s", which is no Go duration above zero: name one such as "2h", ` +
+				`or none for 1h`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseConfig([]byte(tc.config)); fmt.Sprint(err) != tc.said {
+				t.Errorf("parseConfig answers:\n%v\nwant:\n%s", err, tc.said)
+			}
+		})
+	}
+}
+
 // TestHosts holds that kiln.json names each host bare, as the sandbox reads one. A refusal names the host.
 func TestHosts(t *testing.T) {
 	for host, refused := range map[string]bool{

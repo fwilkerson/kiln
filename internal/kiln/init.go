@@ -78,7 +78,8 @@ type InitOptions struct {
 //
 // Before it writes anything, Init refuses a preset it does not know or cannot use. A preset's kiln.json must hold
 // rounds. Init refuses a reviewer Claude Code could not run before it writes anything too. Such a reviewer's
-// frontmatter has no description, or a name other than its file's, without .md.
+// frontmatter has no description, or a name other than its file's, without .md. It refuses the checkout's kiln.json
+// then, where kiln could not use it.
 func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	last, err := r.lastInit()
 	if err != nil {
@@ -91,7 +92,7 @@ func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	}
 
 	// A refusal after the first write would leave .kiln/ written, and a re-run would not say to commit it.
-	if _, err := r.reviewers(); err != nil {
+	if err := r.initRefusal(); err != nil {
 		return err
 	}
 
@@ -122,6 +123,25 @@ func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	}
 
 	return r.installHook(ctx, out)
+}
+
+// initRefusal refuses what Init would refuse after its first write. That is a reviewer Claude Code could not run, or a
+// checkout's kiln.json that kiln could not use. A checkout with no kiln.json passes, since Init writes one.
+func (r *Repo) initRefusal() error {
+	if _, err := r.reviewers(); err != nil {
+		return err
+	}
+
+	raw, err := os.ReadFile(filepath.Join(r.top, configFile))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return err
+	}
+
+	_, err = parseConfig(raw)
+	return err
 }
 
 // initPreset is the preset kiln init writes: the one named, else the one recorded, else the one pickPreset picks. A
