@@ -50,7 +50,7 @@ func (b *build) kept(s sides, role string) string {
 // reached adds to l what kiln.json at main's tip says a session reaches. Those are the hosts its commands reach, the
 // paths beside its worktree they write, and the MCP servers it calls. It adds how long the session may print nothing.
 func (r *Repo) reached(ctx context.Context, l claude.Launch) (claude.Launch, error) {
-	c, err := r.tipConfig(ctx)
+	_, c, err := r.mainConfig(ctx)
 	if err != nil {
 		return l, err
 	}

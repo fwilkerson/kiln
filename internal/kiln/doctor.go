@@ -303,20 +303,17 @@ func (r *Repo) diagnoseSpec(ctx context.Context, c config, name Spec, monitors [
 // diagnoseMain adds to d what main lacks that kiln reads there. When readable, it notes each key of tree, the working
 // tree's kiln.json, that differs from main's.
 func (r *Repo) diagnoseMain(ctx context.Context, tree []byte, readable bool, d *diagnosis) error {
-	main, err := r.mainTip(ctx)
-	if errors.Is(err, errNoMain) {
+	main, held, err := r.git.ShowTip(ctx, mainBranch, configFile)
+	switch {
+	case err != nil:
+		return err
+	case main == "":
 		d.found = append(d.found, noMainRefusal)
 		return nil
 	}
 
-	if err != nil {
-		return err
-	}
-
-	raw, found, err := r.git.Show(ctx, main, configFile)
+	raw, found := held[configFile]
 	switch {
-	case err != nil:
-		return err
 	case !found:
 		d.found = append(d.found, refusal{"main holds no " + configFile + ", which kiln reads there",
 			"commit it to main"})

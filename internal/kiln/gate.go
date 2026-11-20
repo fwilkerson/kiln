@@ -153,6 +153,8 @@ type verdict struct {
 	rounds int
 	// ranMain is whether the gate ran the commands at main, rather than reading the checks kept from an earlier gate.
 	ranMain bool
+	// head is the commit the gate ran on, at its first guard's place.
+	head git.Rev
 }
 
 // judge passes a gate when each check at the tip exited 0, or failed on tests failing at main. A check that is broken
@@ -280,27 +282,24 @@ func (c check) namesNothing() bool {
 // Their removal is no write of the work's.
 func (held commands) gate(ctx context.Context, without []string, guards ...guard) (verdict, error) {
 	r := held.r
-	main, err := r.mainTip(ctx)
+	main, c, err := r.mainConfig(ctx)
 	if err != nil {
 		return verdict{}, err
 	}
 
-	c, err := r.config(ctx, main)
-	if err != nil {
-		return verdict{}, err
-	}
-
-	refused := map[string]string{}
-	for _, g := range guards {
-		found, err := r.refused(ctx, g, main, without)
+	refused, heads := map[string]string{}, make([]git.Rev, len(guards))
+	for i, g := range guards {
+		found, head, err := r.refused(ctx, g, main, without)
 		if err != nil {
 			return verdict{}, err
 		}
 
 		maps.Copy(refused, found)
+		heads[i] = head
 	}
 
-	tip, err := r.atCommit(ctx, guards[0], c)
+	// No session runs while the gate does, so the first guard's checkout still holds the commit refused read.
+	tip, err := r.atCommit(ctx, guards[0].spec, heads[0], c)
 	if err != nil {
 		return verdict{}, err
 	}
@@ -311,19 +310,15 @@ func (held commands) gate(ctx context.Context, without []string, guards ...guard
 	}
 
 	v := judge(tip, atMain, refused)
-	v.rounds, v.ranMain = c.Rounds, ran
+	v.rounds, v.ranMain, v.head = c.Rounds, ran, heads[0]
 	return v, nil
 }
 
-// atCommit runs c's gate on the commit checked out at g's place, in the gate's own worktree. The gate then judges
-// what lands. It never sees a file the session left that the commit lacks. The session's worktree stays as it was.
-func (r *Repo) atCommit(ctx context.Context, g guard, c config) ([]check, error) {
-	head, err := r.git.Head(ctx, g.place)
-	if err != nil {
-		return nil, err
-	}
-
-	tree := r.gateTree(g.spec)
+// atCommit runs c's gate on head, the commit checked out at spec's checkout, in the gate's own worktree. The gate
+// then judges what lands. It never sees a file the session left that the commit lacks. The session's worktree stays
+// as it was.
+func (r *Repo) atCommit(ctx context.Context, spec Spec, head git.Rev, c config) ([]check, error) {
+	tree := r.gateTree(spec)
 	if err := r.git.Detached(ctx, tree, head); err != nil {
 		return nil, err
 	}
@@ -332,21 +327,21 @@ func (r *Repo) atCommit(ctx context.Context, g guard, c config) ([]check, error)
 }
 
 // refused says, by path, why the build may not change each path its work changed since it left main. A path under
-// one of without that the work lacks is kiln's removal, not the work's.
-func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []string) (map[string]string, error) {
-	head, err := r.git.Head(ctx, g.place)
-	if err != nil {
-		return nil, err
+// one of without that the work lacks is kiln's removal, not the work's. It answers head, the commit it read at g's
+// place.
+func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []string) (map[string]string, git.Rev,
+	error) {
+	head := g.head
+	if head == "" {
+		var err error
+		if head, err = r.git.Head(ctx, g.place); err != nil {
+			return nil, "", err
+		}
 	}
 
-	base, err := r.git.MergeBase(ctx, main, head)
+	changed, err := r.git.Branched(ctx, main, head)
 	if err != nil {
-		return nil, err
-	}
-
-	changed, err := r.git.Changed(ctx, base, head)
-	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	refused := map[string]string{}
@@ -358,7 +353,7 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []str
 
 		removed, err := r.removed(ctx, head, p, without)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
 		if !removed {
@@ -366,7 +361,7 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []str
 		}
 	}
 
-	return refused, nil
+	return refused, head, nil
 }
 
 // removed is whether p is under one of without, and head lacks it. That is kiln's removal, not the work's.

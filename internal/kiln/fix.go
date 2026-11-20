@@ -122,10 +122,6 @@ func (r *Repo) startFix(ctx context.Context, out io.Writer, f *fixing, line entr
 // fixWork runs the fix: the command first, then the agent when the command left the gate failing.
 func (b *build) fixWork(ctx context.Context) error {
 	name := b.rec.Name
-	if err := b.r.git.Remove(ctx, b.tree, name.branch()); err != nil {
-		return err
-	}
-
 	if err := b.r.git.Checkout(ctx, b.tree, name.branch(), b.rec.Approved); err != nil {
 		return err
 	}
@@ -153,7 +149,7 @@ func (b *build) fixWork(ctx context.Context) error {
 // commandGate runs the monitor's command in the fix's worktree, outside the sandbox, then commits and gates its work.
 // A command that ran past kiln.json's timeout stops the fix. Its half-done work is no work to gate.
 func (b *build) commandGate(ctx context.Context) (verdict, error) {
-	c, err := b.r.tipConfig(ctx)
+	_, c, err := b.r.mainConfig(ctx)
 	if err != nil {
 		return verdict{}, err
 	}
@@ -172,11 +168,12 @@ func (b *build) commandGate(ctx context.Context) (verdict, error) {
 		b.say("the command failed, %v; the gate judges its work:\n%s", err, indent(lastLines(out.both, 10)))
 	}
 
-	if _, err := b.r.git.Commit(ctx, b.tree, b.message("the command's work")); err != nil {
+	head, err := b.r.git.Commit(ctx, b.tree, b.message("the command's work"))
+	if err != nil {
 		return verdict{}, err
 	}
 
-	return b.gate(ctx)
+	return b.gate(ctx, head)
 }
 
 // lastLines is the last n lines of text.
@@ -335,7 +332,7 @@ func (b *build) fixGate(ctx context.Context) (string, reason, error) {
 		}
 	}
 
-	v, err := b.gate(ctx)
+	v, err := b.gate(ctx, "")
 	switch {
 	case err != nil:
 		return "", reason{}, err
@@ -489,29 +486,17 @@ func (b *build) sinceAccept(ctx context.Context, head git.Rev) error {
 
 // fixChanged answers the fix's commit, and whether it changes anything since it left main.
 func (b *build) fixChanged(ctx context.Context) (head git.Rev, changed bool, err error) {
-	head, base, err := b.fixBase(ctx)
-	if err != nil {
-		return "", false, err
-	}
-
-	paths, err := b.r.git.Changed(ctx, base, head)
-	return head, len(paths) > 0, err
-}
-
-// fixBase answers the fix's commit, and base, where it left main: its merge base with main's tip. Once the fix is
-// rebased onto main, base is main's tip.
-func (b *build) fixBase(ctx context.Context) (head, base git.Rev, err error) {
 	if head, err = b.r.git.Head(ctx, b.tree); err != nil {
-		return "", "", err
+		return "", false, err
 	}
 
 	main, err := b.r.mainTip(ctx)
 	if err != nil {
-		return "", "", err
+		return "", false, err
 	}
 
-	base, err = b.r.git.MergeBase(ctx, main, head)
-	return head, base, err
+	paths, err := b.r.git.Branched(ctx, main, head)
+	return head, len(paths) > 0, err
 }
 
 // landFix lands a fix the developer accepted. It is rebased onto main, and gated again, check included. Then main
@@ -739,7 +724,7 @@ const (
 
 // gatedCheck adds a fix's gated check, or its gauge, to the gate's verdict v. The gate fails while the check asks for a
 // fix, whatever it exits with. A check that couldn't run is a checkFailed. Each runs as kiln.json at main's tip says.
-// The check runs in checkTree, as readFix reads the gauge.
+// Each runs in checkTree, at the commit the gate ran on.
 func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdict, error) {
 	switch {
 	case b.fix == nil || !b.fix.monitor.gated():
@@ -748,12 +733,12 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 		return b.gatedGauge(ctx, held, v)
 	}
 
-	c, err := b.r.tipConfig(ctx)
+	_, c, err := b.r.mainConfig(ctx)
 	if err != nil {
 		return v, err
 	}
 
-	tree, err := b.checkTree(ctx, held)
+	tree, err := held.scratchTree(ctx, checkTree, v.head)
 	if err != nil {
 		return v, err
 	}
@@ -780,28 +765,12 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 	return v, nil
 }
 
-// checkTree is the monitor's check's worktree, checked out at the fix's commit. A file a command leaves there never
-// lands, as it would in the fix's own worktree.
-func (b *build) checkTree(ctx context.Context, held commands) (git.Worktree, error) {
-	head, err := b.r.git.Head(ctx, b.tree)
-	if err != nil {
-		return "", err
-	}
-
-	return held.scratchTree(ctx, checkTree, head)
-}
-
 // gatedGauge adds the reading of a fix's gauge, over what the fix changed, to the gate's verdict v. The gate fails
 // while the reading crosses the gauge's line, or its command fails. A reading of no number never crossed. The gauge's
 // line is its monitor's at main's tip, where the monitor may hold the gauge no longer. Its command runs as kiln.json
 // there says. A command that ran past kiln.json's timeout stops the fix, as the gate's own commands do.
 func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdict, error) {
-	main, err := b.r.mainTip(ctx)
-	if err != nil {
-		return v, err
-	}
-
-	c, reads, err := b.r.monitors(ctx, main)
+	main, c, reads, err := b.r.mainMonitors(ctx)
 	if err != nil {
 		return v, err
 	}
@@ -814,8 +783,19 @@ func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdi
 		return v, nil
 	}
 
+	// The gauge reads the fix's change in the check's worktree, so a file the gauge leaves never lands.
+	base, err := b.r.git.MergeBase(ctx, main, v.head)
+	if err != nil {
+		return v, err
+	}
+
+	tree, err := held.scratchTree(ctx, checkTree, v.head)
+	if err != nil {
+		return v, err
+	}
+
 	g := m.gauge()
-	rd, err := b.readFix(ctx, held, g, c.shell(b.r.env))
+	rd, err := c.shell(b.r.env).readGauge(ctx, tree, g.Command, base)
 	switch {
 	case err != nil:
 		return v, err
@@ -838,21 +818,4 @@ func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdi
 	v.report = strings.TrimSpace(v.report + "\n\n" + report)
 	v.failing = append(v.failing, "`"+g.Command+"`")
 	return v, nil
-}
-
-// readFix reads g over what the fix changed, at its commit, as s runs its command. It reads in the monitor's check's
-// worktree, never the fix's, so a file the gauge leaves never lands. It answers an error only once kiln is
-// interrupted, or git fails.
-func (b *build) readFix(ctx context.Context, held commands, g gauge, s projectShell) (gaugeRead, error) {
-	head, base, err := b.fixBase(ctx)
-	if err != nil {
-		return gaugeRead{}, err
-	}
-
-	tree, err := held.scratchTree(ctx, checkTree, head)
-	if err != nil {
-		return gaugeRead{}, err
-	}
-
-	return s.readGauge(ctx, tree, g.Command, base)
 }

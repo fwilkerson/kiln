@@ -168,6 +168,15 @@ func (r *Repo) filesAt(at git.Rev) files {
 	}}
 }
 
+// heldFiles reads the files the commit at holds from held, what one git read there, by path. A path held lacks reads
+// as no file there, so held must hold each path a reader asks for.
+func heldFiles(at git.Rev, held map[string][]byte) files {
+	return files{at: short(at), read: func(_ context.Context, path string) ([]byte, bool, error) {
+		raw, found := held[path]
+		return raw, found, nil
+	}}
+}
+
 // workingTree reads the files the working tree of r's checkout holds, edits and all. That is the checkout kiln was
 // opened in, which may be a linked worktree.
 func (r *Repo) workingTree() files {

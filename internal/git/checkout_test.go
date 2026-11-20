@@ -41,6 +41,42 @@ func TestCheckout(t *testing.T) {
 	checkLinks(t, repo, tree)
 }
 
+// TestCheckoutAgain holds that Checkout takes a path whose worktree was deleted by hand. git lists that worktree, with
+// its branch checked out, until a prune.
+func TestCheckoutAgain(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, left string }{
+		{"with its branch", "true"},
+		{"without its branch", "git update-ref -d refs/heads/kiln/x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := t.TempDir()
+			sh(t, repo, "git init --quiet -b main && git -c user.name=t -c user.email=t@t commit --quiet "+
+				"--allow-empty -m first")
+			g, err := git.New(repo, os.Environ())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			tree := filepath.Join(t.TempDir(), "tree")
+			if err := g.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main"); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := os.RemoveAll(tree); err != nil {
+				t.Fatal(err)
+			}
+
+			sh(t, repo, tc.left)
+			err = g.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main")
+			if got := sh(t, tree, "git branch --show-current"); err != nil || got != "kiln/x" {
+				t.Errorf("Checkout answered %v, and left %q checked out; want kiln/x", err, got)
+			}
+		})
+	}
+}
+
 // checkLinks checks that tree holds .claude/agents as a plain file. Its commit and repo's checkout hold a link.
 func checkLinks(t *testing.T, repo, tree string) {
 	t.Helper()
@@ -61,7 +97,8 @@ func checkLinks(t *testing.T, repo, tree string) {
 }
 
 // TestCheckoutSharedCore holds that kiln's first worktree leaves the developer's checkout usable. With
-// extensions.worktreeConfig, git reads a shared core.bare or core.worktree in each linked worktree.
+// extensions.worktreeConfig, git reads a shared core.bare or core.worktree in each linked worktree. A config that
+// turns that extension off, or that sets core.bare twice, still gives kiln a worktree of its own.
 func TestCheckoutSharedCore(t *testing.T) {
 	t.Parallel()
 	commit := "git config user.name t && git config user.email t@t && echo a >a && git add a && git commit -qm first"
@@ -72,6 +109,10 @@ func TestCheckoutSharedCore(t *testing.T) {
 			"git clone -q --bare src repo.git && git -C repo.git worktree add -q ../work main"},
 		{"worktree", "git --git-dir=gd --work-tree=work init -q -b main && mkdir work && cd work && " +
 			"echo 'gitdir: ../gd' >.git && " + commit},
+		{"extension off", "mkdir work && cd work && git init -q -b main && " + commit + " && " +
+			"git config extensions.worktreeConfig false"},
+		{"core.bare twice, false last", "mkdir work && cd work && git init -q -b main && " + commit + " && " +
+			"git config core.bare true && git config --add core.bare false"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -101,7 +142,7 @@ func TestCheckoutSharedCore(t *testing.T) {
 }
 
 // TestDetached holds that the gate's worktree holds only the commit. A nested repository lands as a pointer, without
-// its files. A file git ignores, left by an earlier use, is gone.
+// its files. A file git ignores, left by an earlier use, is gone. A worktree deleted by hand is made again.
 func TestDetached(t *testing.T) {
 	t.Parallel()
 	repo := t.TempDir()
@@ -125,6 +166,14 @@ func TestDetached(t *testing.T) {
 		}
 
 		sh(t, tree, "echo 42 >x.golden")
+	}
+
+	if err := os.RemoveAll(tree); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := g.Detached(t.Context(), git.Worktree(tree), "main"); err != nil {
+		t.Errorf("kiln could not make again a worktree deleted by hand: %v", err)
 	}
 }
 

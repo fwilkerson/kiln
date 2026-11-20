@@ -49,12 +49,7 @@ func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {
 // monitorRun is one kiln monitor run, as main's tip says. It answers what it runs: each monitor, or the one named
 // name. It refuses a name main's tip holds no monitor of, and one kiln refuses, with why.
 func (r *Repo) monitorRun(ctx context.Context, name Spec, out io.Writer) (*monitorRunning, []monitorRead, error) {
-	main, err := r.mainTip(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	c, reads, err := r.monitors(ctx, main)
+	_, c, reads, err := r.mainMonitors(ctx)
 	if err != nil {
 		return nil, nil, err
 	}

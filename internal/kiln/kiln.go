@@ -555,6 +555,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -619,7 +620,7 @@ type Repo struct {
 // Open opens the repository that holds dir. env is the environment of every process kiln starts, less what each
 // withholds. It refuses a dir that no git repository holds.
 func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
-	top, err := plainGit(ctx, dir, proc.Git.Env(env), "rev-parse", "--show-toplevel")
+	top, common, err := found(ctx, dir, proc.Git.Env(env))
 	if _, ran := errors.AsType[*exec.ExitError](err); ran {
 		// git found no repository there, and its own words name its search, not the fix.
 		return nil, fmt.Errorf("%w: %s is in no git repository: run git init there, or run kiln in a repository",
@@ -639,9 +640,10 @@ func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
 		return nil, err
 	}
 
-	common, err := g.CommonDir(ctx)
-	if err != nil {
-		return nil, err
+	if common == "" {
+		if common, err = g.CommonDir(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	exe, err := os.Executable()
@@ -670,6 +672,19 @@ func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
 
 // claudeProgram is the claude that runs each session, found on the PATH of the environment Open was given.
 const claudeProgram = "claude"
+
+// found answers the top of the repository that holds dir, and its common git directory, from one git. Where that git
+// fails, found asks for the top alone, and answers its error and no common directory. A git before 2.31 refuses
+// --path-format, and Check then names the git too old.
+func found(ctx context.Context, dir string, env []string) (top, common string, err error) {
+	out, err := plainGit(ctx, dir, env, "rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir")
+	if top, common, both := strings.Cut(out, "\n"); err == nil && both {
+		return top, common, nil
+	}
+
+	top, err = plainGit(ctx, dir, env, "rev-parse", "--show-toplevel")
+	return top, "", err
+}
 
 // cacheDir is kiln's directory under the user's cache directory.
 func cacheDir() (string, error) {
@@ -817,12 +832,15 @@ func (s Spec) misnamed() refusals {
 // the state the spec is in, as the package doc shows. A stopped build, or one waiting for UAT, is dropped for the new
 // one.
 func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
-	main, err := r.mainTip(ctx)
-	if err != nil {
+	main, files, err := r.git.ShowTip(ctx, mainBranch, append(readyPaths(), name.file())...)
+	switch {
+	case err != nil:
 		return err
+	case main == "":
+		return errNoMain
 	}
 
-	spec, err := r.queueable(ctx, main, name)
+	spec, err := r.queueable(ctx, main, files, name)
 	if err != nil {
 		return err
 	}
@@ -851,20 +869,15 @@ func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
 	return nil
 }
 
-// queueable reads .kiln/specs/<name>.md at main, a spec kiln queue may take. Its Status is Approved, and its form
-// follows the template. Main must hold a kiln.json, a build agent, a verify agent and an audit agent that kiln can
-// use.
-func (r *Repo) queueable(ctx context.Context, main git.Rev, name Spec) ([]byte, error) {
-	if err := r.ready(ctx, main); err != nil {
-		return nil, err
-	}
-
-	spec, err := r.approvedSpec(ctx, main, name)
+// queueable answers .kiln/specs/<name>.md among held, what main holds at main by path: a spec kiln queue may take.
+// Its Status is Approved, and its form follows the template. Main must be ready, as ready says.
+func (r *Repo) queueable(ctx context.Context, main git.Rev, held map[string][]byte, name Spec) ([]byte, error) {
+	c, err := ready(ctx, main, held)
 	if err != nil {
 		return nil, err
 	}
 
-	c, err := r.config(ctx, main)
+	spec, err := approvedSpec(held, name)
 	if err != nil {
 		return nil, err
 	}
@@ -893,23 +906,30 @@ func (c config) specRefusals(name Spec, spec []byte, monitors []string) refusals
 	return append(refused, formOf(string(spec)).about(name.file()+" leaves /shape's template:")...)
 }
 
-// ready refuses while main, at main, holds no kiln.json, build agent, verify agent or audit agent that kiln can use.
-func (r *Repo) ready(ctx context.Context, main git.Rev) error {
-	c, err := r.config(ctx, main)
+// readyPaths are the paths ready reads: kiln.json and the build, verify and audit agents.
+func readyPaths() []string {
+	return []string{configFile, agentFile(buildRole), agentFile(verifyRole), agentFile(auditRole)}
+}
+
+// ready answers kiln.json among held, what main holds at main by path. It refuses while main holds no kiln.json,
+// build agent, verify agent or audit agent that kiln can use. held must hold each of readyPaths that main holds.
+func ready(ctx context.Context, main git.Rev, held map[string][]byte) (config, error) {
+	raw, found := held[configFile]
+	c, err := readConfig(raw, found)
 	if err != nil {
-		return fmt.Errorf("%w: %w", errRefused, err)
+		return config{}, fmt.Errorf("%w: %w", errRefused, err)
 	}
 
-	refused, err := c.readiness(ctx, r.filesAt(main))
+	refused, err := c.readiness(ctx, heldFiles(main, held))
 	if err != nil {
-		return err
+		return config{}, err
 	}
 
 	if len(refused) > 0 {
-		return fmt.Errorf("%w: %w", errRefused, refused)
+		return config{}, fmt.Errorf("%w: %w", errRefused, refused)
 	}
 
-	return nil
+	return c, nil
 }
 
 // readiness says why kiln queue refuses c, with the build, verify and audit agents that f holds. c must name where
@@ -979,16 +999,14 @@ func inPath(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("._-/", r)
 }
 
-// approvedSpec reads .kiln/specs/<name>.md at main, a spec whose Status is Approved.
-func (r *Repo) approvedSpec(ctx context.Context, main git.Rev, name Spec) ([]byte, error) {
+// approvedSpec answers .kiln/specs/<name>.md among files, what main holds by path: a spec whose Status is Approved.
+func approvedSpec(files map[string][]byte, name Spec) ([]byte, error) {
 	if refused := name.misnamed(); refused != nil {
 		return nil, fmt.Errorf("%w: %w", errRefused, refused)
 	}
 
-	spec, found, err := r.git.Show(ctx, main, name.file())
+	spec, found := files[name.file()]
 	switch {
-	case err != nil:
-		return nil, err
 	case !found:
 		return nil, fmt.Errorf("%w: main holds no %s: commit it there first", errRefused, name.file())
 	case !approved.Match(spec):
@@ -1128,12 +1146,7 @@ func (r *Repo) taking(command string) ([]string, error) {
 
 // monitorNames answers the monitors main's tip holds, refused or not, since kiln monitor run says why it refuses one.
 func (r *Repo) monitorNames(ctx context.Context) ([]string, error) {
-	main, err := r.mainTip(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	_, reads, err := r.monitors(ctx, main)
+	_, _, reads, err := r.mainMonitors(ctx)
 	names := make([]string, len(reads))
 	for i, d := range reads {
 		names[i] = string(d.name)
@@ -1149,9 +1162,17 @@ func (r *Repo) queueNames(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	main, err := r.mainTip(ctx)
-	if err != nil {
+	main, held, err := r.git.ShowTip(ctx, mainBranch, readyPaths()...)
+	switch {
+	case err != nil:
 		return nil, err
+	case main == "":
+		return nil, errNoMain
+	}
+
+	// Main that is not ready refuses every spec, so no spec need be read.
+	if _, err := ready(ctx, main, held); err != nil {
+		return nil, nil
 	}
 
 	files, err := r.git.Files(ctx, main, specsDir)
@@ -1162,9 +1183,17 @@ func (r *Repo) queueNames(ctx context.Context) ([]string, error) {
 	var names []string
 	for _, f := range files {
 		name, ok := strings.CutSuffix(f, ".md")
-		err := r.mayQueue(ctx, b, main, Spec(name))
+		if !ok {
+			continue
+		}
+
+		spec, err := r.queueableAt(ctx, main, held, Spec(name))
+		if err == nil {
+			err = b.may(queueCommand, Spec(name), r.changed(ctx, Spec(name), spec))
+		}
+
 		switch {
-		case !ok, errors.Is(err, errRefused):
+		case errors.Is(err, errRefused):
 			continue
 		case err != nil:
 			return nil, err
@@ -1176,23 +1205,31 @@ func (r *Repo) queueNames(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
-// mayQueue answers nil when kiln queue would take name, with main's tip at main, or why it refuses.
-func (r *Repo) mayQueue(ctx context.Context, b book, main git.Rev, name Spec) error {
-	spec, err := r.queueable(ctx, main, name)
+// queueableAt reads name's spec at main, main's tip, and answers it as queueable does. held is what ready read there.
+func (r *Repo) queueableAt(ctx context.Context, main git.Rev, held map[string][]byte, name Spec) ([]byte, error) {
+	spec, found, err := r.git.Show(ctx, main, name.file())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return b.may(queueCommand, name, r.changed(ctx, name, spec))
+	files := maps.Clone(held)
+	if found {
+		files[name.file()] = spec
+	}
+
+	return r.queueable(ctx, main, files, name)
 }
 
 // Status shows each spec kiln holds, and where it stands, but no monitor's fix. Then it shows each gauge at main's tip,
 // with its latest reading. It shows each monitor main's tip holds, and where it stands, unless kiln refuses kiln.json
 // there. Last, it says when .kiln/ at main's tip lacks kiln init's record, or is behind what kiln init writes.
 func (r *Repo) Status(ctx context.Context, out io.Writer) error {
-	main, err := r.mainTip(ctx)
-	if err != nil {
+	main, held, err := r.git.ShowTip(ctx, mainBranch, initFile, configFile)
+	switch {
+	case err != nil:
 		return err
+	case main == "":
+		return errNoMain
 	}
 
 	b, err := r.store.read()
@@ -1217,7 +1254,7 @@ func (r *Repo) Status(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	return r.initStatus(ctx, main, out)
+	return r.initStatus(ctx, main, held, out)
 }
 
 // status shows where the spec of r stands, as kiln status does.
@@ -1302,7 +1339,7 @@ func (r *Repo) acceptLanded(ctx context.Context, b *build) error {
 		return err
 	}
 
-	retire := func(ctx context.Context, held git.Rev) error {
+	retire := func(ctx context.Context, held git.Rev) (git.Rev, error) {
 		// The gate runs next, and its commands may take minutes, so the developer learns why kiln is quiet.
 		b.say("gates the commit that retires the spec, on main as it stands")
 		return b.retire(ctx, held)

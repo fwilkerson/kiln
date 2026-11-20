@@ -203,17 +203,18 @@ func (r *Repo) sayGate(out io.Writer, wrote bool) error {
 	return nil
 }
 
-// initStatus says, in kiln status, when .kiln/ at main's tip is behind the defaults kiln init writes now. Where main
-// holds kiln.json but no record of kiln init, it says so.
-func (r *Repo) initStatus(ctx context.Context, main git.Rev, out io.Writer) error {
-	last, err := r.mainRecord(ctx, main)
-	if err == nil && len(last.Files) == 0 {
-		_, set, err := r.git.Show(ctx, main, configFile)
-		if err != nil {
-			return err
-		}
+// initStatus says, in kiln status, when .kiln/ at main's tip is behind the defaults kiln init writes now. held holds
+// kiln init's record and kiln.json at main, as one git read them there. Where main holds kiln.json but no record of
+// kiln init, it says so.
+func (r *Repo) initStatus(ctx context.Context, main git.Rev, held map[string][]byte, out io.Writer) error {
+	var last initRecord
+	var err error
+	if raw, found := held[initFile]; found {
+		last, err = parseInit(raw)
+	}
 
-		if set {
+	if err == nil && len(last.Files) == 0 {
+		if _, set := held[configFile]; set {
 			fmt.Fprintf(out, "%s/ holds no record of what kiln init wrote: run kiln init, which leaves each "+
 				"difference from its defaults as a conflict\n", kilnDir)
 		}
@@ -238,16 +239,6 @@ func (r *Repo) initStatus(ctx context.Context, main git.Rev, out io.Writer) erro
 	}
 
 	return nil
-}
-
-// mainRecord is kiln init's record at main, or an empty record where main holds none.
-func (r *Repo) mainRecord(ctx context.Context, main git.Rev) (initRecord, error) {
-	raw, found, err := r.git.Show(ctx, main, initFile)
-	if err != nil || !found {
-		return initRecord{}, err
-	}
-
-	return parseInit(raw)
 }
 
 // behind names what in last, a record of kiln init, differs from what kiln init would write now. It reads the defaults

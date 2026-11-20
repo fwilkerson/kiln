@@ -423,22 +423,32 @@ func (c config) gaugeNamed(name string) (gauge, bool) {
 	return c.Gauges[i], true
 }
 
-// tipConfig is kiln.json at main's tip.
-func (r *Repo) tipConfig(ctx context.Context) (config, error) {
-	main, err := r.mainTip(ctx)
-	if err != nil {
-		return config{}, err
-	}
-
-	return r.config(ctx, main)
-}
-
 func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {
 	raw, found, err := r.git.Show(ctx, at, configFile)
 	if err != nil {
 		return config{}, err
 	}
 
+	return readConfig(raw, found)
+}
+
+// mainConfig answers main's tip, as mainTip does, and kiln.json there, as config reads it. One git reads both.
+func (r *Repo) mainConfig(ctx context.Context) (git.Rev, config, error) {
+	main, files, err := r.git.ShowTip(ctx, mainBranch, configFile)
+	switch {
+	case err != nil:
+		return "", config{}, err
+	case main == "":
+		return "", config{}, errNoMain
+	}
+
+	raw, found := files[configFile]
+	c, err := readConfig(raw, found)
+	return main, c, err
+}
+
+// readConfig parses raw, kiln.json as a commit holds it. It refuses a commit that holds none, where found is false.
+func readConfig(raw []byte, found bool) (config, error) {
 	if !found {
 		return config{}, fmt.Errorf("main holds no %s: %s", configFile, initHint)
 	}

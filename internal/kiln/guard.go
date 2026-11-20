@@ -21,6 +21,8 @@ import (
 type guard struct {
 	spec  Spec
 	place git.Worktree
+	// head is the commit kiln made at place, or "" for the gate to read there.
+	head git.Rev
 	// allowed are paths the build may change, though guarded names them. A landing of accepted amendments changes
 	// its spec. The hook's command line leaves them out.
 	allowed []string

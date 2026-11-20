@@ -58,7 +58,7 @@ func (b *build) audit(ctx context.Context) (string, error) {
 
 	// recount reads the worktree of an audit kiln stopped, so it stays until then.
 	if ctx.Err() == nil {
-		err = errors.Join(err, b.r.git.Remove(ctx, git.Worktree(l.Dir), ""))
+		err = errors.Join(err, b.r.git.Remove(ctx, []git.Worktree{git.Worktree(l.Dir)}))
 	}
 
 	return findings, err
@@ -86,6 +86,7 @@ func (b *build) auditTry(ctx context.Context, l claude.Launch, head git.Rev, try
 		return "", err
 	}
 
+	b.auditing = head
 	l.Session = newSession()
 	ended, err := b.talk(ctx, l, reason{Why: whyAudit, Try: try})
 	switch {
@@ -142,12 +143,7 @@ func (b *build) ownFiles(ctx context.Context, head git.Rev) ([]string, error) {
 		return nil, err
 	}
 
-	base, err := b.r.git.MergeBase(ctx, main, head)
-	if err != nil {
-		return nil, err
-	}
-
-	return b.r.git.Changed(ctx, base, head)
+	return b.r.git.Branched(ctx, main, head)
 }
 
 // changedDirs are the directories at head that hold paths, sorted, each once: . for the top, or the directory's path.

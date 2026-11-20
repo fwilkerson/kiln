@@ -155,13 +155,12 @@ func fixText(b *tui.Build) string {
 // Monitors answers each monitor main's tip holds, where it stands, and its fixes, oldest first. A monitor with a
 // gauge holds its readings of the whole repository, oldest first. One kiln refuses there stands refused, with why.
 func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
-	main, err := v.r.mainTip(ctx)
-	if err != nil {
+	// A main with no kiln.json kiln can read shows no monitor, and the specs still show.
+	main, _, reads, err := v.r.mainMonitors(ctx)
+	if main == "" {
 		return nil, err
 	}
 
-	// A main with no kiln.json kiln can read shows no monitor, and the specs still show.
-	_, reads, _ := v.r.monitors(ctx, main)
 	entries, err := v.r.store.entries()
 	if err != nil {
 		return nil, err

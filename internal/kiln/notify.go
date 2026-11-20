@@ -61,12 +61,7 @@ func (r *Repo) notify(ctx context.Context, n notice, out io.Writer) {
 
 // notifyCommand is the command kiln.json's notify names at main's tip, or "".
 func (r *Repo) notifyCommand(ctx context.Context) (string, error) {
-	main, err := r.mainTip(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	c, err := r.config(ctx, main)
+	_, c, err := r.mainConfig(ctx)
 	return c.Notify, err
 }
 

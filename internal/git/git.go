@@ -11,7 +11,7 @@
 //	// way.Tip:   main moved meanwhile, as another landing moves it
 //	// way.Busy:  a rebase, a bisect or another git is busy with main, in that worktree
 //	// way.Files: the developer's files that moving main would overwrite
-//	err = g.Remove(ctx, tree, "kiln/x")
+//	err = g.Remove(ctx, []git.Worktree{tree}, "kiln/x")
 //
 // A conflict and a refused move are answers, not errors. An error names the git command that failed and what it
 // printed. A branch is named by its short name, as refs/heads/ holds it. A relative path is the main checkout's.
@@ -38,10 +38,12 @@
 package git
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -134,6 +136,11 @@ type Git struct {
 	resolve   sync.Once
 	env       []string
 	worktrees sync.Mutex
+	// common.dir is read and written only while holding common.
+	common struct {
+		sync.Mutex
+		dir string
+	}
 }
 
 // New returns the git found on env's PATH, working on the repository whose main checkout is repo. Its only error is a
@@ -249,28 +256,47 @@ type call struct {
 
 // run's own process group keeps the terminal's Ctrl-C from reaching its git. When ctx ends, run kills that group.
 func (g *Git) run(ctx context.Context, c call, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, g.binary(ctx), args...)
-	proc.OwnGroup(cmd)
-	cmd.Dir = c.dir
-	cmd.Env = slices.Concat(g.env, configured, c.env)
+	cmd := g.command(ctx, c, args...)
 	cmd.Stdin = strings.NewReader(c.stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
-			f := &failed{Args: args, Exit: exit.ExitCode(), Stderr: stderr.String()}
-			// git commit and git merge print this when the commit's signing failed.
-			if strings.Contains(f.Stderr, "failed to write commit object") {
-				return stdout.String(), unsigned(f)
-			}
-
-			return stdout.String(), f
+		if _, exited := errors.AsType[*exec.ExitError](err); !exited {
+			return "", ended(args, err, "")
 		}
 
-		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+		return stdout.String(), ended(args, err, stderr.String())
 	}
 
 	return stdout.String(), nil
+}
+
+// command is the git that args start, in its own process group, with kiln's pinned config.
+func (g *Git) command(ctx context.Context, c call, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, g.binary(ctx), args...)
+	proc.OwnGroup(cmd)
+	cmd.Dir = c.dir
+	cmd.Env = slices.Concat(g.env, configured, c.env)
+	return cmd
+}
+
+// ended answers why the git that args started failed with err, after it wrote stderr. It answers nil for a nil err.
+func ended(args []string, err error, stderr string) error {
+	exit, exited := errors.AsType[*exec.ExitError](err)
+	switch {
+	case err == nil:
+		return nil
+	case !exited:
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+
+	f := &failed{Args: args, Exit: exit.ExitCode(), Stderr: stderr}
+	// git commit and git merge print this when the commit's signing failed.
+	if strings.Contains(f.Stderr, "failed to write commit object") {
+		return unsigned(f)
+	}
+
+	return f
 }
 
 func (g *Git) in(ctx context.Context, dir Worktree, args ...string) (string, error) {
@@ -290,13 +316,25 @@ func (g *Git) at(path Worktree) Worktree {
 	return Worktree(filepath.Join(string(g.repo), string(path)))
 }
 
-// CommonDir is the repository's git directory that every worktree shares.
+// CommonDir is the repository's git directory that every worktree shares. It asks git once, then answers from memory,
+// since a repository's git directory stays put while kiln runs.
 func (g *Git) CommonDir(ctx context.Context) (string, error) {
-	return g.line(ctx, g.repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	g.common.Lock()
+	defer g.common.Unlock()
+	if g.common.dir != "" {
+		return g.common.dir, nil
+	}
+
+	dir, err := g.line(ctx, g.repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err == nil {
+		g.common.dir = dir
+	}
+
+	return dir, err
 }
 
-// Checkout puts branch, made from the commit at, in a new worktree at path. If that fails part way, it removes what
-// it made.
+// Checkout puts branch, made from the commit at, in a new worktree at path. It first removes whatever worktree and
+// branch are there, as [Git.Remove] does. If the checkout fails part way, it removes what it made.
 func (g *Git) Checkout(ctx context.Context, path Worktree, branch Branch, at Rev) error {
 	unlock, err := g.lockWorktrees(ctx)
 	if err != nil {
@@ -305,7 +343,8 @@ func (g *Git) Checkout(ctx context.Context, path Worktree, branch Branch, at Rev
 
 	defer unlock()
 	path = g.at(path)
-	if _, err := g.in(ctx, g.repo, "worktree", "prune"); err != nil {
+	// The removal leaves git listing no worktree at path, which a prune would clear.
+	if err := g.remove(ctx, []Worktree{path}, branch); err != nil {
 		return err
 	}
 
@@ -391,10 +430,6 @@ func (g *Git) Detached(ctx context.Context, path Worktree, commit Rev) error {
 	defer unlock()
 	path = g.at(path)
 	if _, err := os.Stat(filepath.Join(string(path), ".git")); err != nil {
-		if _, err := g.in(ctx, g.repo, "worktree", "prune"); err != nil {
-			return err
-		}
-
 		return g.addWorktree(ctx, path, "--detach", string(path), string(commit))
 	}
 
@@ -416,25 +451,26 @@ func (g *Git) addWorktree(ctx context.Context, path Worktree, args ...string) er
 		return err
 	}
 
-	if _, err := g.in(ctx, g.repo, "config", "set", "extensions.worktreeConfig", "true"); err != nil {
-		return err
-	}
-
-	add := append([]string{"worktree", "add", "--quiet", "--no-checkout"}, args...)
+	// The checkout inside git worktree add is a child git, and -c reaches it through the environment.
+	add := append([]string{"-c", "core.symlinks=false", "worktree", "add", "--quiet"}, args...)
 	if _, err := g.in(ctx, g.repo, add...); err != nil {
-		return err
+		// git refuses the path of a worktree deleted by hand until a prune clears it.
+		if _, pruned := g.in(ctx, g.repo, "worktree", "prune"); pruned != nil {
+			return errors.Join(err, pruned)
+		}
+
+		if _, err := g.in(ctx, g.repo, add...); err != nil {
+			return err
+		}
 	}
 
-	if _, err := g.in(ctx, path, "config", "set", "--worktree", "core.symlinks", "false"); err != nil {
-		return err
-	}
-
-	_, err := g.in(ctx, path, "reset", "--quiet", "--hard")
+	_, err := g.in(ctx, path, "config", "set", "--worktree", "core.symlinks", "false")
 	return err
 }
 
 // unshare moves core.bare and core.worktree to the main worktree's config.worktree, as git-worktree(1) says to before
-// extensions.worktreeConfig. Left shared, core.bare = true makes git read every linked worktree as bare.
+// extensions.worktreeConfig. Left shared, core.bare = true makes git read every linked worktree as bare. Then it
+// turns extensions.worktreeConfig on, unless the shared config holds it on, once.
 func (g *Git) unshare(ctx context.Context) error {
 	common, err := g.CommonDir(ctx)
 	if err != nil {
@@ -442,22 +478,19 @@ func (g *Git) unshare(ctx context.Context) error {
 	}
 
 	shared := filepath.Join(common, "config")
+	values, err := g.sharedConfig(ctx, shared)
+	if err != nil {
+		return err
+	}
+
 	for _, key := range []string{"core.bare", "core.worktree"} {
-		value, err := g.line(ctx, g.repo, "config", "get", "--file", shared, key)
-		if unset, ok := errors.AsType[*failed](err); ok && unset.Exit == 1 {
-			continue
-		}
-
-		if err != nil {
-			return err
-		}
-
-		if value == "false" {
+		set := values[key]
+		if len(set) == 0 || set[len(set)-1] == "false" {
 			continue
 		}
 
 		main := filepath.Join(common, "config.worktree")
-		if _, err := g.in(ctx, g.repo, "config", "set", "--file", main, key, value); err != nil {
+		if _, err := g.in(ctx, g.repo, "config", "set", "--file", main, key, set[len(set)-1]); err != nil {
 			return err
 		}
 
@@ -466,7 +499,32 @@ func (g *Git) unshare(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	// One value, true, is what the set would leave. git config set refuses to replace two.
+	if on := values["extensions.worktreeconfig"]; len(on) == 1 && on[0] == "true" {
+		return nil
+	}
+
+	_, err = g.in(ctx, g.repo, "config", "set", "extensions.worktreeConfig", "true")
+	return err
+}
+
+// sharedConfig reads each value of core.bare, core.worktree and extensions.worktreeConfig in the config file shared,
+// in one git. It answers them by lowercase name, in the file's order.
+func (g *Git) sharedConfig(ctx context.Context, shared string) (map[string][]string, error) {
+	names := `^(core\.(bare|worktree)|extensions\.worktreeconfig)$`
+	out, err := g.in(ctx, g.repo, "config", "get", "--file", shared, "--all", "--show-names", "-z", "--regexp", names)
+	if unset, ok := errors.AsType[*failed](err); ok && unset.Exit == 1 {
+		return nil, nil
+	}
+
+	values := map[string][]string{}
+	for entry := range strings.SplitSeq(out, "\x00") {
+		if name, value, _ := strings.Cut(entry, "\n"); entry != "" {
+			values[name] = append(values[name], strings.TrimSpace(value))
+		}
+	}
+
+	return values, err
 }
 
 // Head is the commit checked out at checkout.
@@ -523,15 +581,36 @@ func unmerged(status string) []string {
 	return files
 }
 
-// Status lists each path at checkout that differs from the commit at HEAD, untracked files included.
-func (g *Git) Status(ctx context.Context, checkout Worktree) ([]string, error) {
-	out, err := g.in(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+// Status answers the commit at checkout's HEAD, and lists each path at checkout that differs from it, untracked files
+// included. One git answers both.
+func (g *Git) Status(ctx context.Context, checkout Worktree) (Rev, []string, error) {
+	out, err := g.in(ctx, checkout, "status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all",
+		"--no-renames")
+	var head Rev
 	var found []string
-	for _, p := range paths(out) {
-		found = append(found, p[min(3, len(p)):])
+	for _, entry := range paths(out) {
+		kind, rest, _ := strings.Cut(entry, " ")
+		switch kind {
+		case "#":
+			if oid, ok := strings.CutPrefix(rest, "branch.oid "); ok && oid != "(initial)" {
+				head = Rev(oid)
+			}
+		case "1":
+			found = append(found, pathAfter(entry, 8))
+		case "u":
+			found = append(found, pathAfter(entry, 10))
+		case "?":
+			found = append(found, rest)
+		}
 	}
 
-	return found, err
+	return head, found, err
+}
+
+// pathAfter is the path that ends entry, a line of git status --porcelain=v2, after its first n fields.
+func pathAfter(entry string, n int) string {
+	fields := strings.SplitN(entry, " ", n+1)
+	return fields[len(fields)-1]
 }
 
 // Reset puts the branch at checkout, and its files, back at commit, and removes every untracked file.
@@ -555,21 +634,16 @@ type Conflict struct {
 //
 // A merge that conflicts is answered as a [Conflict], and changes nothing.
 func (g *Git) Rebase(ctx context.Context, checkout Worktree, onto Rev, message string) (Rev, *Conflict, error) {
-	head, err := g.Head(ctx, checkout)
+	r, err := g.rebasing(ctx, checkout, onto)
 	if err != nil {
 		return "", nil, err
 	}
 
-	base, err := g.line(ctx, checkout, "merge-base", string(onto), string(head))
-	if err != nil {
-		return "", nil, err
-	}
-
+	r.message = message
 	if !strings.HasSuffix(message, "\n") {
-		message += "\n"
+		r.message += "\n"
 	}
 
-	r := &rebase{checkout: checkout, base: Rev(base), onto: onto, head: head, message: message}
 	tree, conflict, err := g.mergeTree(ctx, r)
 	if err != nil || conflict != nil {
 		return "", conflict, err
@@ -593,17 +667,31 @@ type rebase struct {
 	base     Rev
 	onto     Rev
 	head     Rev
-	message  string
+	// author names head's author as commit-tree reads it, in GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL and GIT_AUTHOR_DATE.
+	author  []string
+	message string
+}
+
+// rebasing reads the commit at checkout and its author in one git, then where that commit left onto's line.
+func (g *Git) rebasing(ctx context.Context, checkout Worktree, onto Rev) (*rebase, error) {
+	format := "--format=%H%x00%an%x00%ae%x00%ad"
+	about, err := g.in(ctx, checkout, "show", "--no-patch", "--date=raw", format, "HEAD^{commit}")
+	if err != nil {
+		return nil, err
+	}
+
+	fields := strings.Split(strings.TrimSuffix(about, "\n"), "\x00")
+	if len(fields) != 4 {
+		return nil, fmt.Errorf("git show HEAD^{commit} at %s: %q names no commit and author", checkout, about)
+	}
+
+	head := Rev(fields[0])
+	base, err := g.line(ctx, checkout, "merge-base", string(onto), string(head))
+	author := []string{"GIT_AUTHOR_NAME=" + fields[1], "GIT_AUTHOR_EMAIL=" + fields[2], "GIT_AUTHOR_DATE=" + fields[3]}
+	return &rebase{checkout: checkout, base: Rev(base), onto: onto, head: head, author: author}, err
 }
 
 func (g *Git) commitTree(ctx context.Context, r *rebase, tree string) (Rev, error) {
-	by, err := g.in(ctx, r.checkout, "show", "--no-patch", "--date=raw", "--format=%an%x00%ae%x00%ad", r.head.commit())
-	if err != nil {
-		return "", err
-	}
-
-	name, rest, _ := strings.Cut(strings.TrimSuffix(by, "\n"), "\x00")
-	email, date, _ := strings.Cut(rest, "\x00")
 	args := []string{"commit-tree", tree, "-p", string(r.onto), "-F", "-"}
 	// commit-tree ignores commit.gpgSign, which git commit and git merge read.
 	sign, _ := g.line(ctx, r.checkout, "config", "--type=bool", "commit.gpgSign")
@@ -611,11 +699,7 @@ func (g *Git) commitTree(ctx context.Context, r *rebase, tree string) (Rev, erro
 		args = append(args, "-S")
 	}
 
-	made, err := g.run(ctx, call{
-		dir:   string(g.at(r.checkout)),
-		stdin: r.message,
-		env:   []string{"GIT_AUTHOR_NAME=" + name, "GIT_AUTHOR_EMAIL=" + email, "GIT_AUTHOR_DATE=" + date},
-	}, args...)
+	made, err := g.run(ctx, call{dir: string(g.at(r.checkout)), stdin: r.message, env: r.author}, args...)
 	if _, ok := errors.AsType[*failed](err); ok && sign == "true" {
 		err = unsigned(err)
 	}
@@ -665,6 +749,14 @@ func conflicts(fields []string) []string {
 func (g *Git) Changed(ctx context.Context, from, to Rev) ([]string, error) {
 	diff := []string{"diff", "--name-only", "-z", "--no-renames", "--no-ext-diff"}
 	out, err := g.in(ctx, g.repo, append(diff, string(from), string(to), "--")...)
+	return paths(out), err
+}
+
+// Branched lists the paths that head changed since it left main's line. One git diffs their merge base and head, as
+// git diff main...head does.
+func (g *Git) Branched(ctx context.Context, main, head Rev) ([]string, error) {
+	diff := []string{"diff", "--name-only", "-z", "--no-renames", "--no-ext-diff"}
+	out, err := g.in(ctx, g.repo, append(diff, string(main)+"..."+string(head), "--")...)
 	return paths(out), err
 }
 
@@ -757,18 +849,127 @@ func (g *Git) Tree(ctx context.Context, at Rev, dir string) ([]Entry, error) {
 
 // Show reads the file at path in the commit at, and false when the commit holds no file there.
 func (g *Git) Show(ctx context.Context, at Rev, path string) ([]byte, bool, error) {
-	listed, err := g.in(ctx, g.repo, "--literal-pathspecs", "ls-tree", "-z", "--full-tree", at.commit(), "--", path)
-	if err != nil || listed == "" {
+	// One git asks whether at is a commit, then for the file. A missing commit is an error, not a missing file.
+	batch := "info " + at.commit() + "\x00contents " + at.commit() + ":" + path + "\x00"
+	out, err := g.run(ctx, call{dir: string(g.repo), stdin: batch}, "cat-file", "--batch-command", "-Z")
+	commit, file, _ := strings.Cut(out, "\x00")
+	if err == nil && kind(commit) != "commit" {
+		err = fmt.Errorf("git cat-file --batch-command: %s", commit)
+	}
+
+	if err != nil {
 		return nil, false, err
 	}
 
-	about, _, _ := strings.Cut(listed, "\t")
-	if fields := strings.Fields(about); len(fields) != 3 || fields[1] != "blob" {
-		return nil, false, nil
+	content, found := blob(file)
+	return content, found, nil
+}
+
+// ShowTip reads the files at paths in the commit branch points to, as [Git.Show] reads one, and answers that commit.
+// It maps each path that holds a file there to the file. With no such branch, it answers "" and no file. One git
+// learns the commit, then reads each file there.
+func (g *Git) ShowTip(ctx context.Context, branch Branch, paths ...string) (Rev, map[string][]byte, error) {
+	args := []string{"cat-file", "--batch-command", "-Z"}
+	cmd := g.command(ctx, call{dir: string(g.repo)}, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return "", nil, err
 	}
 
-	content, err := g.in(ctx, g.repo, "show", string(at)+":"+path)
-	return []byte(content), err == nil, err
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", nil, err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", nil, ended(args, err, "")
+	}
+
+	answers := bufio.NewReader(out)
+	tip, files, asked := askTip(in, answers, branch, paths)
+	_, rest := io.Copy(io.Discard, answers)
+	if err := errors.Join(asked, rest, ended(args, cmd.Wait(), stderr.String())); err != nil {
+		return "", nil, err
+	}
+
+	return tip, files, nil
+}
+
+// askTip asks cat-file for the commit branch points to, then for each file at paths there, by the commit's hash. A
+// branch that moves meanwhile still answers one commit's files. Each answer is read before the next question.
+func askTip(in io.WriteCloser, answers *bufio.Reader, branch Branch, paths []string) (Rev, map[string][]byte, error) {
+	defer in.Close()
+	if _, err := io.WriteString(in, "info "+branch.ref()+"^{commit}\x00"); err != nil {
+		return "", nil, err
+	}
+
+	header, err := answers.ReadString(0)
+	if err != nil || kind(header) != "commit" {
+		return "", nil, err
+	}
+
+	tip, files := Rev(strings.Fields(header)[0]), map[string][]byte{}
+	for _, p := range paths {
+		if _, err := io.WriteString(in, "contents "+tip.commit()+":"+p+"\x00"); err != nil {
+			return "", nil, err
+		}
+
+		answer, err := contents(answers)
+		if err != nil {
+			return "", nil, err
+		}
+
+		if content, found := blob(answer); found {
+			files[p] = content
+		}
+	}
+
+	return tip, files, nil
+}
+
+// contents reads cat-file -Z's next answer to a contents question: its header, then the content of a found object.
+func contents(answers *bufio.Reader) (string, error) {
+	header, err := answers.ReadString(0)
+	if err != nil || kind(header) == "" {
+		return header, err
+	}
+
+	size, err := strconv.Atoi(strings.Fields(strings.TrimSuffix(header, "\x00"))[2])
+	if err != nil {
+		return "", err
+	}
+
+	content := make([]byte, size+1)
+	_, err = io.ReadFull(answers, content)
+	return header + string(content), err
+}
+
+// blob reads cat-file -Z's answer for a file: a header and the content, or the name asked for and "missing". A
+// directory or a submodule is no file.
+func blob(answer string) ([]byte, bool) {
+	header, content, _ := strings.Cut(answer, "\x00")
+	if kind(header) != "blob" {
+		return nil, false
+	}
+
+	size, err := strconv.Atoi(strings.Fields(header)[2])
+	if err != nil || size > len(content) {
+		return nil, false
+	}
+
+	return []byte(content[:size]), true
+}
+
+// kind is the type that header, cat-file's line about an object, names. It is "" for a line that names no type, as
+// "<name> missing" does.
+func kind(header string) string {
+	if fields := strings.Fields(header); len(fields) == 3 {
+		return fields[1]
+	}
+
+	return ""
 }
 
 func paths(out string) []string {

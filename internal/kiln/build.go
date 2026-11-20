@@ -173,6 +173,8 @@ type build struct {
 	landed, onto git.Rev
 	// side is what each session may write, once read.
 	side *sides
+	// auditing is the commit auditTry checked out in the audit's worktree, which undo puts back after each run.
+	auditing git.Rev
 	// mu guards rec while a split build's two sessions run at once. set, now, record and say hold it.
 	mu sync.Mutex
 	// fix is a monitor's fix, or nil for a spec's build.
@@ -307,11 +309,12 @@ func (b *build) ledger(ctx context.Context) {
 
 // gateWork commits what the session left, gates it, and takes the build on from the verdict, as after does.
 func (b *build) gateWork(ctx context.Context) (string, reason, error) {
-	if _, back, err := b.sessionWork(ctx); err != nil || back.why != "" {
+	head, back, err := b.sessionWork(ctx)
+	if err != nil || back.why != "" {
 		return b.roundFor(back, err)
 	}
 
-	v, err := b.gate(ctx, b.allowed()...)
+	v, err := b.gate(ctx, head, b.allowed()...)
 	if err != nil {
 		return "", reason{}, err
 	}
@@ -433,7 +436,7 @@ func (b *build) waitOrLand(ctx context.Context) (setback, error) {
 		return setback{}, err
 	}
 
-	var retire func(context.Context, git.Rev) error
+	var retire retiring
 	if b.rec.Accepted {
 		retire = b.retire
 	}
@@ -543,11 +546,8 @@ func (b *build) start(ctx context.Context) error {
 		return err
 	}
 
-	// A branch an earlier build of the spec left would hold work from a spec as it was approved before.
-	if err := b.r.git.Remove(ctx, b.tree, b.rec.Name.branch()); err != nil {
-		return err
-	}
-
+	// A branch an earlier build of the spec left would hold work from a spec as it was approved before. Checkout
+	// removes it.
 	if err := b.r.git.Checkout(ctx, b.tree, b.rec.Name.branch(), main); err != nil {
 		return err
 	}
@@ -613,9 +613,9 @@ func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claud
 		b.say("kiln could not measure session %s's stream: %v", l.Session, err)
 	}
 
-	read, err := b.r.auditRead(ctx, l)
-	if err != nil {
-		return claude.Ended{}, err
+	var read git.Rev
+	if l.Role == auditRole {
+		read = b.auditing
 	}
 
 	b.record(entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed, PID: os.Getpid(),
@@ -642,15 +642,6 @@ func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claud
 	return ended, errors.Join(err, undone)
 }
 
-// auditRead is the commit an audit run that l launches reads. It is "" for any other run.
-func (r *Repo) auditRead(ctx context.Context, l claude.Launch) (git.Rev, error) {
-	if l.Role != auditRole {
-		return "", nil
-	}
-
-	return r.git.Head(ctx, git.Worktree(l.Dir))
-}
-
 // pause pauses the build for a usage limit, until it resets. A limit with no reset pauses it for unknownReset.
 func (b *build) pause(ctx context.Context, until time.Time) error {
 	if until.IsZero() {
@@ -672,12 +663,7 @@ func (b *build) pause(ctx context.Context, until time.Time) error {
 // undo answers each path an audit run changed in its worktree at dir, committed or not, since the commit read. Then
 // it puts the worktree back at read, so the next run of the audit sees only the build's work.
 func (r *Repo) undo(ctx context.Context, dir git.Worktree, read git.Rev) ([]string, error) {
-	head, err := r.git.Head(ctx, dir)
-	if err != nil {
-		return nil, err
-	}
-
-	changed, err := r.git.Status(ctx, dir)
+	head, changed, err := r.git.Status(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
@@ -758,9 +744,12 @@ func (b *build) landing() string {
 	return message + "Build: " + b.r.summary(b.rec.Build) + "\n"
 }
 
-// gate runs the gate on the build's worktree, as judgeWork does. A fix's gate keeps it to its side.
-func (b *build) gate(ctx context.Context, allowed ...string) (verdict, error) {
-	return b.judgeWork(ctx, nil, b.treeGuard(allowed...))
+// gate runs the gate on head, the commit kiln made at the build's worktree, or "" to read it there. It runs as
+// judgeWork does. A fix's gate keeps it to its side.
+func (b *build) gate(ctx context.Context, head git.Rev, allowed ...string) (verdict, error) {
+	g := b.treeGuard(allowed...)
+	g.head = head
+	return b.judgeWork(ctx, nil, g)
 }
 
 // judgeWork takes commandsLock, and runs the gate under it, as gated does. A landing's try holds the lock already, and

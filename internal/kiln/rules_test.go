@@ -1028,7 +1028,7 @@ func TestLandChanges(t *testing.T) {
 			}
 
 			// The ledger tells the landing's gate from a gate of the work, which runs once the landing ends.
-			if _, err := b.gate(t.Context()); err != nil {
+			if _, err := b.gate(t.Context(), ""); err != nil {
 				t.Fatal(err)
 			}
 
@@ -1166,6 +1166,25 @@ func TestLandedBefore(t *testing.T) {
 					short(tip), short(landed), thenOf(k.find("x")), last.Outcome, tc.outcome)
 			}
 		})
+	}
+}
+
+// TestOpenInWorktree holds that kiln opened in a linked worktree keeps its records in the git directory every worktree
+// shares.
+func TestOpenInWorktree(t *testing.T) {
+	t.Parallel()
+	repo, tree := t.TempDir(), filepath.Join(t.TempDir(), "tree")
+	shell(t, repo, "git init --quiet -b main && "+
+		"git -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m first && "+
+		"git worktree add --quiet --detach '"+tree+"'")
+	r, err := Open(t.Context(), tree, os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := strings.TrimSpace(shell(t, repo, "git rev-parse --path-format=absolute --git-common-dir"))
+	if r.common != want {
+		t.Errorf("kiln opened in a worktree keeps its records in %s; want %s", r.common, want)
 	}
 }
 
@@ -1519,7 +1538,7 @@ func TestGatedGauge(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			b := gaugedFix(t, tc.fix, cmp.Or(tc.gauge, gaugeScript))
-			v, err := b.gatedCheck(t.Context(), heldBy(t, b.r), verdict{passed: true})
+			v, err := gatedAtHead(t, b)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1539,6 +1558,17 @@ func TestGatedGauge(t *testing.T) {
 	}
 }
 
+// gatedAtHead runs b's gated check after a gate that passed on the commit at b's worktree.
+func gatedAtHead(t *testing.T, b *build) (verdict, error) {
+	t.Helper()
+	head, err := b.r.git.Head(t.Context(), b.tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return b.gatedCheck(t.Context(), heldBy(t, b.r), verdict{passed: true, head: head})
+}
+
 // TestGatedCheckLeavesNoFile holds that a fix's gated check runs outside the fix's worktree. A file the check leaves
 // never lands with the session's next round.
 func TestGatedCheckLeavesNoFile(t *testing.T) {
@@ -1547,7 +1577,7 @@ func TestGatedCheckLeavesNoFile(t *testing.T) {
 	writeAll(t, string(b.tree), map[string]string{b.fix.monitor.path(checkScript): "touch leftover.txt\n" +
 		`echo '{"fix": true, "summary": "still low"}'` + "\n"})
 	shell(t, string(b.tree), "git commit --quiet -am check")
-	v, err := b.gatedCheck(t.Context(), heldBy(t, b.r), verdict{passed: true})
+	v, err := gatedAtHead(t, b)
 	if err != nil || v.passed {
 		t.Fatalf("the gate answers %+v, %v; want it failed by the check", v, err)
 	}

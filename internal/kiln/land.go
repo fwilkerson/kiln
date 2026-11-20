@@ -14,19 +14,21 @@ import (
 
 // land rebases the build's work onto main as one commit, and gates it. Then it moves main
 // there, only if main has not moved since the rebase; if it has, land starts again. from is the commit to rebase,
-// or "" to start from main's tip. Before the gate, retire may add a commit. A path in allowed may change, though
-// guarded names it.
+// which the build's checkout holds, or "" to start from main's tip. Before the gate, retire may add a commit. A path
+// in allowed may change, though guarded names it.
 //
 // It answers the commit main moved to. Or it answers what kept the work from landing, for the session. That is a
 // conflict, work that changes nothing on main, or the gate. A landing that doesn't move main puts the branch back
 // where it stood, even after an error or an interrupt. Should kiln die mid-landing, the record keeps that commit,
 // and the next kiln fire puts the branch back. A landing that main holds has landed, whatever moving main answered.
 // The record keeps it until the build records it, so the next kiln records it if this one can't.
-func (b *build) land(ctx context.Context, from git.Rev, retire func(ctx context.Context, held git.Rev) error,
-	allowed ...string) (landed git.Rev, back setback, err error) {
-	before, err := b.r.git.Head(ctx, b.tree)
-	if err != nil {
-		return "", setback{}, err
+func (b *build) land(ctx context.Context, from git.Rev, retire retiring, allowed ...string) (landed git.Rev,
+	back setback, err error) {
+	before := from
+	if before == "" {
+		if before, err = b.r.git.Head(ctx, b.tree); err != nil {
+			return "", setback{}, err
+		}
 	}
 
 	b.set(func(r *record) { r.Before = before })
@@ -73,8 +75,8 @@ var errMainMoved = errors.New("main moved while the gate ran")
 // landOnce tries the landing once, onto main's tip. It answers errMainMoved when main moved meanwhile. It holds
 // commandsLock from the read of main's tip until main moved, or the try answers. So the other lane moves no main
 // under its gate. A setback goes back to the session with the lock free.
-func (b *build) landOnce(ctx context.Context, from git.Rev, retire func(ctx context.Context, held git.Rev) error,
-	allowed []string) (git.Rev, setback, error) {
+func (b *build) landOnce(ctx context.Context, from git.Rev, retire retiring, allowed []string) (git.Rev, setback,
+	error) {
 	held, err := b.r.lockCommands(ctx, b.rec.Name, b.out)
 	if err != nil {
 		return "", setback{}, err
@@ -91,7 +93,9 @@ func (b *build) landOnce(ctx context.Context, from git.Rev, retire func(ctx cont
 		return "", back, err
 	}
 
-	v, err := b.gated(ctx, held, nil, b.treeGuard(allowed...))
+	g := b.treeGuard(allowed...)
+	g.head = head
+	v, err := b.gated(ctx, held, nil, g)
 	if err != nil || !v.passed {
 		return "", setback{whyLanding, v.report, v.failing}, err
 	}
@@ -104,58 +108,54 @@ func (b *build) landOnce(ctx context.Context, from git.Rev, retire func(ctx cont
 	return landed, back, err
 }
 
+// retiring retires a spec in its landing, on held, the commit that last holds it. It answers the commit that
+// retires it.
+type retiring func(ctx context.Context, held git.Rev) (git.Rev, error)
+
 // prepare puts the work from from onto onto, and retires the spec if retire is set. It
 // answers the commit that would land. Or it answers what kept the work from landing: a conflict, or no change.
-func (b *build) prepare(ctx context.Context, from, onto git.Rev, retire func(ctx context.Context, held git.Rev) error,
-) (git.Rev, setback, error) {
+//
+// Each step answers the commit it leaves checked out. Only kiln writes the build's worktree while it lands, so none
+// is read again.
+func (b *build) prepare(ctx context.Context, from, onto git.Rev, retire retiring) (git.Rev, setback, error) {
 	start := cmpOr(from, onto)
 	if err := b.r.git.Reset(ctx, b.tree, start); err != nil {
 		return "", setback{}, err
 	}
 
-	if back, err := b.rebase(ctx, start, onto); err != nil || back.why != "" {
+	head, back, err := b.rebase(ctx, start, onto)
+	if err != nil || back.why != "" {
 		return "", back, err
 	}
 
-	if retire == nil {
-		return b.changes(ctx, onto)
+	if retire != nil {
+		if head, err = retire(ctx, head); err != nil {
+			return "", setback{}, err
+		}
 	}
 
-	held, err := b.r.git.Head(ctx, b.tree)
-	if err != nil {
-		return "", setback{}, err
-	}
-
-	if err := retire(ctx, held); err != nil {
-		return "", setback{}, err
-	}
-
-	return b.changes(ctx, onto)
+	return b.changes(ctx, onto, head)
 }
 
-// rebase rebases the work at start onto onto, as the one commit that lands, unless start is onto already.
-func (b *build) rebase(ctx context.Context, start, onto git.Rev) (setback, error) {
+// rebase rebases the work at start onto onto, as the one commit that lands, unless start is onto already. It answers
+// the commit checked out then.
+func (b *build) rebase(ctx context.Context, start, onto git.Rev) (git.Rev, setback, error) {
 	if start == onto {
-		return setback{}, nil
+		return start, setback{}, nil
 	}
 
-	_, conflict, err := b.r.git.Rebase(ctx, b.tree, onto, b.landing())
+	rebased, conflict, err := b.r.git.Rebase(ctx, b.tree, onto, b.landing())
 	if err != nil || conflict == nil {
-		return setback{}, err
+		return rebased, setback{}, err
 	}
 
 	report := fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n"))
-	return setback{whyConflict, report, conflict.Files}, nil
+	return "", setback{whyConflict, report, conflict.Files}, nil
 }
 
-// changes answers the commit at HEAD, unless it changes nothing since onto. A session that ended with no result may
-// leave nothing, and main would "move" to the commit it holds.
-func (b *build) changes(ctx context.Context, onto git.Rev) (git.Rev, setback, error) {
-	head, err := b.r.git.Head(ctx, b.tree)
-	if err != nil {
-		return "", setback{}, err
-	}
-
+// changes answers head, unless it changes nothing since onto. A session that ended with no result may leave nothing,
+// and main would "move" to the commit it holds.
+func (b *build) changes(ctx context.Context, onto, head git.Rev) (git.Rev, setback, error) {
 	changed, err := b.r.git.Changed(ctx, onto, head)
 	switch {
 	case err != nil:
@@ -239,34 +239,29 @@ func (b *build) checkoutMain(ctx context.Context) error {
 		return err
 	}
 
-	if err := b.r.git.Remove(ctx, b.tree, b.rec.Name.branch()); err != nil {
-		return err
-	}
-
 	return b.r.git.Checkout(ctx, b.tree, b.rec.Name.branch(), main)
 }
 
 // retire deletes the spec and its amendments, and adds its line to PRODUCT.md. The line holds the command that shows
-// the spec at held, the commit that last held it.
-func (b *build) retire(ctx context.Context, held git.Rev) error {
+// the spec at held, the commit that last held it. It answers the commit that retires the spec.
+func (b *build) retire(ctx context.Context, held git.Rev) (git.Rev, error) {
 	name := b.rec.Name
 	title, err := b.title()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if err := b.addProduct(fmt.Sprintf("- %s: `git show %s:%s`\n", title, short(held), name.file())); err != nil {
-		return err
+		return "", err
 	}
 
 	for _, p := range []string{name.file(), name.amendPath()} {
 		if err := os.Remove(b.path(p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
+			return "", err
 		}
 	}
 
-	_, err = b.r.git.Commit(ctx, b.tree, fmt.Sprintf("docs(%s): retire the accepted spec\n", name))
-	return err
+	return b.r.git.Commit(ctx, b.tree, fmt.Sprintf("docs(%s): retire the accepted spec\n", name))
 }
 
 // title is the spec's title, from its first line, or its name if that line is no title.

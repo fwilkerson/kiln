@@ -101,28 +101,47 @@ func hashOf(text string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// monitors reads kiln.json at the commit at, and each entry under .kiln/monitors/ there, by name. It reads each as a
-// monitorRead, so one monitor kiln refuses never keeps it from the rest. It refuses kiln.json as every command does.
+// monitors reads kiln.json at the commit at, and the monitors there, as monitorsIn reads them. It refuses kiln.json as
+// every command does.
 func (r *Repo) monitors(ctx context.Context, at git.Rev) (config, []monitorRead, error) {
 	c, err := r.config(ctx, at)
 	if err != nil {
 		return c, nil, err
 	}
 
+	reads, err := r.monitorsIn(ctx, c, at)
+	return c, reads, err
+}
+
+// mainMonitors answers main's tip and kiln.json there, as mainConfig reads them, and the monitors there, as
+// monitorsIn reads them.
+func (r *Repo) mainMonitors(ctx context.Context) (git.Rev, config, []monitorRead, error) {
+	main, c, err := r.mainConfig(ctx)
+	if err != nil {
+		return main, c, nil, err
+	}
+
+	reads, err := r.monitorsIn(ctx, c, main)
+	return main, c, reads, err
+}
+
+// monitorsIn reads each entry under .kiln/monitors/ at the commit at, by name, with c, kiln.json there. It reads each
+// as a monitorRead, so one monitor kiln refuses never keeps it from the rest.
+func (r *Repo) monitorsIn(ctx context.Context, c config, at git.Rev) ([]monitorRead, error) {
 	f := r.filesAt(at)
 	dirs, err := r.monitorDirs(ctx, at)
 	if err != nil {
-		return c, nil, err
+		return nil, err
 	}
 
 	reads := make([]monitorRead, len(dirs))
 	for i, d := range dirs {
 		if reads[i], err = c.readAt(ctx, f, d); err != nil {
-			return c, nil, err
+			return nil, err
 		}
 	}
 
-	return c, reads, nil
+	return reads, nil
 }
 
 // monitorRead is an entry under .kiln/monitors/ in a commit, by its name and git's ID of it. It holds the monitor kiln

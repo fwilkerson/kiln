@@ -50,13 +50,9 @@ func other(role string) string {
 // dropCheckouts removes every checkout and branch a build of name made. They are the stack, the audit's and the
 // gate's worktrees, and each session's clone. The .main worktree stays, since every gate shares it.
 func (r *Repo) dropCheckouts(ctx context.Context, name Spec) error {
-	return errors.Join(
-		r.git.Remove(ctx, r.tree(name), name.branch()),
-		r.git.Remove(ctx, r.auditTree(name), ""),
-		r.git.Remove(ctx, r.gateTree(name), ""),
-		r.git.Remove(ctx, r.clone(name, buildRole), name.sideBranch(buildRole)),
-		r.git.Remove(ctx, r.clone(name, verifyRole), name.sideBranch(verifyRole)),
-	)
+	trees := []git.Worktree{r.tree(name), r.auditTree(name), r.gateTree(name), r.clone(name, buildRole),
+		r.clone(name, verifyRole)}
+	return r.git.Remove(ctx, trees, name.branch(), name.sideBranch(buildRole), name.sideBranch(verifyRole))
 }
 
 // turn is what each session of a split build is told next. A session whose prompt is "" does not run.
@@ -371,10 +367,6 @@ func (b *build) stack(ctx context.Context) (setback, error) {
 		}
 
 		tips[role] = tip
-	}
-
-	if err := b.r.git.Remove(ctx, b.tree, name.branch()); err != nil {
-		return setback{}, err
 	}
 
 	if err := b.r.git.Checkout(ctx, b.tree, name.branch(), tips[buildRole]); err != nil {
@@ -838,12 +830,7 @@ func (b *build) harnessChanged(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	base, err := b.r.git.MergeBase(ctx, mainBranch, tip)
-	if err != nil {
-		return nil, err
-	}
-
-	changed, err := b.r.git.Changed(ctx, base, tip)
+	changed, err := b.r.git.Branched(ctx, mainBranch, tip)
 	return slices.DeleteFunc(changed, func(p string) bool {
 		return !slices.ContainsFunc(s.harness, func(h string) bool { return within(fold(p), fold(h)) })
 	}), err
