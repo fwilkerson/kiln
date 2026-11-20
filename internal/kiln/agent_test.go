@@ -41,6 +41,11 @@ func TestAgentFile(t *testing.T) {
 		"tools as a YAML block list are refused":         {file: "---\ntools:\n  - Read\n---\nA.\n", refused: true},
 		"tools as a YAML flow list are refused":          {file: "---\ntools: [Read, Grep]\n---\nA.\n", refused: true},
 		"tools that name nothing are refused":            {file: "---\ntools: \"\"\n---\nA.\n", refused: true},
+		"a conflict's markers are refused": {
+			file:    "Build.\n<<<<<<< .kiln/agents/build.md\nmine\n=======\nkiln's\n>>>>>>> kiln init's new default\n",
+			refused: true,
+		},
+		"a heading underlined with = is no marker": {file: "Build\n=======\n", want: `"Build\n=======" [] "opus" "" ""`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			a, err := parseAgent(tc.file)
@@ -115,8 +120,9 @@ func TestSpecBeforeKiln(t *testing.T) {
 }
 
 // TestInitKeeps holds what kiln init leaves as the project made it. It keeps kiln.json's gate and rounds, and adds no
-// hosts or writable key, since those differ by preset. It writes no default over a file of its name. It links nothing
-// over one in .claude/. It names each such file, unless that path already reaches kiln's own file through a link.
+// hosts or writable key, since those differ by preset. With no record, it keeps the project's own file of a default.
+// The difference is left as a conflict. It links nothing over a file in .claude/. It names each such file,
+// unless that path already reaches kiln's own file through a link.
 func TestInitKeeps(t *testing.T) {
 	r, repo := scratchRepo(t)
 	shell(t, repo, `mkdir -p .kiln/agents .claude/agents && `+
@@ -135,9 +141,10 @@ func TestInitKeeps(t *testing.T) {
 	}
 
 	wantConfigKept(t, repo)
-	for p, want := range map[string]string{".kiln/agents/build.md": "mine\n", ".claude/agents/critic.md": "mine\n"} {
-		if got, err := os.ReadFile(filepath.Join(repo, p)); err != nil || string(got) != want {
-			t.Errorf("%s holds %q, %v; want %q", p, got, err, want)
+	for p, want := range map[string]string{".kiln/agents/build.md": "<<<<<<< .kiln/agents/build.md\nmine\n",
+		".claude/agents/critic.md": "mine\n"} {
+		if got, err := os.ReadFile(filepath.Join(repo, p)); err != nil || !strings.HasPrefix(string(got), want) {
+			t.Errorf("%s holds %q, %v; want it to start %q", p, got, err, want)
 		}
 	}
 
