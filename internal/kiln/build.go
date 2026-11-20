@@ -265,12 +265,7 @@ func (b *build) untilDone(ctx context.Context) error {
 			return err
 		}
 
-		l, err := b.launch(ctx, true, next)
-		if err != nil {
-			return err
-		}
-
-		if _, err := b.talk(ctx, l, why); err != nil {
+		if err := b.tell(ctx, true, next, why); err != nil {
 			return err
 		}
 	}
@@ -288,13 +283,7 @@ func (b *build) goOn(ctx context.Context) error {
 	case b.rec.Session == "":
 		return b.start(ctx)
 	case !b.rec.Accepted:
-		l, err := b.launch(ctx, true, interrupted)
-		if err != nil {
-			return err
-		}
-
-		_, err = b.talk(ctx, l, reason{Why: whyInterrupted, Round: b.rec.Rounds})
-		return err
+		return b.tell(ctx, true, interrupted, reason{Why: whyInterrupted, Round: b.rec.Rounds})
 	}
 
 	return nil
@@ -324,11 +313,15 @@ func (b *build) gateWork(ctx context.Context) (string, reason, error) {
 		return "", reason{}, err
 	}
 
-	if b.rec.FailingAtMain == nil && len(v.atMain) > 0 {
-		b.set(func(r *record) { r.FailingAtMain = v.atMain })
-	}
-
+	b.keepFailingAtMain(v.atMain)
 	return b.after(ctx, v)
+}
+
+// keepFailingAtMain records the tests that fail at main, the first time a gate of the build's code names any.
+func (b *build) keepFailingAtMain(atMain []string) {
+	if b.now().FailingAtMain == nil && len(atMain) > 0 {
+		b.set(func(r *record) { r.FailingAtMain = atMain })
+	}
 }
 
 // after takes the build on from a gate's verdict. It answers what to tell the session next, and why. It answers "" once
@@ -342,16 +335,12 @@ func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 		return fmt.Sprintf(audited, findings), why, err
 	}
 
-	head, err := b.r.git.Head(ctx, b.tree)
-	if err != nil {
+	back, err := b.waitOrLand(ctx)
+	if err != nil || back.report == "" {
 		return "", reason{}, err
 	}
 
-	if waits, err := b.waitsOnBranch(ctx, head); err != nil || waits {
-		return "", reason{}, err
-	}
-
-	return b.landWork(ctx, head)
+	return b.round(back)
 }
 
 // findings runs the audit, unless it has answered. It runs it again when the work changed a path kiln.json's reaudit
@@ -432,26 +421,35 @@ func (b *build) waitsOnBranch(ctx context.Context, head git.Rev) (bool, error) {
 	return true, err
 }
 
-// landWork lands the work at head. An accepted spec is retired in the landing. A setback goes back to the session.
-func (b *build) landWork(ctx context.Context, head git.Rev) (string, reason, error) {
+// waitOrLand takes a spec's build, split or not, to its branch or to main, once the audit sends nothing back.
+// The build waits on its branch while its commit holds amendments the developer has not accepted. Otherwise it lands,
+// and an accepted spec is retired in the landing. It answers what kept the work from landing, for the build to send
+// back.
+func (b *build) waitOrLand(ctx context.Context) (setback, error) {
+	head, err := b.r.git.Head(ctx, b.tree)
+	if err != nil {
+		return setback{}, err
+	}
+
+	if waits, err := b.waitsOnBranch(ctx, head); err != nil || waits {
+		return setback{}, err
+	}
+
 	var retire func(context.Context, git.Rev) error
 	if b.rec.Accepted {
 		retire = b.retire
 	}
 
 	onMain, back, err := b.land(ctx, head, retire, b.allowed()...)
-	switch {
-	case err != nil:
-		return "", reason{}, err
-	case back.report != "":
-		return b.round(back)
+	if err != nil || back.report != "" {
+		return back, err
 	}
 
 	if err := b.r.dropCheckouts(ctx, b.rec.Name); err != nil {
-		return "", reason{}, err
+		return setback{}, err
 	}
 
-	return "", reason{}, b.onMain(onMain)
+	return setback{}, b.onMain(onMain)
 }
 
 // onMain records the build's work on main, at the commit at. An accepted spec is retired, and any other waits for UAT.
@@ -543,24 +541,25 @@ func (b *build) start(ctx context.Context) error {
 	b.set(func(r *record) { r.Session = session })
 	b.say("building on %s, in %s", b.rec.Name.branch(), b.tree)
 	prompt := fmt.Sprintf(starting, b.rec.Name.file(), short(b.rec.Approved), b.rec.Name.branch())
-	l, err := b.launch(ctx, false, prompt)
-	if err != nil {
-		return err
-	}
-
-	_, err = b.talk(ctx, l, reason{Why: whyFirst})
-	return err
+	return b.tell(ctx, false, prompt, reason{Why: whyFirst})
 }
 
-// launch is a run of the build agent's session, which resume says resumes it.
-func (b *build) launch(ctx context.Context, resume bool, prompt string) (claude.Launch, error) {
-	return b.agentLaunch(ctx, buildRole, claude.Launch{
+// tell runs the build agent's session on prompt, for why, until its turn ends, as talk does. resume says it resumes
+// the session.
+func (b *build) tell(ctx context.Context, resume bool, prompt string, why reason) error {
+	l, err := b.agentLaunch(ctx, buildRole, claude.Launch{
 		Session: b.rec.Session,
 		Resume:  resume,
 		Prompt:  prompt,
 		Dir:     string(b.tree),
 		Hook:    b.treeGuard().hookCommand(b.r.exe),
 	})
+	if err != nil {
+		return err
+	}
+
+	_, err = b.talk(ctx, l, why)
+	return err
 }
 
 // talk runs the session l launches, and answers how it ended. A usage limit pauses the build until it resets, and the

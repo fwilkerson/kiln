@@ -60,6 +60,12 @@ exists .claude-calls/audit/1/1/call.json
 exec git worktree list
 ! stdout '\.audit-'
 
+# None of the worktrees the build made remains, nor its branch.
+exec git worktree list --porcelain
+! stdout '/x$'
+exec git branch --list 'kiln/*'
+! stdout .
+
 -- .kiln/specs/x.md --
 ### 1. X answers
 

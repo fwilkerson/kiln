@@ -1,0 +1,73 @@
+# A build whose kiln fire was interrupted goes on in its session, in the round kiln stopped it in.
+
+# Given: a build whose gate failed once, and whose kiln fire was interrupted in the session's second turn. That turn
+# touches .tmp/working, then waits for a file no step makes.
+exec kiln queue x
+! exec kiln fire &fire&
+exec sh -c 'i=0; while [ ! -e .tmp/working ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/working ]'
+kill -INT fire
+wait fire
+
+# When: the developer runs kiln fire again.
+exec kiln fire
+
+# Then: the session goes on where kiln stopped it,
+grep '"resume": ?true' .claude-calls/build/1/3/call.json
+grep 'kiln stopped while you worked' .claude-calls/build/1/3/prompt
+
+# the ledger's line for that run says kiln stopped it in round 1,
+grep '"why":"interrupted","round":1' .git/kiln/ledger.jsonl
+
+# and the build lands.
+stdout '^x: landed on main'
+
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+ "build": {"1": {
+  "1": [
+   {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/wrong/.\" ."}}},
+   {"result": {"result": "Built x."}}
+  ],
+  "2": [
+   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/working\"; i=0; while [ ! -e \"$WORK/.tmp/never\" ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done"}}},
+   {"result": {"result": "Cut short."}}
+  ],
+  "3": [
+   {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+   {"result": {"result": "Fixed x."}}
+  ]
+ }},
+ "audit": {"1": {"1": [{"result": {"result": "read 2 directories, found 0"}}]}}
+}
+-- _given/wrong/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 41 }
+-- _given/wrong/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }

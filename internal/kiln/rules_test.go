@@ -1077,6 +1077,64 @@ func landingBuild(t *testing.T) (*build, string, git.Rev) {
 	return b, repo, main
 }
 
+// TestSplitLanding holds how a split build ends once its stack passed the gate. Work that changes nothing goes back to
+// the build session alone. A conflict with main goes to the session whose clone conflicts, after kiln merged main into
+// both clones. An accepted build lands, and its spec retires.
+func TestSplitLanding(t *testing.T) {
+	for name, tc := range map[string]struct {
+		accepted bool
+		// code is what the build session wrote, and main what main gained since the build began.
+		code, main string
+		// build is what the build session is told next, or "" once the work landed.
+		build string
+	}{
+		"work that changes nothing goes to the build session": {build: unchanged},
+		"a conflict goes to the session whose clone conflicts": {code: "42", main: "43",
+			build: fmt.Sprintf(conflicts, "x.txt")},
+		"an accepted build lands, and its spec retires": {accepted: true, code: "42"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			b, repo := splitBuild(t, tc.accepted)
+			clone := string(b.r.clone("x", buildRole))
+			for dir, text := range map[string]string{string(b.tree): tc.code, clone: tc.code, repo: tc.main} {
+				if text != "" {
+					shell(t, dir, "echo "+text+" >x.txt && git add x.txt && git commit --quiet -m x")
+				}
+			}
+
+			got, err := b.splitAfter(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			merged, _ := os.ReadFile(filepath.Join(string(b.r.clone("x", verifyRole)), "x.txt"))
+			retired := exec.Command("git", "-C", repo, "cat-file", "-e", "main:.kiln/specs/x.md").Run() != nil
+			if !claim.Holds(got.build == tc.build, got.verify == "", strings.TrimSpace(string(merged)) == tc.main,
+				retired == tc.accepted) {
+				t.Errorf("the build session is told %q, and the verify session %q. The verify clone holds %q, and the "+
+					"spec retired: %v. Want %q, nothing, %q, %v.", got.build, got.verify, merged, retired, tc.build,
+					tc.main, tc.accepted)
+			}
+		})
+	}
+}
+
+// splitBuild is landingBuild's build of x, in the split workflow, with each session's clone. Main holds the spec, the
+// audit has read the work, and kiln.json gives it 1 round. It answers the repository.
+func splitBuild(t *testing.T, accepted bool) (*build, string) {
+	b, repo, _ := landingBuild(t)
+	shell(t, repo, "mkdir -p .kiln/specs && echo '# X' >.kiln/specs/x.md && git add . && git commit --quiet -m spec")
+	shell(t, string(b.tree), "git reset --quiet --hard main")
+	b.side = &sides{split: true}
+	if err := b.cloneSides(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	main := git.Rev(shell(t, repo, "git rev-parse main"))
+	b.set(func(r *record) { r.Accepted, r.Limit, r.Audited = accepted, new(1), main })
+	return b, repo
+}
+
 // shell runs script with sh in dir, and answers what it printed.
 func shell(t *testing.T, dir, script string) string {
 	cmd := exec.Command("/bin/sh", "-c", script)
