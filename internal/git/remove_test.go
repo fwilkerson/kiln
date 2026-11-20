@@ -40,6 +40,28 @@ func TestRemove(t *testing.T) {
 	}
 }
 
+// TestRemoveBesideDeleted holds that Remove leaves git listing neither of two worktrees, one there and one deleted by
+// hand.
+func TestRemoveBesideDeleted(t *testing.T) {
+	t.Parallel()
+	s := makeScratch(t, "", "")
+	there, gone := git.Worktree(filepath.Join(t.TempDir(), "there")), git.Worktree(filepath.Join(t.TempDir(), "gone"))
+	for _, path := range []git.Worktree{there, gone} {
+		if err := s.git.Detached(t.Context(), path, "main"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := os.RemoveAll(string(gone)); err != nil {
+		t.Fatal(err)
+	}
+
+	err := s.git.Remove(t.Context(), []git.Worktree{there, gone})
+	if got, want := s.left(t, there, err), "no error, path gone, 1 worktree, branches main"; got != want {
+		t.Errorf("Remove left %s (%v); want %s", got, err, want)
+	}
+}
+
 // remove calls Remove on path and branch, which may be "".
 func remove(t *testing.T, g *git.Git, path git.Worktree, branch git.Branch) error {
 	if branch == "" {
