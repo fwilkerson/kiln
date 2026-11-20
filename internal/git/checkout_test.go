@@ -41,6 +41,42 @@ func TestCheckout(t *testing.T) {
 	checkLinks(t, repo, tree)
 }
 
+// TestCheckoutAgain holds that Checkout takes a path whose worktree was deleted by hand. git lists that worktree, with
+// its branch checked out, until a prune.
+func TestCheckoutAgain(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, left string }{
+		{"with its branch", "true"},
+		{"without its branch", "git update-ref -d refs/heads/kiln/x"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			repo := t.TempDir()
+			sh(t, repo, "git init --quiet -b main && git -c user.name=t -c user.email=t@t commit --quiet "+
+				"--allow-empty -m first")
+			g, err := git.New(repo, os.Environ())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			tree := filepath.Join(t.TempDir(), "tree")
+			if err := g.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main"); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := os.RemoveAll(tree); err != nil {
+				t.Fatal(err)
+			}
+
+			sh(t, repo, tc.left)
+			err = g.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main")
+			if got := sh(t, tree, "git branch --show-current"); err != nil || got != "kiln/x" {
+				t.Errorf("Checkout answered %v, and left %q checked out; want kiln/x", err, got)
+			}
+		})
+	}
+}
+
 // checkLinks checks that tree holds .claude/agents as a plain file. Its commit and repo's checkout hold a link.
 func checkLinks(t *testing.T, repo, tree string) {
 	t.Helper()
