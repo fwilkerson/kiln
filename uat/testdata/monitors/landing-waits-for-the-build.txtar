@@ -1,4 +1,4 @@
-# 9. A landing waits for the other lane's landing.
+# A fix's landing waits for a spec's landing, and lands on a main that holds it.
 
 env KILN_OPEN=true
 

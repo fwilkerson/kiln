@@ -1,4 +1,4 @@
-# 3. kiln status shows both lanes at work, and a second kiln in a lane refuses.
+# kiln status shows both lanes at work, and a second kiln in a lane refuses.
 
 env KILN_OPEN=true
 

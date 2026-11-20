@@ -1,4 +1,4 @@
-# 2. A monitor runs while a spec builds.
+# A monitor runs while a spec builds.
 
 env KILN_OPEN=true
 

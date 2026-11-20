@@ -1,4 +1,4 @@
-# 4. A fix cut short is recovered while a spec builds.
+# A fix cut short is recovered while a spec builds.
 
 env KILN_OPEN=true
 

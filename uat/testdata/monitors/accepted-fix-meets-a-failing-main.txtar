@@ -1,8 +1,10 @@
-# 2. An accepted fix that the gate fails on main as it moved lands.
+# An accepted fix that the gate fails on main as it moved lands, once the session that made it fixes what the gate
+# found.
 
 env KILN_OPEN=true
 
-# Given: such a fix, waiting on its branch: its agent marked each note done.
+# Given: a monitor whose fixes wait for kiln accept, and a fix its agent made, waiting on its branch: the agent
+# marked each note done.
 exec sh -c 'kiln monitor run || true'
 exec kiln status
 stdout 'notes.*waiting'

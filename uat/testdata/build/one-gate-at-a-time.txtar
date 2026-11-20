@@ -1,4 +1,4 @@
-# 8. One gate runs at a time.
+# One gate runs at a time, across a spec's build and a monitor's fix.
 
 env KILN_OPEN=true
 

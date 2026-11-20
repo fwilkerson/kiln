@@ -1,8 +1,9 @@
-# 3. A landing that still fails keeps the fix.
+# A landing of an accepted fix that still fails keeps the fix, and a second kiln accept resumes its session.
 
 env KILN_OPEN=true
 
-# Given: a fix as in test 1,
+# Given: a monitor whose fixes wait for kiln accept, and a fix its agent made, waiting on its branch. Main changed
+# since, in a line the fix changed.
 exec sh -c 'kiln monitor run || true'
 exec kiln status
 stdout 'stale.*waiting'
@@ -10,7 +11,7 @@ exec sh -c 'printf "title\nstale, by hand\n" >doc.txt && git commit -qam "docs: 
 exec git rev-parse main
 cp stdout .tmp/main-before
 
-# whose session leaves the gate failing in each round kiln.json gives it: its merge drops the fix's word.
+# The fix's session leaves the gate failing in each round kiln.json gives it: its merge drops the fix's word.
 
 # When: the developer runs kiln accept with the monitor's name.
 ! exec kiln accept stale

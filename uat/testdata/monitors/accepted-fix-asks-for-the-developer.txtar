@@ -1,8 +1,9 @@
-# 4. A session that asks for the developer keeps the fix.
+# A landing whose session asks for the developer stops, and keeps the fix for kiln accept or kiln reject.
 
 env KILN_OPEN=true
 
-# Given: a fix as in test 1,
+# Given: a monitor whose fixes wait for kiln accept, and a fix its agent made, waiting on its branch. Main changed
+# since, in a line the fix changed.
 exec sh -c 'kiln monitor run || true'
 exec kiln status
 stdout 'stale.*waiting'
@@ -10,7 +11,7 @@ exec sh -c 'printf "title\nstale, by hand\n" >doc.txt && git commit -qam "docs: 
 exec git rev-parse main
 cp stdout .tmp/main-before
 
-# whose session starts the merge, meets the conflict, and ends its turn asking for the developer.
+# The fix's session starts the merge, meets the conflict, and ends its turn asking for the developer.
 
 # When: the developer runs kiln accept with the monitor's name.
 exec sh -c 'kiln accept stale || true'

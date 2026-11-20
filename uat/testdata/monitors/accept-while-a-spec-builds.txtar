@@ -1,4 +1,4 @@
-# 7. An accepted fix lands while a spec builds.
+# An accepted fix lands while a spec builds.
 
 env KILN_OPEN=true
 
