@@ -8,7 +8,7 @@ stdout '^notes: waiting on the developer'
 # kiln fire is at work on a spec. Its build session touches .tmp/building, then waits for .tmp/build-go.
 exec kiln queue x
 exec kiln fire &fire&
-exec sh -c 'i=0; while [ ! -e .tmp/building ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/building ]'
+exec await .tmp/building
 
 # When: the developer runs kiln accept with the monitor's name.
 exec kiln accept notes
@@ -55,7 +55,7 @@ x
   {"result": {"result": "Wrote note.txt.\n{\"title\": \"fix(notes): write the missing note\"}"}}
  ]}},
  "build": {"1": {"1": [
-  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; i=0; while [ ! -e \"$WORK/.tmp/build-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; cp -R \"$WORK/_given/x/.\" ."}}},
+  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; await \"$WORK/.tmp/build-go\"; cp -R \"$WORK/_given/x/.\" ."}}},
   {"result": {"result": "Built x."}}
  ]}},
  "audit": {

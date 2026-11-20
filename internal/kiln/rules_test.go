@@ -17,9 +17,11 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/kiln/internal/proc"
 	"github.com/fwilkerson/practices/claim"
 )
 
@@ -274,17 +276,18 @@ func TestReportNamesLostFailure(t *testing.T) {
 
 // TestCommandLeavesChild holds that a command which leaves a child behind ends once its shell exits. The child gets
 // 10 s to close the command's output. kiln then kills the command's group, and keeps what the command printed. A
-// limit that passes while the child holds the output is no run past it: the command ended in time.
+// limit that passes while the child holds the output is no run past it: the command ended in time. The
+// child would hold the output for an hour, so a command that ends at all was cut short.
 func TestCommandLeavesChild(t *testing.T) {
 	for name, run := range commandRunners(t, config{Timeout: timeout(2 * time.Second)}.shell(os.Environ())) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			began := time.Now()
-			out, err := run(git.Worktree(dir), "sleep 30 & echo $! > child; echo /started")
+			out, err := run(git.Worktree(dir), "sleep 3600 & echo $! > child; echo /started")
 			took := time.Since(began)
-			if err != nil || !claim.Holds(strings.TrimSpace(out) == "/started", took < 15*time.Second) {
-				t.Fatalf("answered %q, %v after %v; want /started within 15 s", out, err, took)
+			if err != nil || !claim.Holds(strings.TrimSpace(out) == "/started", took >= 10*time.Second) {
+				t.Fatalf("answered %q, %v after %v; want /started, once the child had 10 s", out, err, took)
 			}
 
 			wantDead(t, dir)
@@ -331,7 +334,7 @@ func commandRunners(t *testing.T, s projectShell) map[string]func(dir git.Worktr
 	}
 }
 
-// wantDead fails t unless the process whose ID dir's file child holds has ended, within 5 s.
+// wantDead fails t unless the process whose ID dir's file child holds ends, as exits says.
 func wantDead(t *testing.T, dir string) {
 	raw, _ := os.ReadFile(filepath.Join(dir, "child"))
 	var pid int
@@ -340,16 +343,26 @@ func wantDead(t *testing.T, dir string) {
 		t.Fatalf("the command named no child: %q, %v", raw, err)
 	}
 
-	for range 50 {
-		if syscall.Kill(pid, 0) != nil {
-			return
+	if !exits(t, pid) {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+		t.Errorf("the child, process %d, still runs", pid)
+	}
+}
+
+// exits reports whether the process pid exits, or is a zombie, before the test nears its deadline. A process kiln
+// killed exits at once, so only a hang waits that long.
+func exits(t *testing.T, pid int) bool {
+	deadline, bounded := t.Deadline()
+	giveUp := deadline.Add(-time.Until(deadline) / 10)
+	for !bounded || time.Now().Before(giveUp) {
+		if p, err := proc.Of(pid); err != nil || p.Zombie {
+			return true
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
-	_ = syscall.Kill(pid, syscall.SIGKILL)
-	t.Errorf("the child, process %d, still runs", pid)
+	return false
 }
 
 // judgment is what TestGate compares of a verdict. reported is whether it has a report. hinted is whether the report
@@ -664,33 +677,35 @@ func TestLanes(t *testing.T) {
 }
 
 // TestCommandsLock holds that a kiln waits for commands.lock while another holds it, and says so once. An interrupt
-// ends the wait.
+// ends the wait. The test's clock is synctest's, so its retries take no time.
 func TestCommandsLock(t *testing.T) {
-	r := &Repo{store: store{dir: t.TempDir()}}
-	other, err := r.store.lock(commandsLock, syscall.LOCK_EX)
-	if err != nil {
-		t.Fatal(err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		r := &Repo{store: store{dir: t.TempDir()}}
+		other, err := r.store.lock(commandsLock, syscall.LOCK_EX)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	ctx, cancel := context.WithTimeout(t.Context(), 3*commandsRetry)
-	defer cancel()
-	var out strings.Builder
-	if _, err := r.lockCommands(ctx, "x", &out); !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("the wait ended with %v, want the interrupt", err)
-	}
+		ctx, cancel := context.WithTimeout(t.Context(), 3*commandsRetry)
+		defer cancel()
+		var out strings.Builder
+		if _, err := r.lockCommands(ctx, "x", &out); !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("the wait ended with %v, want the interrupt", err)
+		}
 
-	if out.String() != "x: waits while another kiln runs the project's commands\n" {
-		t.Errorf("the waiting kiln said %q, want one line that it waits", out.String())
-	}
+		if out.String() != "x: waits while another kiln runs the project's commands\n" {
+			t.Errorf("the waiting kiln said %q, want one line that it waits", out.String())
+		}
 
-	other()
-	out.Reset()
-	held, err := r.lockCommands(t.Context(), "x", &out)
-	if err != nil || out.Len() > 0 {
-		t.Fatalf("once free, the lock answered %v, and the kiln said %q", err, out.String())
-	}
+		other()
+		out.Reset()
+		held, err := r.lockCommands(t.Context(), "x", &out)
+		if err != nil || out.Len() > 0 {
+			t.Fatalf("once free, the lock answered %v, and the kiln said %q", err, out.String())
+		}
 
-	held.release()
+		held.release()
+	})
 }
 
 // TestNext holds which queued spec a kiln fire takes. One started for a single spec, as kiln accept starts it, takes
@@ -964,6 +979,7 @@ func namedIn(t *testing.T, next string, rec *record) []string {
 // TestLandChanges holds that main moves only to work that changes it. A session that ended with no result can leave
 // its branch at main's tip. That work goes back to the session.
 func TestLandChanges(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		work   string
 		landed bool
@@ -973,6 +989,7 @@ func TestLandChanges(t *testing.T) {
 		"an empty commit changes nothing":    {work: "git commit --quiet --allow-empty -m nothing"},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			b, repo, main := landingBuild(t)
 			shell(t, string(b.tree), tc.work)
 			head := git.Rev(shell(t, string(b.tree), "git rev-parse HEAD"))
@@ -1102,6 +1119,7 @@ func gateLines(t *testing.T, r *Repo) string {
 // TestLandedBefore holds what the next kiln makes of an accepted landing that moved main before kiln died. kiln fire
 // retires the spec, and kiln monitor run ends the fix landed. Neither lands it again.
 func TestLandedBefore(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		monitor bool
 		next    func(*build, context.Context) error
@@ -1112,6 +1130,7 @@ func TestLandedBefore(t *testing.T) {
 			next: func(b *build, ctx context.Context) error { return b.r.dropLost(ctx, b.rec, b.out) }},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			next, landed := landedThenKilled(t, tc.monitor)
 			if err := tc.next(next, t.Context()); err != nil {
 				t.Fatal(err)
@@ -1164,11 +1183,6 @@ type landing struct {
 
 // landingBuild is a build of x in a new repository, on its branch from main. It answers the repository, and main.
 func landingBuild(t *testing.T) (*build, string, git.Rev) {
-	// kiln's git never sees GIT_CONFIG_GLOBAL, so HOME and XDG_CONFIG_HOME keep the developer's config from it.
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	repo := t.TempDir()
 	shell(t, repo, `git init --quiet -b main && git config user.name t && git config user.email t@t && `+
 		`mkdir .kiln && echo '{"gate": ["true"], "rounds": 1}' >.kiln/kiln.json && git add . && `+
@@ -1362,6 +1376,7 @@ func TestGaugeVerdict(t *testing.T) {
 // TestGaugeTree holds that a gauge which leaves a file git can't remove stops no later reading. Each landing gets a
 // reading of each gauge, and each monitor's run gets one too.
 func TestGaugeTree(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	t.Cleanup(func() { _ = removeTree(r.trees) })
 	kilnJSON := `{"gate": ["true"], "rounds": 1, "gauges": [{"name": "n", "max": 5, "command": "` +
@@ -1427,6 +1442,7 @@ echo $n
 // TestGatedGauge holds how a fix's gate reads its monitor's gauge: over the fix's change, against main's line. A
 // crossed reading or a failed command fails the gate. A reading of no number never crossed.
 func TestGatedGauge(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		fix, gauge   string
 		passed       bool
@@ -1441,6 +1457,7 @@ func TestGatedGauge(t *testing.T) {
 		"a gauge main's monitor no longer has": {fix: "echo still low >a.txt", gauge: "check", passed: true},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			b := gaugedFix(t, tc.fix, cmp.Or(tc.gauge, gaugeScript))
 			v, err := b.gatedCheck(t.Context(), heldBy(t, b.r), verdict{passed: true})
 			if err != nil {
@@ -1614,6 +1631,7 @@ func TestBlindTranscripts(t *testing.T) {
 // TestChangedSince holds which files changed since kiln accept: each whose own change differs from the commit the
 // developer accepted. Main's changes never count, and a binary file counts by its content.
 func TestChangedSince(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		main, work string
 		want       []string
@@ -1629,6 +1647,7 @@ func TestChangedSince(t *testing.T) {
 			want: []string{"b.txt"}},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			b, repo, _ := landingBuild(t)
 			tree := string(b.tree)
 			shell(t, repo, "echo one >a.txt && echo bee >b.txt && printf 'p\\000\\001' >p.bin && git add . && "+

@@ -139,6 +139,7 @@ func endOf(run run) string {
 // TestRecountAudit holds that an audit run lost when kiln died still shows what it changed. recount names each path
 // in its end line, as talk would. Then it puts the audit's worktree back at the commit the audit read.
 func TestRecountAudit(t *testing.T) {
+	t.Parallel()
 	r, read := auditedRepo(t)
 	b := &build{r: r, rec: record{Name: "x", Build: "b1"}, out: io.Discard}
 	b.record(entry{Kind: builtKind, Spec: "x"})

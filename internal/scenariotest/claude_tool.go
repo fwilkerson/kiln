@@ -429,9 +429,7 @@ func readTool(input jsonObject) toolOutcome {
 }
 
 func (s *claudeSession) bash(input jsonObject) toolOutcome {
-	ctx, cancel := context.WithTimeout(context.Background(), claudeCallLimit)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", input.text("command"))
+	cmd := exec.Command("/bin/sh", "-c", input.text("command"))
 	cmd.Dir, cmd.Env = s.call.Dir, s.env
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

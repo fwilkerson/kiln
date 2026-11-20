@@ -4,18 +4,19 @@
 # gate, gate.sh, logs each run in a .gate-* checkout, and logs an overlap when another such run has not ended. Its
 # run at x's commit touches .tmp/gating, then waits for .tmp/gate-go.
 exec sh -c 'exec kiln monitor run >.tmp/mon.out 2>&1' &mon&
-exec sh -c 'i=0; while [ ! -e .tmp/fixing ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/fixing ]'
+exec await .tmp/fixing
 
 # A spec's build, ready for its gate.
 exec kiln queue x
 exec kiln fire &fire&
 
 # When: both reach the gate: x's first, then the fix's.
-exec sh -c 'i=0; while [ ! -e .tmp/gating ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/gating ]'
+exec await .tmp/gating
 exec touch .tmp/fix-go
 
 # Then: the kiln that waits says that it waits,
-exec sh -c 'i=0; while ! grep -q "^bump: waits while another kiln runs the project''s commands$" .tmp/mon.out && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; cat .tmp/mon.out'
+exec await .tmp/mon.out '^bump: waits while another kiln runs the project''s commands$'
+exec cat .tmp/mon.out
 stdout '^bump: waits while another kiln runs the project''s commands$'
 
 # and the fix's gate has not started while x's runs.
@@ -42,7 +43,7 @@ else
   echo '{"fix": true, "summary": "state.txt is stale"}'
 fi
 -- .kiln/monitors/bump/command --
-touch "$WORK/.tmp/fixing"; i=0; while [ ! -e "$WORK/.tmp/fix-go" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; echo current >state.txt
+touch "$WORK/.tmp/fixing"; await "$WORK/.tmp/fix-go"; echo current >state.txt
 -- gate.sh --
 d=$(basename "$PWD")
 case "$d" in .gate-*) ;; *) exit 0 ;; esac
@@ -51,7 +52,7 @@ mkdir "$WORK/.tmp/in-gate" 2>/dev/null || echo "overlap at $d" >>"$log"
 echo "start $d" >>"$log"
 if [ "$d" = .gate-x ] && [ ! -e "$WORK/.tmp/gate-go" ]; then
   touch "$WORK/.tmp/gating"
-  i=0; while [ ! -e "$WORK/.tmp/gate-go" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done
+  await "$WORK/.tmp/gate-go"
 fi
 echo "end $d" >>"$log"
 rmdir "$WORK/.tmp/in-gate" 2>/dev/null

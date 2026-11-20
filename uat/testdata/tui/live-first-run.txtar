@@ -7,7 +7,7 @@
 # and time.
 exec kiln queue x
 exec kiln fire &
-exec sh -c 'i=0; while [ ! -e waiting ] && [ $i -lt 900 ]; do sleep 0.1; i=$((i+1)); done; [ -e waiting ]'
+exec await waiting
 
 # When: the developer opens kiln tui,
 term 120 30 kiln tui
@@ -69,8 +69,8 @@ stdout '^x: landed on main'
     "1": [
       {"tool": {"name": "Bash", "input": {"command": "echo the first call"}}},
       {"tool": {"name": "Bash", "input": {"command": "echo the second call"}}},
-      {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/waiting\" && while [ ! -e \"$WORK/go-on\" ]; do sleep 0.1; done"}}},
-      {"tool": {"name": "Bash", "input": {"command": "echo the next call && cp -R \"$WORK/_given/right/.\" . && while [ ! -e \"$WORK/done\" ]; do sleep 0.1; done"}}},
+      {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/waiting\" && await \"$WORK/go-on\""}}},
+      {"tool": {"name": "Bash", "input": {"command": "echo the next call && cp -R \"$WORK/_given/right/.\" . && await \"$WORK/done\""}}},
       {"result": {"result": "Built x.", "cost_usd": 0.50}}
     ]
   }},

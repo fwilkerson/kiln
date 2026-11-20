@@ -31,6 +31,6 @@ script, an HTTP request, or a session in a terminal. -->
 - A Then about the full-screen view drives `kiln tui` through `internal/termtest`, as
   `uat/testdata/tui/gauges.txtar` does. No sandboxed session can open a pseudo-terminal, so your session skips that
   test and kiln's gate runs it. Read it from the gate's report. Before a key, wait for a screen it acts on.
-- Change `internal/scenariotest` or `internal/termtest` only for what no test can reach without it. The audit reads
-  each change there.
+- Change `internal/scenariotest`, `internal/termtest` or `internal/hometest` only for what no test can reach without
+  it. The audit reads each change there.
 - Run `go vet ./...` and `go test ./uat/...` before you end your turn, and format each Go file with `gofmt`.

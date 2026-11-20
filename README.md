@@ -252,7 +252,7 @@ kiln help                print this usage, as kiln --help and kiln -h do
 ## Working on kiln
 
 ```sh
-go test ./...                 # the gate. The terminal UI's scenarios need a real terminal, and skip in a sandbox.
+go test -timeout 30m ./...    # the gate. The terminal UI's scenarios need a real terminal, and skip in a sandbox.
 go run ./tools/install        # reinstall kiln and its zsh completion from main's tip
 ```
 
@@ -264,6 +264,7 @@ go run ./tools/install        # reinstall kiln and its zsh completion from main'
 | `internal/claude`       | Claude Code sessions, run headless and sandboxed.                                     |
 | `internal/git`          | Checkouts, the commit a build lands as, and the one move of main.                     |
 | `internal/proc`         | Child processes.                                                                      |
+| `internal/hometest`     | A HOME for tests, with no `GIT_*` variable that aims their git elsewhere.             |
 | `internal/scenariotest` | A scripted `claude`, and the harness the acceptance tests run on.                     |
 | `internal/termtest`     | A pseudo-terminal that runs a program and reads its screen.                           |
 | `uat/`                  | The acceptance tests: `uat/<spec>/` until a spec is accepted, then `uat/testdata/`.   |

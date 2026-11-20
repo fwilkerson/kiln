@@ -60,33 +60,35 @@ while :; do (sleep 20 &); done
 `
 
 // TestKillForks holds that Run returns promptly once it kills a session. It kills one at overage, when its context
-// ends, or after its Silence. No child the session forked as it died holds Run past the kill.
+// ends, or after its Silence. No child the session forked as it died holds Run past the kill. A child that did would
+// hold Run for the whole grace that the package doc gives a child, 10 s. A run that kills every child takes a fraction
+// of that, however loaded.
 func TestKillForks(t *testing.T) {
+	const grace = 10 * time.Second
 	cases := []struct {
-		name, first   string
-		wait, silence time.Duration
-		limited       bool
-		silent        bool
+		name, first        string
+		silence            time.Duration
+		interrupt, limited bool
+		silent             bool
 	}{
-		{"overage", `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","isUsingOverage":true}}`, time.Hour, time.Hour, true, false},
-		{"interrupted", `{"type":"system"}`, 300 * time.Millisecond, time.Hour, false, false},
-		{"silent", `{"type":"system"}`, time.Hour, 300 * time.Millisecond, false, true},
+		{"overage", `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","isUsingOverage":true}}`, time.Hour,
+			false, true, false},
+		{"interrupted", `{"type":"system"}`, time.Hour, true, false, false},
+		{"silent", `{"type":"system"}`, 300 * time.Millisecond, false, false, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			for range 6 {
-				ctx, cancel := context.WithTimeout(t.Context(), c.wait)
-				defer cancel()
 				began := time.Now()
-				ended, err := runForking(t, ctx, c.first, c.silence)
+				ended, err := runForking(t, c.first, c.silence, c.interrupt)
 				_, silent := errors.AsType[*claude.Silent](err)
 				switch took := time.Since(began); {
 				case (ended.Limit != nil) != c.limited:
 					t.Fatalf("Run answered %+v; want a usage limit: %v", ended, c.limited)
 				case silent != c.silent:
 					t.Fatalf("Run answered %v; want a *Silent: %v", err, c.silent)
-				case took > 3*time.Second:
-					t.Fatalf("Run took %v to return after the kill", took)
+				case took >= grace:
+					t.Fatalf("Run took %v to return after the kill, so a child held the session's output", took)
 				}
 			}
 		})
@@ -94,8 +96,9 @@ func TestKillForks(t *testing.T) {
 }
 
 // runForking runs forking, which prints first, through Run in a directory of its own, and answers how it ended.
-// silence is the Launch's Silence.
-func runForking(t *testing.T, ctx context.Context, first string, silence time.Duration) (claude.Ended, error) {
+// silence is the Launch's Silence. With interrupt, Run's context ends once the session has printed, and so forks as
+// it dies.
+func runForking(t *testing.T, first string, silence time.Duration, interrupt bool) (claude.Ended, error) {
 	const session = "0b8e6c1e-2f4d-4f6a-9b1c-3d5e7f9a1b2d"
 	dir := t.TempDir()
 	program := filepath.Join(dir, "claude")
@@ -103,7 +106,24 @@ func runForking(t *testing.T, ctx context.Context, first string, silence time.Du
 		t.Fatal(err)
 	}
 
-	c := claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: filepath.Join(dir, "sessions")})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	sessions := filepath.Join(dir, "sessions")
+	if interrupt {
+		go func() {
+			defer cancel()
+			for ctx.Err() == nil {
+				info, err := os.Stat(filepath.Join(sessions, session, "stream.jsonl"))
+				if err == nil && info.Size() > 0 {
+					return
+				}
+
+				time.Sleep(10 * time.Millisecond)
+			}
+		}()
+	}
+
+	c := claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: sessions})
 	return c.Run(ctx, claude.Launch{Session: session, Role: "build", Prompt: "Build x.", Dir: dir, Silence: silence})
 }
 

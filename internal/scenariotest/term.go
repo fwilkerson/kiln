@@ -1,6 +1,7 @@
 package scenariotest
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image/color"
@@ -19,7 +20,8 @@ import (
 	"github.com/fwilkerson/kiln/internal/termtest"
 )
 
-// A script drives a full-screen program with these commands. Each that waits gives up after [termtest.Waited].
+// A script drives a full-screen program with these commands. Each that waits gives up only as the test nears its
+// deadline, or once the program exits.
 //
 //	term <cols> <rows> <program> [args...]  start the program in a terminal of that size, one per script
 //	keys <key or text>...                   press each named key, or type each other word as text
@@ -100,6 +102,8 @@ type terminal struct {
 	term  *termtest.Term
 	// skip ends the script as skipped, for the reason given.
 	skip func(reason ...any)
+	// waits ends each wait for the screen, as testscript ends a script's commands, before the test's deadline.
+	waits context.Context
 }
 
 // sandboxEnv is the variable Claude Code's sandbox sets for each command it runs.
@@ -148,13 +152,14 @@ func lookPath(ts *testscript.TestScript, program string) string {
 	return ""
 }
 
-func termOf(ts *testscript.TestScript) *termtest.Term {
+// termOf answers the script's terminal, and the context that ends its waits.
+func termOf(ts *testscript.TestScript) (*termtest.Term, context.Context) {
 	t := ts.Value(terminalKey{}).(*terminal)
 	if t.term == nil {
 		ts.Fatalf("no terminal: start one with term first")
 	}
 
-	return t.term
+	return t.term, t.waits
 }
 
 func pressKeys(ts *testscript.TestScript, neg bool, args []string) {
@@ -162,7 +167,7 @@ func pressKeys(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("usage: keys <key or text>...")
 	}
 
-	term := termOf(ts)
+	term, _ := termOf(ts)
 	for _, arg := range args {
 		if code, ok := keyNames[arg]; ok {
 			term.Press(code)
@@ -177,9 +182,9 @@ func clickText(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("usage: click <text>")
 	}
 
-	term := termOf(ts)
+	term, waits := termOf(ts)
 	var at termtest.Pos
-	ts.Check(term.Wait(func() (err error) {
+	ts.Check(term.Wait(waits, func() (err error) {
 		at, err = term.Find(args[0])
 		return err
 	}))
@@ -200,7 +205,7 @@ func turnWheel(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("usage: wheel up|down <turns>")
 	}
 
-	term := termOf(ts)
+	term, _ := termOf(ts)
 	size := term.Size()
 	for range turns {
 		turn(term, termtest.Pos{X: size.W / 2, Y: size.H / 2})
@@ -214,8 +219,8 @@ func waitScreen(ts *testscript.TestScript, neg bool, args []string) {
 
 	pattern, err := regexp.Compile("(?m)" + args[0])
 	ts.Check(err)
-	term := termOf(ts)
-	ts.Check(term.Wait(func() error {
+	term, waits := termOf(ts)
+	ts.Check(term.Wait(waits, func() error {
 		switch matched := pattern.MatchString(term.Screen()); {
 		case matched && neg:
 			return fmt.Errorf("the screen matches %s", args[0])
@@ -233,8 +238,8 @@ func waitColor(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("usage: color [background] red|yellow|green|none <text>")
 	}
 
-	term := termOf(ts)
-	ts.Check(term.Wait(func() error { return check.holds(term) }))
+	term, waits := termOf(ts)
+	ts.Check(term.Wait(waits, func() error { return check.holds(term) }))
 }
 
 // colorCheck is what a color command waits for: text's first cell drawn in a color that drawn matches. With neg, it

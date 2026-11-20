@@ -28,9 +28,6 @@ const (
 	ClaudeStreamFile   = "stream.jsonl"
 )
 
-// claudeCallLimit ends a scripted claude that runs past it, so one a test left behind does not outlive the run.
-const claudeCallLimit = 2 * time.Minute
-
 // ClaudeScript holds each call's steps, by its role, its attempt and its call. The role is the base name of the
 // file given to --append-system-prompt-file, such as "build". An attempt is one session; a resume of it is its next
 // call.

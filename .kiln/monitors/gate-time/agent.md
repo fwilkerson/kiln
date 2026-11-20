@@ -25,9 +25,9 @@ This work rests on the guide's "Tests", which `CLAUDE.md` loads from `docs/guide
 - Start from the slowest packages and tests the check printed, and from what your own run shows. Find where each
   spends its time before you change it: a wait it sits out, a build it repeats, a fixture it rebuilds, or a test
   that runs alone and could share the machine.
-- Test code and the harness: `_test.go` files, `internal/scenariotest/`, `internal/termtest/`, and how a scenario
-  under `uat/testdata/` sets up its Given. kiln does what it did before: no command, output, error text, default or
-  file format changes.
+- Test code and the harness: `_test.go` files, `internal/scenariotest/`, `internal/termtest/`, `internal/hometest/`,
+  and how a scenario under `uat/testdata/` sets up its Given. kiln does what it did before: no command, output, error
+  text, default or file format changes.
 - Ways that keep each check: run a test in parallel where it shares no state; build a binary or a fixture once for
   a package, rather than once for each test; wait on the event a test expects, never a fixed sleep; run a test that
   waits on time under the `testing/synctest` package.

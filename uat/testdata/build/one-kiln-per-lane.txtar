@@ -4,9 +4,9 @@
 # for .tmp/go.
 exec kiln queue x
 exec kiln fire &fire&
-exec sh -c 'i=0; while [ ! -e .tmp/building ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/building ]'
+exec await .tmp/building
 exec kiln monitor run &mon&
-exec sh -c 'i=0; while [ ! -e .tmp/fixing ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/fixing ]'
+exec await .tmp/fixing
 grep -count=1 'ran' .tmp/check.log
 
 # When: the developer runs kiln status,
@@ -64,11 +64,11 @@ x
 -- claude.json --
 {
  "fix": {"1": {"1": [
-  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/fixing\"; i=0; while [ ! -e \"$WORK/.tmp/go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; echo noted >note.txt"}}},
+  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/fixing\"; await \"$WORK/.tmp/go\"; echo noted >note.txt"}}},
   {"result": {"result": "Wrote note.txt.\n{\"title\": \"fix(notes): write the missing note\"}"}}
  ]}},
  "build": {"1": {"1": [
-  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; i=0; while [ ! -e \"$WORK/.tmp/go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; cp -R \"$WORK/_given/x/.\" ."}}},
+  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; await \"$WORK/.tmp/go\"; cp -R \"$WORK/_given/x/.\" ."}}},
   {"result": {"result": "Built x."}}
  ]}},
  "audit": {

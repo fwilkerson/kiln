@@ -4,7 +4,7 @@
 # then waits for .tmp/build-go.
 exec kiln queue x
 exec kiln fire &fire&
-exec sh -c 'i=0; while [ ! -e .tmp/building ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/building ]'
+exec await .tmp/building
 
 # A monitor is due: it never ran.
 
@@ -58,7 +58,7 @@ x
 -- claude.json --
 {
  "build": {"1": {"1": [
-  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; i=0; while [ ! -e \"$WORK/.tmp/build-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; cp -R \"$WORK/_given/x/.\" ."}}},
+  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; await \"$WORK/.tmp/build-go\"; cp -R \"$WORK/_given/x/.\" ."}}},
   {"result": {"result": "Built x."}}
  ]}},
  "audit": {

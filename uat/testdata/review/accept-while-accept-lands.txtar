@@ -9,7 +9,7 @@ stdout '^x: waits on kiln/x'
 stdout '^y: waits on kiln/y'
 
 # When: the developer accepts x, and accepts y while x's landing holds the specs' lane,
-exec sh -c 'touch "$HOME/.hold"; kiln accept x >"$HOME/x.out" 2>&1 & while [ ! -f "$HOME/.gating" ]; do sleep 0.1; done; kiln accept y; s=$?; touch "$HOME/.go"; wait $!; exit $s'
+exec sh -c 'touch "$HOME/.hold"; kiln accept x >"$HOME/x.out" 2>&1 & await "$HOME/.gating"; kiln accept y; s=$?; touch "$HOME/.go"; wait $!; exit $s'
 
 # Then: the reply names the kiln accept that is landing, and no kiln fire, since none runs.
 stdout '^y: accepted; the kiln accept that is landing lands it$'
@@ -20,7 +20,7 @@ exec kiln status
 stdout '^kiln holds no approved spec$'
 
 -- .kiln/kiln.json --
-{"gate": ["sh -c 'if [ -f \"$HOME/.hold\" ]; then touch \"$HOME/.gating\"; while [ ! -f \"$HOME/.go\" ]; do sleep 0.1; done; fi'"]}
+{"gate": ["sh -c 'if [ -f \"$HOME/.hold\" ]; then touch \"$HOME/.gating\"; await \"$HOME/.go\"; fi'"]}
 -- .kiln/specs/x.md --
 ### 1. X answers
 

@@ -42,12 +42,27 @@
 //	  _given/                    the work a session copies in, which that commit and Go's ./... leave out
 //	  .claude-calls/<role>/<attempt>/<call>/
 //	                             each call's record, in the files that ClaudeCallFile and its kin name
-//	$WORK-home/                  HOME, so kiln's worktrees and caches are the script's own
+//	$WORK-home/                  HOME, so kiln's worktrees and caches are the script's own; its git config is
+//	                             hometest's, with no automatic maintenance
 //
-//	PATH        kiln, built from cmd/kiln, then claude, the scripted one
-//	KILN_REPO   the checkout of kiln the test runs in, for a script that works on kiln's own repository
-//	GOCACHE     the developer's, with GOMODCACHE and GOPATH; Go runs offline, as GOPROXY=off,
-//	            GOTOOLCHAIN=local and GOFLAGS=-buildvcs=false say
+//	PATH              kiln, built from cmd/kiln, then claude, the scripted one, and await
+//	KILN_REPO         the checkout of kiln the test runs in, for a script that works on kiln's own repository
+//	GOCACHE           the developer's, with GOMODCACHE and GOPATH; Go runs offline, as GOPROXY=off,
+//	                  GOTOOLCHAIN=local and GOFLAGS=-buildvcs=false say
+//	GOFLAGS           -trimpath too, so a gate reuses what another script's gate compiled and vetted, from
+//	                  another directory
+//	SCENARIOTEST_PID  the test process, whose end ends each await and scripted claude
+//
+// A script waits for an event with await, never with a count of tries or a sleep. Only the test's deadline bounds the
+// wait, so a loaded machine makes a script slow, never wrong:
+//
+//	exec await .tmp/fixing                 until the file exists
+//	exec await .tmp/mon.out '^x: waits'    until a line of the file matches
+//
+// await is on the PATH of kiln, of its sessions and of its gates too. A scripted step or a gate waits the same way.
+// await looks at its file every 20 ms. A scripted claude has no limit of its own. Every await and scripted claude
+// ends once the test process ends, so none outlives the run. Where kqueue cannot watch the test process, an await
+// or a scripted claude asks once a second whether it runs.
 //
 // Main refuses to run any test, exiting 2, when the first claude on the PATH is not the scripted one. A real claude
 // would call the model.
@@ -69,20 +84,29 @@
 package scenariotest
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/fwilkerson/kiln/internal/hometest"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
-// Main runs the tests of m, with kiln and the scripted claude first on the PATH. Call it from TestMain.
+// Main runs the tests of m, with kiln and the scripted claude first on the PATH. Call it from TestMain. It first
+// drops the variables that would aim git at another repository, as [hometest.DropGitVars] says.
 func Main(m *testing.M) {
-	testscript.Main(tests{m}, map[string]func(){"claude": func() { os.Exit(claudeMain()) }})
+	hometest.DropGitVars()
+	testscript.Main(tests{m}, map[string]func(){
+		"claude": func() { os.Exit(claudeMain()) },
+		"await":  func() { os.Exit(awaitMain()) },
+	})
 }
 
 type tests struct {
@@ -217,16 +241,35 @@ func run(t *testing.T, scripts testscript.Params) {
 		t.Fatal("scenariotest:", err)
 	}
 
-	scripts.Setup, scripts.RequireExplicitExec, scripts.Cmds = setUp, true, terminalCommands
+	waits := screenWaits(t)
+	scripts.Setup = func(env *testscript.Env) error { return setUp(env, waits) }
+	scripts.RequireExplicitExec, scripts.Cmds = true, terminalCommands
 	testscript.Run(t, scripts)
+}
+
+// screenWaits answers the context that ends a script's waits for its screen. It ends as testscript ends a script's
+// commands, two grace periods before t's deadline, each 5% of the time left. A wait's failure then shows the screen.
+func screenWaits(t *testing.T) context.Context {
+	deadline, ok := t.Deadline()
+	if !ok {
+		return context.Background()
+	}
+
+	ctx, cancel := context.WithDeadline(context.Background(), deadline.Add(-time.Until(deadline)/10))
+	t.Cleanup(cancel)
+	return ctx
 }
 
 // givenDir holds the files a scripted session copies in, which the repository leaves out.
 const givenDir = "_given"
 
-func setUp(env *testscript.Env) error {
+func setUp(env *testscript.Env, waits context.Context) error {
 	home := env.WorkDir + "-home"
 	if err := os.MkdirAll(home, 0o755); err != nil {
+		return err
+	}
+
+	if err := hometest.Seed(home); err != nil {
 		return err
 	}
 
@@ -237,8 +280,9 @@ func setUp(env *testscript.Env) error {
 
 	env.Setenv("GOTOOLCHAIN", "local")
 	env.Setenv("GOPROXY", "off")
-	env.Setenv("GOFLAGS", "-buildvcs=false")
+	env.Setenv("GOFLAGS", "-buildvcs=false -trimpath")
 	env.Setenv("KILN_REPO", kilnRepo)
+	env.Setenv(testPIDEnv, strconv.Itoa(os.Getpid()))
 	if err := seed(env.WorkDir); err != nil {
 		return err
 	}
@@ -253,7 +297,7 @@ func setUp(env *testscript.Env) error {
 		return fmt.Errorf("scenariotest: making the scratch repository: %w\n%s", err, out)
 	}
 
-	t := &terminal{skip: env.T().Skip}
+	t := &terminal{skip: env.T().Skip, waits: waits}
 	for _, kv := range env.Vars {
 		name, _, _ := strings.Cut(kv, "=")
 		t.names = append(t.names, name)

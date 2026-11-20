@@ -15,7 +15,7 @@ cp stdout .tmp/main-before
 # When: the developer runs kiln accept with the monitor's name, and kiln status runs while the fix's session merges
 # main. The session waits for .tmp/go-on before it merges.
 exec kiln accept stale &
-exec sh -c 'i=0; until [ -e .tmp/merging ]; do i=$((i+1)); [ $i -lt 600 ] || exit 1; sleep 0.1; done'
+exec await .tmp/merging
 exec kiln status
 
 # Then: kiln status shows the monitor's fix landing, and that its session is at work on a conflict with main.
@@ -78,7 +78,7 @@ extra
    {"result": {"result": "Marked the doc fixed.\n{\"title\": \"fix(doc): mark the doc fixed\"}"}}
   ],
   "2": [
-   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/merging\"; i=0; until [ -e \"$WORK/.tmp/go-on\" ] || [ $i -ge 600 ]; do i=$((i+1)); sleep 0.1; done; git merge main; printf 'title\\nfixed, by hand\\n' >doc.txt && git add doc.txt && git commit -q --no-edit"}}},
+   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/merging\"; await \"$WORK/.tmp/go-on\"; git merge main; printf 'title\\nfixed, by hand\\n' >doc.txt && git add doc.txt && git commit -q --no-edit"}}},
    {"result": {"result": "Merged main, keeping both lines' changes."}}
   ],
   "3": [

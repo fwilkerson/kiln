@@ -2,16 +2,18 @@
   "$schema": "./kiln.schema.json",
   "gate": [
     "go vet ./...",
-    "go test ./..."
+    "go test -timeout 30m ./..."
   ],
   "rounds": 3,
   "workflow": "split",
   "acceptance": "uat/{spec}/",
   "harness": [
+    "internal/hometest/",
     "internal/scenariotest/",
     "internal/termtest/"
   ],
   "reaudit": [
+    "internal/hometest/",
     "internal/scenariotest/",
     "internal/termtest/"
   ],

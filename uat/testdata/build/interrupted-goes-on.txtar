@@ -4,7 +4,7 @@
 # touches .tmp/working, then waits for a file no step makes.
 exec kiln queue x
 ! exec kiln fire &fire&
-exec sh -c 'i=0; while [ ! -e .tmp/working ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/working ]'
+exec await .tmp/working
 kill -INT fire
 wait fire
 
@@ -35,7 +35,7 @@ stdout '^x: landed on main'
    {"result": {"result": "Built x."}}
   ],
   "2": [
-   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/working\"; i=0; while [ ! -e \"$WORK/.tmp/never\" ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done"}}},
+   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/working\"; await \"$WORK/.tmp/never\""}}},
    {"result": {"result": "Cut short."}}
   ],
   "3": [

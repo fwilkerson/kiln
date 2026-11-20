@@ -15,6 +15,7 @@ import (
 
 // TestMove holds the rule a landing rests on: main moves only from the commit the landing gated on.
 func TestMove(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		expected func(h history) git.Rev
 		want     func(h history) outcome
@@ -29,6 +30,7 @@ func TestMove(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			h := makeHistory(t)
 			way, err := h.git.Move(t.Context(), "main", h.landed, tc.expected(h))
 			if err != nil {
@@ -104,9 +106,12 @@ func sh(t *testing.T, dir, script string) string {
 }
 
 // TestMoveInterrupted holds that an interrupt never cuts a fast-forward short. A killed merge would leave the
-// checkout half-updated, and index.lock behind.
+// checkout half-updated, and index.lock behind. The interrupt comes once the fast-forward's git has started.
 func TestMoveInterrupted(t *testing.T) {
+	t.Parallel()
 	h := makeHistory(t)
+	began := filepath.Join(t.TempDir(), "began")
+	h.git = announcing(t, h.repo, "merge", began)
 	blob := sh(t, h.repo, "echo many | git hash-object -w --stdin")
 	var tree strings.Builder
 	for i := range 2000 {
@@ -119,14 +124,24 @@ func TestMoveInterrupted(t *testing.T) {
 	}
 
 	many := git.Rev(sh(t, h.repo, "git commit-tree -p HEAD -m many $(git mktree <"+listing+")"))
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
-	defer cancel()
-	if _, err := h.git.Move(ctx, "main", many, h.first); err != nil {
+	ctx, cancel := context.WithCancel(t.Context())
+	moved := make(chan error, 1)
+	go func() { _, err := h.git.Move(ctx, "main", many, h.first); moved <- err }()
+	for _, err := os.Stat(began); err != nil; _, err = os.Stat(began) {
+		select {
+		case err := <-moved:
+			t.Fatalf("Move ended, with %v, before it ran git merge", err)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	cancel()
+	if err := <-moved; err != nil {
 		t.Logf("Move: %v", err)
 	}
 
-	if main, _ := h.git.Tip(t.Context(), "main"); main != many && main != h.first {
-		t.Errorf("main is at %s; want it at first, %s, or landed, %s", main, h.first, many)
+	if main, _ := h.git.Tip(t.Context(), "main"); main != many {
+		t.Errorf("main is at %s; want it at landed, %s, since the fast-forward had begun", main, many)
 	}
 
 	status := sh(t, h.repo, "git status --porcelain --untracked-files=all")
@@ -134,4 +149,26 @@ func TestMoveInterrupted(t *testing.T) {
 		t.Errorf("index.lock left: %t; status:\n%.500s\nwant no lock, and the checkout as main has it",
 			locked == nil, status)
 	}
+}
+
+// announcing is a git of repo whose command touches file before it runs, when its arguments hold word.
+func announcing(t *testing.T, repo, word, file string) *git.Git {
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bin := t.TempDir()
+	script := fmt.Sprintf("#!/bin/sh\ncase \" $* \" in *\" %s \"*) touch '%s' ;; esac\nexec '%s' \"$@\"\n",
+		word, file, real)
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := git.New(repo, append(os.Environ(), "PATH="+bin+string(filepath.ListSeparator)+os.Getenv("PATH")))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return g
 }

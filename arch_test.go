@@ -1,9 +1,15 @@
 package kiln_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -54,7 +60,7 @@ var outside = map[string][]string{
 	// claim holds the checks tests share, so only a test imports it.
 	"internal/kiln": {"github.com/fwilkerson/practices/claim", "github.com/fwilkerson/practices/repotest"},
 	"internal/scenariotest": {"github.com/rogpeppe/go-internal", "github.com/charmbracelet/x/ansi",
-		"github.com/charmbracelet/x/vt"},
+		"github.com/charmbracelet/x/vt", "github.com/fwilkerson/practices/repotest"},
 	"internal/tui": {"charm.land/bubbletea/v2", "charm.land/bubbles/v2", "charm.land/lipgloss/v2",
 		"github.com/alecthomas/chroma/v2", "github.com/charmbracelet/x/ansi", "github.com/charmbracelet/x/term",
 		"github.com/charmbracelet/x/vt", "github.com/fwilkerson/practices/repotest"},
@@ -109,4 +115,116 @@ func TestOneShell(t *testing.T) {
 			t.Errorf("%s runs sh -c %d times: run the command with projectShell.run", file, shells)
 		}
 	}
+}
+
+// TestHomeForGit holds that a package whose tests run git starts them in hometest.Main or scenariotest.Main. A test's
+// git would otherwise read the developer's config. That git would also obey a GIT_DIR from git rebase --exec or a
+// hook, writing to another repository.
+func TestHomeForGit(t *testing.T) {
+	for _, p := range testPackages(t) {
+		fset := token.NewFileSet()
+		var runs, started bool
+		for _, name := range slices.Concat(p.TestGoFiles, p.XTestGoFiles) {
+			f, err := parser.ParseFile(fset, filepath.Join(p.Dir, name), nil, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			runs = runs || runsGit(f)
+			started = started || startsHome(f)
+		}
+
+		if runs && !started {
+			t.Errorf("%s: its tests run git; start them with func TestMain(m *testing.M) { hometest.Main(m) }",
+				p.ImportPath)
+		}
+	}
+}
+
+// testPackage is what go list says of a package's tests.
+type testPackage struct {
+	ImportPath, Dir           string
+	TestGoFiles, XTestGoFiles []string
+}
+
+// testPackages lists each package of the module, with its test files.
+func testPackages(t *testing.T) []testPackage {
+	cmd := exec.Command("go", "list", "-json=ImportPath,Dir,TestGoFiles,XTestGoFiles", "./...")
+	cmd.Stderr = t.Output()
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var pkgs []testPackage
+	for dec := json.NewDecoder(bytes.NewReader(out)); dec.More(); {
+		var p testPackage
+		if err := dec.Decode(&p); err != nil {
+			t.Fatal(err)
+		}
+
+		pkgs = append(pkgs, p)
+	}
+
+	return pkgs
+}
+
+// gitImports are the import paths of kiln's packages that run git.
+var gitImports = []string{`"github.com/fwilkerson/kiln/internal/git"`, `"github.com/fwilkerson/kiln/internal/kiln"`}
+
+// runsGit reports whether the test file f runs git. f imports a package of kiln's that runs git, or a string in f
+// starts a command with git.
+func runsGit(f *ast.File) bool {
+	imports := func(s *ast.ImportSpec) bool { return slices.Contains(gitImports, s.Path.Value) }
+	if slices.ContainsFunc(f.Imports, imports) {
+		return true
+	}
+
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		if lit, ok := n.(*ast.BasicLit); ok && gitCommand.MatchString(lit.Value) {
+			found = true
+		}
+
+		return !found
+	})
+
+	return found
+}
+
+// gitCommand matches a string literal, quotes included, whose text or a shell command in it starts with git.
+var gitCommand = regexp.MustCompile("^[\"`]git[\"`\\s]|[;&|(]\\s*git\\s")
+
+// startsHome reports whether the test file f's TestMain calls hometest.Main or scenariotest.Main.
+func startsHome(f *ast.File) bool {
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "TestMain" {
+			continue
+		}
+
+		found := false
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if call, ok := n.(*ast.CallExpr); ok && homeMain(call.Fun) {
+				found = true
+			}
+
+			return !found
+		})
+
+		return found
+	}
+
+	return false
+}
+
+// homeMain reports whether fun names hometest.Main or scenariotest.Main.
+func homeMain(fun ast.Expr) bool {
+	sel, ok := fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Main" {
+		return false
+	}
+
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && slices.Contains([]string{"hometest", "scenariotest"}, pkg.Name)
 }
