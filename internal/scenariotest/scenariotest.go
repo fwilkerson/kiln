@@ -42,7 +42,8 @@
 //	  _given/                    the work a session copies in, which that commit and Go's ./... leave out
 //	  .claude-calls/<role>/<attempt>/<call>/
 //	                             each call's record, in the files that ClaudeCallFile and its kin name
-//	$WORK-home/                  HOME, so kiln's worktrees and caches are the script's own
+//	$WORK-home/                  HOME, so kiln's worktrees and caches are the script's own; its git config is
+//	                             hometest's, with no automatic maintenance
 //
 //	PATH              kiln, built from cmd/kiln, then claude, the scripted one, and await
 //	KILN_REPO         the checkout of kiln the test runs in, for a script that works on kiln's own repository
@@ -91,6 +92,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fwilkerson/kiln/internal/hometest"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
@@ -259,6 +261,10 @@ const givenDir = "_given"
 func setUp(env *testscript.Env, waits context.Context) error {
 	home := env.WorkDir + "-home"
 	if err := os.MkdirAll(home, 0o755); err != nil {
+		return err
+	}
+
+	if err := hometest.Seed(home); err != nil {
 		return err
 	}
 
