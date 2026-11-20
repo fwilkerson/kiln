@@ -96,8 +96,10 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
-// Main runs the tests of m, with kiln and the scripted claude first on the PATH. Call it from TestMain.
+// Main runs the tests of m, with kiln and the scripted claude first on the PATH. Call it from TestMain. It first
+// drops the variables that would aim git at another repository, as [hometest.DropGitVars] says.
 func Main(m *testing.M) {
+	hometest.DropGitVars()
 	testscript.Main(tests{m}, map[string]func(){
 		"claude": func() { os.Exit(claudeMain()) },
 		"await":  func() { os.Exit(awaitMain()) },

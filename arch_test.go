@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -109,3 +110,43 @@ func TestOneShell(t *testing.T) {
 		}
 	}
 }
+
+// TestHomeForGit holds that each package whose tests run git starts them with hometest.Main, or scenariotest.Main,
+// which drops the same variables. A test's git would otherwise read the developer's config. It would also obey a
+// GIT_DIR that git rebase --exec or a hook passed on, and write to that repository.
+func TestHomeForGit(t *testing.T) {
+	cmd := exec.Command("go", "list", "-f", `{{.Dir}} {{join .TestGoFiles " "}} {{join .XTestGoFiles " "}}`, "./...")
+	cmd.Stderr = t.Output()
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	top, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for line := range strings.Lines(string(out)) {
+		dir, files, _ := strings.Cut(strings.TrimSpace(line), " ")
+		var code strings.Builder
+		for file := range strings.FieldsSeq(files) {
+			raw, err := os.ReadFile(filepath.Join(dir, file))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			code.Write(raw)
+		}
+
+		text := code.String()
+		started := strings.Contains(text, "hometest.Main(m)") || strings.Contains(text, "scenariotest.Main(m)")
+		if runsGit.MatchString(text) && !started {
+			rel, _ := filepath.Rel(top, dir)
+			t.Errorf("%s: its tests run git; start them with func TestMain(m *testing.M) { hometest.Main(m) }", rel)
+		}
+	}
+}
+
+// runsGit matches a test's call of git: a command it starts, or a line of shell that begins with git.
+var runsGit = regexp.MustCompile(`exec\.Command(Context)?\((ctx, |t\.Context\(\), )?"git"|["\x60;&|(]\s*git [a-z-]+`)

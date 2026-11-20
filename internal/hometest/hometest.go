@@ -9,18 +9,26 @@
 //
 // The config turns off git's automatic maintenance. A commit would otherwise start it in the background. There it
 // prunes worktrees and repacks while the test works in the same repository.
+//
+// A test binary that git rebase --exec or a hook starts inherits GIT_DIR. Each git the test runs then works on that
+// repository. [DropGitVars] drops it, with every other GIT_* variable that kiln's own git drops.
 package hometest
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
+
+	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// Main runs m's tests with HOME set to a directory that Seed filled, XDG_CONFIG_HOME under it, and
-// GIT_CONFIG_NOSYSTEM set. It removes the directory once the tests end, and exits with their code.
+// Main runs m's tests without the variables [DropGitVars] drops, in a HOME that Seed filled. XDG_CONFIG_HOME lies
+// under it, and GIT_CONFIG_NOSYSTEM is set. It removes the HOME once the tests end, and exits with their code.
 func Main(m *testing.M) {
+	DropGitVars()
 	home, err := os.MkdirTemp("", "hometest-")
 	if err == nil {
 		err = Seed(home)
@@ -37,6 +45,19 @@ func Main(m *testing.M) {
 	code := m.Run()
 	os.RemoveAll(home)
 	os.Exit(code)
+}
+
+// DropGitVars removes from the process's environment each variable that kiln's own git never sees, as [proc.Git]
+// says. Those are the GIT_* variables but the four that name who commits. GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE
+// would aim a test's git at another repository.
+func DropGitVars() {
+	kept := proc.Git.Env(os.Environ())
+	for _, kv := range os.Environ() {
+		if !slices.Contains(kept, kv) {
+			name, _, _ := strings.Cut(kv, "=")
+			os.Unsetenv(name)
+		}
+	}
 }
 
 // Seed writes the git config of a test's HOME into home, a directory that exists.
