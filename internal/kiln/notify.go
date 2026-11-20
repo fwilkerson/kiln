@@ -23,7 +23,6 @@ type notice struct {
 	Summary string  `json:"summary"`
 	Next    string  `json:"next"`
 	Top     string  `json:"top"`
-	Kiln    string  `json:"kiln"`
 	Commit  git.Rev `json:"commit,omitempty"`
 }
 
@@ -102,7 +101,7 @@ func (r *Repo) specNoticeOf(rec record, tree git.Worktree, lines []string, lande
 	}
 
 	return notice{Kind: specNotice, Name: rec.Name, State: shownState(&rec), Summary: strings.Join(summary, "\n"),
-		Next: nextStep(rec, tree, landed), Top: r.top, Kiln: r.exe, Commit: landed}
+		Next: nextStep(rec, tree, landed), Top: r.top, Commit: landed}
 }
 
 // notifyFix notifies how the last run of the monitor name ended, as kiln monitor show shows it. landed is the commit
@@ -116,7 +115,7 @@ func (r *Repo) notifyFix(ctx context.Context, name Spec, landed git.Rev, out io.
 
 	summary := strings.Join(slices.DeleteFunc([]string{s.summary, s.report}, isEmpty), "\n")
 	r.notify(ctx, notice{Kind: monitorNotice, Name: name, State: s.result, Summary: summary, Next: next, Top: r.top,
-		Kiln: r.exe, Commit: landed}, out)
+		Commit: landed}, out)
 }
 
 // isEmpty is whether s is "".

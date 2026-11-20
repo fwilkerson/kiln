@@ -70,7 +70,7 @@ func TestNotify(t *testing.T) {
 // TestNotice holds the notice a stopped spec's build hands the notify program: its spec, state, why, and next step.
 func TestNotice(t *testing.T) {
 	b, repo, _ := landingBuild(t)
-	commitConfig(t, repo, withNotify(`printf %s "$KILN_NOTICE" >.git/notice`))
+	commitConfig(t, repo, withNotify(`printf %s "$KILN_NOTICE" >.git/notice && printf %s "$KILN" >.git/kiln-path`))
 	b.stop("the gate still failed after its last round:\nFAIL TestX", []string{"TestX"})
 	b.waits(t.Context())
 	raw, err := os.ReadFile(filepath.Join(repo, ".git", "notice"))
@@ -79,6 +79,8 @@ func TestNotice(t *testing.T) {
 		err = json.Unmarshal(raw, &n)
 	}
 
+	kiln, _ := os.ReadFile(filepath.Join(repo, ".git", "kiln-path"))
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,11 +88,10 @@ func TestNotice(t *testing.T) {
 	summary, _ := n["summary"].(string)
 	_, committed := n["commit"]
 	if !claim.Holds(n["kind"] == "spec", n["name"] == "x", n["state"] == "stopped", n["top"] == b.r.top,
-		n["kiln"] == b.r.exe, strings.HasPrefix(summary, "the gate still failed after its last round:\n"),
+		string(kiln) == b.r.exe, strings.HasPrefix(summary, "the gate still failed after its last round:\n"),
 		strings.Contains(summary, "failing: TestX"), strings.Contains(n["next"].(string), "kiln queue x"), !committed) {
-		t.Errorf("the notice is %s; want spec x stopped, at %s, by this kiln, why and what failed, the next step, "+
-			"and no commit",
-			raw, b.r.top)
+		t.Errorf("the notice is %s, and $KILN %q; want spec x stopped, at %s, why and what failed, the next step, "+
+			"no commit, and this kiln in $KILN", raw, kiln, b.r.top)
 	}
 }
 

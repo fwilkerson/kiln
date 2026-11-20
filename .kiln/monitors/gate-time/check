@@ -14,17 +14,19 @@
 # quartile holds to the slower kind, and moves only once a quarter of the window moves.
 #
 # A fix changes the ledger only once it lands, so the monitor's monitor.json keeps this check out of the gate. kiln runs
-# this script as sh .kiln/monitors/<name>/check, so its directory names the monitor.
+# this script by its path, .kiln/monitors/<name>/check, so its directory names the monitor.
 set -eu
 export LC_ALL=C
 
 monitor=$(basename "$(dirname "$0")")
 rise=${1:-50}
 window=${2:-20}
+# kiln is the kiln that runs this check, or the one on the PATH where the developer runs it by hand.
+kiln=${KILN:-kiln}
 
 # gates holds a line for each gate the series counts, oldest first: when it started, and its seconds. A failed kiln
 # ledger fails the check, rather than reading as no gate.
-gates=$(kiln ledger --kind gate)
+gates=$("$kiln" ledger --kind gate)
 gates=$(printf '%s\n' "$gates" | jq -r 'select(.passed and (.landing | not)) | "\(.at | fromdate)\t\(.seconds)"')
 count=$(printf '%s\n' "$gates" | grep -c . || true)
 if [ "$count" -lt $((2 * window)) ]; then
@@ -33,7 +35,7 @@ if [ "$count" -lt $((2 * window)) ]; then
 fi
 
 # fixed is when the monitor last started a fix, or 0.
-fixed=$(kiln ledger --kind monitor --name "$monitor")
+fixed=$("$kiln" ledger --kind monitor --name "$monitor")
 fixed=$(printf '%s\n' "$fixed" | jq -r 'select(.found == "fix") | .at | fromdate' | tail -n 1)
 recent=$(printf '%s\n' "$gates" | tail -n "$window")
 before=$(printf '%s\n' "$gates" | tail -n $((2 * window)) | head -n "$window")

@@ -166,13 +166,14 @@ A monitor's `gauge` is a gauge too, named for the monitor, with its line in the 
 - Print the same for the same finding, with no line numbers and no timestamps. kiln compares what the gauge printed
   to decide whether anything changed.
 
-A gauge can read kiln's own numbers from `kiln ledger`, as [What kiln records](#what-kiln-records) says. The
-median cost of the last ten builds that ended, in dollars:
+A gauge can read kiln's own numbers from `kiln ledger`, as [What kiln records](#what-kiln-records) says. It runs
+`"$KILN"`, the kiln that reads it, as `go doc ./internal/kiln` says under Files. The median cost of the last ten
+builds that ended, in dollars:
 
 ```sh
 #!/bin/sh
 set -eu
-builds=$(kiln ledger --kind build)
+builds=$("$KILN" ledger --kind build)
 printf '%s\n' "$builds" | jq -s 'map(select(.outcome != null and .cost_usd != null) | .cost_usd) | .[-10:] | sort
   | if length > 0 then (.[(length - 1) / 2 | floor] + .[length / 2 | floor]) / 2 else empty end'
 ```
@@ -182,7 +183,7 @@ The slowest of the last twenty gates that passed on a build's work, in seconds, 
 ```sh
 #!/bin/sh
 set -eu
-gates=$(kiln ledger --kind gate)
+gates=$("$KILN" ledger --kind gate)
 printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seconds) | .[-20:] | max // empty'
 ```
 

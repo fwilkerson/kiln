@@ -17,7 +17,7 @@ if [ "$(field kind)" = spec ]; then
 fi
 
 # The tab's environment is Ghostty's, not kiln's, so the tab names the kiln that sent the notice, quoted for the shell.
-kiln=$(field kiln | sed "s/'/'\\\\''/g")
+kiln=$(printf '%s\n' "$KILN" | sed "s/'/'\\\\''/g")
 
 # Ghostty selects a new tab, so the script selects the developer's tab again. Ghostty may also come forward, so the
 # script brings back the app that was in front. It uses open, since telling that app to activate needs a permission.

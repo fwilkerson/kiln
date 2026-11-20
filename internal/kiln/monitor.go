@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path"
 	"slices"
@@ -367,15 +368,24 @@ func (o output) why() string {
 	return last
 }
 
-// runShell runs command with sh -c in dir, with env, in a process group of its own. It answers what the command
-// printed, and the error it ended with.
+// kilnVar names the path of the kiln that runs a script. The script runs it in place of a kiln on the PATH.
+const kilnVar = "KILN"
+
+// runShell runs command with sh -c in dir, with env and $KILN, in a process group of its own. It answers what the
+// command printed, and the error it ended with.
 func runShell(ctx context.Context, dir git.Worktree, command string, env []string) (output, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return output{}, err
+	}
+
 	var stdout, stderr bytes.Buffer
 	both := &lockedBuffer{}
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-	cmd.Dir, cmd.Env = string(dir), env
+	// Of two values of one variable, the last wins. So this kiln's path replaces one a caller passed on.
+	cmd.Dir, cmd.Env = string(dir), append(slices.Clone(env), kilnVar+"="+exe)
 	cmd.Stdout, cmd.Stderr = io.MultiWriter(&stdout, both), io.MultiWriter(&stderr, both)
-	err := proc.Run(cmd)
+	err = proc.Run(cmd)
 	return output{stdout: stdout.String(), stderr: stderr.String(), both: both.String()}, err
 }
 
