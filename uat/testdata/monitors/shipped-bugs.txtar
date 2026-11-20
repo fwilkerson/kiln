@@ -1,0 +1,100 @@
+# A monitor kiln ships, added with one command, fixes each bug filed under bugs/, one fix at a time.
+
+env KILN_OPEN=true
+
+# Given: two bugs filed under bugs/, and the bugs monitor kiln ships, added and committed on main.
+exec kiln monitor add bugs
+stdout '^wrote \.kiln/monitors/bugs/check$'
+exec git add .kiln/monitors/bugs
+exec git commit -q -m 'add the bugs monitor'
+
+# When: the developer runs kiln monitor run, once.
+exec kiln monitor run
+
+# Then: the first fix's prompt holds the line for bugs/a.md, and no other bug,
+grep 'Fix this bug, bugs/a\.md, and no other' .claude-calls/fix/1/1/prompt
+grep 'A answers 41' .claude-calls/fix/1/1/prompt
+! grep 'bugs/b\.md' .claude-calls/fix/1/1/prompt
+! grep 'B hangs' .claude-calls/fix/1/1/prompt
+
+# two fixes landed, one for each bug,
+exec git log --format=%s main
+stdout -count=2 '^fix\(bugs\): '
+
+# no file remains under bugs/,
+exec git ls-tree -r --name-only main
+! stdout '^bugs/'
+
+# and kiln status shows the monitor healthy.
+exec kiln status
+stdout '^bugs: healthy'
+
+-- .kiln/kiln.json --
+{"gate": ["true"]}
+-- bugs/a.md --
+# A answers 41
+
+A should answer 42.
+-- bugs/b.md --
+# B hangs
+
+B should return at once.
+-- claude.json --
+{
+ "fix": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "rm bugs/a.md"
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Fixed bugs/a.md.\n{\"title\": \"fix(bugs): answer 42 from a\"}"
+     }
+    }
+   ]
+  },
+  "2": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "rm bugs/b.md"
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Fixed bugs/b.md.\n{\"title\": \"fix(bugs): stop b hanging\"}"
+     }
+    }
+   ]
+  }
+ },
+ "audit": {
+  "1": {
+   "1": [
+    {
+     "result": {
+      "result": "read 1 directories, found 0"
+     }
+    }
+   ]
+  },
+  "2": {
+   "1": [
+    {
+     "result": {
+      "result": "read 1 directories, found 0"
+     }
+    }
+   ]
+  }
+ }
+}
