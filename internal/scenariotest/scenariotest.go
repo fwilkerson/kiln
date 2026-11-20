@@ -61,8 +61,8 @@
 //
 // await is on the PATH of kiln, of its sessions and of its gates too. A scripted step or a gate waits the same way.
 // await looks at its file every 20 ms. A scripted claude has no limit of its own. Every await and scripted claude
-// ends once the test process ends, so none outlives the run. Where kqueue cannot watch the test process, each asks
-// once a second whether the test process still runs.
+// ends once the test process ends, so none outlives the run. Where kqueue cannot watch the test process, an await
+// or a scripted claude asks once a second whether it runs.
 //
 // Main refuses to run any test, exiting 2, when the first claude on the PATH is not the scripted one. A real claude
 // would call the model.

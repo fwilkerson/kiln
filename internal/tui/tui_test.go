@@ -767,8 +767,9 @@ func TestFixOutcomes(t *testing.T) {
 	}
 }
 
-// TestGaugeRowCost holds that a gauge's row costs no more for the readings too old to fit. 40 times the readings
-// allocate under twice the bytes, and show the same newest ones. A count of bytes, unlike a time, ignores the load.
+// TestGaugeRowCost holds that readings too old to fit add no allocations to a gauge's row, and never show. 40 times
+// the readings allocate under twice the bytes, and show the same newest ones. A count of bytes, unlike a time, ignores
+// the load.
 func TestGaugeRowCost(t *testing.T) {
 	start := time.Now()
 	draw := func(n int) (string, uint64) {

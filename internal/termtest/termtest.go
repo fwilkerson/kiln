@@ -122,7 +122,7 @@ func (term *Term) Close() error {
 }
 
 // Press sends each key, as the terminal would encode it in the program's current modes. A key is a character or one
-// of vt's keys, such as vt.KeyEnter. Esc goes as CSI 27 u. Ghostty sends it so once a program asks to tell keys
+// of vt's keys, such as vt.KeyEnter. Esc goes as CSI 27 u. Ghostty sends Esc so once a program asks to tell keys
 // apart, as Bubble Tea does. A program reads a bare Esc as a key only once no byte follows it within a timeout. On
 // a loaded machine, no pause would keep the next key out of that timeout.
 func (term *Term) Press(codes ...rune) {

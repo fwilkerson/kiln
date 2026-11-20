@@ -2,16 +2,17 @@
 //
 //	func TestMain(m *testing.M) { hometest.Main(m) }
 //
-// The developer's git config then changes no git that a test runs. That config may sign each commit with a key
+// The developer's global git config then changes no git that a test runs. That config may sign each commit with a key
 // behind an agent, at the cost of a call to ssh-keygen. kiln's git never sees GIT_CONFIG_GLOBAL, so HOME and
 // XDG_CONFIG_HOME keep the config from it. kiln's cache moves under that HOME too. A test that needs a HOME of its
-// own still sets one.
+// own still sets one. GIT_CONFIG_NOSYSTEM keeps the system's git config from the test's own git. kiln's git drops
+// that variable, as proc.Git says, so kiln's git still reads the system's config.
 //
-// The config turns off git's automatic maintenance. A commit would otherwise start it in the background. There it
-// prunes worktrees and repacks while the test works in the same repository.
+// The config turns off git's automatic maintenance, which a commit would otherwise start in the background. Background
+// maintenance prunes worktrees and repacks while the test works in the same repository.
 //
 // A test binary that git rebase --exec or a hook starts inherits GIT_DIR. Each git the test runs then works on that
-// repository. [DropGitVars] drops it, with every other GIT_* variable that kiln's own git drops.
+// repository. [DropGitVars] drops GIT_DIR, with every other GIT_* variable that kiln's own git drops.
 package hometest
 
 import (

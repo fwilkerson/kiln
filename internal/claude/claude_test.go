@@ -59,7 +59,7 @@ while :; do (sleep 20 &); done
 `
 
 // TestKillForks holds that Run returns promptly once it kills a session, at overage or when its context ends.
-// No child the session forked as it died holds Run past the kill. One that did would hold it for the whole grace
+// No child the session forked as it died holds Run past the kill. A child that did would hold Run for the whole grace
 // that the package doc gives a child, 10 s. A run that kills every child takes a fraction of that, however loaded.
 func TestKillForks(t *testing.T) {
 	const grace = 10 * time.Second

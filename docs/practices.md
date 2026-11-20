@@ -82,4 +82,5 @@ organize current work by stories, then reorganize it by functional area. A story
 - `arch_test.go` and `style_test.go`: import rules, modern Go, and doc names.
 - `TestFacts` in a package's `facts_test.go`: each number the package doc states, beside the constant that holds it.
   `repotest.Facts` fails when one moves without the other. A number a doc states gets a row there.
-- `go test ./...`, which the pre-commit hook runs on each commit to main.
+- The gate in `.kiln/kiln.json`, which the pre-commit hook runs on each commit to main: `go vet ./...`, and
+  `go test ./...` with a timeout that only a hang reaches.
