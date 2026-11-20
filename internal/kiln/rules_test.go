@@ -1032,6 +1032,17 @@ func TestLandedBefore(t *testing.T) {
 	}
 }
 
+// TestOpenOutsideRepository holds kiln's refusal of a directory no repository holds. It names the git that found none.
+func TestOpenOutsideRepository(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	_, err := Open(t.Context(), dir, os.Environ())
+	if want := dir + " is in no git repository: git rev-parse --show-toplevel: exit status 128"; err == nil ||
+		!strings.HasPrefix(err.Error(), want) {
+		t.Errorf("Open answered %v; want an error that starts %q", err, want)
+	}
+}
+
 // landedThenKilled is the build of x, an accepted landing, as the next kiln takes it up. The kiln before died once its
 // landing moved main. It answers the commit main moved to. A monitor's build is the fix of the monitor x.
 func landedThenKilled(t *testing.T, monitor bool) (*build, git.Rev) {
