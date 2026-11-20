@@ -61,7 +61,8 @@ func checkLinks(t *testing.T, repo, tree string) {
 }
 
 // TestCheckoutSharedCore holds that kiln's first worktree leaves the developer's checkout usable. With
-// extensions.worktreeConfig, git reads a shared core.bare or core.worktree in each linked worktree.
+// extensions.worktreeConfig, git reads a shared core.bare or core.worktree in each linked worktree. A config that
+// turns that extension off, or that sets core.bare twice, still gives kiln a worktree of its own.
 func TestCheckoutSharedCore(t *testing.T) {
 	t.Parallel()
 	commit := "git config user.name t && git config user.email t@t && echo a >a && git add a && git commit -qm first"
@@ -72,6 +73,10 @@ func TestCheckoutSharedCore(t *testing.T) {
 			"git clone -q --bare src repo.git && git -C repo.git worktree add -q ../work main"},
 		{"worktree", "git --git-dir=gd --work-tree=work init -q -b main && mkdir work && cd work && " +
 			"echo 'gitdir: ../gd' >.git && " + commit},
+		{"extension off", "mkdir work && cd work && git init -q -b main && " + commit + " && " +
+			"git config extensions.worktreeConfig false"},
+		{"core.bare twice, false last", "mkdir work && cd work && git init -q -b main && " + commit + " && " +
+			"git config core.bare true && git config --add core.bare false"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
