@@ -745,18 +745,46 @@ func (g *Git) Files(ctx context.Context, at Rev, dir string) ([]string, error) {
 
 // Show reads the file at path in the commit at, and false when the commit holds no file there.
 func (g *Git) Show(ctx context.Context, at Rev, path string) ([]byte, bool, error) {
-	listed, err := g.in(ctx, g.repo, "--literal-pathspecs", "ls-tree", "-z", "--full-tree", at.commit(), "--", path)
-	if err != nil || listed == "" {
+	// One git asks whether at is a commit, then for the file. A missing commit is an error, not a missing file.
+	batch := "info " + at.commit() + "\x00contents " + at.commit() + ":" + path + "\x00"
+	out, err := g.run(ctx, call{dir: string(g.repo), stdin: batch}, "cat-file", "--batch-command", "-Z")
+	commit, file, _ := strings.Cut(out, "\x00")
+	if err == nil && kind(commit) != "commit" {
+		err = fmt.Errorf("git cat-file --batch-command: %s", commit)
+	}
+
+	if err != nil {
 		return nil, false, err
 	}
 
-	about, _, _ := strings.Cut(listed, "\t")
-	if fields := strings.Fields(about); len(fields) != 3 || fields[1] != "blob" {
-		return nil, false, nil
+	content, found := blob(file)
+	return content, found, nil
+}
+
+// blob reads cat-file -Z's answer for a file: a header and the content, or the name asked for and "missing". A
+// directory or a submodule is no file.
+func blob(answer string) ([]byte, bool) {
+	header, content, _ := strings.Cut(answer, "\x00")
+	if kind(header) != "blob" {
+		return nil, false
 	}
 
-	content, err := g.in(ctx, g.repo, "show", string(at)+":"+path)
-	return []byte(content), err == nil, err
+	size, err := strconv.Atoi(strings.Fields(header)[2])
+	if err != nil || size > len(content) {
+		return nil, false
+	}
+
+	return []byte(content[:size]), true
+}
+
+// kind is the type that header, cat-file's line about an object, names. It is "" for a line that names no type, as
+// "<name> missing" does.
+func kind(header string) string {
+	if fields := strings.Fields(header); len(fields) == 3 {
+		return fields[1]
+	}
+
+	return ""
 }
 
 func paths(out string) []string {
