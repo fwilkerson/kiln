@@ -154,11 +154,12 @@ func (b *build) commandGate(ctx context.Context) (verdict, error) {
 		b.say("the command failed, %v; the gate judges its work:\n%s", err, indent(lastLines(out.both, 10)))
 	}
 
-	if _, err := b.r.git.Commit(ctx, b.tree, b.message("the command's work")); err != nil {
+	head, err := b.r.git.Commit(ctx, b.tree, b.message("the command's work"))
+	if err != nil {
 		return verdict{}, err
 	}
 
-	return b.gate(ctx)
+	return b.gate(ctx, head)
 }
 
 // lastLines is the last n lines of text.
@@ -314,7 +315,7 @@ func (b *build) fixGate(ctx context.Context) (string, reason, error) {
 		}
 	}
 
-	v, err := b.gate(ctx)
+	v, err := b.gate(ctx, "")
 	switch {
 	case err != nil:
 		return "", reason{}, err

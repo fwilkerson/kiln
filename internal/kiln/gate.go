@@ -326,9 +326,12 @@ func (r *Repo) atCommit(ctx context.Context, spec Spec, head git.Rev, commands [
 // place.
 func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []string) (map[string]string, git.Rev,
 	error) {
-	head, err := r.git.Head(ctx, g.place)
-	if err != nil {
-		return nil, "", err
+	head := g.head
+	if head == "" {
+		var err error
+		if head, err = r.git.Head(ctx, g.place); err != nil {
+			return nil, "", err
+		}
 	}
 
 	changed, err := r.git.Branched(ctx, main, head)

@@ -971,7 +971,7 @@ func TestLandChanges(t *testing.T) {
 			}
 
 			// The ledger tells the landing's gate from a gate of the work, which runs once the landing ends.
-			if _, err := b.gate(t.Context()); err != nil {
+			if _, err := b.gate(t.Context(), ""); err != nil {
 				t.Fatal(err)
 			}
 

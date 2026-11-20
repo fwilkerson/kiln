@@ -317,11 +317,12 @@ func (b *build) ledger(ctx context.Context) {
 
 // gateWork commits what the session left, gates it, and takes the build on from the verdict, as after does.
 func (b *build) gateWork(ctx context.Context) (string, reason, error) {
-	if _, back, err := b.sessionWork(ctx); err != nil || back.why != "" {
+	head, back, err := b.sessionWork(ctx)
+	if err != nil || back.why != "" {
 		return b.roundFor(back, err)
 	}
 
-	v, err := b.gate(ctx, b.allowed()...)
+	v, err := b.gate(ctx, head, b.allowed()...)
 	if err != nil {
 		return "", reason{}, err
 	}
@@ -722,9 +723,12 @@ func (b *build) landing() string {
 	return message + "Build: " + b.r.summary(b.rec.Build) + "\n"
 }
 
-// gate runs the gate on the build's worktree, as judgeWork does. A fix's gate keeps it to its side.
-func (b *build) gate(ctx context.Context, allowed ...string) (verdict, error) {
-	return b.judgeWork(ctx, nil, b.treeGuard(allowed...))
+// gate runs the gate on head, the commit kiln made at the build's worktree, or "" to read it there. It runs as
+// judgeWork does. A fix's gate keeps it to its side.
+func (b *build) gate(ctx context.Context, head git.Rev, allowed ...string) (verdict, error) {
+	g := b.treeGuard(allowed...)
+	g.head = head
+	return b.judgeWork(ctx, nil, g)
 }
 
 // judgeWork takes commandsLock, and runs the gate under it, as gated does. A landing's try holds the lock already, and

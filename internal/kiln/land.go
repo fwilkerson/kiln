@@ -93,7 +93,9 @@ func (b *build) landOnce(ctx context.Context, from git.Rev, retire retiring, all
 		return "", back, err
 	}
 
-	v, err := b.gated(ctx, held, nil, b.treeGuard(allowed...))
+	g := b.treeGuard(allowed...)
+	g.head = head
+	v, err := b.gated(ctx, held, nil, g)
 	if err != nil || !v.passed {
 		return "", setback{whyLanding, v.report, v.failing}, err
 	}
