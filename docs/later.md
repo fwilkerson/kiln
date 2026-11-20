@@ -194,3 +194,17 @@ the rounds.
 - **Why it was left out:** the developer chose the round on 2026-11-19. A merge of main is a turn of the session, as
   a failed gate's fix is.
 - **Build it when:** a build stops out of rounds that conflicts with the other lane's landings spent.
+
+## A ceiling on what one build or fix spends
+
+kiln.json's `timeout` ends a hang: a command that never returns, or a session that falls silent. A session that works
+on, turn after turn, is no hang. A ceiling on one build's or one fix's cost, turns or time would stop it, and say
+which ceiling it met.
+
+- **Why it was left out:** on 2026-11-20 the ledger held 65 builds and fixes that ran a session, over 192 session
+  runs. The median spent $1.67. The costliest spent $31 in 291 turns, over 7 runs. The longest single run took 161
+  turns, and the costliest $20. No run had ended at a usage limit. The rounds already cap how many runs a build
+  makes. A session draws on the developer's plan and never bills overage, so the plan's usage limit caps what all
+  the work spends. kiln pauses a build there, and ends a fix.
+- **Build it when:** a build or fix spends more than twice the costliest so far, or a single run passes 500 turns. Or
+  a usage limit pauses a build while one session drew most of the window.
