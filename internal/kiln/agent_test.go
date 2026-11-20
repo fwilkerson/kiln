@@ -151,14 +151,26 @@ func TestInitKeeps(t *testing.T) {
 	}
 }
 
-// TestInitReviewers holds how kiln init links the reviewers a project keeps. It writes no default reviewer into a
-// reviewers folder that is there. It links each reviewer there, and removes each link to one whose file is gone. It
-// refuses a reviewer that Claude Code could not run.
+// TestInitReviewers holds how kiln init links the reviewers a project keeps. It refuses a reviewer that Claude Code
+// could not run, before it writes anything. It writes no default reviewer into a reviewers folder that is there. It
+// links each reviewer there, in place of a link that reaches nothing. It removes each link to a reviewer that is gone.
 func TestInitReviewers(t *testing.T) {
 	r, repo := scratchRepo(t)
-	shell(t, repo, `mkdir -p .kiln/reviewers .claude/agents && `+
-		`printf -- '---\nname: upgrade\ndescription: Reads a spec.\n---\nRead it.\n' >.kiln/reviewers/upgrade.md && `+
+	shell(t, repo, `mkdir -p .kiln/reviewers .claude/agents && touch .kiln/reviewers/.gitkeep && `+
+		`printf -- '---\nname: upgrade\n---\n' >.kiln/reviewers/upgrade.md && `+
+		`ln -s ../../.kiln/agents/upgrade.md .claude/agents && `+
 		`ln -s ../../.kiln/reviewers/critic.md .claude/agents && ln -s ../../.kiln/agents/gone.md .claude/agents`)
+	err := r.Init(t.Context(), io.Discard, InitOptions{})
+	if !errors.Is(err, errRefused) || !strings.Contains(err.Error(), ".kiln/reviewers/upgrade.md") {
+		t.Errorf("kiln init with a reviewer that has no description: %v; want it refused, naming the file", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(repo, configFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("kiln init refused a reviewer, but wrote %s: %v", configFile, err)
+	}
+
+	shell(t, repo, "printf -- '---\nname: upgrade\ndescription: Reads a spec.\n---\nRead it.\n' "+
+		">.kiln/reviewers/upgrade.md")
 	var out strings.Builder
 	if err := r.Init(t.Context(), &out, InitOptions{}); err != nil {
 		t.Fatal(err)
@@ -181,12 +193,6 @@ func TestInitReviewers(t *testing.T) {
 	link, err := os.Readlink(filepath.Join(repo, ".claude/agents/upgrade.md"))
 	if link != "../../.kiln/reviewers/upgrade.md" {
 		t.Errorf(".claude/agents/upgrade.md links to %q, %v", link, err)
-	}
-
-	shell(t, repo, "printf -- '---\nname: upgrade\n---\n' >.kiln/reviewers/upgrade.md")
-	err = r.Init(t.Context(), io.Discard, InitOptions{})
-	if !errors.Is(err, errRefused) || !strings.Contains(err.Error(), ".kiln/reviewers/upgrade.md") {
-		t.Errorf("kiln init with a reviewer that has no description: %v; want it refused, naming the file", err)
 	}
 }
 

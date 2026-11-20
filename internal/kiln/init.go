@@ -37,15 +37,24 @@ type InitOptions struct {
 }
 
 // Init writes kiln's defaults into .kiln/ in the checkout, as opt's preset fills them. It writes each where .kiln/
-// holds no file of its name. It writes the default reviewers only where .kiln/ holds no reviewers folder. To a
-// kiln.json that is there, it adds only rounds, the key every preset shares, if the file lacks it. It links /shape and
-// each reviewer into .claude/, as linkReviewers says. It says so when the repository has no branch main, which each
-// command that reads main then refuses. It prints kiln.json's gate, the commands the pre-commit hook runs on each
-// commit to main. The hook refuses a commit to main that fails them. Last, Init installs the hook, or says why it
-// installed none, as installHook says. Init refuses a preset it does not know before it writes anything.
+// holds no file of its name. It writes the default reviewers only where .kiln/ has no reviewers folder: one holding
+// only a .gitkeep keeps none. To a kiln.json that is there, it adds only rounds, the key every preset shares, if the
+// file lacks it. It links /shape, and each reviewer's file in .kiln/reviewers/, into .claude/. It links each where
+// .claude/ holds nothing of its name, or a link that reaches nothing. It removes each link in .claude/agents/ to a
+// reviewer's file that is gone. It says so when the repository has no branch main, which each command that reads main
+// then refuses. It prints kiln.json's gate, the commands the pre-commit hook runs on each commit to main. The hook
+// refuses a commit to main that fails them. Last, Init installs the hook, or says why it installed none, as installHook
+// says. Init refuses a preset it does not know before it writes anything. It refuses a reviewer Claude Code could not
+// run before it writes anything too. Such a reviewer's frontmatter has no description, or a name other than its file's,
+// without .md.
 func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	p, err := presetNamed(opt.Preset)
 	if err != nil {
+		return err
+	}
+
+	// A refusal after the first write would leave .kiln/ written, and a re-run would not say to commit it.
+	if _, err := r.reviewers(); err != nil {
 		return err
 	}
 
@@ -229,21 +238,26 @@ func lastMember(obj []byte) (at int, indent string, err error) {
 	return at, indent, nil
 }
 
-// link links .claude/<p> to .kiln/<own>, unless .claude/ holds something of that name. It says so when that
-// something reaches a file other than .kiln/<own>, so the developer can rename one.
+// link links .claude/<p> to .kiln/<own>, unless .claude/ holds something of that name that reaches a file. It says so
+// when that file is not .kiln/<own>, so the developer can rename one.
 func (r *Repo) link(p, own string, out io.Writer) error {
 	at := filepath.Join(r.top, ".claude", p)
 	to := filepath.Join(r.top, kilnDir, own)
-	if _, err := os.Lstat(at); !errors.Is(err, fs.ErrNotExist) {
-		if err != nil {
+	_, err := os.Lstat(at)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		return err
+	case reachesNothing(at):
+		// A link to a file moved away holds nothing of the developer's, so kiln's link takes its place.
+		if err := os.Remove(at); err != nil {
 			return err
 		}
-
-		if !sameFile(at, to) {
-			fmt.Fprintf(out, "linked nothing at .claude/%s, since another file is there; rename one to link %s/%s\n",
-				p, kilnDir, own)
-		}
-
+	case !sameFile(at, to):
+		fmt.Fprintf(out, "linked nothing at .claude/%s, since another file is there; rename one to link %s/%s\n",
+			p, kilnDir, own)
+		return nil
+	default:
 		return nil
 	}
 
@@ -378,6 +392,12 @@ func (r *Repo) goneReviewer(at string) (string, bool) {
 
 	_, err = os.Lstat(target)
 	return path.Join(reviewersDir, filepath.Base(target)), errors.Is(err, fs.ErrNotExist)
+}
+
+// reachesNothing reports whether the link at reaches no file.
+func reachesNothing(at string) bool {
+	_, err := os.Stat(at)
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 // sameFile reports whether paths a and b reach one file, through any links on the way. A path that reaches nothing

@@ -78,7 +78,7 @@
   <rect class="you" x="24" y="60" width="196" height="64" rx="8"/>
   <text class="t mono you-t" x="38" y="84">/shape</text>
   <text class="s" x="38" y="102">writes a spec with you, and</text>
-  <text class="s" x="38" y="116">three reviewers read it</text>
+  <text class="s" x="38" y="116">reviewers read it</text>
   <path class="w" d="M122,124 V146" marker-end="url(#arrow)"/>
   <rect class="you" x="24" y="150" width="196" height="64" rx="8"/>
   <text class="t you-t" x="38" y="174">approve and commit</text>

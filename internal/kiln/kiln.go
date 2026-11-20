@@ -60,6 +60,7 @@
 //	.kiln/agents/build.md       the build agent
 //	.kiln/agents/verify.md      how the acceptance tests are written, and a split build's verify agent
 //	.kiln/agents/audit.md       the audit
+//	.kiln/reviewers/            the agents /shape runs on a spec before it is approved, which no build runs
 //	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
 //
 // kiln keeps its own files out of the working tree. Main is the branch named main:

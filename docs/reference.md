@@ -19,7 +19,7 @@ commands in use.
 
 `kiln init` writes these from a preset, each only where `.kiln/` holds no file of its name, and links `/shape` and
 each reviewer into `.claude/`. The project owns them from then on. Run again, it writes each file `.kiln/` lacks,
-and adds to `kiln.json` only `rounds`. It writes the default reviewers only where `.kiln/` holds no `reviewers/`.
+and adds to `kiln.json` only `rounds`.
 
 A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
 as a new agent, is yours to commit: a build names it in its last reply instead of writing it.
@@ -262,10 +262,12 @@ End with one line: `read N files, found M`.
 ```
 
 - `name` is the file's name without `.md`, and `description` says when to run it. Claude Code runs a subagent only
-  with both, so `kiln init` refuses a reviewer that lacks one, or names another.
-- `/shape` reads two keys of its own, `uncontested` and `rerun`. Step 4 of `.kiln/skills/shape/SKILL.md` says
-  what each does.
-- To remove a reviewer, delete its file and run `kiln init`, which removes its link.
+  with both. `go doc ./internal/kiln Repo.Init` says which reviewers `kiln init` refuses, and when it writes the
+  three.
+- `/shape` reads two keys of its own, `uncontested` and `rerun`. Claude Code ignores both. Step 4 of
+  `.kiln/skills/shape/SKILL.md` says what each does.
+- To remove a reviewer, delete its file and run `kiln init`, which removes its link. To keep none, leave a
+  `.gitkeep` in `.kiln/reviewers/`, since git keeps no empty folder.
 
 ## When a build waits on you
 

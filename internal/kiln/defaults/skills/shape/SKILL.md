@@ -82,9 +82,9 @@ change one only by an amendment, in `.kiln/specs/<name>.amend.md`, which the dev
 
 The reviewers are the agents in `.kiln/reviewers/`, one file each. `kiln init` links each into `.claude/agents/`,
 where Claude Code finds it. If one will not start, ask the developer to run `kiln init` and restart the session.
-When no Open Question remains, run each reviewer on the spec, once, in parallel, by the `name` in its frontmatter. A review of a spec with open questions reviews a
-spec that will still change. A run the developer asks for goes ahead even with questions open, so say in its brief
-that they asked.
+When no Open Question remains, run each reviewer on the spec, once, in parallel, by the `name` in its frontmatter.
+A review of a spec with open questions reviews a spec that will still change. A run the developer asks for goes ahead
+even with questions open, so say in its brief that they asked.
 
 A reviewer's frontmatter says how its findings are handled, as `.kiln/reviewers/zoom-out.md` and `critic.md` show:
 
