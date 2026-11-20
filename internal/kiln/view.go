@@ -264,8 +264,10 @@ func (s *buildStats) gone() tui.State {
 
 // shown is the build as the TUI shows it: its runs and gates in the order they ran.
 func (s *buildStats) shown() *tui.Build {
+	n := s.sums()
 	b := &tui.Build{Spec: string(s.Spec), Approved: string(s.Approved), Started: s.At, Size: s.Size,
-		Outcome: s.outcome, Amendments: s.amendments, Fix: s.Monitor != "", Summary: s.summary, Report: s.report}
+		Outcome: s.outcome, Amendments: s.amendments, Fix: s.Monitor != "", Summary: s.summary, Report: s.report,
+		Took: n.took, Cost: n.cost, Turns: n.turns, Failed: n.failed, Rounds: n.rounds}
 	if b.Fix && s.outcome != "" {
 		b.Ended = fixStates[s.outcome]
 	}

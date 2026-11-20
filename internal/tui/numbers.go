@@ -20,62 +20,32 @@ func (b *Build) runs() []*Run {
 	return runs
 }
 
-// cost sums its runs' cost. It is unknown when a run's is.
-func (b *Build) cost() (float64, bool) {
-	return sum(b.runs(), func(t claude.Totals) *float64 { return t.CostUSD })
-}
+func (b *Build) cost() (float64, bool)       { return known(b.Cost) }
+func (b *Build) turns() (int, bool)          { return known(b.Turns) }
+func (b *Build) took() (time.Duration, bool) { return known(b.Took) }
+func (b *Build) rounds() (int, bool)         { return known(b.Rounds) }
 
-// turns sums its runs' turns. It is unknown when a run's are.
-func (b *Build) turns() (int, bool) {
-	return sum(b.runs(), func(t claude.Totals) *int { return t.Turns })
-}
-
-// sum adds up the number of each run's totals. It is unknown when a run's is.
-func sum[N int | float64](runs []*Run, of func(claude.Totals) *N) (N, bool) {
-	var total N
-	for _, r := range runs {
-		n := of(r.Totals)
-		if n == nil {
-			return 0, false
-		}
-
-		total += *n
+// known is the number n points to, and whether it is known.
+func known[N any](n *N) (N, bool) {
+	if n == nil {
+		var zero N
+		return zero, false
 	}
 
-	return total, true
+	return *n, true
 }
 
-// took is its runs' time and its gates' time. It is unknown while a run has no end.
-func (b *Build) took() (time.Duration, bool) {
-	var sum time.Duration
-	for _, s := range b.Steps {
-		switch s := s.(type) {
-		case *Run:
-			if s.End.IsZero() {
-				return 0, false
-			}
-
-			sum += s.End.Sub(s.Start)
-		case *Gate:
-			sum += s.End.Sub(s.Start)
-		}
-	}
-
-	return sum, true
-}
-
-// failed counts its runs' failed calls, and how many of them were refused. It is unknown while a run has no end.
+// failed counts its failed calls, and how many of them were refused. Both are unknown while Failed is.
 func (b *Build) failed() (failed, refused int, known bool) {
-	for _, r := range b.runs() {
-		if r.End.IsZero() {
-			return 0, 0, false
-		}
+	if b.Failed == nil {
+		return 0, 0, false
+	}
 
-		failed += len(r.Totals.Failed)
+	for _, r := range b.runs() {
 		refused += refusals(r.Totals.Failed)
 	}
 
-	return failed, refused, true
+	return *b.Failed, refused, true
 }
 
 // refusals counts the failures that were refused.
@@ -88,21 +58,6 @@ func refusals(failed []claude.Failure) int {
 	}
 
 	return n
-}
-
-// rounds is the highest round any of its runs ran in, or 0 when kiln never sent the work back. It is unknown when a
-// run does not say why it started, since its round is unknown too.
-func (b *Build) rounds() (int, bool) {
-	most := 0
-	for _, r := range b.runs() {
-		if r.Why == "" {
-			return 0, false
-		}
-
-		most = max(most, r.Round)
-	}
-
-	return most, true
 }
 
 // measure is one number of a build that the trend shows.

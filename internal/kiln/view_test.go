@@ -19,7 +19,7 @@ import (
 // build, and a run with no end line, runs only while the kiln fire that started it lives. An interrupt ends the run
 // but leaves the build building. Specs come newest build first, after any
 // with no build yet. Each run says why it started in the words of the spec's Terms. A build's gauge lines are its
-// readings, each judged against the line it holds.
+// readings, each judged against the line it holds. A build's sums come from the ledger too.
 func TestView(t *testing.T) {
 	dead := exec.Command("true")
 	if err := dead.Run(); err != nil {
@@ -95,6 +95,12 @@ func TestView(t *testing.T) {
 	}
 	if g, w := strings.Join(got, "\n"), strings.Join(want, "\n"); g != w {
 		t.Errorf("the view reads\n%s\nwant\n%s", g, w)
+	}
+
+	// One of the done build's runs gives no reason, so its rounds are unknown. Each of its runs ended.
+	if done := specs[len(specs)-1].Builds[0]; done.Rounds != nil || done.Took == nil {
+		t.Errorf("the done build's rounds are %v and its time %v, want unknown rounds and a known time", done.Rounds,
+			done.Took)
 	}
 
 	readings := shownReadings(specs[len(specs)-1].Builds[0].Readings)
