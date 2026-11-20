@@ -183,7 +183,7 @@ func (b *build) now() record {
 	return b.rec
 }
 
-// outOfRounds is a build that its gate failed past its last round. failing names what failed.
+// outOfRounds is a build that met a setback past its last round. failing names what failed.
 type outOfRounds struct {
 	why     string
 	failing []string
@@ -494,27 +494,44 @@ func (b *build) roundFor(back setback, err error) (string, reason, error) {
 	return b.round(back)
 }
 
-// setback is what kept the work from passing, for the session. It is a failed gate, or a conflict with main. It is
-// work that changes nothing there, or a failed gate on the work rebased onto it. why names which, as a start line
-// does. failing names what failed: the gate's failures, or the files in conflict.
+// setback is what kept the work from passing, for the session. It is a failed gate, of the work, of the work rebased
+// onto main, or of a split build's stack. It is a conflict with main, or between a split build's sides. Or it is work
+// that changes nothing on main. why names which, as a start line does. failing names what failed: the gate's
+// failures, or the files in conflict.
 type setback struct {
 	why, report string
 	failing     []string
 }
 
-// round sends a setback's report back to the session, or stops the build past its last round. It answers the prompt,
-// and the round it starts. The rounds it allows are those kiln.json gave the build's last gate.
+// said is what kiln tells of the setback. goesBack is the developer's line as the work goes back, and stops starts
+// the stop past the last round. prompt is the session's: a gate's report is its output, and any other report the
+// prompt itself.
+func (s setback) said() (goesBack, stops, prompt string) {
+	switch s.why {
+	case whyConflict:
+		return "the work conflicts with main", "the work still conflicts with main", s.report
+	case whyUnchanged:
+		return "the work changes nothing on main", "the work still changes nothing on main", s.report
+	case whyStackConflict:
+		return "the verify session's tests conflict with the build session's code",
+			"the verify session's tests still conflict with the build session's code", s.report
+	}
+
+	return "the gate failed", "the gate still failed", fmt.Sprintf(gateFailed, s.report)
+}
+
+// round sends a setback back to the session, as said words it, or stops the build past its last round. It answers
+// the prompt, and the round it starts. The rounds it allows are those kiln.json gave the build's last gate.
 func (b *build) round(back setback) (string, reason, error) {
+	goesBack, stops, prompt := back.said()
 	rounds := b.limit()
 	if b.rec.Rounds >= rounds {
-		return "", reason{}, &outOfRounds{why: "the gate still failed after its last round:\n" + back.report,
-			failing: back.failing}
+		return "", reason{}, &outOfRounds{why: stops + " after its last round:\n" + back.report, failing: back.failing}
 	}
 
 	b.set(func(r *record) { r.Rounds++ })
-	b.say("the gate failed; it goes back to the session, round %d of %d", b.rec.Rounds, rounds)
-	why := reason{Why: back.why, Round: b.rec.Rounds, Rounds: rounds}
-	return fmt.Sprintf(gateFailed, back.report), why, nil
+	b.say("%s; it goes back to the session, round %d of %d", goesBack, b.rec.Rounds, rounds)
+	return prompt, reason{Why: back.why, Round: b.rec.Rounds, Rounds: rounds}, nil
 }
 
 func (b *build) start(ctx context.Context) error {

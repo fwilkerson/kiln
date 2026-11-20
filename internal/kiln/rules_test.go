@@ -966,6 +966,86 @@ func TestLandChanges(t *testing.T) {
 	}
 }
 
+// TestSetbackSays holds what kiln says of work that goes back to the session, to the developer and to the session.
+// A conflict, or work that changes nothing on main, never reads as a failed gate. Past the last round, the stop
+// says the same.
+func TestSetbackSays(t *testing.T) {
+	const x = "echo %d >x.txt && git add x.txt && git commit --quiet -m x"
+	for name, tc := range map[string]struct {
+		// split stacks the sides of a split build, whose files conflict. Otherwise the build lands its work.
+		split bool
+		// work is what the session committed, and main what main gained since the build began.
+		work, main string
+		// said is what the developer reads, opens how the session's prompt opens, and stops how the stop says it.
+		said, opens, stops string
+	}{
+		"a conflict with main": {work: fmt.Sprintf(x, 42), main: fmt.Sprintf(x, 43),
+			said: "the work conflicts with main", opens: "Main moved, and your work conflicts with it",
+			stops: "the work still conflicts with main after its last round"},
+		"work that changes nothing on main": {work: "true", said: "the work changes nothing on main",
+			opens: "Your work changes nothing on main", stops: "the work still changes nothing on main after its last round"},
+		"a conflict between a split build's sides": {split: true,
+			said:  "the verify session's tests conflict with the build session's code",
+			opens: "Your tests conflict with the build session's work",
+			stops: "the verify session's tests still conflict with the build session's code after its last round"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			sendBack := setbackOf(t, tc.split, tc.work, tc.main)
+			var out strings.Builder
+			prompt, err := sendBack(&out)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			said := "x: " + tc.said + "; it goes back to the session, round 1 of 1\n"
+			_, err = sendBack(io.Discard)
+			stop, _ := errors.AsType[*outOfRounds](err)
+			if !claim.Holds(out.String() == said, strings.HasPrefix(prompt, tc.opens), stop != nil &&
+				strings.HasPrefix(stop.why, tc.stops)) {
+				t.Errorf("kiln said %q, told the session %q, and stopped for %v; want %q, a prompt opening %q, "+
+					"and a stop for %q", out.String(), prompt, err, said, tc.opens, tc.stops)
+			}
+		})
+	}
+}
+
+// setbackOf is a build of x, with 1 round, that meets a setback each time sendBack runs it. A split build stacks
+// its sides, whose x.txt differ. Any other build lands work, after main gained main. sendBack answers the prompt for
+// the session, and writes what kiln says to out.
+func setbackOf(t *testing.T, split bool, work, main string) (sendBack func(io.Writer) (string, error)) {
+	if split {
+		b, _ := splitBuild(t, false)
+		for role, text := range map[string]string{buildRole: "42", verifyRole: "43"} {
+			shell(t, string(b.r.clone("x", role)), "echo "+text+" >x.txt && git add x.txt && git commit --quiet -m x")
+		}
+
+		return func(out io.Writer) (string, error) {
+			b.out = out
+			next, err := b.splitStep(t.Context())
+			return next.verify, err
+		}
+	}
+
+	b, repo, _ := landingBuild(t)
+	b.set(func(r *record) { r.Limit = new(1) })
+	shell(t, string(b.tree), work)
+	if main != "" {
+		shell(t, repo, main)
+	}
+
+	head := git.Rev(shell(t, string(b.tree), "git rev-parse HEAD"))
+	return func(out io.Writer) (string, error) {
+		b.out = out
+		_, back, err := b.land(t.Context(), head, nil)
+		if err != nil {
+			return "", err
+		}
+
+		prompt, _, err := b.round(back)
+		return prompt, err
+	}
+}
+
 // gateLines says, of each gate line in r's ledger, whether it gated a landing.
 func gateLines(t *testing.T, r *Repo) string {
 	entries, err := r.store.entries()
