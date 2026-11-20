@@ -35,7 +35,7 @@ func TestTrend(t *testing.T) {
 			builds = append(builds, &Build{Spec: "x", Started: at, Size: 2, Outcome: "landed", Steps: []Step{
 				&Run{Role: "build", Why: "first run", Start: at, End: at.Add(time.Minute),
 					Totals: claude.Totals{CostUSD: cost}},
-			}})
+			}, Took: new(time.Minute), Cost: cost, Failed: new(0), Rounds: new(0)})
 		}
 
 		return builds
@@ -207,11 +207,12 @@ func TestMonitorNamedAsSpec(t *testing.T) {
 	shows(t, m, `the fix's answer`)
 }
 
-// TestRoundsUnknown holds that a build's rounds are unknown when a run does not say why it started. The trend
-// leaves it out of the median, and the builds panel shows its rounds as unknown, never as 0.
+// TestRoundsUnknown holds that a build whose rounds kiln could not add up is left out of the trend's median. The
+// builds panel shows its rounds as unknown, never as 0.
 func TestRoundsUnknown(t *testing.T) {
 	now := time.Now()
-	b := &Build{Spec: "x", Started: now, Outcome: "landed", Steps: []Step{&Run{Role: "build", Start: now, End: now}}}
+	b := &Build{Spec: "x", Started: now, Outcome: "landed", Steps: []Step{&Run{Role: "build", Start: now, End: now}},
+		Took: new(time.Duration(0)), Failed: new(0)}
 	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}}
 	tiles := `││cost 0/1 known +minutes +failed calls +rounds 0/1 known +size, tests *│\n.*││— +0 +0 +— +0 *│`
 	if m := drive(t, src, "", sized(140, 30)); !regexp.MustCompile(tiles).MatchString(screenOf(m)) {

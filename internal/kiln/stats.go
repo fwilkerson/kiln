@@ -130,7 +130,36 @@ func (c *collector) end(s *buildStats, e entry) {
 func (s *buildStats) brief() string {
 	t := total(s.runs, s.gates)
 	return fmt.Sprintf("%s · %s · %s · %s", t.time.duration("time"), t.cost.dollars("cost"), t.turns.count("turn"),
-		plural(t.failed, "failed call"))
+		t.failed.count("failed call"))
+}
+
+// sums are what a build's runs and gates add up to, which kiln ledger prints and kiln tui shows. A nil sum is
+// unknown.
+type sums struct {
+	took                  *time.Duration
+	cost                  *float64
+	turns, failed, rounds *int
+}
+
+// sums adds up the build's runs and gates, as total does. Each sum is unknown while one of its runs lacks its part.
+func (s *buildStats) sums() sums {
+	return total(s.runs, s.gates).sums(s.runs)
+}
+
+// sums are t's sums, which runs add up to. Its rounds are the highest round of runs, unknown while a run's reason is.
+func (t totals) sums(runs []run) sums {
+	rounds := new(0)
+	for _, r := range runs {
+		if r.why.Why == "" {
+			rounds = nil
+			break
+		}
+
+		*rounds = max(*rounds, r.why.Round)
+	}
+
+	return sums{took: t.time.whole(), cost: t.cost.whole(), turns: t.turns.whole(), failed: t.failed.whole(),
+		rounds: rounds}
 }
 
 // sum is a number summed over runs, of which lacks could not be read.
@@ -138,6 +167,15 @@ type sum[T int | float64 | time.Duration] struct {
 	known T
 	lacks int
 	of    int
+}
+
+// whole is the sum, or nil while a run lacks its part.
+func (s sum[T]) whole() *T {
+	if s.lacks > 0 {
+		return nil
+	}
+
+	return &s.known
 }
 
 func (s *sum[T]) add(v *T) {
@@ -174,12 +212,12 @@ func (s sum[T]) duration(what string) string {
 	return s.shown(what, minutes(time.Duration(s.known)))
 }
 
-// totals is what a set of runs, and a build's gates, add up to.
+// totals is what a set of runs, and a build's gates, add up to. A run that has not ended lacks its failed calls.
 type totals struct {
 	time   sum[time.Duration]
 	turns  sum[int]
 	cost   sum[float64]
-	failed int
+	failed sum[int]
 }
 
 // total adds up runs and gates.
@@ -191,15 +229,15 @@ func total(runs []run, gates []entry) totals {
 
 	for _, r := range runs {
 		var took *time.Duration
+		var failed *int
 		if !r.end.IsZero() {
-			d := r.end.Sub(r.start)
-			took = &d
+			took, failed = new(r.end.Sub(r.start)), new(len(r.totals.Failed))
 		}
 
 		t.time.add(took)
 		t.turns.add(r.totals.Turns)
 		t.cost.add(r.totals.CostUSD)
-		t.failed += len(r.totals.Failed)
+		t.failed.add(failed)
 	}
 
 	return t
@@ -327,16 +365,30 @@ func auditDid(audited bool, runs []run, known bool) string {
 	return "the build changed nothing kiln audits, so no audit ran"
 }
 
-// readAgain says how many times the audit read the work, when it read it more than once. A retry is no new read.
+// readAgain says how many times the audit read the work, when it read it more than once.
 func readAgain(runs []run) string {
-	reads := len(slices.DeleteFunc(slices.Clone(runs), func(r run) bool {
-		return r.role != auditRole || r.why.Try > 1
-	}))
+	reads, _ := auditReads(runs)
 	if reads < 2 {
 		return ""
 	}
 
 	return fmt.Sprintf(", and read the work %d times", reads)
+}
+
+// auditReads counts the audit's reads of the work in runs, and the reads whose findings went back. A retry is no new
+// read. A split build's findings go to both sessions, and count once.
+func auditReads(runs []run) (reads, findings int) {
+	sent := true
+	for _, r := range runs {
+		switch {
+		case r.role == auditRole && r.why.Try <= 1:
+			reads, sent = reads+1, false
+		case r.why.Why == whyFindings && !sent:
+			findings, sent = findings+1, true
+		}
+	}
+
+	return reads, findings
 }
 
 // filesChanged counts the files, insertions and deletions from the commit from to the commit to.

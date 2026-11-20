@@ -26,7 +26,8 @@ import (
 //	start     before each session run: its role, its session, the length of the session's stream, why it started,
 //	          the process ID of the kiln fire that started it, and the commit an audit run read
 //	end       after each session run: how it ended, its totals, the stream's length, and what an audit changed
-//	gate      after each gate: when it ended, whether it passed, and whether it gated a landing
+//	gate      after each gate: when it ended, whether it passed, whether it gated a landing, and whether it ran the
+//	          commands at main too
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
 //	gauge     after a landing, one per gauge: its name, the landed commit, its value or none, and its line and side
 //	monitor   when kiln monitor run runs a monitor: its name, main's tip, a hash of its entry and one of what its
@@ -107,10 +108,12 @@ type entry struct {
 	Ended   string         `json:"ended,omitempty"`
 	Totals  *claude.Totals `json:"totals,omitempty"`
 	Changed []string       `json:"changed,omitempty"`
-	// A gate line's. At is when it started. Landing is the gate on the work rebased onto main.
+	// A gate line's. At is when it started. Landing is the gate on the work rebased onto main. RanMain is whether it
+	// ran the commands at main too. A line from before kiln wrote it holds none.
 	End     time.Time `json:"end,omitzero"`
 	Passed  bool      `json:"passed,omitempty"`
 	Landing bool      `json:"landing,omitempty"`
+	RanMain *bool     `json:"ran_main,omitempty"`
 	// An outcome line's. Amendments is the text of a waiting build's amendments.
 	Outcome    string `json:"outcome,omitempty"`
 	Amendments string `json:"amendments,omitempty"`

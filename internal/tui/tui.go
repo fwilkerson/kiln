@@ -145,6 +145,10 @@ type Build struct {
 	Ended State
 	// Steps are its session runs and gates, in the order they ran.
 	Steps []Step
+	// Took, Cost, Turns, Failed and Rounds are its sums, as kiln adds them up. Each is nil while unknown.
+	Took                  *time.Duration
+	Cost                  *float64
+	Turns, Failed, Rounds *int
 	// Readings are the gauges' readings of its landing.
 	Readings []Reading
 }

@@ -765,16 +765,19 @@ func (b *build) treeGuard(allowed ...string) guard {
 }
 
 // gated runs the gate under held, as commands.gate does, and writes it to the ledger. Its line starts once the lock
-// is held, so a build's time counts no wait. Only a landing sets the record's Before. A gate while it is set is the
-// landing's gate, on the work rebased onto main.
+// is held, so a build's time counts no wait. Its line says it passed only when it ended with no error. Only a landing
+// sets the record's Before. A gate while it is set is the landing's gate, on the work rebased onto main.
 func (b *build) gated(ctx context.Context, held commands, without []string, guards ...guard) (verdict, error) {
-	start := time.Now()
+	e := entry{Kind: gateKind, At: time.Now(), Landing: b.now().Before != ""}
 	v, err := held.gate(ctx, without, guards...)
 	if err == nil {
+		e.RanMain = new(v.ranMain)
 		v, err = b.gatedCheck(ctx, held, v)
 	}
 
-	b.record(entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed, Landing: b.now().Before != ""})
+	// A gate that stopped on an error never passed, whatever the commands it ran found.
+	e.End, e.Passed = time.Now(), err == nil && v.passed
+	b.record(e)
 	if err == nil {
 		b.set(func(r *record) { r.Limit = &v.rounds })
 	}

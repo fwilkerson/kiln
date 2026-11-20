@@ -1338,6 +1338,26 @@ func TestGatedGauge(t *testing.T) {
 	}
 }
 
+// TestGateLineAfterError holds that a fix's gate whose gated check couldn't run is written as failed. Its commands
+// passed, and ran at main, so the line still says so.
+func TestGateLineAfterError(t *testing.T) {
+	b := gaugedFix(t, "echo fine >a.txt", monitor{Name: "m", Check: "echo the network is down; exit 3"})
+	b.rec.Build = "b-m"
+	b.record(entry{Kind: builtKind, Spec: "m", Monitor: "m"})
+	if _, err := b.gated(t.Context(), heldBy(t, b.r), nil, b.treeGuard()); !errors.As(err, new(*checkFailed)) {
+		t.Fatalf("the gate answers %v, want its check couldn't run", err)
+	}
+
+	var out strings.Builder
+	if err := b.r.Ledger(&out, LedgerOptions{Kind: "gate"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.HasSuffix(out.String(), `"passed":false,"landing":false,"ran_main":true}`+"\n") {
+		t.Errorf("the gate's line is %s, want it failed, and ran at main", out.String())
+	}
+}
+
 // gaugedFix is the fix of m, in a repository whose main counts a.txt and b.txt against countGauge's line. The fix
 // commits what the shell script fix changes.
 func gaugedFix(t *testing.T, fix string, m monitor) *build {

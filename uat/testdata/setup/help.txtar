@@ -25,9 +25,11 @@ stderr '\Akiln: unknown command bogus\nusage:'
 stderr '\Akiln queue: takes one spec''s name\nusage:'
 ! exec kiln monitor bogus
 stderr '\Akiln monitor: takes install, run \[<name>\] or show <name>\nusage:'
+! exec kiln ledger --kind gates
+stderr '\Akiln ledger: usage: kiln ledger prints no kind gates, only build, run, gate, reading, monitor\nusage:'
 ! exec kiln hook --spec x
 stderr '\Akiln hook: usage: kiln never writes the arguments \["--spec" "x"\]\nusage:'
-exec sh -c 'for c in bogus queue "monitor bogus" "hook --spec x"; do kiln $c 2>/dev/null </dev/null; test $? -eq 2 || exit 1; done'
+exec sh -c 'for c in bogus queue "monitor bogus" "ledger --kind gates" "ledger --last 0" "hook --spec x"; do kiln $c 2>/dev/null </dev/null; test $? -eq 2 || exit 1; done'
 
 -- .kiln/specs/x.md --
 ### 1. X answers

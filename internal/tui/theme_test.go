@@ -112,7 +112,8 @@ func scene(now time.Time) source {
 		ended = append(ended, &Build{Spec: "y", Started: start, Size: 3, Outcome: "landed", Steps: []Step{
 			&Run{Role: "build", Why: "first run", Start: start, End: start.Add(time.Duration(9+i%4) * time.Minute),
 				Totals: cost(1 + float64(i%5)/2)},
-		}})
+		}, Took: new(time.Duration(9+i%4) * time.Minute), Cost: new(1 + float64(i%5)/2), Turns: new(12),
+			Failed: new(0), Rounds: new(0)})
 	}
 
 	worst, best := 61.0, 84.0
@@ -127,7 +128,7 @@ func scene(now time.Time) source {
 			&Run{Role: "audit", Session: "b", Why: "round 1 of 3", Start: at(168 * time.Minute),
 				End: at(160 * time.Minute), Changed: []string{"x.go"}, Totals: cost(0.8)},
 			&Gate{Start: at(160 * time.Minute), End: at(158 * time.Minute), Passed: true, Landing: true},
-		}}
+		}, Took: new(22 * time.Minute), Cost: new(3.3), Turns: new(24), Failed: new(1), Rounds: new(1)}
 	running := &Build{Spec: "x", Approved: "9e1d47c0aa12", Started: at(5 * time.Minute), Size: 4, Steps: []Step{
 		&Run{Role: "build", Session: "c", Why: "first run", Start: at(5 * time.Minute), To: -1},
 		&Run{Role: "verify", Session: "d", Why: "first run", Start: at(5 * time.Minute), End: at(time.Minute),
@@ -139,7 +140,8 @@ func scene(now time.Time) source {
 			{Name: "y", State: Accepted, Builds: ended},
 			{Name: "z", State: UAT, Builds: []*Build{{Spec: "z", Started: at(time.Hour), Outcome: "landed",
 				Readings: []Reading{{Gauge: "mutation score", At: at(time.Hour), Value: &best, Line: "≥ 80"}},
-				Steps:    []Step{&Run{Role: "build", Start: at(time.Hour), End: at(50 * time.Minute), Totals: cost(1.2)}}}}},
+				Steps:    []Step{&Run{Role: "build", Start: at(time.Hour), End: at(50 * time.Minute), Totals: cost(1.2)}},
+				Took:     new(10 * time.Minute), Cost: new(1.2), Turns: new(12), Failed: new(0)}}},
 			{Name: "paused", State: Paused}, {Name: "halted", State: Halted}, {Name: "stopped", State: Stopped},
 			{Name: "rejected", State: Rejected}, {Name: "queued", State: Queued},
 		},
