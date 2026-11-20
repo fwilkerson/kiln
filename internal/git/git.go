@@ -592,21 +592,16 @@ type Conflict struct {
 //
 // A merge that conflicts is answered as a [Conflict], and changes nothing.
 func (g *Git) Rebase(ctx context.Context, checkout Worktree, onto Rev, message string) (Rev, *Conflict, error) {
-	head, err := g.Head(ctx, checkout)
+	r, err := g.rebasing(ctx, checkout, onto)
 	if err != nil {
 		return "", nil, err
 	}
 
-	base, err := g.line(ctx, checkout, "merge-base", string(onto), string(head))
-	if err != nil {
-		return "", nil, err
-	}
-
+	r.message = message
 	if !strings.HasSuffix(message, "\n") {
-		message += "\n"
+		r.message += "\n"
 	}
 
-	r := &rebase{checkout: checkout, base: Rev(base), onto: onto, head: head, message: message}
 	tree, conflict, err := g.mergeTree(ctx, r)
 	if err != nil || conflict != nil {
 		return "", conflict, err
@@ -630,17 +625,31 @@ type rebase struct {
 	base     Rev
 	onto     Rev
 	head     Rev
-	message  string
+	// author names head's author as commit-tree reads it, in GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL and GIT_AUTHOR_DATE.
+	author  []string
+	message string
+}
+
+// rebasing reads the commit at checkout and its author in one git, then where that commit left onto's line.
+func (g *Git) rebasing(ctx context.Context, checkout Worktree, onto Rev) (*rebase, error) {
+	format := "--format=%H%x00%an%x00%ae%x00%ad"
+	about, err := g.in(ctx, checkout, "show", "--no-patch", "--date=raw", format, "HEAD^{commit}")
+	if err != nil {
+		return nil, err
+	}
+
+	fields := strings.Split(strings.TrimSuffix(about, "\n"), "\x00")
+	if len(fields) != 4 {
+		return nil, fmt.Errorf("git show HEAD^{commit} at %s: %q names no commit and author", checkout, about)
+	}
+
+	head := Rev(fields[0])
+	base, err := g.line(ctx, checkout, "merge-base", string(onto), string(head))
+	author := []string{"GIT_AUTHOR_NAME=" + fields[1], "GIT_AUTHOR_EMAIL=" + fields[2], "GIT_AUTHOR_DATE=" + fields[3]}
+	return &rebase{checkout: checkout, base: Rev(base), onto: onto, head: head, author: author}, err
 }
 
 func (g *Git) commitTree(ctx context.Context, r *rebase, tree string) (Rev, error) {
-	by, err := g.in(ctx, r.checkout, "show", "--no-patch", "--date=raw", "--format=%an%x00%ae%x00%ad", r.head.commit())
-	if err != nil {
-		return "", err
-	}
-
-	name, rest, _ := strings.Cut(strings.TrimSuffix(by, "\n"), "\x00")
-	email, date, _ := strings.Cut(rest, "\x00")
 	args := []string{"commit-tree", tree, "-p", string(r.onto), "-F", "-"}
 	// commit-tree ignores commit.gpgSign, which git commit and git merge read.
 	sign, _ := g.line(ctx, r.checkout, "config", "--type=bool", "commit.gpgSign")
@@ -648,11 +657,7 @@ func (g *Git) commitTree(ctx context.Context, r *rebase, tree string) (Rev, erro
 		args = append(args, "-S")
 	}
 
-	made, err := g.run(ctx, call{
-		dir:   string(g.at(r.checkout)),
-		stdin: r.message,
-		env:   []string{"GIT_AUTHOR_NAME=" + name, "GIT_AUTHOR_EMAIL=" + email, "GIT_AUTHOR_DATE=" + date},
-	}, args...)
+	made, err := g.run(ctx, call{dir: string(g.at(r.checkout)), stdin: r.message, env: r.author}, args...)
 	if _, ok := errors.AsType[*failed](err); ok && sign == "true" {
 		err = unsigned(err)
 	}
