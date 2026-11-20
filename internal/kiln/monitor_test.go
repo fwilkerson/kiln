@@ -319,9 +319,9 @@ func TestCheck(t *testing.T) {
 		"a finding above it":     {command: `echo CVE-1; echo '{"fix": true, "summary": "one"}'`, ran: true, fix: true, summary: "one", found: "CVE-1"},
 		"progress on stderr":     {command: `echo working >&2; echo '{"fix": true, "summary": "s"}'`, ran: true, fix: true, summary: "s"},
 		"a non-zero exit":        {command: `echo '{"fix": true, "summary": "s"}'; sleep 0.2; echo dial tcp: refused >&2; exit 1`, summary: "dial tcp: refused"},
-		"a last line of text":    {command: `echo all good`, summary: "all good"},
-		"an object with no fix":  {command: `echo '{"summary": "s"}'`, summary: `{"summary": "s"}`},
-		"nothing at all":         {command: `true`, summary: "the check printed nothing"},
+		"a last line of text":    {command: `echo all good`, summary: "the check's last line, \"all good\", is no verdict" + noVerdictFix},
+		"an object with no fix":  {command: `echo '{"summary": "s"}'`, summary: `the check's last line, "{\"summary\": \"s\"}", is no verdict` + noVerdictFix},
+		"nothing at all":         {command: `true`, summary: "the check printed nothing" + noVerdictFix},
 		"an exit with no output": {command: `exit 3`, summary: "the check failed: exit status 3"},
 		"one that runs past":     {command: `echo '{"fix": true, "summary": "s"}'; sleep 30`, limit: 500 * time.Millisecond, summary: "the check ran past kiln.json's timeout of 500ms, so kiln killed it"},
 	} {

@@ -336,14 +336,20 @@ func (s projectShell) runMonitorCheck(ctx context.Context, dir git.Worktree, com
 		c.summary, c.past = "the check "+err.Error(), true
 	case err != nil:
 		c.summary = cmpOr(out.last(), fmt.Sprintf("the check failed: %v", err))
+	case last == "" && out.last() == "":
+		c.summary = "the check printed nothing" + noVerdictFix
 	case !jsonLine(last, &v) || v.Fix == nil:
-		c.summary = cmpOr(out.last(), "the check printed nothing")
+		// A check that printed only on stderr is named by its last line there.
+		c.summary = fmt.Sprintf("the check's last line, %q, is no verdict", cmpOr(last, out.last())) + noVerdictFix
 	default:
 		c.ran, c.fix, c.summary, c.drain = true, *v.Fix, v.Summary, v.Drain
 	}
 
 	return c, nil
 }
+
+// noVerdictFix is the fix a check's summary names when the last line of its output is no verdict.
+const noVerdictFix = `: end its output with a JSON object, such as {"fix": false, "summary": "all clear"}`
 
 // lastOf splits out, trimmed, into its last line and what comes above it.
 func lastOf(out string) (last, above string) {
