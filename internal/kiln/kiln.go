@@ -568,6 +568,16 @@ var (
 	approved = regexp.MustCompile(`(?m)^Status: Approved\b`)
 )
 
+// misnamed refuses a name no spec could have, before kiln reads a file by it.
+func (s Spec) misnamed() refusals {
+	if specName.MatchString(string(s)) {
+		return nil
+	}
+
+	return refusals{fmt.Sprintf("%q is not a spec's name: name it in lower-case letters, digits and hyphens, "+
+		"such as checkout-flow", s)}
+}
+
 // Queue records main's tip as the commit of .kiln/specs/<name>.md, and queues a new build of it. It refuses a name
 // that is not a spec's, and a spec main does not hold. It refuses one whose Status is not Approved, or whose form
 // leaves the template. It refuses while main holds no kiln.json, build, verify or audit agent it can use. It refuses by
@@ -620,49 +630,72 @@ func (r *Repo) queueable(ctx context.Context, main git.Rev, name Spec) ([]byte, 
 		return nil, err
 	}
 
-	if c, err := r.config(ctx, main); err == nil {
-		if _, ok := c.monitorNamed(name); ok {
-			return nil, fmt.Errorf("%w: %s names a monitor %s, and one name is never both a spec's and a "+
-				"monitor's: rename one", errRefused, configFile, name)
-		}
-
-		if why := c.harnessRefusal(name); why != "" {
-			return nil, fmt.Errorf("%w: %s", errRefused, why)
-		}
+	c, err := r.config(ctx, main)
+	if err != nil {
+		return nil, err
 	}
 
-	if err := formOf(string(spec)); err != nil {
-		return nil, fmt.Errorf("%w: %s leaves /shape's template: %w", errRefused, name.file(), err)
+	if refused := c.specRefusals(name, spec); len(refused) > 0 {
+		return nil, fmt.Errorf("%w: %w", errRefused, refused)
 	}
 
 	return spec, nil
 }
 
+// specRefusals say why kiln queue refuses the spec name, whose text is spec, but for its Status. They are its form,
+// its acceptance paths against the harness, and a monitor of its name.
+func (c config) specRefusals(name Spec, spec []byte) refusals {
+	refused := c.harnessRefusals(name)
+	if _, ok := c.monitorNamed(name); ok {
+		refused = append(refused, fmt.Sprintf("%s names a monitor %s, and one name is never both a spec's and a "+
+			"monitor's: rename one", configFile, name))
+	}
+
+	return append(refused, formOf(string(spec)).about(name.file()+" leaves /shape's template:")...)
+}
+
 // ready refuses while main, at main, holds no kiln.json, build agent, verify agent or audit agent that kiln can use.
-// kiln.json must name where the acceptance tests live. The build agent must not say how to write them.
 func (r *Repo) ready(ctx context.Context, main git.Rev) error {
 	c, err := r.config(ctx, main)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errRefused, err)
 	}
 
-	if why := c.acceptanceRefusal(); why != "" {
-		return fmt.Errorf("%w: %s %s", errRefused, configFile, why)
+	refused, err := c.readiness(ctx, r.filesAt(main))
+	if err != nil {
+		return err
 	}
 
-	agents := map[string]agent{}
-	for _, role := range []string{buildRole, verifyRole, auditRole} {
-		if agents[role], err = r.agent(ctx, main, role, initHint); err != nil {
-			return err
-		}
-	}
-
-	if line := testsText(agents[buildRole].body, c.fixedParts()); line != "" {
-		return fmt.Errorf("%w: %s says how to write the acceptance tests, in %q: move that text to %s, which "+
-			"every build reads", errRefused, agentFile(buildRole), line, agentFile(verifyRole))
+	if len(refused) > 0 {
+		return fmt.Errorf("%w: %w", errRefused, refused)
 	}
 
 	return nil
+}
+
+// readiness says why kiln queue refuses c, with the build, verify and audit agents that f holds. c must name where
+// the acceptance tests live. The build agent must not say how to write them. It answers an error only when f could
+// not be read.
+func (c config) readiness(ctx context.Context, f files) (refusals, error) {
+	refused := c.acceptanceRefusals()
+	var build agent
+	for _, role := range []string{buildRole, verifyRole, auditRole} {
+		a, err := f.agent(ctx, role, initHint)
+		if err := refused.add(err); err != nil {
+			return nil, err
+		}
+
+		if role == buildRole {
+			build = a
+		}
+	}
+
+	if line := testsText(build.body, c.fixedParts()); line != "" {
+		refused = append(refused, fmt.Sprintf("%s says how to write the acceptance tests, in %q: move that text to "+
+			"%s, which every build reads", agentFile(buildRole), line, agentFile(verifyRole)))
+	}
+
+	return refused, nil
 }
 
 // testsText is the first line of body that says how to write the acceptance tests, or "". An older default build
@@ -707,8 +740,8 @@ func inPath(r rune) bool {
 
 // approvedSpec reads .kiln/specs/<name>.md at main, a spec whose Status is Approved.
 func (r *Repo) approvedSpec(ctx context.Context, main git.Rev, name Spec) ([]byte, error) {
-	if !specName.MatchString(string(name)) {
-		return nil, fmt.Errorf("%w: %q is not a spec's name, such as checkout-flow", errRefused, name)
+	if refused := name.misnamed(); refused != nil {
+		return nil, fmt.Errorf("%w: %w", errRefused, refused)
 	}
 
 	spec, found, err := r.git.Show(ctx, main, name.file())

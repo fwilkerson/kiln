@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -51,30 +52,41 @@ func isFence(line string) bool {
 	return strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~")
 }
 
-// formOf refuses a spec that leaves the template's form. Each of the template's ## sections appears in the spec, in
-// the template's order. The spec may add sections of its own between them. Each ### under Acceptance tests is
-// "### N. Title", numbered from 1, and holds a Given, a When and a Then, in that order.
-func formOf(spec string) error {
+// formOf refuses a spec that leaves the template's form, for each way it leaves it. Each of the template's ##
+// sections appears in the spec, in the template's order. The spec may add sections of its own between them. Each ###
+// under Acceptance tests is "### N. Title", numbered from 1, and holds a Given, a When and a Then, in that order.
+func formOf(spec string) refusals {
 	have := sections(spec)
-	next := 0
+	var refused refusals
 	for _, s := range have {
-		if next < len(templateSections) && s.title == templateSections[next].title {
-			next++
-		}
-
 		if s.title == testsSection {
-			if err := testsForm(s.lines); err != nil {
-				return err
-			}
+			refused = append(refused, testsForm(s.lines)...)
 		}
 	}
 
-	if next < len(templateSections) {
-		return fmt.Errorf("it lacks the section ## %s, or holds it out of the template's order",
-			templateSections[next].title)
+	// Each section is sought after the last one found, so a section out of order reads as missing.
+	from := 0
+	for i, want := range templateSections {
+		at := slices.IndexFunc(have[from:], func(s section) bool { return s.title == want.title })
+		if at < 0 {
+			refused = append(refused, fmt.Sprintf("it lacks the section ## %s, or holds it out of the "+
+				"template's order: put it %s", want.title, placeOf(i)))
+			continue
+		}
+
+		from += at + 1
 	}
 
-	return nil
+	return refused
+}
+
+// placeOf says where the template's section i goes, by the section before it.
+func placeOf(i int) string {
+	if i == 0 {
+		return "first, under the title"
+	}
+
+	return "after ## " + templateSections[i-1].title
 }
 
 var (
@@ -82,31 +94,29 @@ var (
 	clauses     = []string{"Given", "When", "Then"}
 )
 
-// testsForm refuses the lines of an Acceptance tests section that leave its form. Each test is numbered in turn from
-// 1, and holds a Given, a When and a Then.
-func testsForm(lines []string) error {
-	tests, err := splitTests(lines)
-	if err != nil {
-		return err
-	}
-
+// testsForm refuses the lines of an Acceptance tests section that leave its form, for each way they leave it. Each
+// test is numbered in turn from 1, and holds a Given, a When and a Then.
+func testsForm(lines []string) refusals {
+	tests, refused := splitTests(lines)
 	if len(tests) == 0 {
-		return fmt.Errorf("it holds no acceptance test")
+		return append(refused, "it holds no acceptance test: write one, as ### 1. and a title, with a Given, a "+
+			"When and a Then")
 	}
 
 	for i, test := range tests {
-		if err := clausesOf(test); err != nil {
-			return fmt.Errorf("its acceptance test %d %w", i+1, err)
+		if why := clausesOf(test); why != "" {
+			refused = append(refused, fmt.Sprintf("its acceptance test %d %s", i+1, why))
 		}
 	}
 
-	return nil
+	return refused
 }
 
 // splitTests returns the lines of each test in an Acceptance tests section. A ### heading outside a code fence starts
-// a test. It refuses a heading that is not the next test's number and a title.
-func splitTests(lines []string) ([][]string, error) {
+// a test. It refuses each heading that is not the next test's number and a title, and counts it as that test.
+func splitTests(lines []string) ([][]string, refusals) {
 	var tests [][]string
+	var refused refusals
 	fenced := false
 	for _, line := range lines {
 		if isFence(line) {
@@ -122,19 +132,19 @@ func splitTests(lines []string) ([][]string, error) {
 			continue
 		}
 
-		m := testHeading.FindStringSubmatch(line)
-		if m == nil || m[1] != strconv.Itoa(len(tests)+1) {
-			return nil, fmt.Errorf("its acceptance test %q is not ### %d. and a title", heading, len(tests)+1)
+		if m := testHeading.FindStringSubmatch(line); m == nil || m[1] != strconv.Itoa(len(tests)+1) {
+			refused = append(refused, fmt.Sprintf("its acceptance test %q is not ### %d. and a title: number "+
+				"it %d, or add a test at the end in place of a renumbered one", heading, len(tests)+1, len(tests)+1))
 		}
 
 		tests = append(tests, nil)
 	}
 
-	return tests, nil
+	return tests, refused
 }
 
-// clausesOf refuses a test's lines unless they hold a Given, a When and a Then, in that order.
-func clausesOf(lines []string) error {
+// clausesOf says how a test's lines leave the form, or "". They hold a Given, a When and a Then, in that order.
+func clausesOf(lines []string) string {
 	next := 0
 	for _, line := range lines {
 		if next < len(clauses) && strings.HasPrefix(line, "- **"+clauses[next]+"**:") {
@@ -143,8 +153,9 @@ func clausesOf(lines []string) error {
 	}
 
 	if next < len(clauses) {
-		return fmt.Errorf("holds no %s, after the clauses before it", clauses[next])
+		return fmt.Sprintf("holds no %s, after the clauses before it: write it as - **%s**: on a line of its own",
+			clauses[next], clauses[next])
 	}
 
-	return nil
+	return ""
 }

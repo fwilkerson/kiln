@@ -70,29 +70,32 @@ func TestSpecForm(t *testing.T) {
 	tail := "## Technical Plan\n\n## Alternatives Considered\n"
 	for name, tc := range map[string]struct {
 		spec    string
-		refused bool
+		refused int
 	}{
 		"the template itself":                 {spec: template},
 		"every section, in order":             {spec: head + tests + tail},
 		"a section of the spec's own between": {spec: head + "## Terms\n\n" + tests + "## Own\n\n" + tail},
-		"a section missing":                   {spec: head + tests + "## Technical Plan\n", refused: true},
-		"sections out of order":               {spec: head + tail + tests, refused: true},
+		"a section missing":                   {spec: head + tests + "## Technical Plan\n", refused: 1},
+		"sections out of order":               {spec: head + tail + tests, refused: 2},
 		"a section only inside a fence": {
-			spec: head + tests + "```text\n## Technical Plan\n```\n## Alternatives Considered\n", refused: true,
+			spec: head + tests + "```text\n## Technical Plan\n```\n## Alternatives Considered\n", refused: 1,
 		},
-		"tests numbered from 2": {spec: head + strings.Replace(tests, "### 1.", "### 2.", 1) + tail, refused: true},
+		"tests numbered from 2": {spec: head + strings.Replace(tests, "### 1.", "### 2.", 1) + tail, refused: 1},
 		"a test skipped": {
 			spec:    head + tests + "### 3. Three\n\n- **Given**: a.\n- **When**: b.\n- **Then**: c.\n\n" + tail,
-			refused: true,
+			refused: 1,
 		},
-		"a test with no Then":     {spec: head + strings.Replace(tests, "- **Then**: c.\n", "", 1) + tail, refused: true},
-		"a test with no number":   {spec: head + strings.Replace(tests, "### 1. One", "### One", 1) + tail, refused: true},
-		"no acceptance test":      {spec: head + "## Acceptance tests\n\n" + tail, refused: true},
-		"a Then before its Given": {spec: head + strings.Replace(tests, "Given", "Then", 1) + tail, refused: true},
+		"a test with no Then":     {spec: head + strings.Replace(tests, "- **Then**: c.\n", "", 1) + tail, refused: 1},
+		"a test with no number":   {spec: head + strings.Replace(tests, "### 1. One", "### One", 1) + tail, refused: 1},
+		"no acceptance test":      {spec: head + "## Acceptance tests\n\n" + tail, refused: 1},
+		"a Then before its Given": {spec: head + strings.Replace(tests, "Given", "Then", 1) + tail, refused: 1},
+		"each way it leaves the form": {
+			spec: head + strings.Replace(tests, "- **Then**: c.\n", "", 1) + "## Technical Plan\n", refused: 2,
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if err := formOf(tc.spec); (err != nil) != tc.refused {
-				t.Errorf("refused: %v; want refused %v", err, tc.refused)
+			if refused := formOf(tc.spec); len(refused) != tc.refused {
+				t.Errorf("refused: %q; want %d refusals", refused, tc.refused)
 			}
 		})
 	}

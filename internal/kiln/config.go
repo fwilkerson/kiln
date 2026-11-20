@@ -84,47 +84,49 @@ func (c config) fixedParts() []string {
 	return fixed
 }
 
-// acceptanceRefusal says why kiln queue may not take acceptance, or "". Each path holds {spec}, after a part of its
-// own, in its clean form. No path's part before {spec} starts another's, so no two specs' paths meet.
-func (c config) acceptanceRefusal() string {
+// acceptanceRefusals say why kiln queue may not take acceptance. Each path holds {spec}, after a part of its own, in
+// its clean form. No path's part before {spec} starts another's, so no two specs' paths meet.
+func (c config) acceptanceRefusals() refusals {
 	if len(c.Acceptance) == 0 {
-		return fmt.Sprintf("names no acceptance, the paths of a spec's acceptance tests: add one, such as "+
-			"\"acceptance/%s/\"", specVar)
+		return refusals{fmt.Sprintf("%s names no acceptance, the paths of a spec's acceptance tests: add one, "+
+			"such as \"acceptance/%s/\"", configFile, specVar)}
 	}
 
+	var refused refusals
 	for _, p := range c.Acceptance {
 		if why := pathRefusal(p); why != "" {
-			return fmt.Sprintf("names the acceptance path %q, %s", p, why)
+			refused = append(refused, fmt.Sprintf("%s names the acceptance path %q, %s", configFile, p, why))
 		}
 	}
 
 	fixed := c.fixedParts()
 	for i, a := range fixed {
-		for j, b := range fixed {
-			if i != j && strings.HasPrefix(fold(a), fold(b)) {
-				return fmt.Sprintf("names the acceptance paths %q and %q, whose parts before %s could make two "+
-					"specs' paths meet: start each with a part no other starts with", c.Acceptance[j],
-					c.Acceptance[i], specVar)
+		for j, b := range fixed[i+1:] {
+			if strings.HasPrefix(fold(a), fold(b)) || strings.HasPrefix(fold(b), fold(a)) {
+				refused = append(refused, fmt.Sprintf("%s names the acceptance paths %q and %q, whose parts "+
+					"before %s could make two specs' paths meet: start each with a part no other starts with",
+					configFile, c.Acceptance[i], c.Acceptance[i+1+j], specVar))
 			}
 		}
 	}
 
-	return ""
+	return refused
 }
 
-// harnessRefusal says why kiln queue may not take spec, or "". It refuses a spec whose acceptance paths meet a
-// harness path. A split build removes what main holds under those paths from its build session's checkout.
-func (c config) harnessRefusal(spec Spec) string {
+// harnessRefusals say why kiln queue may not take spec. It refuses a spec whose acceptance paths meet a harness path.
+// A split build removes what main holds under those paths from its build session's checkout.
+func (c config) harnessRefusals(spec Spec) refusals {
+	var refused refusals
 	for _, a := range c.acceptancePaths(spec) {
 		for _, h := range c.Harness {
 			if meets(a, h) {
-				return fmt.Sprintf("%s's acceptance path %s meets the harness path %s, which its build would "+
-					"remove: rename the spec", spec, a, h)
+				refused = append(refused, fmt.Sprintf("%s's acceptance path %s meets the harness path %s, which "+
+					"its build would remove: rename the spec", spec, a, h))
 			}
 		}
 	}
 
-	return ""
+	return refused
 }
 
 // meets is whether paths a and b are one path, or one holds the other, as APFS folds case.
@@ -157,35 +159,36 @@ func pathRefusal(p string) string {
 
 const configFile = kilnDir + "/kiln.json"
 
-func parseConfig(raw []byte) (config, error) {
-	var c config
+// parseConfig reads kiln.json. A file that is no JSON object of its keys fails with a plain error. Otherwise the
+// error holds each of its refusals, and c is what the file holds.
+func parseConfig(raw []byte) (c config, err error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {
-		return c, fmt.Errorf("%s: %w", configFile, err)
+		return c, fmt.Errorf("%s: %w: fix its JSON, and drop each key kiln does not know", configFile, err)
 	}
 
-	if len(c.Gate) == 0 || c.Rounds < 0 {
-		return c, fmt.Errorf("%s names no gate command, or fewer than 0 rounds", configFile)
-	}
+	return c, c.refusals().err()
+}
 
-	if c.Workflow != "" && c.Workflow != splitWorkflow {
-		return c, fmt.Errorf("%s names the workflow %q: name %q, or none for build then audit", configFile, c.Workflow,
-			splitWorkflow)
-	}
-
+// refusals say why kiln refuses c, but for its acceptance, which kiln queue alone refuses.
+func (c config) refusals() refusals {
+	refused := broken(
+		rule{len(c.Gate) == 0, fmt.Sprintf("%s names no gate command: name one, such as \"go test ./...\"",
+			configFile)},
+		rule{c.Rounds < 0, fmt.Sprintf("%s names %d rounds: name 0 or more", configFile, c.Rounds)},
+		rule{c.Workflow != "" && c.Workflow != splitWorkflow, fmt.Sprintf("%s names the workflow %q: name %q, or "+
+			"none for build then audit", configFile, c.Workflow, splitWorkflow)},
+	)
 	for _, h := range c.Hosts {
 		if !bareHost(h) {
-			return c, fmt.Errorf("%s names the host %q: name a bare host, such as \"proxy.golang.org\", or "+
-				"\"*.example.org\"", configFile, h)
+			refused = append(refused, fmt.Sprintf("%s names the host %q: name a bare host, such as "+
+				"\"proxy.golang.org\", or \"*.example.org\"", configFile, h))
 		}
 	}
 
-	if err := c.checkGauges(); err != nil {
-		return c, err
-	}
-
-	return c, c.checkMonitors()
+	refused = append(refused, c.gaugeRefusals()...)
+	return append(refused, c.monitorsRefusals()...)
 }
 
 // bareHost is whether h names a host as Claude Code's allowedDomains reads one. Such a host holds letters, digits,
@@ -196,20 +199,20 @@ func bareHost(h string) bool {
 	return name != "" && !strings.ContainsFunc(name, valid)
 }
 
-// checkGauges refuses a gauge with no name, a name another gauge has, or not exactly one of min and max.
-func (c config) checkGauges() error {
+// gaugeRefusals refuse a gauge with no name, a name another gauge has, or not exactly one of min and max.
+func (c config) gaugeRefusals() refusals {
+	var refused refusals
 	named := map[string]bool{}
 	for _, g := range c.Gauges {
-		switch {
-		case g.Name == "", named[g.Name], (g.Min == nil) == (g.Max == nil):
-			return fmt.Errorf("%s names a gauge with no name, a name another gauge has, or not exactly one of "+
-				"min and max: %q", configFile, g.Name)
-		}
-
+		refused = append(refused, broken(
+			rule{g.Name == "", "has no name: name it"},
+			rule{g.Name != "" && named[g.Name], "has the name of a gauge before it: rename one"},
+			rule{(g.Min == nil) == (g.Max == nil), "names both min and max, or neither: name one line, min or max"},
+		).about(fmt.Sprintf("%s names a gauge %q that", configFile, g.Name))...)
 		named[g.Name] = true
 	}
 
-	return nil
+	return refused
 }
 
 func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {
