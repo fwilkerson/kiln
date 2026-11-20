@@ -49,10 +49,10 @@
 //
 // # Files
 //
-// A project tells kiln how its builds run in .kiln/, on main. kiln init starts it from a preset: go, python, or a
-// directory laid out as one. It picks a built-in preset by the repository's files, unless the developer names one. A
-// preset is kiln.json and the "Tailor this" sections of the build, verify and audit agents. Run again, kiln init
-// brings .kiln/ up to date with the kiln that runs it, as Init says:
+// A project tells kiln how its builds run in .kiln/, on main. kiln init starts it from a preset: go, python,
+// typescript, or a directory laid out as one. It picks a built-in preset by the repository's files, unless the
+// developer names one. A preset is kiln.json and the "Tailor this" sections of the build, verify and audit agents.
+// Run again, kiln init brings .kiln/ up to date with the kiln that runs it, as Init says:
 //
 //	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
 //	                            the MCP servers a session calls, the gauges, the workflow, where the acceptance

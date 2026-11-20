@@ -1,6 +1,6 @@
 // Command kiln builds the specs a developer approved, with headless Claude Code sessions, and lands them on main.
 //
-//	kiln init [--preset go|python|<dir>]
+//	kiln init [--preset go|python|typescript|<dir>]
 //	                         write a preset of kiln's defaults into .kiln/, or merge a newer kiln's into yours,
 //	                         from the preset .kiln/init.json records, or else the one your files match;
 //	                         and install the pre-commit hook
@@ -53,7 +53,7 @@ import (
 )
 
 const usage = `usage:
-  kiln init [--preset go|python|<dir>]
+  kiln init [--preset go|python|typescript|<dir>]
                            write a preset of kiln's defaults into .kiln/, or merge a newer kiln's into yours,
                            from the preset .kiln/init.json records, or else the one your files match;
                            and install the pre-commit hook
@@ -203,7 +203,7 @@ func noArgs(do func(*kiln.Repo, context.Context, io.Writer) error) repoCommand {
 func initRepo(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	preset := flags.String("preset", "", "the preset to write: go, python, or a directory laid out as one")
+	preset := flags.String("preset", "", "the preset to write: go, python, typescript, or a directory laid out as one")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return usageError("takes only --preset <name>")
 	}

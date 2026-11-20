@@ -30,8 +30,8 @@ A preset of your own is a directory laid out as kiln's in [`internal/kiln/preset
 `kiln.json`, then `build-checks.md`, `verify-tests.md` and `audit-tests.md`, the "Tailor this" sections of the
 build, verify and audit agents. A built-in preset's `detect` lists the files that mark a repository as its own, by
 which `kiln init` picks it; `kiln init` picks among its own presets alone. Keep yours in a repository of its own,
-and name it with `--preset`, as in `kiln init --preset ../presets/go`. `go doc ./internal/kiln InitOptions` says how kiln reads the path, and finds
-it again on the next run.
+and name it with `--preset`, as in `kiln init --preset ../presets/go`. `go doc ./internal/kiln InitOptions` says
+how kiln reads the path, and finds it again on the next run.
 
 A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
 as a new agent, is yours to commit: a build names it in its last reply instead of writing it.

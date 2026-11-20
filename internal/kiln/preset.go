@@ -27,7 +27,7 @@ type preset struct {
 }
 
 // builtIns are the presets kiln holds. kiln init picks one by its detectFile when the developer names none.
-var builtIns = []string{"go", "python"}
+var builtIns = []string{"go", "python", "typescript"}
 
 // detectFile lists the paths a repository's top holds, every one, when a preset is the repository's own.
 // The paths are split by white space, such as one a line. kiln init writes no detectFile into .kiln/.
