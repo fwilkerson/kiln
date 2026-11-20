@@ -1043,6 +1043,25 @@ func TestOpenOutsideRepository(t *testing.T) {
 	}
 }
 
+// TestOpenInWorktree holds that kiln opened in a linked worktree keeps its records in the git directory every worktree
+// shares.
+func TestOpenInWorktree(t *testing.T) {
+	t.Parallel()
+	repo, tree := t.TempDir(), filepath.Join(t.TempDir(), "tree")
+	shell(t, repo, "git init --quiet -b main && "+
+		"git -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m first && "+
+		"git worktree add --quiet --detach '"+tree+"'")
+	r, err := Open(t.Context(), tree, os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := strings.TrimSpace(shell(t, repo, "git rev-parse --path-format=absolute --git-common-dir"))
+	if r.common != want {
+		t.Errorf("kiln opened in a worktree keeps its records in %s; want %s", r.common, want)
+	}
+}
+
 // landedThenKilled is the build of x, an accepted landing, as the next kiln takes it up. The kiln before died once its
 // landing moved main. It answers the commit main moved to. A monitor's build is the fix of the monitor x.
 func landedThenKilled(t *testing.T, monitor bool) (*build, git.Rev) {
