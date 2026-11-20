@@ -284,7 +284,10 @@ func (b *build) splitStep(ctx context.Context) (turn, error) {
 	return b.splitAfter(ctx)
 }
 
-// splitAfter takes a split build on once its stack passed its gate. It goes to the audit, its branch, or main.
+// splitAfter takes a split build on once its stack passed its gate: to the audit, its branch, or main. Findings go
+// to both sessions. A landing's setback goes back as a round. Work that changes nothing goes to the build session.
+// Otherwise main moved, so kiln merges it into both clones where the merge is clean. A conflict goes to the session
+// whose side holds the file.
 func (b *build) splitAfter(ctx context.Context) (turn, error) {
 	findings, why, err := b.findings(ctx)
 	if err != nil || findings != "" {
@@ -292,16 +295,17 @@ func (b *build) splitAfter(ctx context.Context) (turn, error) {
 			why: why}, err
 	}
 
-	head, err := b.r.git.Head(ctx, b.tree)
-	if err != nil {
+	back, err := b.waitOrLand(ctx)
+	if err != nil || back.report == "" {
 		return turn{}, err
 	}
 
-	if waits, err := b.waitsOnBranch(ctx, head); err != nil || waits {
-		return turn{}, err
+	_, why, err = b.round(back)
+	if err != nil || back.why == whyUnchanged {
+		return turn{build: unchanged, why: why}, err
 	}
 
-	return b.splitLand(ctx, head)
+	return b.mergeMains(ctx, why)
 }
 
 // sideGuard is the guard on role's session's own work, in its clone.
@@ -330,13 +334,6 @@ func (b *build) gateBuild(ctx context.Context) (verdict, error) {
 	}
 
 	return v, err
-}
-
-// keepFailingAtMain records the tests that fail at main, the first time a gate of the build side names any.
-func (b *build) keepFailingAtMain(atMain []string) {
-	if b.now().FailingAtMain == nil && len(atMain) > 0 {
-		b.set(func(r *record) { r.FailingAtMain = atMain })
-	}
 }
 
 // gateStack gates the stack, and checks the verify session's own work stays on its side. A failure goes to the
@@ -459,35 +456,6 @@ func (b *build) bothSides(ctx context.Context, files []string, tips map[string]g
 	}
 
 	return report.String(), nil
-}
-
-// splitLand lands the stack at head as one commit, and removes every checkout the build made. A setback goes back
-// as a round: work that changes nothing goes to the build session. Otherwise main moved, so kiln fetches it into
-// both clones and merges it where the merge is clean. A conflict goes to the session whose side holds the file.
-func (b *build) splitLand(ctx context.Context, head git.Rev) (turn, error) {
-	var retire func(context.Context, git.Rev) error
-	if b.rec.Accepted {
-		retire = b.retire
-	}
-
-	onMain, back, err := b.land(ctx, head, retire, b.allowed()...)
-	switch {
-	case err != nil:
-		return turn{}, err
-	case back.report == "":
-		if err := b.r.dropCheckouts(ctx, b.rec.Name); err != nil {
-			return turn{}, err
-		}
-
-		return turn{}, b.onMain(onMain)
-	}
-
-	_, why, err := b.round(back)
-	if err != nil || back.why == whyUnchanged {
-		return turn{build: unchanged, why: why}, err
-	}
-
-	return b.mergeMains(ctx, why)
 }
 
 // mergeMains merges main into both clones, and answers the turn that has each session merge what conflicted.
