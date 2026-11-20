@@ -85,7 +85,8 @@ wrong type. The schema holds each key's type, not the rules `kiln doctor` checks
 ```text
 session ──▶ gate ──passes──▶ audit ──no findings──▶ land
    ▲          │                 │
-   └─failures─┘◀────findings────┘        each trip back is a round; past `rounds`, the build stops
+   └─failures─┘◀────findings────┘        each failure sent back spends a round, and findings spend none;
+                                         past `rounds`, the build stops
 ```
 
 - The gate excuses a test that fails at main too. A command names its failed tests in `go test`'s output, or by
