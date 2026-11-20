@@ -59,36 +59,36 @@ while :; do (sleep 20 &); done
 `
 
 // TestKillForks holds that Run returns promptly once it kills a session, at overage or when its context ends.
-// No child the session forked as it died holds Run past the kill.
+// No child the session forked as it died holds Run past the kill. One that did would hold it for the whole grace
+// that the package doc gives a child, 10 s. A run that kills every child takes a fraction of that, however loaded.
 func TestKillForks(t *testing.T) {
+	const grace = 10 * time.Second
 	cases := []struct {
 		name, first string
-		wait        time.Duration
 		limited     bool
 	}{
-		{"overage", `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","isUsingOverage":true}}`, time.Hour, true},
-		{"interrupted", `{"type":"system"}`, 300 * time.Millisecond, false},
+		{"overage", `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","isUsingOverage":true}}`, true},
+		{"interrupted", `{"type":"system"}`, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			for range 6 {
-				ctx, cancel := context.WithTimeout(t.Context(), c.wait)
-				defer cancel()
 				began := time.Now()
-				ended := runForking(t, ctx, c.first)
+				ended := runForking(t, c.first, !c.limited)
 				switch took := time.Since(began); {
 				case (ended.Limit != nil) != c.limited:
 					t.Fatalf("Run answered %+v; want a usage limit: %v", ended, c.limited)
-				case took > 3*time.Second:
-					t.Fatalf("Run took %v to return after the kill", took)
+				case took >= grace:
+					t.Fatalf("Run took %v to return after the kill, so a child held the session's output", took)
 				}
 			}
 		})
 	}
 }
 
-// runForking runs forking, which prints first, through Run in a directory of its own, and answers how it ended.
-func runForking(t *testing.T, ctx context.Context, first string) claude.Ended {
+// runForking runs forking, which prints first, through Run in a directory of its own, and answers how it ended. With
+// interrupt, Run's context ends once the session has printed, and so forks as it dies.
+func runForking(t *testing.T, first string, interrupt bool) claude.Ended {
 	const session = "0b8e6c1e-2f4d-4f6a-9b1c-3d5e7f9a1b2d"
 	dir := t.TempDir()
 	program := filepath.Join(dir, "claude")
@@ -96,7 +96,24 @@ func runForking(t *testing.T, ctx context.Context, first string) claude.Ended {
 		t.Fatal(err)
 	}
 
-	c := claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: filepath.Join(dir, "sessions")})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	sessions := filepath.Join(dir, "sessions")
+	if interrupt {
+		go func() {
+			defer cancel()
+			for ctx.Err() == nil {
+				info, err := os.Stat(filepath.Join(sessions, session, "stream.jsonl"))
+				if err == nil && info.Size() > 0 {
+					return
+				}
+
+				time.Sleep(10 * time.Millisecond)
+			}
+		}()
+	}
+
+	c := claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: sessions})
 	ended, _ := c.Run(ctx, claude.Launch{Session: session, Role: "build", Prompt: "Build x.", Dir: dir})
 	return ended
 }

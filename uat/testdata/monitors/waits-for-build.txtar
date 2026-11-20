@@ -6,7 +6,7 @@ env KILN_OPEN=true
 # The build's session touches waiting, then waits for done, so the script knows the build is running.
 exec kiln queue x
 exec kiln fire &
-exec sh -c 'i=0; while [ ! -e waiting ] && [ $i -lt 900 ]; do sleep 0.1; i=$((i+1)); done; [ -e waiting ]'
+exec await waiting
 
 # When: the developer runs kiln monitor run,
 exec sh -c 'kiln monitor run || true'
@@ -39,7 +39,7 @@ echo '{"fix": false, "summary": "every module is current"}'
 -- claude.json --
 {
  "build": {"1": {"1": [
-  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/waiting\" && while [ ! -e \"$WORK/done\" ]; do sleep 0.1; done && touch ready"}}},
+  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/waiting\" && await \"$WORK/done\" && touch ready"}}},
   {"result": {"result": "Built it."}}
  ]}},
  "audit": {"1": {"1": [

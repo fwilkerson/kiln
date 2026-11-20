@@ -9,7 +9,7 @@ stdout '^x: waits on kiln/x'
 
 # kiln monitor run is at work on a fix. Its session touches .tmp/fixing, then waits for .tmp/fix-go.
 exec kiln monitor run &mon&
-exec sh -c 'i=0; while [ ! -e .tmp/fixing ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/fixing ]'
+exec await .tmp/fixing
 
 # When: the developer runs kiln accept with the spec's name.
 exec kiln accept x
@@ -72,7 +72,7 @@ x.txt holds one line.
 -- claude.json --
 {
  "notes": {"1": {"1": [
-  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/fixing\"; i=0; while [ ! -e \"$WORK/.tmp/fix-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; echo noted >note.txt"}}},
+  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/fixing\"; await \"$WORK/.tmp/fix-go\"; echo noted >note.txt"}}},
   {"result": {"result": "Wrote note.txt.\n{\"title\": \"fix(notes): write the missing note\"}"}}
  ]}},
  "build": {"1": {"1": [

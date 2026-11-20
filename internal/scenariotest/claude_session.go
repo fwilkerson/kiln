@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -51,11 +52,7 @@ func claudeMain() int {
 }
 
 func runClaude(args []string) (int, error) {
-	time.AfterFunc(claudeCallLimit, func() {
-		fmt.Fprintf(os.Stderr, "scripted claude: it ran past its limit of %v\n", claudeCallLimit)
-		os.Exit(1)
-	})
-
+	go endWithTest()
 	if slices.Contains(args, "--version") {
 		fmt.Println(claudeVersion + " (Claude Code)")
 		return 0, nil
@@ -76,6 +73,19 @@ func runClaude(args []string) (int, error) {
 	}
 
 	return s.run(steps)
+}
+
+// endWithTest ends the scripted claude once the test that ran it has ended. One a test left behind then dies with
+// the run. It sets no limit of its own, so a step may wait on an event while the test runs. Where the scripted
+// claude leads its process group, as kiln starts it, the group's tools die with it.
+func endWithTest() {
+	<-testEnded()
+	fmt.Fprintln(os.Stderr, "scripted claude: the test that ran it has ended")
+	if syscall.Getpgrp() == os.Getpid() {
+		_ = syscall.Kill(0, syscall.SIGKILL)
+	}
+
+	os.Exit(1)
 }
 
 // admitClaude records the call args make, and answers its session. It refuses the call as Claude Code would.

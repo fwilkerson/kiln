@@ -3,6 +3,8 @@ package git_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -123,7 +125,8 @@ func TestDetached(t *testing.T) {
 }
 
 // TestCheckoutWaits holds that a checkout waits while another kiln adds or removes a worktree. Each such call writes
-// the shared config, which git refuses to write while another call holds it.
+// the shared config, which git refuses to write while another call holds it. The test looks once the checkout blocks
+// on the lock, so a slow machine never looks too soon.
 func TestCheckoutWaits(t *testing.T) {
 	repo := t.TempDir()
 	sh(t, repo, "git init --quiet -b main")
@@ -150,10 +153,16 @@ func TestCheckoutWaits(t *testing.T) {
 	tree := filepath.Join(t.TempDir(), "tree")
 	done := make(chan error)
 	go func() { done <- g.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main") }()
-	select {
-	case err := <-done:
-		t.Fatalf("the checkout ended, with %v, while another kiln held the lock", err)
-	case <-time.After(300 * time.Millisecond):
+	for !waitsInFlock("TestCheckoutWaits") {
+		select {
+		case err := <-done:
+			t.Fatalf("the checkout ended, with %v, while another kiln held the lock", err)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	if _, err := os.Stat(tree); err == nil {
+		t.Errorf("the checkout made %s while another kiln held the lock", tree)
 	}
 
 	other.Close()
@@ -165,3 +174,19 @@ func TestCheckoutWaits(t *testing.T) {
 		t.Errorf("once the lock was free, the checkout made no worktree: %v", err)
 	}
 }
+
+// waitsInFlock reports whether a goroutine that test started blocks in flock(2), as on a lock another process holds.
+func waitsInFlock(test string) bool {
+	stacks := make([]byte, 1<<20)
+	stacks = stacks[:runtime.Stack(stacks, true)]
+	for g := range strings.SplitSeq(string(stacks), "\n\n") {
+		if strings.Contains(g, "syscall.Flock(") && strings.Contains(g, "created by "+pkgPath+"."+test) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// pkgPath is the import path of these tests, as a goroutine's stack names it.
+const pkgPath = "github.com/fwilkerson/kiln/internal/git_test"

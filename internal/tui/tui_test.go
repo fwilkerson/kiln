@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image/color"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -767,10 +768,10 @@ func TestFixOutcomes(t *testing.T) {
 }
 
 // TestGaugeRowCost holds that a gauge's row costs no more for the readings too old to fit. 40 times the readings
-// take under 5 times as long, and show the same newest ones.
+// allocate under twice the bytes, and show the same newest ones. A count of bytes, unlike a time, ignores the load.
 func TestGaugeRowCost(t *testing.T) {
 	start := time.Now()
-	draw := func(n int) (string, time.Duration) {
+	draw := func(n int) (string, uint64) {
 		rs := make([]Reading, n)
 		for i := range rs {
 			v := float64(i % 10)
@@ -778,25 +779,27 @@ func TestGaugeRowCost(t *testing.T) {
 		}
 
 		specs := []Spec{{Name: "code-health", Monitor: &Monitor{Readings: rs}}}
-		took := time.Duration(1<<63 - 1)
+		cost := uint64(1<<64 - 1)
 		var text string
 		for range 3 {
-			begin := time.Now()
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
 			text = model{specs: specs, theme: dark}.gaugeRows(150)[0].text
-			took = min(took, time.Since(begin))
+			runtime.ReadMemStats(&after)
+			cost = min(cost, after.TotalAlloc-before.TotalAlloc)
 		}
 
-		return text, took
+		return text, cost
 	}
 
-	few, fewTook := draw(500)
-	many, manyTook := draw(20_000)
+	few, fewCost := draw(500)
+	many, manyCost := draw(20_000)
 	if many != few {
 		t.Errorf("20,000 readings show\n%s\nwant the newest, as 500 show\n%s", many, few)
 	}
 
-	if manyTook >= 5*fewTook {
-		t.Errorf("20,000 readings took %v, 500 took %v: want under 5 times as long", manyTook, fewTook)
+	if manyCost >= 2*fewCost {
+		t.Errorf("20,000 readings allocated %d bytes, 500 allocated %d: want under twice as many", manyCost, fewCost)
 	}
 }
 

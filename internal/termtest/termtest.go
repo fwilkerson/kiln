@@ -2,7 +2,7 @@
 //
 //	term, err := termtest.Start(exec.Command("kiln", "tui"), termtest.Size{W: 100, H: 30})
 //	defer term.Close()
-//	err = term.Wait(func() error { _, err := term.Find("build-stats"); return err })
+//	err = term.Wait(ctx, func() error { _, err := term.Find("build-stats"); return err })
 //	at, err := term.Find("build-stats")
 //	term.Click(at)
 //	term.Press(vt.KeyEnter)
@@ -11,13 +11,15 @@
 // the modes the program asked for, such as SGR mouse reports. It also answers the program's queries about the terminal.
 //
 // A check reads the screen as it is, and the program draws in its own time. So after an input, wait for a fact the
-// input causes, never for one already on screen. Wait polls every 20 ms, until [Waited] has passed.
+// input causes, never for one already on screen. Wait checks again each time the program draws. Its context alone
+// limits it, so a loaded machine draws late, never wrong.
 //
 // A sandboxed process cannot open a pseudo-terminal, so Start fails inside a Claude Code session's sandbox. Its
 // error is then syscall.EPERM.
 package termtest
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image/color"
@@ -25,14 +27,10 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/x/vt"
 	"github.com/creack/pty"
 )
-
-// Waited is how long Wait polls before it gives up.
-const Waited = 10 * time.Second
 
 // Term is one program running in a pseudo-terminal.
 type Term struct {
@@ -41,6 +39,8 @@ type Term struct {
 	cmd *exec.Cmd
 	// exited closes once the program has exited.
 	exited chan struct{}
+	// drawn holds a token once the program has drawn since Wait last looked.
+	drawn chan struct{}
 }
 
 // Size is a terminal's size: W columns and H rows.
@@ -67,9 +67,10 @@ func Start(cmd *exec.Cmd, size Size) (*Term, error) {
 		return nil, err
 	}
 
-	term := &Term{emu: vt.NewSafeEmulator(size.W, size.H), tty: tty, cmd: cmd, exited: make(chan struct{})}
+	term := &Term{emu: vt.NewSafeEmulator(size.W, size.H), tty: tty, cmd: cmd, exited: make(chan struct{}),
+		drawn: make(chan struct{}, 1)}
 	// Each copy ends with an error once the program exits, and no caller needs that error.
-	go func() { _, _ = io.Copy(term.emu, tty) }()
+	go func() { _, _ = io.Copy(drawing{term}, tty) }()
 	go func() { _, _ = io.Copy(tty, term.emu) }()
 	go func() {
 		_ = cmd.Wait()
@@ -77,6 +78,19 @@ func Start(cmd *exec.Cmd, size Size) (*Term, error) {
 	}()
 
 	return term, nil
+}
+
+// drawing feeds what the program prints to the emulator, and tells a Wait that the screen changed.
+type drawing struct{ term *Term }
+
+func (d drawing) Write(p []byte) (int, error) {
+	n, err := d.term.emu.Write(p)
+	select {
+	case d.term.drawn <- struct{}{}:
+	default:
+	}
+
+	return n, err
 }
 
 func drop(env []string, name string) []string {
@@ -98,17 +112,22 @@ func (term *Term) Close() error {
 }
 
 // Press sends each key, as the terminal would encode it in the program's current modes. A key is a character or one
-// of vt's keys, such as vt.KeyEnter. Press pauses 100 ms after each, as a person would. A program reads an Esc and
-// the byte that follows it at once as one key, Alt and that byte.
+// of vt's keys, such as vt.KeyEnter. Esc goes as CSI 27 u. Ghostty sends it so once a program asks to tell keys
+// apart, as Bubble Tea does. A program reads a bare Esc as a key only once no byte follows it within a timeout. On
+// a loaded machine, no pause would keep the next key out of that timeout.
 func (term *Term) Press(codes ...rune) {
 	for _, code := range codes {
+		if code == vt.KeyEscape {
+			term.emu.SendText(escapeKey)
+			continue
+		}
+
 		term.emu.SendKey(vt.KeyPressEvent{Code: code})
-		time.Sleep(keyPause)
 	}
 }
 
-// keyPause is the pause after each key Press sends.
-const keyPause = 100 * time.Millisecond
+// escapeKey is Esc in the kitty keyboard protocol, which Bubble Tea reads whatever modes it asked for.
+const escapeKey = "\x1b[27u"
 
 // Type sends text as typed keys.
 func (term *Term) Type(text string) { term.emu.SendText(text) }
@@ -131,16 +150,6 @@ func (term *Term) WheelDown(at Pos) {
 
 // Size answers the terminal's size.
 func (term *Term) Size() Size { return Size{W: term.emu.Width(), H: term.emu.Height()} }
-
-// Exited reports whether the program has exited.
-func (term *Term) Exited() bool {
-	select {
-	case <-term.exited:
-		return true
-	default:
-		return false
-	}
-}
 
 // Screen answers the text on screen, one line per row, with trailing spaces dropped.
 func (term *Term) Screen() string {
@@ -199,21 +208,25 @@ func (term *Term) Background(at Pos) color.Color {
 	return nil
 }
 
-// Wait polls holds until it answers nil, or until Waited has passed. Then it answers holds' last error, with the
-// screen it last read.
-func (term *Term) Wait(holds func() error) error {
-	deadline := time.Now().Add(Waited)
+// Wait checks holds now and after each time the program draws, until holds answers nil. It gives up once the
+// program has exited, or ctx is done. Then it answers holds' last error, with the screen it last read.
+func (term *Term) Wait(ctx context.Context, holds func() error) error {
 	for {
 		err := holds()
-		switch {
-		case err == nil:
+		if err == nil {
 			return nil
-		case time.Now().After(deadline):
-			return fmt.Errorf("%w, after %s:\n%s", err, Waited, term.Screen())
-		case term.Exited():
-			return errors.Join(err, fmt.Errorf("the program exited:\n%s", term.Screen()))
 		}
 
-		time.Sleep(20 * time.Millisecond)
+		select {
+		case <-term.drawn:
+		case <-term.exited:
+			if err := holds(); err != nil {
+				return errors.Join(err, fmt.Errorf("the program exited:\n%s", term.Screen()))
+			}
+
+			return nil
+		case <-ctx.Done():
+			return fmt.Errorf("%w, when %w:\n%s", err, context.Cause(ctx), term.Screen())
+		}
 	}
 }

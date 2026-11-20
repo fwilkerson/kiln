@@ -5,7 +5,7 @@ env KILN_OPEN=true
 # Given: a fix whose kiln monitor run was interrupted while its session worked. The fix's first session touches
 # .tmp/fixing, then waits for a file no step makes.
 ! exec kiln monitor run &mon&
-exec sh -c 'i=0; while [ ! -e .tmp/fixing ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/fixing ]'
+exec await .tmp/fixing
 kill -INT mon
 wait mon
 grep -count=1 'ran' .tmp/check.log
@@ -13,7 +13,7 @@ grep -count=1 'ran' .tmp/check.log
 # kiln fire is at work on a spec. Its build session touches .tmp/building, then waits for .tmp/build-go.
 exec kiln queue x
 exec kiln fire &fire&
-exec sh -c 'i=0; while [ ! -e .tmp/building ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/building ]'
+exec await .tmp/building
 
 # When: kiln monitor run runs again.
 exec kiln monitor run
@@ -61,7 +61,7 @@ x
 {
  "notes": {
   "1": {"1": [
-   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/fixing\"; i=0; while [ ! -e \"$WORK/.tmp/never\" ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done"}}},
+   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/fixing\"; await \"$WORK/.tmp/never\""}}},
    {"result": {"result": "Cut short."}}
   ]},
   "2": {"1": [
@@ -70,7 +70,7 @@ x
   ]}
  },
  "build": {"1": {"1": [
-  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; i=0; while [ ! -e \"$WORK/.tmp/build-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; cp -R \"$WORK/_given/x/.\" ."}}},
+  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; await \"$WORK/.tmp/build-go\"; cp -R \"$WORK/_given/x/.\" ."}}},
   {"result": {"result": "Built x."}}
  ]}},
  "audit": {

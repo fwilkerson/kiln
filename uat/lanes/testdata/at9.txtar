@@ -5,17 +5,18 @@ env KILN_OPEN=true
 # Given: a monitor's fix ready to land: its work passed its gate, and its audit, the first, touches .tmp/auditing,
 # then waits for .tmp/fix-go. The gate, gate.sh, logs the checkout of each run in a .gate-* checkout.
 exec sh -c 'exec kiln monitor run >.tmp/mon.out 2>&1' &mon&
-exec sh -c 'i=0; while [ ! -e .tmp/auditing ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/auditing ]'
+exec await .tmp/auditing
 grep -count=1 '^\.gate-notes$' .tmp/gates.log
 
 # A spec's build whose landing gate runs: x's second gate touches .tmp/landing, then waits for .tmp/land-go.
 exec kiln queue x
 exec kiln fire &fire&
-exec sh -c 'i=0; while [ ! -e .tmp/landing ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/landing ]'
+exec await .tmp/landing
 
 # When: the fix reaches its landing, and waits for the build's.
 exec touch .tmp/fix-go
-exec sh -c 'i=0; while ! grep -q "^notes: waits while another kiln runs the project''s commands$" .tmp/mon.out && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; cat .tmp/mon.out'
+exec await .tmp/mon.out '^notes: waits while another kiln runs the project''s commands$'
+exec cat .tmp/mon.out
 stdout '^notes: waits while another kiln runs the project''s commands$'
 exec touch .tmp/land-go
 wait fire
@@ -49,7 +50,7 @@ log="$WORK/.tmp/gates.log"
 echo "$d" >>"$log"
 if [ "$d" = .gate-x ] && [ "$(grep -cxF .gate-x "$log")" -eq 2 ]; then
   touch "$WORK/.tmp/landing"
-  i=0; while [ ! -e "$WORK/.tmp/land-go" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done
+  await "$WORK/.tmp/land-go"
 fi
 exit 0
 -- .kiln/monitors/notes --
@@ -80,7 +81,7 @@ x
  ]}},
  "audit": {
   "1": {"1": [
-   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/auditing\"; i=0; while [ ! -e \"$WORK/.tmp/fix-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done"}}},
+   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/auditing\"; await \"$WORK/.tmp/fix-go\""}}},
    {"result": {"result": "read 1 directories, found 0"}}
   ]},
   "2": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},

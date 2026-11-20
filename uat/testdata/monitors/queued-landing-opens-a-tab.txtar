@@ -11,7 +11,7 @@ stdout 'docs: waiting on the developer'
 
 # and a kiln accept made while another kiln holds the monitors' lane. kiln status then shows the fix accepted, its
 # landing waiting for the next kiln monitor run, though the ledger still says the fix waits.
-exec sh -c 'perl -e ''use Fcntl qw(:flock); open(F, ">>", ".git/kiln/monitors.lock") or die; flock(F, LOCK_EX) or die; open(M, ">", ".git/locked"); close(M); sleep 30'' & while [ ! -f .git/locked ]; do sleep 0.1; done; kiln accept docs; s=$?; kill $!; exit $s'
+exec sh -c 'perl -e ''use Fcntl qw(:flock); open(F, ">>", ".git/kiln/monitors.lock") or die; flock(F, LOCK_EX) or die; open(M, ">", ".git/locked"); close(M); system("await", ".git/release")'' & await .git/locked; kiln accept docs; s=$?; touch .git/release; wait $!; exit $s'
 stdout 'docs: accepted; the next kiln monitor run lands it'
 exec kiln status
 ! stdout 'waiting on the developer'

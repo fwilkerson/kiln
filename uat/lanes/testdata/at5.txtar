@@ -6,7 +6,7 @@ env KILN_OPEN=true
 # .tmp/building, then waits for a file no step makes.
 exec kiln queue x
 ! exec kiln fire &fire&
-exec sh -c 'i=0; while [ ! -e .tmp/building ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/building ]'
+exec await .tmp/building
 kill -INT fire
 wait fire
 exec kiln status
@@ -14,7 +14,7 @@ stdout '^x: halted'
 
 # kiln monitor run is at work on a fix. Its session touches .tmp/fixing, then waits for .tmp/fix-go.
 exec kiln monitor run &mon&
-exec sh -c 'i=0; while [ ! -e .tmp/fixing ] && [ $i -lt 1200 ]; do sleep 0.1; i=$((i+1)); done; [ -e .tmp/fixing ]'
+exec await .tmp/fixing
 
 # When: the developer runs kiln fire.
 exec kiln fire
@@ -64,12 +64,12 @@ x
 -- claude.json --
 {
  "notes": {"1": {"1": [
-  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/fixing\"; i=0; while [ ! -e \"$WORK/.tmp/fix-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; echo noted >note.txt"}}},
+  {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/fixing\"; await \"$WORK/.tmp/fix-go\"; echo noted >note.txt"}}},
   {"result": {"result": "Wrote note.txt.\n{\"title\": \"fix(notes): write the missing note\"}"}}
  ]}},
  "build": {"1": {
   "1": [
-   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; i=0; while [ ! -e \"$WORK/.tmp/never\" ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done"}}},
+   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/building\"; await \"$WORK/.tmp/never\""}}},
    {"result": {"result": "Cut short."}}
   ],
   "2": [
