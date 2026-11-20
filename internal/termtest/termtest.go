@@ -11,8 +11,9 @@
 // the modes the program asked for, such as SGR mouse reports. It also answers the program's queries about the terminal.
 //
 // A check reads the screen as it is, and the program draws in its own time. So after an input, wait for a fact the
-// input causes, never for one already on screen. Wait checks again each time the program draws. Its context alone
-// limits it, so a loaded machine draws late, never wrong.
+// input causes, never for one already on screen. Wait checks again each time the program draws. Wait stops when its
+// context ends, or when the program has exited and the emulator has drawn its last output. So a loaded machine draws
+// late, never wrong.
 //
 // A sandboxed process cannot open a pseudo-terminal, so Start fails inside a Claude Code session's sandbox. Its
 // error is then syscall.EPERM.
@@ -37,7 +38,9 @@ type Term struct {
 	emu *vt.SafeEmulator
 	tty *os.File
 	cmd *exec.Cmd
-	// exited closes once the program has exited.
+	// waited closes once the program has exited.
+	waited chan struct{}
+	// exited closes once the program has exited, and the emulator has drawn all that reached the terminal.
 	exited chan struct{}
 	// drawn holds a token once the program has drawn since Wait last looked.
 	drawn chan struct{}
@@ -67,13 +70,20 @@ func Start(cmd *exec.Cmd, size Size) (*Term, error) {
 		return nil, err
 	}
 
-	term := &Term{emu: vt.NewSafeEmulator(size.W, size.H), tty: tty, cmd: cmd, exited: make(chan struct{}),
-		drawn: make(chan struct{}, 1)}
-	// Each copy ends with an error once the program exits, and no caller needs that error.
-	go func() { _, _ = io.Copy(drawing{term}, tty) }()
+	term := &Term{emu: vt.NewSafeEmulator(size.W, size.H), tty: tty, cmd: cmd, waited: make(chan struct{}),
+		exited: make(chan struct{}), drawn: make(chan struct{}, 1)}
+	// The copy from the terminal ends with an error once no process holds the terminal. No caller needs that error.
+	drained := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(drawing{term}, tty)
+		close(drained)
+	}()
+
 	go func() { _, _ = io.Copy(tty, term.emu) }()
 	go func() {
 		_ = cmd.Wait()
+		close(term.waited)
+		<-drained
 		close(term.exited)
 	}()
 
@@ -107,7 +117,7 @@ func drop(env []string, name string) []string {
 // Close stops the program, if it still runs, and closes its terminal.
 func (term *Term) Close() error {
 	_ = term.cmd.Process.Kill()
-	<-term.exited
+	<-term.waited
 	return term.tty.Close()
 }
 
@@ -208,8 +218,9 @@ func (term *Term) Background(at Pos) color.Color {
 	return nil
 }
 
-// Wait checks holds now and after each time the program draws, until holds answers nil. It gives up once the
-// program has exited, or ctx is done. Then it answers holds' last error, with the screen it last read.
+// Wait checks holds now and after each time the program draws, until holds answers nil. Wait gives up when ctx is
+// done, or the program has exited and the emulator has drawn its last output. Then Wait answers holds' last
+// error, with the screen it last read.
 func (term *Term) Wait(ctx context.Context, holds func() error) error {
 	for {
 		err := holds()
