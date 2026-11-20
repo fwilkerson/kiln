@@ -232,6 +232,17 @@ func TestInitFillsSharedKeys(t *testing.T) {
 	}
 }
 
+// TestOpenOutsideRepo holds that kiln refuses a directory in no git repository with its own words and fix, never
+// git's error.
+func TestOpenOutsideRepo(t *testing.T) {
+	dir := t.TempDir()
+	_, err := Open(t.Context(), dir, os.Environ())
+	want := dir + " is in no git repository: run git init there, or run kiln in a repository"
+	if !errors.Is(err, errRefused) || !strings.HasSuffix(fmt.Sprint(err), want) {
+		t.Errorf("kiln opens %s: %v; want it refused, saying %q", dir, err, want)
+	}
+}
+
 // refusedInit is a row of TestInitRefusesPreset. A row that names no preset, and records none, names a team's.
 type refusedInit struct {
 	name     string

@@ -552,6 +552,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -612,11 +613,17 @@ type Repo struct {
 }
 
 // Open opens the repository that holds dir. env is the environment of every process kiln starts, less what each
-// withholds.
+// withholds. It refuses a dir that no git repository holds.
 func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
 	top, err := plainGit(ctx, dir, proc.Git.Env(env), "rev-parse", "--show-toplevel")
+	if _, ran := errors.AsType[*exec.ExitError](err); ran {
+		// git found no repository there, and its own words name its search, not the fix.
+		return nil, fmt.Errorf("%w: %s is in no git repository: run git init there, or run kiln in a repository",
+			errRefused, dir)
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("%s is in no git repository: %w", dir, err)
+		return nil, err
 	}
 
 	g, err := git.New(top, env)
