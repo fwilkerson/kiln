@@ -1481,6 +1481,30 @@ func TestGatedGauge(t *testing.T) {
 	}
 }
 
+// TestGatedCheckLeavesNoFile holds that a fix's gated check runs outside the fix's worktree. A file the check leaves
+// never lands with the session's next round.
+func TestGatedCheckLeavesNoFile(t *testing.T) {
+	b := gaugedFix(t, "echo fine >a.txt", checkScript)
+	b.fix.monitor.finder = checkScript
+	writeAll(t, string(b.tree), map[string]string{b.fix.monitor.path(checkScript): "touch leftover.txt\n" +
+		`echo '{"fix": true, "summary": "still low"}'` + "\n"})
+	shell(t, string(b.tree), "git commit --quiet -am check")
+	v, err := b.gatedCheck(t.Context(), heldBy(t, b.r), verdict{passed: true})
+	if err != nil || v.passed {
+		t.Fatalf("the gate answers %+v, %v; want it failed by the check", v, err)
+	}
+
+	head, _, err := b.sessionWork(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if files := shell(t, string(b.tree), "git ls-tree -r --name-only "+string(head)); strings.Contains(files,
+		"leftover.txt") {
+		t.Errorf("the next round committed the file the check left:\n%s", files)
+	}
+}
+
 // TestGateLineAfterError holds that a fix's gate whose gated gauge couldn't run is written as failed. Its commands
 // passed, and ran at main, so the line still says so.
 func TestGateLineAfterError(t *testing.T) {

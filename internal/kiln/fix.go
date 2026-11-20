@@ -724,6 +724,7 @@ const (
 
 // gatedCheck adds a fix's gated check, or its gauge, to the gate's verdict v. The gate fails while the check asks for a
 // fix, whatever it exits with. A check that couldn't run is a checkFailed. Each runs as kiln.json at main's tip says.
+// The check runs in checkTree, as readFix reads the gauge.
 func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdict, error) {
 	switch {
 	case b.fix == nil || !b.fix.monitor.gated():
@@ -737,8 +738,13 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 		return v, err
 	}
 
+	tree, err := b.checkTree(ctx, held)
+	if err != nil {
+		return v, err
+	}
+
 	command := b.fix.monitor.path(checkScript)
-	found, err := c.shell(b.r.env).runMonitorCheck(ctx, b.tree, command)
+	found, err := c.shell(b.r.env).runMonitorCheck(ctx, tree, command)
 	switch {
 	case err != nil:
 		return v, err
@@ -757,6 +763,17 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 	v.report = strings.TrimSpace(v.report + "\n\n" + report)
 	v.failing = append(v.failing, "`"+command+"`")
 	return v, nil
+}
+
+// checkTree is the monitor's check's worktree, checked out at the fix's commit. A file a command leaves there never
+// lands, as it would in the fix's own worktree.
+func (b *build) checkTree(ctx context.Context, held commands) (git.Worktree, error) {
+	head, err := b.r.git.Head(ctx, b.tree)
+	if err != nil {
+		return "", err
+	}
+
+	return held.scratchTree(ctx, checkTree, head)
 }
 
 // gatedGauge adds the reading of a fix's gauge, over what the fix changed, to the gate's verdict v. The gate fails
