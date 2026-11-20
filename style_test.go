@@ -1,6 +1,10 @@
 package kiln_test
 
 import (
+	"bytes"
+	"io/fs"
+	"os"
+	"regexp"
 	"testing"
 
 	"github.com/fwilkerson/practices/repotest"
@@ -36,6 +40,35 @@ func TestNames(t *testing.T) {
 		"README.md",
 		"docs/reference.md")
 }
+
+// TestNoConflictMarkers fails on a line that starts as git marks a conflict. A merge's commit runs no hook, so no hook
+// finds one. A scenario still passes with one in a file it writes.
+func TestNoConflictMarkers(t *testing.T) {
+	err := fs.WalkDir(os.DirFS("."), ".", func(p string, d fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			return err
+		case d.IsDir() && d.Name() == ".git":
+			return fs.SkipDir
+		case !d.Type().IsRegular():
+			return nil
+		}
+
+		raw, err := os.ReadFile(p)
+		for _, at := range conflictMarker.FindAllIndex(raw, -1) {
+			line := bytes.Count(raw[:at[0]], []byte("\n")) + 1
+			t.Errorf("%s:%d: a conflict marker: resolve the conflict, and remove it", p, line)
+		}
+
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// conflictMarker matches a line that starts as git marks a conflict's ours, base or theirs.
+var conflictMarker = regexp.MustCompile(`(?m)^(<{7}|\|{7}|>{7}) `)
 
 // TestLinks fails on a link in a doc whose target is a path that names no file.
 func TestLinks(t *testing.T) {

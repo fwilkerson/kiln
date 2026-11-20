@@ -33,27 +33,6 @@ stdout '^stuck: held: its check or gauge ran past kiln.json''s timeout at main [
 -- .kiln/monitors/broken/gauge --
 echo 'the tool is missing' >&2; exit 3
 -- .kiln/monitors/broken/agent.md --
-||||||| c6b6d22
-{"gate": ["true"], "gauges": [
- {"name": "fails", "command": "echo 'the tool is missing' >&2; exit 3", "max": 0},
- {"name": "quiet", "command": "echo 'nothing to count'", "max": 0}
-], "monitors": [
- {"name": "broken", "every": "24h", "gauge": "fails", "agent": ".kiln/agents/fixer.md"},
- {"name": "silent", "every": "24h", "gauge": "quiet", "agent": ".kiln/agents/fixer.md"}
-]}
--- .kiln/agents/fixer.md --
-=======
-{"gate": ["true"], "timeout": "3s", "gauges": [
- {"name": "fails", "command": "echo 'the tool is missing' >&2; exit 3", "max": 0},
- {"name": "quiet", "command": "echo 'nothing to count'", "max": 0},
- {"name": "slow", "command": "echo 1; sleep 600", "max": 0}
-], "monitors": [
- {"name": "broken", "every": "24h", "gauge": "fails", "agent": ".kiln/agents/fixer.md"},
- {"name": "silent", "every": "24h", "gauge": "quiet", "agent": ".kiln/agents/fixer.md"},
- {"name": "stuck", "every": "24h", "gauge": "slow", "agent": ".kiln/agents/fixer.md"}
-]}
--- .kiln/agents/fixer.md --
->>>>>>> improve/guard-rails
 Fix the files the gauge names.
 -- .kiln/monitors/broken/monitor.json --
 {"max": 0}
