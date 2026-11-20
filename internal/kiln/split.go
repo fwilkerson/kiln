@@ -862,12 +862,7 @@ func (b *build) harnessChanged(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	base, err := b.r.git.MergeBase(ctx, mainBranch, tip)
-	if err != nil {
-		return nil, err
-	}
-
-	changed, err := b.r.git.Changed(ctx, base, tip)
+	changed, err := b.r.git.Branched(ctx, mainBranch, tip)
 	return slices.DeleteFunc(changed, func(p string) bool {
 		return !slices.ContainsFunc(s.harness, func(h string) bool { return within(fold(p), fold(h)) })
 	}), err

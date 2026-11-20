@@ -137,12 +137,7 @@ func (b *build) ownFiles(ctx context.Context, head git.Rev) ([]string, error) {
 		return nil, err
 	}
 
-	base, err := b.r.git.MergeBase(ctx, main, head)
-	if err != nil {
-		return nil, err
-	}
-
-	return b.r.git.Changed(ctx, base, head)
+	return b.r.git.Branched(ctx, main, head)
 }
 
 // changedDirs are the directories at head that hold paths, sorted, each once: . for the top, or the directory's path.

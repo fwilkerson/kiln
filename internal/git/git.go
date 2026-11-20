@@ -710,6 +710,14 @@ func (g *Git) Changed(ctx context.Context, from, to Rev) ([]string, error) {
 	return paths(out), err
 }
 
+// Branched lists the paths that head changed since it left main's line. One git diffs their merge base and head, as
+// git diff main...head does.
+func (g *Git) Branched(ctx context.Context, main, head Rev) ([]string, error) {
+	diff := []string{"diff", "--name-only", "-z", "--no-renames", "--no-ext-diff"}
+	out, err := g.in(ctx, g.repo, append(diff, string(main)+"..."+string(head), "--")...)
+	return paths(out), err
+}
+
 // Diff is the patch from the commit from to the commit to, of paths alone, with no line of context. A binary file's
 // patch holds its content.
 func (g *Git) Diff(ctx context.Context, from, to Rev, paths ...string) (string, error) {
