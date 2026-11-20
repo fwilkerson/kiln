@@ -2,7 +2,8 @@
 //
 //	kiln init [--preset go|python|<dir>]
 //	                         write a preset of kiln's defaults into .kiln/, or merge a newer kiln's into yours,
-//	                         from the preset .kiln/init.json records, or Go's; and install the pre-commit hook
+//	                         from the preset .kiln/init.json records, or else the one your files match;
+//	                         and install the pre-commit hook
 //	kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 //	kiln fire                build each queued spec, one at a time, until none is queued
 //	kiln status              show where each spec stands, each gauge's latest reading, and whether .kiln/ is behind
@@ -54,7 +55,8 @@ import (
 const usage = `usage:
   kiln init [--preset go|python|<dir>]
                            write a preset of kiln's defaults into .kiln/, or merge a newer kiln's into yours,
-                           from the preset .kiln/init.json records, or Go's; and install the pre-commit hook
+                           from the preset .kiln/init.json records, or else the one your files match;
+                           and install the pre-commit hook
   kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
   kiln fire                build each queued spec, one at a time, until none is queued
   kiln status              show where each spec stands, each gauge's latest reading, and whether .kiln/ is behind

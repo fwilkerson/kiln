@@ -26,8 +26,12 @@ type preset struct {
 	files fs.FS
 }
 
-// builtIns are the presets kiln holds, the first when the developer names none.
+// builtIns are the presets kiln holds. kiln init picks one by its detectFile when the developer names none.
 var builtIns = []string{"go", "python"}
+
+// detectFile lists the paths a repository's top holds, every one, when a preset is the repository's own.
+// The paths are split by white space, such as one a line. kiln init writes no detectFile into .kiln/.
+const detectFile = "detect"
 
 // marker is a line in a default prompt that kiln init replaces with a preset's file of the marker's name.
 var marker = regexp.MustCompile(`(?m)^<!-- kiln:preset ([a-z-]+) -->\n`)
@@ -81,6 +85,28 @@ func usableConfig(raw []byte) error {
 	}
 
 	return nil
+}
+
+// detects answers the paths p's detectFile lists, and whether the directory top holds every one. A preset without
+// the file detects nothing.
+func (p preset) detects(top string) (paths []string, all bool, err error) {
+	raw, err := fs.ReadFile(p.files, detectFile)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
+	}
+
+	if err != nil {
+		return nil, false, fmt.Errorf("preset %s: %w", p.name, err)
+	}
+
+	paths = strings.Fields(string(raw))
+	all = len(paths) > 0
+	for _, name := range paths {
+		_, err := os.Stat(filepath.Join(top, name))
+		all = all && err == nil
+	}
+
+	return paths, all, nil
 }
 
 // fill replaces each marker in raw with p's file of the marker's name.

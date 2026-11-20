@@ -2,6 +2,7 @@ package kiln
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,7 +34,7 @@ func TestInitUpdates(t *testing.T) {
 			said:  "merged " + build + ", with conflicts: resolve them before you commit it",
 			holds: []string{"<<<<<<< " + build + "\n", "gofumpt", "- Run make check.\n", ">>>>>>> kiln init's new default"}},
 		{name: "with no record, each difference is a conflict",
-			edit: "echo 'House rule.' >>" + build + " && rm .kiln/init.json",
+			edit: "echo 'House rule.' >>" + build + " && rm .kiln/init.json && touch go.mod",
 			said: "merged " + build + ", with conflicts", holds: []string{"<<<<<<< " + build + "\nHouse rule.\n"}},
 		{name: "a deleted default is written again, and kiln.json is the project's",
 			ship: "echo '{\"gate\": [\"make\"], \"rounds\": 2, \"acceptance\": \"a/{spec}/\"}' >kiln.json",
@@ -153,6 +154,94 @@ func TestInitRefusesPreset(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestInitPicksPreset holds which preset kiln init writes when the developer names none. It picks the one built-in
+// preset whose files the repository's top holds, every one, and says so. It refuses none, or two, before it writes.
+// It never picks over a preset named or recorded.
+func TestInitPicksPreset(t *testing.T) {
+	rows := append([]pickRow{
+		{name: "nothing matches", said: "refused: no preset matches the repository, by the files at its top (go: go.mod; "},
+		{name: "a preset matches only when every file is there", files: "uv.lock",
+			said: "refused: no preset matches the repository"},
+		{name: "two presets match", files: "go.mod pyproject.toml uv.lock",
+			said: "refused: more than one preset matches the repository, by the files at its top (go: go.mod; " +
+				"python: pyproject.toml, uv.lock): name one with --preset"},
+		{name: "a named preset wins", files: "go.mod", named: "python", want: "python", said: "wrote "},
+		{name: "a recorded preset wins", files: "go.mod", record: `{"preset": "python"}`, want: "python", said: "wrote "},
+	}, pickedByOwnFiles(t)...)
+
+	for _, tt := range rows {
+		t.Run(tt.name, func(t *testing.T) {
+			r, repo := scratchRepo(t)
+			shell(t, repo, "touch "+cmpOr(tt.files, "/dev/null"))
+			if tt.record != "" {
+				shell(t, repo, "mkdir .kiln && echo '"+tt.record+"' >"+initFile)
+			}
+
+			var out strings.Builder
+			err := r.Init(t.Context(), &out, InitOptions{Preset: tt.named})
+			got := out.String()
+			if err != nil {
+				got = err.Error()
+			}
+
+			config, _ := os.ReadFile(filepath.Join(repo, configFile))
+			if !claim.Holds(strings.HasPrefix(got, tt.said), string(config) == presetConfig(t, tt.want),
+				(err == nil) == (tt.want != "")) {
+				t.Errorf("kiln init said:\n%s\nand wrote kiln.json:\n%s\nwant it to start %q, from preset %q", got,
+					config, tt.said, tt.want)
+			}
+		})
+	}
+}
+
+// pickRow is a row of TestInitPicksPreset: the files at the repository's top, and what kiln init then does.
+type pickRow struct {
+	name, files, record, named string
+	want                       string // the preset whose kiln.json kiln init writes
+	said                       string // what kiln init prints first, or the refusal
+}
+
+// pickedByOwnFiles is a row for each built-in preset, in a repository that holds the files its detectFile lists.
+func pickedByOwnFiles(t *testing.T) []pickRow {
+	var rows []pickRow
+	for _, name := range builtIns {
+		p, err := presetNamed(name, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		paths, _, err := p.detects("")
+		if err != nil || len(paths) == 0 {
+			t.Fatalf("preset %s detects %q: %v; want a file that names its paths", name, paths, err)
+		}
+
+		rows = append(rows, pickRow{name: name + " by its files", files: strings.Join(paths, " "), want: name,
+			said: "picked the preset " + name + ", since the repository holds " + strings.Join(paths, " and ") + "\n"})
+	}
+
+	return rows
+}
+
+// presetConfig is the kiln.json of the built-in preset name, or "" for none.
+func presetConfig(t *testing.T, name string) string {
+	t.Helper()
+	if name == "" {
+		return ""
+	}
+
+	p, err := presetNamed(name, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := fs.ReadFile(p.files, "kiln.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return string(raw)
 }
 
 // teamPreset copies Go's preset into dir, as a team keeps a preset of its own, and answers dir.

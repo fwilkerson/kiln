@@ -31,8 +31,8 @@ var defaults embed.FS
 // reviewers. Neither the build agent nor the audit is linked: a developer who wants one as a subagent links it.
 var linked = []string{"skills/shape", "agents/zoom-out.md", "agents/comprehension.md", "agents/critic.md"}
 
-// initHint is how a refusal says to start .kiln/. It names the preset, since kiln init with none writes Go's.
-const initHint = "run kiln init --preset go or python, as the project is, and commit what it writes"
+// initHint is how a refusal says to start .kiln/.
+const initHint = "run kiln init, and commit what it writes"
 
 // initFile is kiln init's record of the defaults it last wrote, which its next run merges the project's edits against.
 const initFile = kilnDir + "/init.json"
@@ -40,11 +40,18 @@ const initFile = kilnDir + "/init.json"
 // InitOptions are what the developer chose for kiln init.
 type InitOptions struct {
 	// Preset names the preset Init writes: go, python, or a directory laid out as one. A directory's path holds a
-	// slash, and a relative one is from the working directory. "" means the preset .kiln/init.json names, or go.
+	// slash, and a relative one is from the working directory. "" means the preset .kiln/init.json names. Without
+	// one there, Init picks a built-in preset by the repository's files, as Init says.
 	Preset string
 }
 
-// Init brings .kiln/ in the checkout up to date with kiln's defaults, as opt's preset fills them. It writes each
+// Init brings .kiln/ in the checkout up to date with kiln's defaults, as opt's preset fills them.
+//
+// With no preset named or recorded, Init picks the one built-in preset whose files the checkout's top holds, every
+// one. Each built-in preset lists those files in its file detect, such as go.mod for go. Init says which preset it
+// picked, and by which files. It refuses when no preset matches, or more than one, and names each one's files.
+//
+// Init writes each
 // default that .kiln/ lacks. A file the project left as Init last wrote it takes the new default. Into a file the
 // project changed, git merge-file merges the change between the last default and the new one. It leaves each
 // conflict between the usual markers, and names the file. With no record of the last default, each difference from
@@ -65,7 +72,7 @@ func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 		return err
 	}
 
-	p, err := r.initPreset(opt.Preset, last.Preset)
+	p, err := r.initPreset(opt.Preset, last.Preset, out)
 	if err != nil {
 		return err
 	}
@@ -96,11 +103,14 @@ func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	return r.installHook(ctx, out)
 }
 
-// initPreset is the preset kiln init writes: the one named, else the one recorded, else the first built-in. A path
-// named is from the working directory, and a path recorded is from the checkout's top.
-func (r *Repo) initPreset(named, recorded string) (preset, error) {
-	if named == "" {
-		p, err := presetNamed(cmpOr(recorded, builtIns[0]), r.top)
+// initPreset is the preset kiln init writes: the one named, else the one recorded, else the one pickPreset picks. A
+// path named is from the working directory, and a path recorded is from the checkout's top.
+func (r *Repo) initPreset(named, recorded string, out io.Writer) (preset, error) {
+	switch {
+	case named == "" && recorded == "":
+		return r.pickPreset(out)
+	case named == "":
+		p, err := presetNamed(recorded, r.top)
 		if err != nil {
 			return p, fmt.Errorf("%w: %s names a preset kiln can't use: %w; name one with --preset", errRefused,
 				initFile, err)
@@ -120,6 +130,44 @@ func (r *Repo) initPreset(named, recorded string) (preset, error) {
 	}
 
 	return p, nil
+}
+
+// pickPreset is the one built-in preset whose detectFile's paths the checkout's top holds, every one. It prints
+// which, and by which files. It refuses none, or more than one, and names each candidate's files.
+func (r *Repo) pickPreset(out io.Writer) (preset, error) {
+	var matched []preset
+	var all, found []string
+	var why string
+	for _, name := range builtIns {
+		p, err := presetNamed(name, "")
+		if err != nil {
+			return p, err
+		}
+
+		paths, holds, err := p.detects(r.top)
+		if err != nil {
+			return p, err
+		}
+
+		files := name + ": " + strings.Join(paths, ", ")
+		all = append(all, files)
+		if holds {
+			matched, found = append(matched, p), append(found, files)
+			why = fmt.Sprintf("picked the preset %s, since the repository holds %s", name, strings.Join(paths, " and "))
+		}
+	}
+
+	switch len(matched) {
+	case 0:
+		return preset{}, fmt.Errorf("%w: no preset matches the repository, by the files at its top (%s): name one "+
+			"with --preset", errRefused, strings.Join(all, "; "))
+	case 1:
+		fmt.Fprintln(out, why)
+		return matched[0], nil
+	}
+
+	return preset{}, fmt.Errorf("%w: more than one preset matches the repository, by the files at its top (%s): "+
+		"name one with --preset", errRefused, strings.Join(found, "; "))
 }
 
 // sayGate prints the gate's commands of the checkout's kiln.json, which the pre-commit hook runs on each commit to
@@ -186,7 +234,7 @@ func (r *Repo) behind(raw []byte) (string, bool, error) {
 		return "", false, err
 	}
 
-	from := cmpOr(last.Preset, builtIns[0])
+	from := last.Preset
 	p, err := presetNamed(from, r.top)
 	if err != nil {
 		return from, false, err

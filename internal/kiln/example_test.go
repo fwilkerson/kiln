@@ -22,7 +22,8 @@ func Example() {
 	ctx := context.Background()
 	repo := must(filepath.EvalSymlinks(must(os.MkdirTemp("", "kiln-example"))))
 	defer os.RemoveAll(repo)
-	sh(repo, "git init --quiet -b main && git config user.name dev && git config user.email dev@example.com")
+	sh(repo, "git init --quiet -b main && git config user.name dev && git config user.email dev@example.com && "+
+		"echo 'module example.com/x' >go.mod")
 
 	r := must(kiln.Open(ctx, repo, os.Environ()))
 	var out strings.Builder
@@ -34,6 +35,7 @@ func Example() {
 	check(r.Queue(ctx, "x", io.Discard)) // It prints main's tip, which differs from run to run.
 	check(r.Status(ctx, os.Stdout))
 	// Output:
+	// picked the preset go, since the repository holds go.mod
 	// wrote .kiln/agents/audit.md
 	// wrote .kiln/agents/build.md
 	// wrote .kiln/agents/comprehension.md

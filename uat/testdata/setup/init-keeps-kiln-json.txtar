@@ -26,3 +26,7 @@ cmp .kiln/kiln.json _given/want.json
  "hosts": ["a.example"],
  "acceptance": "acc/{spec}/",
  "rounds": 3}
+-- go.mod --
+module example.com/scratch
+
+go 1.27

@@ -130,7 +130,7 @@ func TestInitKeeps(t *testing.T) {
 		`echo mine >.kiln/agents/build.md && echo mine >.claude/agents/critic.md && `+
 		`ln -s ../../.kiln/agents/comprehension.md .claude/agents && ln -s ../.kiln/skills .claude/skills`)
 	var out strings.Builder
-	if err := r.Init(t.Context(), &out, InitOptions{}); err != nil {
+	if err := r.Init(t.Context(), &out, InitOptions{Preset: "go"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -196,7 +196,7 @@ func TestQueueNeedsInit(t *testing.T) {
 	for _, missing := range []string{configFile, agentFile(buildRole), agentFile(verifyRole), agentFile(auditRole)} {
 		t.Run(missing, func(t *testing.T) {
 			r, repo := scratchRepo(t)
-			if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
+			if err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -253,7 +253,7 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r, repo := scratchRepo(t)
-			if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
+			if err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"}); err != nil {
 				t.Fatal(err)
 			}
 

@@ -29,11 +29,14 @@ The archive holds `_kiln`, the zsh completion, too. Put it in a directory that `
 ## Quick start
 
 **1. Set the project up.** `kiln init` writes kiln's settings, agents and the `/shape` skill into `.kiln/`, and
-installs a pre-commit hook that runs your gate. The preset is `go`, or `python` for uv, pytest, ruff and ty.
+installs a pre-commit hook that runs your gate. It picks the preset from your files: `go` for a `go.mod`, or
+`python` for uv, pytest, ruff and ty, by a `pyproject.toml` and `uv.lock`. Where it can't tell, it asks for
+`--preset`.
 
 ```console
 $ cd my-project                      # a git repository, on the branch main
 $ kiln init
+picked the preset go, since the repository holds go.mod
 wrote .kiln/agents/audit.md
 wrote .kiln/agents/build.md
 ...
