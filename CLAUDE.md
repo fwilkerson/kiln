@@ -9,21 +9,25 @@ for macOS.
 
 - `.kiln/specs/<name>.md`: a spec. With Status Proposed it is a plan, a starter `/shape` takes up later; build only
   the approved spec kiln names. Its Given, When, Then text is the developer's: never change it.
-- `.kiln/monitors/` and `.kiln/gauges/`: the scripts kiln's monitors' checks and gauges run, out of a fix's reach. A
-  build names a new one in its last reply, for the developer to commit. `monitors/uat` is the check of the monitor
-  that folds an accepted spec's tests. `monitors/docs` is the check of the monitor that reads the docs of changed
-  packages against their code. `gauges/health` is the gauge of `code-health`, the monitor that refactors the files
-  `go tool health` scores lowest. `monitors/gate-time` is the check of the monitor that makes the tests faster
-  once the gate's times in kiln's ledger rise.
+- `.kiln/monitors/<name>/`: one of kiln's monitors, out of a fix's reach: its `check` or `gauge`, its `agent.md`, and
+  its `monitor.json`. A build names a new one in its last reply, for the developer to commit. `uat` folds an
+  accepted spec's tests. `docs` reads the docs of changed packages against their code. `code-health` refactors the
+  files `go tool health` scores lowest, as its `gauge` lists them. `gate-time` makes the tests faster once the
+  gate's times in kiln's ledger rise.
 - `bugs/<name>.md`: a bug the developer filed, with what happened and what should happen. `bugs`, a monitor, takes
-  the first by name each hour, as `.kiln/agents/bugfix.md` says. A build never fixes one.
+  the first by name each hour, as `.kiln/monitors/bugs/agent.md` says. A build never fixes one.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.
-- `.kiln/`: kiln's own settings, agents and specs, as `kiln init` wrote them, tailored to kiln. `.claude/agents` and
-  `.claude/skills` link to `/shape`, its reviewers and the verify agent there. A session kiln runs changes nothing
-  here, but for the amendment file kiln's contract gives it.
+- `.kiln/`: kiln's own settings, agents, reviewers and specs, as `kiln init` wrote them, tailored to kiln.
+  `init.json` records what `kiln init` wrote, so a later run merges newer defaults. `notify` is the program
+  `kiln.json` names, which opens a Ghostty tab. `.claude/agents` and `.claude/skills` link to `/shape`, its
+  reviewers in `.kiln/reviewers/` and the verify agent there. A session kiln runs changes nothing here, but for the
+  amendment file kiln's contract gives it.
 - `internal/kiln/defaults/`: what `kiln init` writes, for any project. No line there names kiln's own repository.
-- `internal/kiln/presets/`: each preset's `kiln.json`, and its text for the "Tailor this" sections of the defaults'
-  prompts. `kiln init` writes them with `internal/kiln/defaults/`.
+- `internal/kiln/presets/`: each preset's `kiln.json`, its `detect` file, which lists the files `kiln init` knows
+  the preset by, and its text for the "Tailor this" sections of the defaults' prompts. `kiln init` writes them with
+  `internal/kiln/defaults/`.
+- `internal/kiln/monitors/`: the monitors `kiln monitor add` copies into a project. No line there names kiln's own
+  repository.
 - `docs/guide.md`: the guide, how Go code is written and judged across the developer's projects, loaded at the end
   of this file. It is what `go tool guide` prints, from the practices module that `go.mod` names: never edit it here.
   `TestGuide` fails while the two differ, and `go tool guide > docs/guide.md` brings it up to date.
