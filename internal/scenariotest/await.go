@@ -79,16 +79,20 @@ func testEnded() <-chan struct{} {
 	return ended
 }
 
-// waitExit returns once the process pid has exited. Where kqueue can't watch the process, it asks each second.
+// waitExit returns once the process pid has exited. Where kqueue can't watch the process, waitExit asks every
+// exitPoll. Only ESRCH says the process has gone: EPERM names a live process that this one may not signal.
 func waitExit(pid int) {
 	if watchExit(pid) == nil {
 		return
 	}
 
-	for syscall.Kill(pid, 0) == nil {
-		time.Sleep(time.Second)
+	for !errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
+		time.Sleep(exitPoll)
 	}
 }
+
+// exitPoll is how often waitExit asks whether a process still runs, where kqueue can't watch it.
+const exitPoll = time.Second
 
 // watchExit waits on kqueue until the process pid exits. It answers nil once the process has exited, or when no
 // process has that ID. It answers an error when kqueue can't watch the process.

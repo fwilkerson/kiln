@@ -60,7 +60,7 @@ var outside = map[string][]string{
 	// claim holds the checks tests share, so only a test imports it.
 	"internal/kiln": {"github.com/fwilkerson/practices/claim", "github.com/fwilkerson/practices/repotest"},
 	"internal/scenariotest": {"github.com/rogpeppe/go-internal", "github.com/charmbracelet/x/ansi",
-		"github.com/charmbracelet/x/vt"},
+		"github.com/charmbracelet/x/vt", "github.com/fwilkerson/practices/repotest"},
 	"internal/tui": {"charm.land/bubbletea/v2", "charm.land/bubbles/v2", "charm.land/lipgloss/v2",
 		"github.com/alecthomas/chroma/v2", "github.com/charmbracelet/x/ansi", "github.com/charmbracelet/x/term",
 		"github.com/charmbracelet/x/vt", "github.com/fwilkerson/practices/repotest"},
