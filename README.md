@@ -117,8 +117,9 @@ answer: landed on main at 3f9c2ab81d0e, and waits for UAT
         kiln queue answer
 ```
 
-`kiln fire` builds each queued spec in turn. Leave it running: it sends a terminal notification when a build needs
-you. In a second terminal, `kiln tui` shows each session live, and every past build.
+`kiln fire` builds each queued spec in turn. Leave it running: it notifies you when a build needs you, in the
+terminal, or through the program `notify` names in `kiln.json`. In a second terminal, `kiln tui` shows each session
+live, and every past build.
 
 **4. Take the work, or send it back.** A build ends in one of three states, and `kiln status` shows each:
 

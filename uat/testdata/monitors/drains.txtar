@@ -1,7 +1,5 @@
 # A monitor that drains a queue in one run.
 
-env KILN_OPEN=true
-
 # Given: a monitor that drains. Its check asks for a fix while queue/ holds a file, and its command removes the first.
 
 # When: the developer runs kiln monitor run, once.

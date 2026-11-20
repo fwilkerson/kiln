@@ -130,8 +130,8 @@ func (b *build) settle(ctx context.Context, err error) error {
 const couldNotGoOn = "kiln could not go on with the build: "
 
 // waits tells the developer when the build ended waiting on them: stopped, waiting for UAT, or waiting on its branch.
-// It prints an OSC 9 sequence, which a terminal such as Ghostty shows as a notification, then the build's summary.
-// The sequence names the spec, and where it stands as kiln status shows it.
+// A spec's build notifies, then prints its summary. A fix's landing prints its summary alone, since notifyLanding
+// decides whether it notifies.
 func (b *build) waits(ctx context.Context) {
 	k, err := b.r.store.read()
 	if err != nil {
@@ -144,19 +144,22 @@ func (b *build) waits(ctx context.Context) {
 		return
 	}
 
-	// The body starts with kiln:, so a spec named 4 can't read as OSC 9;4, a progress bar Ghostty draws.
-	fmt.Fprintf(b.out, "\x1b]9;kiln: %s %s\a", rec.Name, shownState(rec))
-	for _, line := range b.r.sumUp(ctx, *rec, b.tree, b.landed) {
+	lines := b.r.sumUp(ctx, *rec, b.tree, b.landed)
+	if !rec.Monitor {
+		b.r.notify(ctx, b.r.specNoticeOf(*rec, b.tree, lines, b.landed), b.out)
+	}
+
+	for _, line := range lines {
 		fmt.Fprintln(b.out, indent(line))
 	}
 }
 
-// notifyLanding opens a tab for a fix's landing that kiln monitor run took up as it started, for landings alone. No
+// notifyLanding notifies a fix's landing that kiln monitor run took up as it started, for landings alone. No
 // developer reads that run's output. kiln accept, run for the fix's name, prints the landing to the developer.
 func (b *build) notifyLanding(ctx context.Context, only Spec) {
-	// A fix's landing only lands or stops, as landingStops says, and either opens a tab.
+	// A fix's landing only lands or stops, as landingStops says, and either notifies.
 	if only == landings && b.fix != nil {
-		b.r.notify(ctx, b.rec.Name, b.out)
+		b.r.notifyFix(ctx, b.rec.Name, b.landed, b.out)
 	}
 }
 

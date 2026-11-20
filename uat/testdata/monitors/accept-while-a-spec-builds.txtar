@@ -1,7 +1,5 @@
 # An accepted fix lands while a spec builds.
 
-env KILN_OPEN=true
-
 # Given: a monitor's fix waiting on its branch for kiln accept.
 exec sh -c 'kiln monitor run || true'
 exec kiln status

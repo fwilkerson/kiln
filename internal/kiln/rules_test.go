@@ -1016,7 +1016,6 @@ func TestLandedBefore(t *testing.T) {
 // landedThenKilled is the build of x, an accepted landing, as the next kiln takes it up. The kiln before died once its
 // landing moved main. It answers the commit main moved to. A monitor's build is the fix of the monitor x.
 func landedThenKilled(t *testing.T, monitor bool) (*build, git.Rev) {
-	t.Setenv(openVar, "true")
 	b, repo, _ := landingBuild(t)
 	shell(t, repo, `echo '{"gate": ["true"], "monitors": [{"name": "x", "every": "1h", "command": "true", `+
 		`"tests": true}]}' >.kiln/kiln.json && git commit --quiet -am monitor`)

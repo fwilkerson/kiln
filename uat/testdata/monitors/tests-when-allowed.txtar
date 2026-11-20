@@ -1,7 +1,5 @@
 # A fix writes the tests only when its monitor says it may, under any acceptance path.
 
-env KILN_OPEN=true
-
 # Given: kiln.json names two acceptance paths, uat/{spec}/ and integration/{spec}/. A monitor that doesn't say its
 # fixes may write the tests changes a file under the second path. A second monitor that says they may changes a
 # file under the first.

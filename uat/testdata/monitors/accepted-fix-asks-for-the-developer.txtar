@@ -1,7 +1,5 @@
 # A landing whose session asks for the developer stops, and keeps the fix for kiln accept or kiln reject.
 
-env KILN_OPEN=true
-
 # Given: a monitor whose fixes wait for kiln accept, and a fix its agent made, waiting on its branch. Main changed
 # since, in a line the fix changed.
 exec sh -c 'kiln monitor run || true'

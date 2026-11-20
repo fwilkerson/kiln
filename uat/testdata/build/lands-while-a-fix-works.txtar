@@ -1,8 +1,6 @@
 # A spec builds and lands while a monitor's fix is at work, though its kiln fire was interrupted. The fix lands
 # after, and main holds both.
 
-env KILN_OPEN=true
-
 # Given: a spec whose kiln fire was interrupted while its build session worked. The session's first call touches
 # .tmp/building, then waits for a file no step makes.
 exec kiln queue x

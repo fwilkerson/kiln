@@ -1,7 +1,5 @@
 # A fix whose landing moved main ends landed, though kiln was killed before it recorded the landing.
 
-env 'KILN_OPEN=echo opened >>.git/opened'
-
 # Given: a monitor whose check asks for a fix until a file holds a line, and whose command writes that line. A git
 # first on the PATH kills kiln as soon as a fast-forward merge moves main.
 exec sh -c 'printf "#!/bin/sh\n\"%s\" \"\$@\" || exit\ncase \" \$* \" in *\" merge \"*\" --ff-only \"*) [ -e \"$WORK/.tmp/killed\" ] || { touch \"$WORK/.tmp/killed\"; kill -9 \$PPID; } ;; esac\n" "$(command -v git)" >.tmp/git && chmod +x .tmp/git'
@@ -14,8 +12,11 @@ stdout '^fix\(bump\): land the monitor''s fix$'
 exec kiln monitor run
 ! stdout 'dropped'
 
-# Then: kiln status shows the fix landed, the second run opened a tab for it, and main holds the one landing.
-grep -count=1 opened .git/opened
+# Then: kiln status shows the fix landed, the second run notified it with its landing commit, and main holds the one
+# landing.
+grep -count=1 '"kind":"monitor"' .git/notices
+grep '"name":"bump","state":"landed"' .git/notices
+exec sh -c 'grep -q "\"commit\":\"$(git rev-parse main)\"" .git/notices'
 exec kiln status
 stdout 'bump.*landed'
 ! stdout 'stopped|dropped'
@@ -23,7 +24,7 @@ exec git log --format=%s main
 stdout -count=1 '^fix\(bump\): land the monitor''s fix$'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
+{"gate": ["true"], "notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices", "monitors": [
  {"name": "bump", "every": "24h", "check": "sh .kiln/monitors/bump", "command": "echo current >>state.txt"}
 ]}
 -- .kiln/monitors/bump --

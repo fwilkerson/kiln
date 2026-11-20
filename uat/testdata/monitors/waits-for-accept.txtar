@@ -1,7 +1,5 @@
 # A fix that waits for accept. One that conflicts with main names kiln reject, and the next fix lands on accept.
 
-env KILN_OPEN=true
-
 # Given: a monitor whose fixes wait for kiln accept, and whose command makes a change that passes.
 exec git rev-parse main
 cp stdout $WORK/_given/main-before

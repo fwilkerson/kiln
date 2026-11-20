@@ -151,6 +151,10 @@
         },
         "additionalProperties": false
       }
+    },
+    "notify": {
+      "description": "Notify is the command that receives each notification, run with sh -c. \"\" prints each as OSC 9.",
+      "type": "string"
     }
   },
   "additionalProperties": false

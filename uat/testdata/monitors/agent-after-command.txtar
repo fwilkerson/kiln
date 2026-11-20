@@ -1,7 +1,5 @@
 # The agent fixes what the command left failing.
 
-env KILN_OPEN=true
-
 # Given: a monitor whose check prints a finding above its last line, whose command leaves a gate command failing, and
 # whose agent makes it pass.
 

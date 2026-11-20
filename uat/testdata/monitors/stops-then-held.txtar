@@ -1,7 +1,5 @@
 # A fix that can't pass stops, and waits for something to change.
 
-env KILN_OPEN=true
-
 # Given: a monitor whose check joins the gate, whose command leaves the check still asking for a fix, and that names
 # no agent.
 exec git rev-parse main

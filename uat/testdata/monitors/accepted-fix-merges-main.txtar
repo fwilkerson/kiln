@@ -1,8 +1,6 @@
 # An accepted fix that conflicts with main lands, once the session that made it merges main. kiln status shows the
 # session at work, the audit reads what the session changed, and the landing's commit names it.
 
-env KILN_OPEN=true
-
 # Given: a monitor whose fixes wait for kiln accept, and a fix its agent made, waiting on its branch. The fix
 # changed two files, doc.txt and extra.txt.
 exec sh -c 'kiln monitor run || true'

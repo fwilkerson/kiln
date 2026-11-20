@@ -1,7 +1,5 @@
 # An agent titles the commit that lands its fix.
 
-env KILN_OPEN=true
-
 # Given: a monitor whose agent writes a file, and ends its reply with a title for the commit.
 
 # When: the developer runs kiln monitor run.

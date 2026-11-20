@@ -1,7 +1,5 @@
 # kiln status shows both lanes at work, and a second kiln in a lane refuses.
 
-env KILN_OPEN=true
-
 # Given: kiln fire at work on a spec, and kiln monitor run at work on a fix. Each session touches a file, then waits
 # for .tmp/go.
 exec kiln queue x

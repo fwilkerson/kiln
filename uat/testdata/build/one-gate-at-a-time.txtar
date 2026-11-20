@@ -1,7 +1,5 @@
 # One gate runs at a time, across a spec's build and a monitor's fix.
 
-env KILN_OPEN=true
-
 # Given: a monitor's fix, made by the monitor's command, which touches .tmp/fixing, then waits for .tmp/fix-go. The
 # gate, gate.sh, logs each run in a .gate-* checkout, and logs an overlap when another such run has not ended. Its
 # run at x's commit touches .tmp/gating, then waits for .tmp/gate-go.

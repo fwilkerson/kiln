@@ -1,7 +1,5 @@
 # A monitor runs while a spec builds.
 
-env KILN_OPEN=true
-
 # Given: kiln fire at work on a spec, whose build session has not ended its turn. The session touches .tmp/building,
 # then waits for .tmp/build-go.
 exec kiln queue x

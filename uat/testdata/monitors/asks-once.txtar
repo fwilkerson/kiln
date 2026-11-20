@@ -1,7 +1,5 @@
 # An agent asks for the developer once.
 
-env KILN_OPEN=true
-
 # Given: a monitor whose check finds an error, and whose agent changes a file, then asks for the developer, with a
 # report.
 exec git rev-parse main

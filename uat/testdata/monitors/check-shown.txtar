@@ -1,7 +1,5 @@
 # kiln shows what a check found.
 
-env KILN_OPEN=true
-
 # Given: a monitor whose check prints that nothing needs a fix, with a summary; and a second monitor whose check
 # prints a line and exits non-zero.
 exec git rev-parse main

@@ -1,7 +1,5 @@
 # A spec's amendments land while a monitor's fix is at work.
 
-env KILN_OPEN=true
-
 # Given: a spec waiting on its branch with amendments.
 exec kiln queue x
 exec kiln fire

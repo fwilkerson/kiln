@@ -57,7 +57,8 @@
 //
 //	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
 //	                            the MCP servers a session calls, the gauges, the workflow, where the acceptance
-//	                            tests live, the harness, the paths the audit reads again, and the monitors
+//	                            tests live, the harness, the paths the audit reads again, the monitors, and the
+//	                            program that receives each notification
 //	.kiln/kiln.schema.json      kiln.json's JSON Schema, for an editor, which kiln init writes over each time
 //	.kiln/monitors/             the scripts a monitor's check runs, out of a fix's reach
 //	.kiln/gauges/               the scripts a gauge's command runs, which a monitor may name in place of a check
@@ -212,7 +213,7 @@
 //	           command   first, outside the sandbox, then the gate; fails with no agent: stopped
 //	           agent     while the gate fails, or with no command; kiln.json's rounds, and the audit
 //	  ends     landed, waits on its branch, unchanged, needs you, session failed, usage limit, stopped, couldn't run
-//	  tab      a Ghostty tab, when the fix landed, waits, stopped, needs you or session failed
+//	  notify   the developer, as Notifications says
 //	  gauges   read after a landing, as after a build's
 //	  again    with "drain": true, after a fix that landed: from check, due or not, until no fix lands
 //
@@ -258,12 +259,6 @@
 //	any other                               not held
 //
 // kiln monitor run with a name skips that hold, but never starts a second fix.
-//
-// kiln asks Ghostty, through osascript, for a tab in its front window, or a window when it shows none. The app and the
-// tab in front stay in front. The tab runs <kiln> monitor show <name> in <top>. $KILN_OPEN names a command to run in
-// place of osascript, with that command line and <top> as its arguments. The tab notifies the developer, and shows the
-// summary, report or error, and the next command. A session that failed as the last run did opens none. A landing
-// kiln accept makes opens none, and one that kiln monitor run takes up as it starts opens one.
 //
 // # Lanes
 //
@@ -400,10 +395,44 @@
 //
 // # Notifications
 //
-// A build that ends waiting on the developer notifies them, in the output of the kiln that built it. It ends stopped,
-// waiting for UAT, or waiting on its branch. kiln prints an OSC 9 sequence, which a terminal such as Ghostty shows as
-// a notification. Its body is "kiln: <name> <state>", with the state as kiln status words it. kiln prints it whether
-// or not the output is a terminal. A summary of the build follows, from kiln's record, its ledger and git:
+// kiln notifies the developer when a spec's build or a monitor's fix needs them. A spec's build notifies once it ends
+// stopped, waiting for UAT, or waiting on its branch, whichever kiln built it. A fix notifies once kiln monitor run
+// ends it landed, waiting on its branch, stopped, needs you, or session failed. A session that failed as the
+// monitor's last run did notifies nothing, so an expired sign-in notifies once per monitor. kiln monitor run notifies
+// each landing it takes up as it starts, or finds on main. A fix's landing that kiln accept makes notifies nothing,
+// since the developer reads its output.
+//
+// kiln.json's notify names the program that receives each notification. kiln reads it at main's tip:
+//
+//	{"notify": ".kiln/notify"}
+//
+// kiln runs it with sh -c in <top>, outside the sandbox, with kiln's environment, as it runs a gauge. The program's
+// file is the one that checkout holds, so kiln notifies with no lock and no checkout. $KILN_NOTICE holds the notice,
+// one JSON object:
+//
+//	{"kind": "spec", "name": "x", "state": "waiting for UAT",
+//	 "summary": "4.2 min · $0.42 · 3 turns · 1 failed call\n0 of 1 round · …",
+//	 "next": "read it with git show 3f9c2ab81d0e, then run kiln accept x, or …",
+//	 "top": "/Users/me/scratch", "kiln": "/Users/me/go/bin/kiln", "commit": "3f9c2ab81d0e…"}
+//
+//	kind     spec, for a spec's build, or monitor, for a monitor's fix
+//	name     the spec's name, or the monitor's
+//	state    where it stands, as kiln status words it, such as stopped, or waiting on the developer
+//	summary  the lines kiln prints below that, but the next step; a stopped spec's starts with why it stopped
+//	next     what to run next, as kiln prints it after "next:"; "" when the developer has nothing to run
+//	top      the top directory of the checkout kiln runs in
+//	kiln     the path of the kiln binary that sent the notice, which a program runs in place of the PATH's
+//	commit   the full hash of the commit that landed the build or the fix on main; absent when none did
+//
+// What the program prints goes to kiln's output. kiln waits 30 s for it, then kills it and what it started. A program
+// that fails, runs past that, or is missing changes no build's or fix's result. kiln says why in its output.
+//
+// Without notify, kiln prints each notification in its output as OSC 9, which a terminal such as Ghostty shows. Its
+// body is "kiln: <name> <state>". kiln prints it whether or not the output is a terminal. It prints it too when kiln
+// cannot read kiln.json at main's tip, or the program fails. So no notification is lost. The job of kiln monitor
+// install writes kiln's output to monitor.log, where no terminal shows OSC 9.
+//
+// A spec's build prints its summary after it notifies, from kiln's record, its ledger and git:
 //
 //	x: stopped: the gate still failed after its last round:
 //	  12 min · $3.40 · 41 turns · 2 failed calls

@@ -1,7 +1,5 @@
 # A crossed gauge starts a fix, and the gauge holds the fix to its line, over what the fix changed.
 
-env KILN_OPEN=true
-
 # Given: a monitor that names a gauge, and a main that holds two files the gauge counts against its line. Main's
 # last commit changed neither file.
 # The agent's first turn changes one of the two files, and leaves it counting against the line. Its second turn
