@@ -83,7 +83,8 @@ Read `.kiln/kiln.json` once. Its `gate` holds the commands that must pass before
 }
 ```
 
-Its `$schema` names `kiln.schema.json`, which `kiln init` writes beside it, so an editor completes and checks each key.
+Its `rounds` is how many times a failing gate goes back to the session, each time a round, before the build stops. Its
+`$schema` names `kiln.schema.json`, which `kiln init` writes beside it, so an editor completes and checks each key.
 
 After you change anything under `.kiln/`, run `kiln doctor` before you commit. It prints each problem kiln would
 refuse or fail on later, with its fix:
@@ -124,9 +125,10 @@ answer: landed on main at 3f9c2ab81d0e, and waits for UAT
         kiln queue answer
 ```
 
-`kiln fire` builds each queued spec in turn. Leave it running: it notifies you when a build needs you, in the
-terminal, or through the program `notify` names in `kiln.json`. In a second terminal, `kiln tui` shows each session
-live, and every past build.
+The build waits for UAT, user acceptance testing: your own try of the work on main, before you accept it. `kiln fire`
+builds each queued spec in turn. Leave it running: it notifies you when a build needs you, in the terminal, or through
+the program `notify` names in `kiln.json`. In a second terminal, `kiln tui` shows each session live, and every past
+build.
 
 **4. Take the work, or send it back.** A build ends in one of three states, and `kiln status` shows each:
 

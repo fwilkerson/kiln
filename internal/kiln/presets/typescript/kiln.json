@@ -12,8 +12,5 @@
   "writable": [
     "npm config get cache"
   ],
-  "acceptance": "tests/acceptance/{spec}.test.ts",
-  "harness": [
-    "tests/helpers/"
-  ]
+  "acceptance": "tests/acceptance/{spec}.test.ts"
 }

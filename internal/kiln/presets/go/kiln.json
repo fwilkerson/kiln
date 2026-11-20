@@ -14,8 +14,5 @@
     "go env GOCACHE GOMODCACHE",
     "echo \"$(go env GOPATH | cut -d: -f1)/pkg/sumdb\""
   ],
-  "acceptance": "acceptance/{spec}/",
-  "harness": [
-    "internal/testutil/"
-  ]
+  "acceptance": "acceptance/{spec}/"
 }

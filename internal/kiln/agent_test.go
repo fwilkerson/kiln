@@ -301,7 +301,7 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 		change, refusal string
 	}{
 		"kiln init's files are taken": {},
-		"kiln.json names no acceptance": {change: `sed -i '' '/"acceptance"/d' .kiln/kiln.json`,
+		"kiln.json names no acceptance": {change: `perl -0pi -e 's/,\n  "acceptance": [^\n]*//' .kiln/kiln.json`,
 			refusal: "names no acceptance"},
 		"its acceptance starts with the spec's name": {change: acceptance(`"{spec}/"`), refusal: "starts with {spec}"},
 		"a list of two paths is taken":               {change: acceptance(`["uat/{spec}/", "integration/{spec}/"]`)},
@@ -357,12 +357,12 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 
 // acceptance is a shell command that sets kiln.json's acceptance to raw, a JSON value.
 func acceptance(raw string) string {
-	return `sed -i '' 's|"acceptance": .*|"acceptance": ` + raw + `,|' .kiln/kiln.json`
+	return `sed -i '' 's|"acceptance": .*|"acceptance": ` + raw + `|' .kiln/kiln.json`
 }
 
-// harness is a shell command that sets kiln.json's one harness path to p.
+// harness is a shell command that gives kiln.json one harness path, p.
 func harness(p string) string {
-	return `sed -i '' 's|"internal/testutil/"|"` + p + `"|' .kiln/kiln.json`
+	return `sed -i '' 's|"acceptance": |"harness": ["` + p + `"], "acceptance": |' .kiln/kiln.json`
 }
 
 // TestAuditedDirs holds which directories the audit reads. A file at the top, in any language, names ".". A directory
