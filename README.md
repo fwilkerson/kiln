@@ -57,6 +57,17 @@ Read `.kiln/kiln.json` once. Its `gate` holds the commands that must pass before
 }
 ```
 
+After you change anything under `.kiln/`, run `kiln doctor` before you commit. It prints each problem kiln would
+refuse or fail on later, with its fix:
+
+```console
+$ kiln doctor
+.kiln/kiln.json names the host "https://proxy.golang.org/": name a bare host, such as "proxy.golang.org", or "*.example.org"
+.kiln/kiln.json runs .kiln/monitors/deps, which is not executable: run chmod +x .kiln/monitors/deps, and commit it
+note: .kiln/kiln.json differs from main's in hosts, monitors: kiln acts on main's, so commit it to main to act on yours
+kiln doctor: found 2 problems
+```
+
 **2. Write a spec.** In an interactive Claude Code session, run `/shape` and say what you want. It asks what it
 needs, has three reviewers read the draft, and writes `.kiln/specs/<name>.md`. A spec's acceptance tests say what
 done means:
@@ -183,6 +194,7 @@ kiln reject <name>               turn the amendments away, or drop a waiting fix
 kiln monitor install             set up the launchd job that runs kiln monitor run each hour
 kiln monitor run [<name>]        run each monitor that is due, or one now
 kiln monitor show <name>         show how a monitor's last run ended
+kiln doctor [<name>]             print each problem in the setup, with its fix; or a spec's form too
 ```
 
 ## Read more

@@ -59,7 +59,8 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 | `monitors`   | Jobs kiln runs on a schedule, each of which may start a fix                 | main's tip        |
 
 kiln reads the gate from main's tip, never from the build's checkout, so a build cannot weaken its own gate. It
-refuses a `kiln.json` with a key it does not know.
+refuses a `kiln.json` with a key it does not know. `kiln doctor` reads the working tree's `kiln.json`, before you
+commit it, and prints each refusal any kiln command would make of it.
 
 ### gate and rounds
 

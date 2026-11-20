@@ -19,13 +19,11 @@ import (
 // too, when it has one. It writes what it prints to monitor.log, beside kiln's ledger. Installed again, it replaces
 // the job.
 func (r *Repo) MonitorInstall(ctx context.Context, out io.Writer) error {
-	home, err := os.UserHomeDir()
+	label, plist, err := r.launchdPlist()
 	if err != nil {
 		return err
 	}
 
-	label := "dev.kiln.monitor." + hashOf(r.top)
-	plist := filepath.Join(home, "Library", "LaunchAgents", label+".plist")
 	if err := os.MkdirAll(filepath.Dir(plist), 0o755); err != nil {
 		return err
 	}
@@ -46,6 +44,17 @@ func (r *Repo) MonitorInstall(ctx context.Context, out io.Writer) error {
 	fmt.Fprintf(out, "installed %s, which runs kiln monitor run in %s at minute %d of each hour\n", plist, r.top,
 		minute)
 	return nil
+}
+
+// launchdPlist names the launchd job that kiln monitor install sets up for r, and the path of its property list.
+func (r *Repo) launchdPlist() (label, plist string, err error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", "", err
+	}
+
+	label = "dev.kiln.monitor." + hashOf(r.top)
+	return label, filepath.Join(home, "Library", "LaunchAgents", label+".plist"), nil
 }
 
 // launchdJob is the property list of the launchd job named label, which runs kiln monitor run at minute.

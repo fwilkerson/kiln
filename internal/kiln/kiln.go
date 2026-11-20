@@ -9,6 +9,7 @@
 //	err = r.Accept(ctx, "x", os.Stdout)       // takes the work: lands its amendments, and retires the spec
 //	err = r.Reject(ctx, "x", os.Stdout)       // turns the amendments away: drops the build, and its branch
 //	err = r.MonitorRun(ctx, "", os.Stdout)    // runs each monitor kiln.json names that is due
+//	err = r.Doctor(ctx, "", os.Stdout)        // each problem in the working tree's setup, with its fix
 //	names, err := r.Takes(ctx, "queue")       // the specs kiln queue would not refuse
 //
 // Where each command moves a spec:
@@ -61,6 +62,9 @@
 //	.kiln/agents/verify.md      how the acceptance tests are written, and a split build's verify agent
 //	.kiln/agents/audit.md       the audit
 //	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
+//
+// A command that refuses one of these files names each problem it finds, one to a line, with its fix. kiln doctor
+// names each in the working tree, before a commit, as Doctor says.
 //
 // kiln keeps its own files out of the working tree. Main is the branch named main:
 //
@@ -441,9 +445,12 @@ func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
 		trees:  filepath.Join(cache, fmt.Sprintf("%s-%x", filepath.Base(top), sum[:4])),
 		env:    env,
 		exe:    exe,
-		claude: claude.New(claude.Config{Program: "claude", Env: env, Sessions: filepath.Join(kept, "sessions")}),
+		claude: claude.New(claude.Config{Program: claudeProgram, Env: env, Sessions: filepath.Join(kept, "sessions")}),
 	}, nil
 }
+
+// claudeProgram is the claude that runs each session, found on the PATH of the environment Open was given.
+const claudeProgram = "claude"
 
 // cacheDir is kiln's directory under the user's cache directory.
 func cacheDir() (string, error) {
@@ -491,13 +498,12 @@ const hookMark = "# kiln's pre-commit hook"
 // installHook installs the pre-commit hook in the repository's own hooks directory. Where core.hooksPath is set, or
 // another pre-commit hook is there, it writes none. It then says why, and the line to add to the developer's own hook.
 func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
-	env := proc.Git.Env(r.env)
-	set, err := plainGit(ctx, r.top, env, "config", "--default", "", "--get", "core.hooksPath")
+	set, err := plainGit(ctx, r.top, proc.Git.Env(r.env), "config", "--default", "", "--get", "core.hooksPath")
 	if err != nil {
 		return err
 	}
 
-	hooks, err := plainGit(ctx, r.top, env, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
+	hooks, err := r.hooksDir(ctx)
 	if err != nil {
 		return err
 	}
@@ -509,14 +515,14 @@ func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
 		}
 
 		fmt.Fprintf(out, "installed no pre-commit hook, since core.hooksPath names %s, %s; add this line to your "+
-			"own pre-commit hook: kiln precommit\n", set, whose)
+			"own pre-commit hook: %s\n", set, whose, precommitLine)
 		return nil
 	}
 
 	hook := filepath.Join(hooks, "pre-commit")
 	if old, err := os.ReadFile(hook); err == nil && !bytes.Contains(old, []byte(hookMark)) {
-		fmt.Fprintf(out, "installed no pre-commit hook, since %s is another one; add this line to it: kiln precommit\n",
-			hook)
+		fmt.Fprintf(out, "installed no pre-commit hook, since %s is another one; add this line to it: %s\n", hook,
+			precommitLine)
 		return nil
 	}
 
@@ -530,6 +536,14 @@ func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
 
 	fmt.Fprintf(out, "installed %s\n", hook)
 	return nil
+}
+
+// precommitLine is the line a developer's own pre-commit hook adds, to run the gate as kiln's hook does.
+const precommitLine = "kiln precommit"
+
+// hooksDir is the directory whose hooks git runs: the one core.hooksPath names, or the repository's own.
+func (r *Repo) hooksDir(ctx context.Context) (string, error) {
+	return plainGit(ctx, r.top, proc.Git.Env(r.env), "rev-parse", "--path-format=absolute", "--git-path", "hooks")
 }
 
 // hookScript is the pre-commit hook that runs exe's precommit.
@@ -704,7 +718,8 @@ func (c config) readiness(ctx context.Context, f files) (refusals, error) {
 func testsText(body string, fixed []string) string {
 	for line := range strings.Lines(body) {
 		line = strings.TrimSpace(line)
-		names := func(part string) bool { return startsPath(line, part) }
+		// A part of "" is no path's, so it says nothing about where the tests live.
+		names := func(part string) bool { return part != "" && startsPath(line, part) }
 		switch {
 		case line == "## Acceptance tests",
 			strings.HasPrefix(line, "- The code of each of the spec's acceptance tests"),
@@ -812,11 +827,14 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 
 // Takes answers the names command would not refuse, for the shell to complete. For queue, accept and reject, they
 // are specs, and for accept and reject, waiting fixes too. For tui, they are the specs kiln holds or its ledger holds.
-// For "monitor run" and "monitor show", they are the monitors kiln.json names. Other commands take none.
+// For "monitor run" and "monitor show", they are the monitors kiln.json names. For doctor, they are the specs the
+// working tree holds. Other commands take none.
 func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	switch command {
 	case "tui":
 		return r.viewed(ctx)
+	case "doctor":
+		return r.treeSpecs()
 	case acceptCommand, rejectCommand:
 		return r.taking(command)
 	case queueCommand:
@@ -826,6 +844,24 @@ func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	}
 
 	return nil, nil
+}
+
+// treeSpecs answers the specs the working tree holds, but none of their amendments.
+func (r *Repo) treeSpecs() ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(r.top, specsDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+
+	var names []string
+	for _, e := range entries {
+		name, ok := strings.CutSuffix(e.Name(), ".md")
+		if ok && !strings.HasSuffix(e.Name(), amendSuffix) {
+			names = append(names, name)
+		}
+	}
+
+	return names, err
 }
 
 // viewed answers the specs kiln tui opens on.
