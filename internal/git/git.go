@@ -38,10 +38,12 @@
 package git
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -254,28 +256,47 @@ type call struct {
 
 // run's own process group keeps the terminal's Ctrl-C from reaching its git. When ctx ends, run kills that group.
 func (g *Git) run(ctx context.Context, c call, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, g.binary(ctx), args...)
-	proc.OwnGroup(cmd)
-	cmd.Dir = c.dir
-	cmd.Env = slices.Concat(g.env, configured, c.env)
+	cmd := g.command(ctx, c, args...)
 	cmd.Stdin = strings.NewReader(c.stdin)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
-			f := &failed{Args: args, Exit: exit.ExitCode(), Stderr: stderr.String()}
-			// git commit and git merge print this when the commit's signing failed.
-			if strings.Contains(f.Stderr, "failed to write commit object") {
-				return stdout.String(), unsigned(f)
-			}
-
-			return stdout.String(), f
+		if _, exited := errors.AsType[*exec.ExitError](err); !exited {
+			return "", ended(args, err, "")
 		}
 
-		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+		return stdout.String(), ended(args, err, stderr.String())
 	}
 
 	return stdout.String(), nil
+}
+
+// command is the git that args start, in its own process group, with kiln's pinned config.
+func (g *Git) command(ctx context.Context, c call, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, g.binary(ctx), args...)
+	proc.OwnGroup(cmd)
+	cmd.Dir = c.dir
+	cmd.Env = slices.Concat(g.env, configured, c.env)
+	return cmd
+}
+
+// ended answers why the git that args started failed with err, after it wrote stderr. It answers nil for a nil err.
+func ended(args []string, err error, stderr string) error {
+	exit, exited := errors.AsType[*exec.ExitError](err)
+	switch {
+	case err == nil:
+		return nil
+	case !exited:
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+
+	f := &failed{Args: args, Exit: exit.ExitCode(), Stderr: stderr}
+	// git commit and git merge print this when the commit's signing failed.
+	if strings.Contains(f.Stderr, "failed to write commit object") {
+		return unsigned(f)
+	}
+
+	return f
 }
 
 func (g *Git) in(ctx context.Context, dir Worktree, args ...string) (string, error) {
@@ -792,6 +813,56 @@ func (g *Git) Show(ctx context.Context, at Rev, path string) ([]byte, bool, erro
 
 	content, found := blob(file)
 	return content, found, nil
+}
+
+// ShowTip reads the file at path in the commit branch points to, as [Git.Show] does, and answers that commit. With no
+// such branch, it answers "" and no file. One git learns the commit, then reads the file there.
+func (g *Git) ShowTip(ctx context.Context, branch Branch, path string) (Rev, []byte, bool, error) {
+	args := []string{"cat-file", "--batch-command", "-Z"}
+	cmd := g.command(ctx, call{dir: string(g.repo)}, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return "", nil, false, err
+	}
+
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", nil, false, err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", nil, false, ended(args, err, "")
+	}
+
+	answers := bufio.NewReader(out)
+	tip, asked := askTip(in, answers, branch, path)
+	file, read := io.ReadAll(answers)
+	if err := errors.Join(asked, read, ended(args, cmd.Wait(), stderr.String())); err != nil {
+		return "", nil, false, err
+	}
+
+	content, found := blob(string(file))
+	return tip, content, found, nil
+}
+
+// askTip asks cat-file for the commit branch points to, then for the file at path there, by the commit's hash. A
+// branch that moves between the two questions still answers one commit's file. It closes in once it asks no more.
+func askTip(in io.WriteCloser, answers *bufio.Reader, branch Branch, path string) (Rev, error) {
+	defer in.Close()
+	if _, err := io.WriteString(in, "info "+branch.ref()+"^{commit}\x00"); err != nil {
+		return "", err
+	}
+
+	header, err := answers.ReadString(0)
+	if err != nil || kind(header) != "commit" {
+		return "", err
+	}
+
+	tip := Rev(strings.Fields(header)[0])
+	_, err = io.WriteString(in, "contents "+tip.commit()+":"+path+"\x00")
+	return tip, err
 }
 
 // blob reads cat-file -Z's answer for a file: a header and the content, or the name asked for and "missing". A

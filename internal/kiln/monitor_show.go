@@ -114,13 +114,12 @@ func fixResult(outcome string) string {
 // monitorStatus shows each monitor kiln.json names at main's tip. A line holds its result, when it last ran, and
 // when it runs next. Its summary follows.
 func (r *Repo) monitorStatus(ctx context.Context, out io.Writer) error {
-	main, err := r.mainTip(ctx)
-	if err != nil {
+	// A missing main fails the status, while a kiln.json kiln cannot read only hides the monitors.
+	main, c, err := r.mainConfig(ctx)
+	switch {
+	case main == "":
 		return err
-	}
-
-	c, err := r.config(ctx, main)
-	if err != nil || len(c.Monitors) == 0 {
+	case err != nil || len(c.Monitors) == 0:
 		return nil
 	}
 

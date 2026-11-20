@@ -165,12 +165,7 @@ func removeTree(dir string) error {
 
 // gauges are the gauges kiln.json names at main's tip.
 func (r *Repo) gauges(ctx context.Context) ([]gauge, error) {
-	main, err := r.mainTip(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	c, err := r.config(ctx, main)
+	_, c, err := r.mainConfig(ctx)
 	return c.Gauges, err
 }
 

@@ -735,12 +735,7 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 // while the reading crosses the gauge's line, or its command fails. A reading of no number never crossed. The gauge's
 // command and line are kiln.json's at main's tip, which may no longer name the gauge.
 func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdict, error) {
-	main, err := b.r.mainTip(ctx)
-	if err != nil {
-		return v, err
-	}
-
-	c, err := b.r.config(ctx, main)
+	_, c, err := b.r.mainConfig(ctx)
 	if err != nil {
 		return v, err
 	}

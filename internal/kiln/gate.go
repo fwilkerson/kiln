@@ -277,12 +277,7 @@ func (c check) namesNothing() bool {
 // Their removal is no write of the work's.
 func (held commands) gate(ctx context.Context, without []string, guards ...guard) (verdict, error) {
 	r := held.r
-	main, err := r.mainTip(ctx)
-	if err != nil {
-		return verdict{}, err
-	}
-
-	c, err := r.config(ctx, main)
+	main, c, err := r.mainConfig(ctx)
 	if err != nil {
 		return verdict{}, err
 	}

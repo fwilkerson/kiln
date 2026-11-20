@@ -821,12 +821,7 @@ func (r *Repo) taking(command string) ([]string, error) {
 
 // monitorNames answers the monitors kiln.json names at main's tip.
 func (r *Repo) monitorNames(ctx context.Context) ([]string, error) {
-	main, err := r.mainTip(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	c, err := r.config(ctx, main)
+	_, c, err := r.mainConfig(ctx)
 	names := make([]string, len(c.Monitors))
 	for i, m := range c.Monitors {
 		names[i] = string(m.Name)
