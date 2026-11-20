@@ -17,7 +17,7 @@ exists .kiln/agents/build.md .kiln/agents/audit.md
 
 # and /shape with its three reviewer agents,
 exists .kiln/skills/shape/SKILL.md .kiln/skills/shape/template.md
-exists .kiln/agents/zoom-out.md .kiln/agents/comprehension.md .kiln/agents/critic.md
+exists .kiln/reviewers/zoom-out.md .kiln/reviewers/comprehension.md .kiln/reviewers/critic.md
 exec test -L .claude/skills/shape
 exists .claude/skills/shape/SKILL.md
 exec test -L .claude/agents/critic.md

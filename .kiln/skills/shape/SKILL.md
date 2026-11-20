@@ -80,27 +80,34 @@ change one only by an amendment, in `.kiln/specs/<name>.amend.md`, which the dev
 
 ## 4. Review once the questions are settled
 
-When no Open Question remains, run the `zoom-out`, `comprehension` and `critic` agents on the spec, once each, in
-parallel. A review of a spec with open questions reviews a spec that will still change. A run the developer asks for
-goes ahead even with questions open, so say in its brief that they asked.
+The reviewers are the agents in `.kiln/reviewers/`, one file each. `kiln init` links each into `.claude/agents/`,
+where Claude Code finds it. If one will not start, ask the developer to run `kiln init` and restart the session.
+When no Open Question remains, run each reviewer on the spec, once, in parallel, by the `name` in its frontmatter.
+A review of a spec with open questions reviews a spec that will still change. A run the developer asks for goes ahead
+even with questions open, so say in its brief that they asked.
 
-- Fix each finding, or contest it. To contest one, cite a file and symbol, or a line of the spec, that the agent could
-  read.
-- Never contest a comprehension gap. If a fresh reader could not follow the spec, the spec lacks context.
+A reviewer's frontmatter says how its findings are handled, as `.kiln/reviewers/zoom-out.md` and `critic.md` show:
+
+- `uncontested` lists the kinds of finding, by the labels of its reply, that you fix and never contest. `all` means
+  every finding it reports. The comment above the key says why.
+- `rerun: true` runs the reviewer once more after the fixes, as the end of this step says.
+
+Handle each finding by these rules:
+
+- Fix each finding, or contest it. To contest one, cite a file and symbol, or a line of the spec, that the reviewer
+  could read.
 - When a finding is wrong only because of a fact no file holds, bring it to the developer.
-- Fix each false claim that `zoom-out` lists, since the developer decides on those sentences. Name in the Technical
-  Plan each test, file or doc that it says the plan breaks, or contest one as above.
-- A finding that two agents report is not yours to contest. Fix it, or bring it to the developer.
+- A finding that two reviewers report is not yours to contest. Fix it, or bring it to the developer.
 
-The fixes change the spec the agents read. Wait until each finding is fixed, contested or answered by the developer.
-Then run `critic` once more if the fixes changed what a Goal, an acceptance test or the Technical Plan requires, and
-name the changed sections in its brief. Naming the files the plan breaks does not count as such a change. Fix or
-contest what it finds, and stop there: a second run's fixes never start a third. Beyond that, run an agent again
-only when the developer asks.
+The fixes change the spec the reviewers read. Wait until each finding is fixed, contested or answered by the
+developer. Then run once more each reviewer with `rerun: true`, if the fixes changed what a Goal, an acceptance test
+or the Technical Plan requires. Name the changed sections in its brief. A fix that only names a file the plan breaks
+does not count as such a change. Fix or contest what a second run finds, and stop there: a second run's fixes never
+start a third. Beyond that, run a reviewer again only when the developer asks.
 
 ## 5. Ask for approval
 
-Ask the developer to approve the spec. Put beside the request each contested finding, and each finding two agents
+Ask the developer to approve the spec. Put beside the request each contested finding, and each finding two reviewers
 reported that you brought to the developer. Put each risk the spec accepts there too, since only the developer
 accepts one. A risk is a way the work can go wrong that the spec names and leaves open; a Non-goal is not one. For
 each, give the rule that would make it impossible in code and what that rule costs, or say that you found none.

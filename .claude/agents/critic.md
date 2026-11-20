@@ -1,1 +1,1 @@
-../../.kiln/agents/critic.md
+../../.kiln/reviewers/critic.md

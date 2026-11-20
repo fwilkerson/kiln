@@ -52,7 +52,7 @@ phase 2 | BUILD, IN THE BACKGROUND
 phase 3 | LAND
 
 box shape @you 1.1 | **shape a spec** ●1 | `/shape`, then approve
-more `/shape` asks what it needs, and three reviewers read the draft before you approve it. Its acceptance tests say what done means, each a Given, a When and a Then.
+more `/shape` asks what it needs, and the project's reviewers read the draft before you approve it. Its acceptance tests say what done means, each a Given, a When and a Then.
 box queue @you 1.2 | `kiln queue x` | `kiln fire`
 box spec @repo 1.1-2 | 📄 SPEC | approved, on main
 arrow shape spec

@@ -58,8 +58,8 @@ Read `.kiln/kiln.json` once. Its `gate` holds the commands that must pass before
 ```
 
 **2. Write a spec.** In an interactive Claude Code session, run `/shape` and say what you want. It asks what it
-needs, has three reviewers read the draft, and writes `.kiln/specs/<name>.md`. A spec's acceptance tests say what
-done means:
+needs, has the project's reviewers read the draft, and writes `.kiln/specs/<name>.md`. A spec's acceptance tests say
+what done means:
 
 ```markdown
 ### 1. The answer is printed

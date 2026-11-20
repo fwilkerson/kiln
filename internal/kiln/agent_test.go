@@ -122,14 +122,14 @@ func TestInitKeeps(t *testing.T) {
 	shell(t, repo, `mkdir -p .kiln/agents .claude/agents && `+
 		`echo '{"gate": ["true"], "rounds": 1}' >.kiln/kiln.json && `+
 		`echo mine >.kiln/agents/build.md && echo mine >.claude/agents/critic.md && `+
-		`ln -s ../../.kiln/agents/comprehension.md .claude/agents && ln -s ../.kiln/skills .claude/skills`)
+		`ln -s ../../.kiln/reviewers/comprehension.md .claude/agents && ln -s ../.kiln/skills .claude/skills`)
 	var out strings.Builder
 	if err := r.Init(t.Context(), &out, InitOptions{}); err != nil {
 		t.Fatal(err)
 	}
 
 	const skipped = "linked nothing at .claude/agents/critic.md, since another file is there; " +
-		"rename one to link .kiln/agents/critic.md\n"
+		"rename one to link .kiln/reviewers/critic.md\n"
 	if got := strings.Count(out.String(), "linked nothing"); got != 1 || !strings.Contains(out.String(), skipped) {
 		t.Errorf("kiln init said:\n%s\nwant the one line %q", out.String(), skipped)
 	}
@@ -146,8 +146,76 @@ func TestInitKeeps(t *testing.T) {
 	}
 
 	link, err := os.Readlink(filepath.Join(repo, ".claude/agents/zoom-out.md"))
-	if link != "../../.kiln/agents/zoom-out.md" {
+	if link != "../../.kiln/reviewers/zoom-out.md" {
 		t.Errorf(".claude/agents/zoom-out.md links to %q, %v", link, err)
+	}
+}
+
+// TestInitReviewers holds how kiln init links the reviewers a project keeps. It refuses a reviewer that Claude Code
+// could not run, before it writes anything. It writes no default reviewer into a reviewers folder that is there. It
+// links each reviewer there, in place of a link that reaches nothing. It removes each link to a reviewer that is gone.
+func TestInitReviewers(t *testing.T) {
+	r, repo := scratchRepo(t)
+	shell(t, repo, `mkdir -p .kiln/reviewers .claude/agents && touch .kiln/reviewers/.gitkeep && `+
+		`printf -- '---\nname: upgrade\n---\n' >.kiln/reviewers/upgrade.md && `+
+		`ln -s ../../.kiln/agents/upgrade.md .claude/agents && `+
+		`ln -s ../../.kiln/reviewers/critic.md .claude/agents && ln -s ../../.kiln/agents/gone.md .claude/agents`)
+	err := r.Init(t.Context(), io.Discard, InitOptions{})
+	if !errors.Is(err, errRefused) || !strings.Contains(err.Error(), ".kiln/reviewers/upgrade.md") {
+		t.Errorf("kiln init with a reviewer that has no description: %v; want it refused, naming the file", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(repo, configFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("kiln init refused a reviewer, but wrote %s: %v", configFile, err)
+	}
+
+	shell(t, repo, "printf -- '---\nname: upgrade\ndescription: Reads a spec.\n---\nRead it.\n' "+
+		">.kiln/reviewers/upgrade.md")
+	var out strings.Builder
+	if err := r.Init(t.Context(), &out, InitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	const unlinked = "unlinked .claude/agents/critic.md, since .kiln/reviewers/critic.md is gone\n"
+	if !strings.Contains(out.String(), unlinked) {
+		t.Errorf("kiln init said:\n%s\nwant the line %q", out.String(), unlinked)
+	}
+
+	for p, want := range map[string]bool{
+		".kiln/reviewers/critic.md": false, ".claude/agents/critic.md": false,
+		".claude/agents/upgrade.md": true, ".claude/agents/gone.md": true,
+	} {
+		if _, err := os.Lstat(filepath.Join(repo, p)); (err == nil) != want {
+			t.Errorf("%s: %v; want it there: %v", p, err, want)
+		}
+	}
+
+	link, err := os.Readlink(filepath.Join(repo, ".claude/agents/upgrade.md"))
+	if link != "../../.kiln/reviewers/upgrade.md" {
+		t.Errorf(".claude/agents/upgrade.md links to %q, %v", link, err)
+	}
+}
+
+// TestBadReviewer holds which reviewers kiln init refuses. Claude Code could not run one, or would run it by another
+// name than its file's.
+func TestBadReviewer(t *testing.T) {
+	for name, tc := range map[string]struct {
+		file    string
+		refused bool
+	}{
+		"a name and a description":           {file: "---\nname: x\ndescription: Reads.\n---\nRead.\n"},
+		"a quoted name, and other keys":      {file: "---\nname: \"x\"\nrerun: true\ndescription: 'Reads.'\n---\n"},
+		"no frontmatter":                     {file: "Read.\n", refused: true},
+		"a name other than the file's":       {file: "---\nname: y\ndescription: Reads.\n---\n", refused: true},
+		"no description":                     {file: "---\nname: x\n---\nRead.\n", refused: true},
+		"a description only in a # line":     {file: "---\nname: x\n# description: Reads.\n---\n", refused: true},
+		"a frontmatter with no closing line": {file: "---\nname: x\ndescription: Reads.\n", refused: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := badReviewer("x.md", tc.file); (err != nil) != tc.refused {
+				t.Errorf("refused: %v; want refused %v", err, tc.refused)
+			}
+		})
 	}
 }
 
