@@ -163,6 +163,130 @@ func TestShippedFit(t *testing.T) {
 	}
 }
 
+// TestMonitorUpdates holds how kiln init brings a monitor up to date with the directory kiln monitor add wrote it
+// from. ship changes the directory, as a team's repository would, and edit changes the project's copy. Until kiln
+// init runs, kiln status says the monitor is behind.
+func TestMonitorUpdates(t *testing.T) {
+	const check = ".kiln/monitors/deps/check"
+	allFine := "sed -i '' 's/\"fine\"/\"all fine\"/' check"
+	tests := []struct {
+		name, ship, edit string
+		said             string   // a line kiln init prints
+		behind           bool     // whether kiln status says the monitor is behind
+		dropped          bool     // whether the record drops the monitor
+		holds            []string // what check holds after
+		lacks            []string
+	}{
+		{name: "an unchanged file takes the new source", ship: allFine, said: "updated " + check, behind: true,
+			holds: []string{"all fine"}},
+		{name: "an edited file keeps the edit, and takes the new source", ship: allFine,
+			edit: "sed -i '' 's/^# The check of the deps monitor./# Our check./' " + check, said: "merged " + check + "\n",
+			behind: true, holds: []string{"# Our check.", "all fine"}, lacks: []string{"<<<<<<<"}},
+		{name: "an edit the source's change touches is a conflict", ship: allFine,
+			edit: "sed -i '' 's/\"fine\"/\"ok\"/' " + check, behind: true,
+			said:  "merged " + check + ", with conflicts: resolve them before you commit it",
+			holds: []string{"<<<<<<< " + check + "\n", "\"ok\"", "all fine"}},
+		{name: "a file the source gains is written, as kiln monitor add would",
+			ship: "mkdir lib && printf '#!/bin/sh\\n' >lib/old && chmod +x lib/old", behind: true,
+			said: "wrote .kiln/monitors/deps/lib/old", holds: []string{"\"fine\"", "lib/old\n"}},
+		{name: "a deleted monitor stays deleted", ship: allFine, edit: "git rm -rq .kiln/monitors/deps", dropped: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, repo, team := teamMonitor(t)
+			shell(t, team, tt.ship)
+			shell(t, repo, cmpOr(tt.edit, "true")+" && git add -A && git commit --quiet --no-verify --allow-empty -m x")
+			status, said := statusThenInit(t, r)
+			rec, err := r.lastInit()
+			_, recorded := rec.Monitors["deps"]
+			behind := strings.Contains(status, "is behind the monitor deps, from ")
+			if !claim.Holds(err == nil, behind == tt.behind, strings.Contains(said, tt.said), recorded != tt.dropped) {
+				t.Errorf("kiln status said:\n%s\nkiln init said:\n%s\nthe record names deps %v, %v; want the monitor "+
+					"behind %v, a line %q, and the record dropping it %v", status, said, recorded, err, tt.behind,
+					tt.said, tt.dropped)
+			}
+
+			if tt.holds != nil {
+				wantHolds(t, shell(t, repo, "cat "+check+" && find .kiln/monitors/deps -perm -u+x -type f"),
+					append(tt.holds, check), tt.lacks)
+			}
+		})
+	}
+}
+
+// teamMonitor is a project from the go preset, and team, a directory that holds the monitor deps. kiln monitor add
+// added deps from team, and main holds all of it.
+func teamMonitor(t *testing.T) (r *Repo, repo, team string) {
+	t.Helper()
+	r, repo = scratchRepo(t)
+	team = filepath.Join(t.TempDir(), "deps")
+	writeAll(t, team, map[string]string{"command": "#!/bin/sh\ngo get -u ./...\n", "check": "#!/bin/sh\n" +
+		"# The check of the deps monitor.\n#\n# It asks for no fix.\nset -eu\n" +
+		"echo '{\"fix\": false, \"summary\": \"fine\"}'\n"})
+	if err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.MonitorAdd(team, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+
+	shell(t, repo, "git add -A && git commit --quiet --no-verify -m kiln")
+	return r, repo, team
+}
+
+// statusThenInit answers what kiln status says, then what kiln init says, with no preset named.
+func statusThenInit(t *testing.T, r *Repo) (status, said string) {
+	t.Helper()
+	var s, out strings.Builder
+	if err := r.Status(t.Context(), &s); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Init(t.Context(), &out, InitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	return s.String(), out.String()
+}
+
+// TestShippedMonitorUpdates holds that kiln init brings a monitor kiln ships up to date with this kiln's. An older
+// kiln's check stands in the record and in the checkout.
+func TestShippedMonitorUpdates(t *testing.T) {
+	r, repo := scratchRepo(t)
+	if err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.MonitorAdd("bugs", io.Discard); err != nil {
+		t.Fatal(err)
+	}
+
+	rec, err := r.lastInit()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	added := rec.Monitors["bugs"]
+	older := append([]string{"# An older kiln's check."}, added.Files["check"]...)
+	added.Files["check"] = older
+	writeAll(t, repo, map[string]string{".kiln/monitors/bugs/check": strings.Join(older, "\n")})
+	if _, err := r.writeRecord(rec); err != nil {
+		t.Fatal(err)
+	}
+
+	shell(t, repo, "chmod +x .kiln/monitors/bugs/check && git add -A && git commit --quiet --no-verify -m x")
+	status, said := statusThenInit(t, r)
+	shipped, _ := fs.ReadFile(shipped, "monitors/bugs/check")
+	have := shell(t, repo, "test -x .kiln/monitors/bugs/check && cat .kiln/monitors/bugs/check")
+	if !claim.Holds(strings.Contains(status, "is behind the monitor bugs, from bugs:"),
+		strings.Contains(said, "updated .kiln/monitors/bugs/check\n"), have == strings.TrimSpace(string(shipped))) {
+		t.Errorf("kiln status said:\n%s\nkiln init said:\n%s\nwant bugs behind, then updated to what kiln ships",
+			status, said)
+	}
+}
+
 // filesUnder lists each file under dir, by its slash path from dir, or nil when dir holds none. An executable file
 // ends in a *.
 func filesUnder(t *testing.T, dir string) []string {

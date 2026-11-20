@@ -73,13 +73,13 @@ func wantHolds(t *testing.T, got string, holds, lacks []string) {
 	t.Helper()
 	for _, want := range holds {
 		if !strings.Contains(got, want) {
-			t.Errorf("build.md lacks %q:\n%s", want, got)
+			t.Errorf("the file lacks %q:\n%s", want, got)
 		}
 	}
 
 	for _, unwanted := range lacks {
 		if strings.Contains(got, unwanted) {
-			t.Errorf("build.md holds %q:\n%s", unwanted, got)
+			t.Errorf("the file holds %q:\n%s", unwanted, got)
 		}
 	}
 }
@@ -132,10 +132,15 @@ func TestOwnInitRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r := &Repo{top: top}
-	if _, behind, err := r.behind(own); err != nil || behind {
-		t.Errorf("kiln's own %s is behind the defaults, %v: run kiln init in kiln's checkout, and commit what it "+
-			"merges", initFile, err)
+	rec, err := parseInit(own)
+	var stale []string
+	if err == nil {
+		stale, err = (&Repo{top: top}).behind(rec, nil)
+	}
+
+	if err != nil || len(stale) > 0 {
+		t.Errorf("kiln's own %s is behind %v, %v: run kiln init in kiln's checkout, and commit what it merges",
+			initFile, stale, err)
 	}
 }
 

@@ -63,7 +63,7 @@
 //	                            receives each notification
 //	.kiln/kiln.schema.json      kiln.json's JSON Schema, for an editor, which kiln init writes over each time
 //	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
-//	.kiln/init.json             what kiln init last wrote, and its preset, which its next run merges the edits against
+//	.kiln/init.json             what kiln init and kiln monitor add last wrote, which kiln init merges edits against
 //	.kiln/agents/build.md       the build agent
 //	.kiln/agents/verify.md      how the acceptance tests are written, and a split build's verify agent
 //	.kiln/agents/audit.md       the audit

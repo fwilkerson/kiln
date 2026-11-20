@@ -27,9 +27,21 @@ const shippedDir = "monitors"
 // go/docs. A source that starts with a dot or a slash is a directory. The monitor's name is source's last element.
 // It answers ErrUsage for a name kiln ships no monitor of, and for a path to no directory. Before it writes, it
 // refuses a checkout with no kiln.json, and a monitor kiln could not run by that kiln.json. It refuses an agent.md
-// kiln could not read, and a name already there. It writes each script kiln runs with the executable bit.
+// kiln could not read, and a name already there. It refuses a record of kiln init it cannot read. It writes each
+// script kiln runs with the executable bit. It records the monitor in .kiln/init.json, with its source, where kiln
+// init brings it up to date. A directory's path is recorded from the checkout's top.
 func (r *Repo) MonitorAdd(source string, out io.Writer) error {
 	from, err := monitorSource(source)
+	if err != nil {
+		return err
+	}
+
+	rec, err := r.lastInit()
+	if err != nil {
+		return err
+	}
+
+	recorded, err := r.sourceFromTop(source)
 	if err != nil {
 		return err
 	}
@@ -39,26 +51,93 @@ func (r *Repo) MonitorAdd(source string, out io.Writer) error {
 		return err
 	}
 
+	written := map[string][]byte{}
 	for _, f := range files {
-		raw, err := fs.ReadFile(from, f)
-		if err != nil {
-			return err
-		}
-
-		target := filepath.Join(r.top, m.path(f))
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return err
-		}
-
-		if err := os.WriteFile(target, raw, addedMode(from, f)); err != nil {
+		if written[f], err = r.writeAdded(from, m, f); err != nil {
 			return err
 		}
 
 		fmt.Fprintf(out, "wrote %s\n", m.path(f))
 	}
 
+	rec.added(m.Name, addedMonitor{Source: recorded, Files: linesOf(written)})
+	line, err := r.writeRecord(rec)
+	if line != "" {
+		fmt.Fprintln(out, line)
+	}
+
 	fmt.Fprintf(out, "commit %s/ on main: kiln reads it there\n", m.path(""))
-	return nil
+	return err
+}
+
+// writeAdded copies file, from the monitor's directory from, into m's directory, and answers what it copied.
+func (r *Repo) writeAdded(from fs.FS, m monitor, file string) ([]byte, error) {
+	raw, err := fs.ReadFile(from, file)
+	if err != nil {
+		return nil, err
+	}
+
+	target := filepath.Join(r.top, m.path(file))
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return nil, err
+	}
+
+	return raw, os.WriteFile(target, raw, addedMode(from, file))
+}
+
+// sourceFromTop is source, as kiln monitor add takes it, as kiln init's record keeps it. A monitor kiln ships keeps
+// its name. A directory's path is from the checkout's top, and starts with a dot or a slash.
+func (r *Repo) sourceFromTop(source string) (string, error) {
+	if !isDir(source) {
+		return source, nil
+	}
+
+	abs, err := filepath.Abs(source)
+	if err == nil {
+		// The checkout's top has its links resolved, so a path from it needs them resolved too.
+		abs, err = filepath.EvalSymlinks(abs)
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	rel, err := filepath.Rel(r.top, abs)
+	switch {
+	case err != nil:
+		return abs, nil
+	case isDir(rel):
+		return rel, nil
+	}
+
+	return "./" + rel, nil
+}
+
+// sourceFiles reads source, as kiln init's record keeps it, and answers its directory and each file it holds.
+func (r *Repo) sourceFiles(source string) (fs.FS, map[string][]byte, error) {
+	if isDir(source) && !filepath.IsAbs(source) {
+		source = filepath.Join(r.top, source)
+	}
+
+	from, err := monitorSource(source)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	names, _, err := monitorFiles(from)
+	files := map[string][]byte{}
+	for _, name := range names {
+		if err == nil {
+			files[name], err = fs.ReadFile(from, name)
+		}
+	}
+
+	return from, files, err
+}
+
+// isDir is whether source, as kiln monitor add takes it, names a directory. Such a path starts with a dot or a slash.
+func isDir(source string) bool {
+	return strings.HasPrefix(source, ".") || filepath.IsAbs(source)
 }
 
 // ShippedMonitors prints each monitor kiln ships, one a line, with the preset it fits. One that sits under a preset's
@@ -128,7 +207,7 @@ func addedMode(from fs.FS, file string) fs.FileMode {
 // monitorSource is the directory source names: a monitor kiln ships, or a path starting with a dot or a slash. It
 // refuses a name kiln ships no monitor of, and a path to no directory.
 func monitorSource(source string) (fs.FS, error) {
-	if strings.HasPrefix(source, ".") || filepath.IsAbs(source) {
+	if isDir(source) {
 		if info, err := os.Stat(source); err != nil || !info.IsDir() {
 			return nil, fmt.Errorf("%w: %s is no directory", ErrUsage, source)
 		}

@@ -62,6 +62,10 @@ type InitOptions struct {
 // new one is a conflict. It writes kiln.schema.json over, since kiln owns it. Init stages and commits nothing. It
 // records each default of the preset, and the preset, in .kiln/init.json.
 //
+// Init brings each monitor kiln monitor add recorded up to date with its source the same way. It writes a file the
+// source gains as kiln monitor add would. A monitor whose directory the project deleted stays deleted, and leaves the
+// record. One whose source Init cannot read stays as it is, and Init says why.
+//
 // kiln.json is the project's settings: its gate, and what a session reaches. A merge could change either unread, so
 // Init never merges kiln.json. A kiln.json that is there gains only $schema and rounds, the keys every preset
 // shares, where it lacks them.
@@ -211,79 +215,144 @@ func (r *Repo) sayGate(out io.Writer, wrote bool) error {
 // initStatus says, in kiln status, when .kiln/ at main's tip is behind the defaults kiln init writes now. Where main
 // holds kiln.json but no record of kiln init, it says so.
 func (r *Repo) initStatus(ctx context.Context, main git.Rev, out io.Writer) error {
-	raw, found, err := r.git.Show(ctx, main, initFile)
-	if err != nil {
-		return err
-	}
-
-	if !found {
+	last, err := r.mainRecord(ctx, main)
+	if err == nil && len(last.Files) == 0 {
 		_, set, err := r.git.Show(ctx, main, configFile)
+		if err != nil {
+			return err
+		}
+
 		if set {
 			fmt.Fprintf(out, "%s/ holds no record of what kiln init wrote: run kiln init, which leaves each "+
 				"difference from its defaults as a conflict\n", kilnDir)
 		}
-
-		return err
 	}
 
-	from, behind, err := r.behind(raw)
+	var present []string
+	if err == nil {
+		present, err = r.git.Files(ctx, main, monitorsDir)
+	}
+
+	var stale []string
+	if err == nil {
+		stale, err = r.behind(last, present)
+	}
+
 	switch {
 	case err != nil:
 		fmt.Fprintf(out, "kiln could not tell whether %s/ is up to date: %v\n", kilnDir, err)
-	case behind:
-		fmt.Fprintf(out, "%s/ is behind the defaults of kiln init's preset %s: run kiln init, which merges them "+
-			"with your edits\n", kilnDir, from)
+	case len(stale) > 0:
+		fmt.Fprintf(out, "%s/ is behind %s: run kiln init, which merges them with your edits\n", kilnDir,
+			strings.Join(stale, ", and "))
 	}
 
 	return nil
 }
 
-// behind answers whether raw, a record of kiln init, differs from what kiln init would write now. It answers the
-// preset kiln init would write too, as initPreset finds it, with its path from the checkout's top.
-func (r *Repo) behind(raw []byte) (string, bool, error) {
-	last, err := parseInit(raw)
-	if err != nil {
-		return "", false, err
+// mainRecord is kiln init's record at main, or an empty record where main holds none.
+func (r *Repo) mainRecord(ctx context.Context, main git.Rev) (initRecord, error) {
+	raw, found, err := r.git.Show(ctx, main, initFile)
+	if err != nil || !found {
+		return initRecord{}, err
 	}
 
-	p, err := r.initPreset("", last.Preset, io.Discard)
-	if err != nil {
-		return last.Preset, false, err
+	return parseInit(raw)
+}
+
+// behind names what in last, a record of kiln init, differs from what kiln init would write now. It reads the defaults
+// of the preset initPreset finds. It reads each monitor kiln monitor add wrote, of those present names.
+func (r *Repo) behind(last initRecord, present []string) ([]string, error) {
+	var stale []string
+	if len(last.Files) > 0 {
+		p, err := r.initPreset("", last.Preset, io.Discard)
+		if err != nil {
+			return nil, err
+		}
+
+		files, err := presetFiles(p)
+		if err != nil {
+			return nil, err
+		}
+
+		from := p.recorded(r.top)
+		if !maps.EqualFunc(last.Files, newRecord(from, files).Files, slices.Equal[[]string]) {
+			stale = append(stale, "the defaults of kiln init's preset "+from)
+		}
 	}
 
-	from := p.recorded(r.top)
-	files, err := presetFiles(p)
-	now := newRecord(from, files)
-	return from, !maps.EqualFunc(last.Files, now.Files, slices.Equal[[]string]), err
+	for _, name := range slices.Sorted(maps.Keys(last.Monitors)) {
+		m := last.Monitors[name]
+		if !slices.Contains(present, string(name)) {
+			continue
+		}
+
+		_, files, err := r.sourceFiles(m.Source)
+		if err != nil {
+			return stale, err
+		}
+
+		if !maps.EqualFunc(m.Files, linesOf(files), slices.Equal[[]string]) {
+			stale = append(stale, fmt.Sprintf("the monitor %s, from %s", name, m.Source))
+		}
+	}
+
+	return stale, nil
 }
 
 // initRecord is what initFile holds: the preset kiln init last wrote, and each default but kiln.json. A default is
 // kept as its lines, so a diff of the record reads as a diff of the files.
 type initRecord struct {
-	Preset string              `json:"preset"`
-	Files  map[string][]string `json:"files"`
+	Preset string    `json:"preset"`
+	Files  fileLines `json:"files"`
+	// Monitors holds each monitor kiln monitor add wrote, by its name, as kiln init last brought it up to date.
+	Monitors map[Spec]addedMonitor `json:"monitors,omitempty"`
 }
 
-// newRecord is the record of files, the defaults of the preset named, but kiln.json, which kiln init never merges.
-func newRecord(preset string, files map[string][]byte) initRecord {
-	rec := initRecord{Preset: preset, Files: map[string][]string{}}
+// addedMonitor is a monitor kiln monitor add wrote, as kiln init keeps it. It holds the source, and each file's lines.
+type addedMonitor struct {
+	// Source is a monitor kiln ships, such as go/docs, or a directory's path from the checkout's top. That path
+	// starts with a dot or a slash, as one kiln monitor add takes does.
+	Source string    `json:"source"`
+	Files  fileLines `json:"files"`
+}
+
+// fileLines holds files as a record keeps them, each by its lines. A diff of the record then reads as a diff of them.
+type fileLines map[string][]string
+
+// linesOf is files as a record keeps them.
+func linesOf(files map[string][]byte) fileLines {
+	lines := fileLines{}
 	for name, raw := range files {
-		if name != "kiln.json" {
-			rec.Files[name] = strings.Split(string(raw), "\n")
-		}
+		lines[name] = strings.Split(string(raw), "\n")
 	}
 
-	return rec
+	return lines
 }
 
-// file is the default kiln init last wrote at name, under .kiln/, or nil when the record holds none there.
-func (rec initRecord) file(name string) []byte {
-	lines, ok := rec.Files[name]
+// file is the file f keeps at name, or nil when f keeps none there.
+func (f fileLines) file(name string) []byte {
+	lines, ok := f[name]
 	if !ok {
 		return nil
 	}
 
 	return []byte(strings.Join(lines, "\n"))
+}
+
+// added records the monitor name, as kiln monitor add or kiln init wrote it.
+func (rec *initRecord) added(name Spec, m addedMonitor) {
+	if rec.Monitors == nil {
+		rec.Monitors = map[Spec]addedMonitor{}
+	}
+
+	rec.Monitors[name] = m
+}
+
+// newRecord is the record of files, the defaults of the preset named, but kiln.json, which kiln init never merges.
+func newRecord(preset string, files map[string][]byte) initRecord {
+	merged := maps.Clone(files)
+	delete(merged, "kiln.json")
+	return initRecord{Preset: preset, Files: linesOf(merged)}
 }
 
 // parseInit reads raw, the content of initFile.
@@ -345,7 +414,7 @@ func (r *Repo) writeDefaults(ctx context.Context, p preset, last initRecord, out
 			continue
 		}
 
-		line, err := r.writeDefault(ctx, name, last.file(name), files[name])
+		line, err := r.writeDefault(ctx, name, last.Files.file(name), files[name])
 		if err != nil {
 			return wrote, err
 		}
@@ -353,9 +422,58 @@ func (r *Repo) writeDefaults(ctx context.Context, p preset, last initRecord, out
 		say(line)
 	}
 
-	line, err := r.writeRecord(newRecord(p.recorded(r.top), files))
+	rec := newRecord(p.recorded(r.top), files)
+	for _, name := range slices.Sorted(maps.Keys(last.Monitors)) {
+		m, kept, err := r.updateMonitor(ctx, name, last.Monitors[name], say)
+		if err != nil {
+			return wrote, err
+		}
+
+		if kept {
+			rec.added(name, m)
+		}
+	}
+
+	line, err := r.writeRecord(rec)
 	say(line)
 	return wrote, err
+}
+
+// updateMonitor brings the monitor name, which kiln monitor add wrote as m, up to date with its source. It merges
+// each file as writeDefault merges a default. It writes a file the source gains as kiln monitor add would. say
+// prints each line writeDefault answers. A monitor whose directory the project deleted stays deleted: updateMonitor
+// answers false, so the record drops it. One whose source kiln cannot read stays as it is, and say says why.
+func (r *Repo) updateMonitor(ctx context.Context, name Spec, m addedMonitor, say func(string)) (addedMonitor, bool,
+	error) {
+	dir := monitor{Name: name}.path("")
+	switch _, err := os.Lstat(filepath.Join(r.top, dir)); {
+	case errors.Is(err, fs.ErrNotExist):
+		return m, false, nil
+	case err != nil:
+		return m, false, err
+	}
+
+	from, files, err := r.sourceFiles(m.Source)
+	if err != nil {
+		say(fmt.Sprintf("kiln init left %s/ as it is, since it cannot read its source %s: %v", dir, m.Source, err))
+		return m, true, nil
+	}
+
+	for _, f := range slices.Sorted(maps.Keys(files)) {
+		rel := path.Join(dir, f)
+		line, err := r.writeDefault(ctx, strings.TrimPrefix(rel, kilnDir+"/"), m.Files.file(f), files[f])
+		if err == nil && strings.HasPrefix(line, "wrote ") {
+			err = os.Chmod(filepath.Join(r.top, rel), addedMode(from, f))
+		}
+
+		if err != nil {
+			return m, false, err
+		}
+
+		say(line)
+	}
+
+	return addedMonitor{Source: m.Source, Files: linesOf(files)}, true, nil
 }
 
 // deletedReviewers names each default reviewer in files that the project deleted, so kiln init writes it no more.

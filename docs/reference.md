@@ -8,7 +8,7 @@ commands in use.
   kiln.json                  the settings below
   kiln.schema.json           kiln.json's JSON Schema, which an editor reads by kiln.json's "$schema"
   specs/<name>.md            a spec, and <name>.amend.md, the amendments a build asks for
-  init.json                  what kiln init last wrote, which its next run merges your edits against
+  init.json                  what kiln init and kiln monitor add last wrote, which kiln init merges your edits against
   agents/build.md            the build agent: frontmatter, then its prompt
   agents/verify.md           how the acceptance tests' code is written, and the verify agent of a split build
   agents/audit.md            the audit, which reads the work once the gate passes
@@ -259,7 +259,12 @@ monitor in the working tree, before you commit it, and prints each refusal `kiln
 
 `kiln monitor add bugs` writes the `bugs` monitor kiln ships into `.kiln/monitors/bugs/`, and
 `kiln monitor add ../monitors/deps` the one in that directory. Commit what it writes on main, where kiln reads it. The
-project owns it from then on. `go doc ./internal/kiln` says what `kiln monitor add` refuses, under `MonitorAdd`.
+project owns it from then on. `kiln monitor add` with neither lists the monitors kiln ships, and the preset each fits.
+`go doc ./internal/kiln` says what `kiln monitor add` refuses, under `MonitorAdd`.
+
+`kiln monitor add` records what it wrote in `.kiln/init.json`, with where it came from. When kiln ships a newer
+`bugs`, or your team changes `../monitors/deps`, `kiln status` says the monitor is behind. `kiln init` then merges
+the new version with your edits, as it merges the defaults. A monitor you deleted stays deleted.
 
 ```text
 .kiln/monitors/bugs/
