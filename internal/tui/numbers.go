@@ -20,11 +20,6 @@ func (b *Build) runs() []*Run {
 	return runs
 }
 
-func (b *Build) cost() (float64, bool)       { return known(b.Cost) }
-func (b *Build) turns() (int, bool)          { return known(b.Turns) }
-func (b *Build) took() (time.Duration, bool) { return known(b.Took) }
-func (b *Build) rounds() (int, bool)         { return known(b.Rounds) }
-
 // known is the number n points to, and whether it is known.
 func known[N any](n *N) (N, bool) {
 	if n == nil {
@@ -73,9 +68,9 @@ type measure struct {
 }
 
 var measures = []measure{
-	{"cost", (*Build).cost, func(v float64) string { return fmt.Sprintf("$%.2f", v) }, true, false},
+	{"cost", func(b *Build) (float64, bool) { return known(b.Cost) }, func(v float64) string { return fmt.Sprintf("$%.2f", v) }, true, false},
 	{"minutes", func(b *Build) (float64, bool) {
-		d, ok := b.took()
+		d, ok := known(b.Took)
 		return d.Minutes(), ok
 	}, decimal, true, false},
 	{"failed calls", func(b *Build) (float64, bool) {
@@ -83,7 +78,7 @@ var measures = []measure{
 		return float64(n), ok
 	}, decimal, true, false},
 	{"rounds", func(b *Build) (float64, bool) {
-		n, ok := b.rounds()
+		n, ok := known(b.Rounds)
 		return float64(n), ok
 	}, decimal, true, true},
 	{"size, tests", func(b *Build) (float64, bool) { return float64(b.Size), true }, decimal, false, true},

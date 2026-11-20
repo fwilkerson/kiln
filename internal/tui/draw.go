@@ -486,7 +486,7 @@ func (m model) buildRows(in area) []row {
 
 	line, most := recentLine(in.w), 0.0
 	for _, l := range all {
-		cost, _ := l.b.cost()
+		cost, _ := known(l.b.Cost)
 		most = max(most, cost)
 	}
 
@@ -547,22 +547,22 @@ const costBar = 13
 
 // recentCells are a build's cells in the builds panel. Its last is its cost as a bar, its share of most.
 func (m model) recentCells(l listed, most float64) []string {
-	took, known := l.b.took()
+	took, tookKnown := known(l.b.Took)
 	time := "?"
 	switch {
-	case known:
+	case tookKnown:
 		time = span(took)
 	case slices.ContainsFunc(l.b.runs(), (*Run).running):
 		time = span(m.now.Sub(l.b.Started))
 	}
 
-	cost, costKnown := l.b.cost()
-	turns, turnsKnown := l.b.turns()
+	cost, costKnown := known(l.b.Cost)
+	turns, turnsKnown := known(l.b.Turns)
 	failed, _, failedKnown := l.b.failed()
 	dim := m.theme.dim
 	return []string{dim.Render(l.b.Started.Local().Format("Jan 02 15:04")), l.spec, m.outcome(l.buildRef),
 		plural(l.b.Size, "test"), time, dollars(cost, costKnown), count(turns, turnsKnown), count(failed, failedKnown),
-		count(l.b.rounds()), dim.Render(gauge(cost, most, costBar-1))}
+		count(known(l.b.Rounds)), dim.Render(gauge(cost, most, costBar-1))}
 }
 
 // gauge draws v's share of most as a bar of at most w cells, to an eighth of a cell.
@@ -761,7 +761,7 @@ func (m model) runRow(n int, r *Run) string {
 
 // summary is a build's time, cost, turns and failed calls.
 func (m model) summary(b *Build) string {
-	took, known := b.took()
+	took, tookKnown := known(b.Took)
 	var gates, waiting time.Duration
 	for _, s := range b.Steps {
 		switch s := s.(type) {
@@ -773,17 +773,17 @@ func (m model) summary(b *Build) string {
 	}
 
 	time := "time ?"
-	if known {
+	if tookKnown {
 		time = "time " + span(took)
 	}
 
-	cost, costKnown := b.cost()
+	cost, costKnown := known(b.Cost)
 	price := dollars(cost, costKnown)
 	if !costKnown {
 		price = "cost ?"
 	}
 
-	turns, turnsKnown := b.turns()
+	turns, turnsKnown := known(b.Turns)
 	failed, refused, failedKnown := b.failed()
 	return m.theme.dotted(fmt.Sprintf("%s: %s in gates, %s waiting on tools", time, span(gates), span(waiting)), price,
 		count(turns, turnsKnown)+" turns",
