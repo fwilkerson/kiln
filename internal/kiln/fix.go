@@ -643,7 +643,14 @@ func (f *fixing) sessionEnded() bool {
 // on its branch. Any other leaves no record, branch or worktree.
 func (b *build) fixEnded(ctx context.Context) error {
 	f := b.fix
-	if f.outcome == outStopped {
+	switch f.outcome {
+	case outLanded:
+		// A check's finding no longer holds once the fix landed, so the landing's title sums the fix up. A gauge's
+		// reading of main stays the summary, as Monitors says.
+		if f.monitor.finder != gaugeScript {
+			f.summary = b.landingTitle()
+		}
+	case outStopped:
 		f.summary, f.report = f.checked.summary, b.now().Why
 		if f.summary == "" {
 			// The summary takes the first line of why, so the report keeps the rest, and no line shows twice.

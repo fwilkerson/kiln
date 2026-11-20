@@ -1505,6 +1505,27 @@ func TestGatedCheckLeavesNoFile(t *testing.T) {
 	}
 }
 
+// TestLandedFixSummary holds that a check's fix that landed is summed up by its landing's title. The check's finding no
+// longer holds then.
+func TestLandedFixSummary(t *testing.T) {
+	b := gaugedFix(t, "echo fine >a.txt", checkScript)
+	b.fix.monitor.finder = checkScript
+	b.rec.Build, b.rec.Title = "b-m", "fix(m): mend a.txt"
+	b.record(entry{Kind: monitorKind, Monitor: "m", Found: foundFix, Summary: "a.txt is low"})
+	b.fix.checked.summary = "a.txt is low"
+	b.fix.end(outLanded, "", "")
+	// A landed fix drops its branch, which git keeps while a worktree outside kiln's holds it.
+	shell(t, b.r.top, "git worktree remove --force "+string(b.tree))
+	if err := b.fixEnded(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	s, _, err := b.r.lastStanding("m")
+	if !claim.Holds(err == nil, s.result == outLanded, s.summary == b.rec.Title) {
+		t.Errorf("m stands %q, %q, %v; want landed, %q", s.result, s.summary, err, b.rec.Title)
+	}
+}
+
 // TestGateLineAfterError holds that a fix's gate whose gated gauge couldn't run is written as failed. Its commands
 // passed, and ran at main, so the line still says so.
 func TestGateLineAfterError(t *testing.T) {

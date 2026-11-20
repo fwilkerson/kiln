@@ -734,21 +734,23 @@ func (b *build) message(what string) string {
 		b.rec.Name.file(), short(b.rec.Approved), b.rec.Session)
 }
 
-// landing is the message of the commit that lands the build. It holds the build's time, cost, turns and failed calls,
-// so git log shows what each landed build cost. A fix's title is its agent's, when the agent gave one.
-func (b *build) landing() string {
+// landingTitle is the first line of the commit that lands the build. A fix's is its agent's title, when it gave one.
+func (b *build) landingTitle() string {
 	what := "land the approved spec"
 	if b.rec.Monitor {
 		what = "land the monitor's fix"
 	}
 
-	message := b.message(what)
-	if b.rec.Title != "" {
-		_, body, _ := strings.Cut(message, "\n")
-		message = b.rec.Title + "\n" + body
-	}
+	subject, _, _ := strings.Cut(b.message(what), "\n")
+	return cmpOr(b.rec.Title, subject)
+}
 
-	message += "\n"
+// landing is the message of the commit that lands the build, under its title. It holds the build's time, cost,
+// turns and failed calls, so git log shows what each landed build cost.
+func (b *build) landing() string {
+	// The body names no step, so any step's message gives it.
+	_, body, _ := strings.Cut(b.message(""), "\n")
+	message := b.landingTitle() + "\n" + body + "\n"
 	if b.fix != nil && len(b.fix.since) > 0 {
 		message += "Changed since kiln accept: " + strings.Join(b.fix.since, ", ") + "\n"
 	}

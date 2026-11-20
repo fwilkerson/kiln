@@ -22,7 +22,8 @@ type standing struct {
 	// rec is the book's record of the fix while the book says where it stands, or nil. That is while its accepted
 	// landing is queued or building, or while the kiln that fixes it is gone.
 	rec *record
-	// summary is the check's summary, the report's summary, the session's error, or why the check couldn't run.
+	// summary is the check's summary, the report's summary, the session's error, or why the check couldn't run. A
+	// landed fix's is its landing's title, but for a gauge's, which keeps the reading.
 	summary, report string
 	// last is when its last run started, and next when it is due again. Each is zero for a monitor that never ran.
 	last, next time.Time

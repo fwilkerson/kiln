@@ -294,8 +294,9 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
   run, and starts no fix. So does a gauge kiln could not read.
 - The agent's first message holds what the check or gauge printed, and what the gate printed after `command`. Then
   it says to fix what the monitor found, as the agent's instructions say: the body of `agent.md`.
-- `kiln help monitors` says when a monitor is due, and `kiln help hangs` when a check or gauge that ran past `timeout`
-  holds it.
+- A monitor is due half an hour before its interval has passed, so the hourly job never misses it by a few seconds.
+  `kiln help monitors` holds that rule, and `kiln help hangs` says when a check or gauge that ran past `timeout` holds
+  it.
 - A fix is a build with no spec. The gate holds it, with the check or gauge added unless `"gates": false`. That
   setting is for a check that reads something a fix cannot change until it is deployed.
 - A fix never writes under `.kiln/`. Without `"tests": true`, it never writes under an `acceptance` path's part

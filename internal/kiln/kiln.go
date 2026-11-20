@@ -301,12 +301,12 @@
 // branch. A fix with no session stops instead. Work that changes nothing ends unchanged. An agent's reply whose last
 // line is {"ask": true, "summary": "..."} ends the fix needs you, with its report. One whose last line is {"title":
 // "type(scope): summary"}, of at most 72 characters, titles the commit that lands the fix. A landing keeps the title of
-// the fix the developer accepted. A failed session ends it session failed. A usage limit ends it at once, never waiting
-// for the reset. In a landing, each of these stops it and keeps the fix. So does work that changes nothing on main.
-// Only a fix whose agent ran gets the audit. A landing's audit reads each file whose own change since main differs from
-// the accepted commit's. It runs when the work so differs from the commit the audit last read, outside .kiln/. It skips
-// the session's answer to its findings, but for a path kiln.json's reaudit names. A landing whose turn kiln cut short
-// resumes that turn first.
+// the fix the developer accepted. kiln status shows a landed fix's title as its summary, but for a gauge's. A failed
+// session ends it session failed. A usage limit ends it at once, never waiting for the reset. In a landing, each of
+// these stops it and keeps the fix. So does work that changes nothing on main. Only a fix whose agent ran gets the
+// audit. A landing's audit reads each file whose own change since main differs from the accepted commit's. It runs when
+// the work so differs from the commit the audit last read, outside .kiln/. It skips the session's answer to its
+// findings, but for a path kiln.json's reaudit names. A landing whose turn kiln cut short resumes that turn first.
 //
 // A monitor's gauge is a gauge named for the monitor, which kiln reads after each landing too, as Gauges says. The
 // monitor's run reads it over the whole repository. It reads in the check's worktree at main's tip, with git's empty
