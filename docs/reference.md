@@ -26,15 +26,17 @@ tree, for you to read and commit. `kiln status` says when `.kiln/` on main is be
 kiln init adds only `$schema` and `rounds`, where the file lacks them. `go doc ./internal/kiln Repo.Init` says how
 it merges each file. `kiln monitor add` writes a monitor, as Monitors says.
 
+A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
+as a new agent, is yours to commit: a build names it in its last reply instead of writing it.
+
+## Presets
+
 A preset of your own is a directory laid out as kiln's in [`internal/kiln/presets/`](../internal/kiln/presets/):
 `kiln.json`, then `build-checks.md`, `verify-tests.md` and `audit-tests.md`, the "Tailor this" sections of the
 build, verify and audit agents. A built-in preset's `detect` lists the files that mark a repository as its own, by
 which `kiln init` picks it; `kiln init` picks among its own presets alone. Keep yours in a repository of its own,
 and name it with `--preset`, as in `kiln init --preset ../presets/go`. `go doc ./internal/kiln InitOptions` says
 how kiln reads the path, and finds it again on the next run.
-
-A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
-as a new agent, is yours to commit: a build names it in its last reply instead of writing it.
 
 ## kiln.json
 
@@ -230,9 +232,9 @@ Drop the `jq` line to post the notice as it is, for a webhook that reads kiln's 
 `/usr/bin`.
 
 kiln's own repository keeps a `.kiln/notify` for Ghostty. A monitor's fix opens a tab that runs
-`"$KILN" monitor show <name>`, behind the tab you work in. The tab notifies you, and a click on the notification brings it
-forward. On the first tab, macOS asks to let kiln control Ghostty. Without that, the tab never opens, and the output
-says why.
+`"$KILN" monitor show <name>`, behind the tab you work in. The tab notifies you, and a click on the notification
+brings it forward. On the first tab, macOS asks to let kiln control Ghostty. Without that, the tab never opens, and
+the output says why.
 
 ### timeout
 

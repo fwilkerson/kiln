@@ -140,6 +140,65 @@ live, and every past build.
 turns up a problem, change the spec with `/shape`, commit it, and queue it again: the new build starts from main,
 which holds the landed work.
 
+## Making kiln your own
+
+A project makes kiln its own in five places. Each is a file or a directory, and [the reference](docs/reference.md)
+says the rest of each.
+
+**A preset** is what `kiln init` writes into `.kiln/`. A team keeps its own in a directory, laid out as kiln's
+[built-in presets](internal/kiln/presets/), as [Presets](docs/reference.md#presets) shows:
+
+```console
+$ ls ../presets/web
+audit-tests.md  build-checks.md  kiln.json  verify-tests.md
+$ kiln init --preset ../presets/web
+```
+
+**A monitor** is a job kiln runs on a schedule. A team keeps one in a directory, and each project adds it, as
+[Monitors](docs/reference.md#monitors) shows:
+
+```console
+$ ls ../monitors/deps
+agent.md  check  monitor.json
+$ kiln monitor add ../monitors/deps
+```
+
+**A reviewer** reads a spec for `/shape` before you approve it. Write its file in `.kiln/reviewers/`, then run
+`kiln init`, which links it for Claude Code, as [Reviewers](docs/reference.md#reviewers) shows:
+
+```markdown
+---
+name: upgrade
+description: Reports each stored record a spec's plan would read wrong. Give it the spec's path.
+tools: Read, Grep, Glob
+---
+
+Report each record already written that the spec's Technical Plan would refuse or read wrong.
+```
+
+**The notify program** hears when a build or a fix needs you. `{"notify": ".kiln/notify"}` in `kiln.json` names
+it, and the notice comes in `$KILN_NOTICE`, as [notify](docs/reference.md#notify) shows:
+
+```sh
+#!/bin/sh
+# .kiln/notify: show each notice in macOS's Notification Center.
+set -eu
+said=$(printf '%s' "$KILN_NOTICE" | jq -r '"\(.name) \(.state)"')
+osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title "kiln"' -e 'end run' "$said"
+```
+
+**A gauge** can read kiln's own numbers from `kiln ledger`. This one reads the slowest of the last twenty gates
+that passed. `{"gauges": [{"name": "gate-seconds", "command": ".kiln/gauges/gate-seconds", "max": 300}]}` in
+`kiln.json` names it, as [gauges](docs/reference.md#gauges) shows:
+
+```sh
+#!/bin/sh
+# .kiln/gauges/gate-seconds
+set -eu
+gates=$("$KILN" ledger --kind gate)
+printf '%s\n' "$gates" | jq -s 'map(select(.passed) | .seconds) | .[-20:] | max // empty'
+```
+
 ## What kiln holds a build to
 
 - **Your gate.** kiln reads `kiln.json` from main, never from the build's checkout, so no build weakens its own
@@ -188,8 +247,7 @@ monitors:
 bugs: landed, last ran 2026-11-17 00:24, runs next after 2026-11-17 00:54
 ```
 
-`kiln monitor add ../monitors/deps` adds one a team keeps in a directory. A monitor is a directory, which the project
-owns once added:
+A monitor is a directory, which the project owns once added:
 
 ```text
 .kiln/monitors/bugs/
