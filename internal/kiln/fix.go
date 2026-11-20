@@ -641,8 +641,9 @@ func (f *fixing) sessionEnded() bool {
 	return f != nil && slices.Contains([]string{outNeedsYou, outFailed}, f.outcome)
 }
 
-// fixEnded records how the fix ended. A stopped fix keeps its record and its worktree, and a fix that passed waits
-// on its branch. Any other leaves no record, branch or worktree.
+// fixEnded records how the fix ended, and prints it with the fix's time, cost, turns and failed calls. A stopped fix
+// keeps its record and its worktree, and a fix that passed waits on its branch. Any other leaves no record, branch or
+// worktree.
 func (b *build) fixEnded(ctx context.Context) error {
 	f := b.fix
 	switch f.outcome {
@@ -662,6 +663,8 @@ func (b *build) fixEnded(ctx context.Context) error {
 
 	b.record(entry{Kind: outcomeKind, Outcome: f.outcome, Summary: f.summary, Report: f.report})
 	b.say("%s", cmpOr(strings.TrimSuffix(f.outcome+": "+f.summary, ": "), "ended"))
+	// A spec's build prints the same line once it ends, so a fix's time and cost read alike.
+	fmt.Fprintln(b.out, indent(b.r.summary(b.rec.Build)))
 	switch f.outcome {
 	case outStopped:
 		b.set(func(r *record) { r.State, r.runner = stopped, runner{} })

@@ -1584,6 +1584,25 @@ func TestLandedFixSummary(t *testing.T) {
 	}
 }
 
+// TestFixEndSums holds that a fix's end prints its time, cost, turns and failed calls, as a spec's build does.
+func TestFixEndSums(t *testing.T) {
+	b := gaugedFix(t, "echo fine >a.txt", checkScript)
+	var out strings.Builder
+	b.fix.monitor.finder, b.out, b.rec.Build = checkScript, &out, "b-m"
+	b.record(entry{Kind: builtKind, Spec: "m", Monitor: "m"})
+	b.fix.end(outLanded, "", "")
+	// A landed fix drops its branch, which git keeps while a worktree outside kiln's holds it.
+	shell(t, b.r.top, "git worktree remove --force "+string(b.tree))
+	if err := b.fixEnded(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	want := "m: landed: fix(m): land the monitor's fix\n" + indent(b.r.summary(b.rec.Build)) + "\n"
+	if out.String() != want || !strings.Contains(want, " · 0 turns · ") {
+		t.Errorf("the fix's end said:\n%s\nwant:\n%s", out.String(), want)
+	}
+}
+
 // TestGateLineAfterError holds that a fix's gate whose gated gauge couldn't run is written as failed. Its commands
 // passed, and ran at main, so the line still says so.
 func TestGateLineAfterError(t *testing.T) {

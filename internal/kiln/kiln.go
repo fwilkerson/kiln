@@ -283,6 +283,7 @@
 //	           command   first, outside the sandbox, then the gate; fails with no agent: stopped
 //	           agent     while the gate fails, or with no command; kiln.json's rounds, and the audit
 //	  ends     landed, waits on its branch, unchanged, needs you, session failed, usage limit, stopped, couldn't run
+//	           each printed with its time, cost, turns and failed calls, as a spec's build is
 //	  notify   the developer, as Notifications says
 //	  gauges   read after a landing, as after a build's
 //	  again    when the check asked to drain, after a fix that landed: from check, due or not, until no fix lands
