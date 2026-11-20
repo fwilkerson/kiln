@@ -18,7 +18,8 @@ import (
 func TestMonitorAdd(t *testing.T) {
 	team := t.TempDir()
 	writeAll(t, team, map[string]string{"deps/command": "go get -u ./...", "deps/monitor.json": `{"hours": 168}`,
-		"deps/notes/why.md": "Why deps.", "deps/lib/run": "go get -u ./...", "broken/check": "true"})
+		"deps/notes/why.md": "Why deps.", "deps/lib/run": "go get -u ./...", "broken/check": "true",
+		"vague/command": "true", "vague/agent.md": "---\neffort: extreme\n---\nFix it.\n"})
 	if err := os.Chmod(filepath.Join(team, "deps/lib/run"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -37,6 +38,7 @@ func TestMonitorAdd(t *testing.T) {
 		"a name kiln ships nothing of":  {source: "deps", refused: true, usage: true},
 		"a path to no directory":        {source: "./nowhere", refused: true, usage: true},
 		"a monitor kiln could not run":  {source: team + "/broken", refused: true},
+		"an agent kiln could not read":  {source: team + "/vague", refused: true},
 		"a name already there":          {source: "bugs", there: true, refused: true, want: []string{"bugs/command*"}},
 	} {
 		t.Run(name, func(t *testing.T) {

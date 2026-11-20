@@ -25,8 +25,9 @@ const shippedDir = "monitors"
 // MonitorAdd copies a monitor into .kiln/monitors/<name>/ in the checkout, for the developer to commit on main. source
 // names a monitor kiln ships, such as bugs. One that needs a language's tools sits under its preset's name, such as
 // go/docs. A source that starts with a dot or a slash is a directory. The monitor's name is source's last element.
-// Before it writes, it refuses a monitor kiln could not run, and a name already there. It writes each script kiln runs
-// with the executable bit.
+// It answers ErrUsage for a name kiln ships no monitor of, and for a path to no directory. Before it writes, it
+// refuses a checkout with no kiln.json, and a monitor kiln could not run by that kiln.json. It refuses an agent.md
+// kiln could not read, and a name already there. It writes each script kiln runs with the executable bit.
 func (r *Repo) MonitorAdd(source string, out io.Writer) error {
 	from, err := monitorSource(source)
 	if err != nil {
@@ -123,6 +124,10 @@ func (r *Repo) addable(from fs.FS, name Spec) (monitor, []string, error) {
 	}
 
 	m, err := c.readMonitor(name, files, settings)
+	if err == nil && m.agent {
+		err = readableAgent(from, m)
+	}
+
 	switch _, there := os.Lstat(filepath.Join(r.top, m.path(""))); {
 	case err != nil:
 		return m, nil, fmt.Errorf("%w: %w", errRefused, err)
@@ -131,6 +136,20 @@ func (r *Repo) addable(from fs.FS, name Spec) (monitor, []string, error) {
 	}
 
 	return m, files, nil
+}
+
+// readableAgent refuses the agent.md of m, in the directory from, where kiln could not read it.
+func readableAgent(from fs.FS, m monitor) error {
+	raw, err := fs.ReadFile(from, monitorAgent)
+	if err == nil {
+		_, err = parseAgent(string(raw))
+	}
+
+	if err != nil {
+		return fmt.Errorf("%s: %w", m.path(monitorAgent), err)
+	}
+
+	return nil
 }
 
 // monitorFiles lists each file the monitor's directory from holds, and reads its monitor.json, or nil where it holds
