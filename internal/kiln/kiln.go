@@ -329,7 +329,7 @@
 //	{"kind": "spec", "name": "x", "state": "waiting for UAT",
 //	 "summary": "4.2 min · $0.42 · 3 turns · 1 failed call\n0 of 1 round · …",
 //	 "next": "read it with git show 3f9c2ab81d0e, then run kiln accept x, or …",
-//	 "top": "/Users/me/scratch", "commit": "3f9c2ab81d0e…"}
+//	 "top": "/Users/me/scratch", "kiln": "/Users/me/go/bin/kiln", "commit": "3f9c2ab81d0e…"}
 //
 //	kind     spec, for a spec's build, or monitor, for a monitor's fix
 //	name     the spec's name, or the monitor's
@@ -337,6 +337,7 @@
 //	summary  the lines kiln prints below that, but the next step; a stopped spec's starts with why it stopped
 //	next     what to run next, as kiln prints it after "next:"; "" when the developer has nothing to run
 //	top      the top directory of the checkout kiln runs in
+//	kiln     the path of the kiln binary that sent the notice, which a program runs in place of the PATH's
 //	commit   the full hash of the commit that landed the build or the fix on main; absent when none did
 //
 // What the program prints goes to kiln's output. kiln waits 30 s for it, then kills it and what it started. A program
