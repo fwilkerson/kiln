@@ -67,11 +67,20 @@ func (g *Git) moveOnce(ctx context.Context, branch Branch, to, expected Rev) (*I
 	return nil, false, g.moved(ctx, m.branch.ref(), to)
 }
 
-// blocked says why the branch can't move before it is tried, and learns where it is checked out.
+// blocked says why the branch can't move before it is tried, and learns where it is checked out. A worktree list
+// names the commit each worktree holds, so a branch checked out has its tip read there.
 func (m *move) blocked(ctx context.Context) (*InTheWay, error) {
-	tip, err := m.g.tip(ctx, m.branch.ref())
+	list, err := m.g.worktreeList(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	where := checkedOut(list, m.branch.ref())
+	tip := where.head
+	if where.path == "" {
+		if tip, err = m.g.tip(ctx, m.branch.ref()); err != nil {
+			return nil, err
+		}
 	}
 
 	if tip != m.expected {
@@ -87,8 +96,8 @@ func (m *move) blocked(ctx context.Context) (*InTheWay, error) {
 		return &InTheWay{Busy: busy}, nil
 	}
 
-	m.where, err = m.g.checkedOut(ctx, m.branch.ref())
-	return nil, err
+	m.where = where.path
+	return nil, nil
 }
 
 func (m *move) apply(ctx context.Context) error {
@@ -245,6 +254,7 @@ func working(gitDir string) ([]string, error) {
 type listing struct {
 	path     Worktree
 	branch   string
+	head     Rev
 	prunable bool
 }
 
@@ -263,6 +273,8 @@ func (g *Git) worktreeList(ctx context.Context) ([]listing, error) {
 		case len(list) == 0:
 		case key == "branch":
 			list[len(list)-1].branch = value
+		case key == "HEAD":
+			list[len(list)-1].head = Rev(value)
 		case key == "prunable":
 			list[len(list)-1].prunable = true
 		}
@@ -271,21 +283,16 @@ func (g *Git) worktreeList(ctx context.Context) ([]listing, error) {
 	return list, nil
 }
 
-// checkedOut leaves out a worktree whose directory is gone. git still counts its branch as checked out, but there is
-// no tree there for a merge to update.
-func (g *Git) checkedOut(ctx context.Context, ref string) (Worktree, error) {
-	list, err := g.worktreeList(ctx)
-	if err != nil {
-		return "", err
-	}
-
+// checkedOut is the worktree in list where ref is checked out, or no worktree. It leaves out a worktree whose directory
+// is gone. git still counts its branch as checked out, but there is no tree there for a merge to update.
+func checkedOut(list []listing, ref string) listing {
 	for _, w := range list {
 		if w.branch == ref && !w.prunable {
-			return w.path, nil
+			return w
 		}
 	}
 
-	return "", nil
+	return listing{}
 }
 
 func (g *Git) inTheWay(ctx context.Context, where Worktree, from, to Rev) ([]string, error) {
@@ -340,7 +347,7 @@ func (g *Git) remove(ctx context.Context, paths []Worktree, branches ...Branch) 
 		err = errors.Join(err, r.tree(ctx, g.at(path)))
 	}
 
-	if r.prune {
+	if r.stale() {
 		err = errors.Join(err, g.prune(ctx))
 	}
 
@@ -352,17 +359,33 @@ func (g *Git) remove(ctx context.Context, paths []Worktree, branches ...Branch) 
 }
 
 // removal is one Remove under the worktrees lock. It lists the worktrees once: removing one changes whether git lists
-// no other. prune says a path was gone, or removed by hand, so git still lists it until a prune.
+// no other. byHand says kiln deleted a worktree git lists, and gone says a path was gone before the removal.
 type removal struct {
-	g     *Git
-	list  []listing
-	prune bool
+	g      *Git
+	list   []listing
+	byHand bool
+	gone   bool
+}
+
+// stale says whether git may still list a worktree the removal deleted by hand, or found gone. A listing the removal
+// read marks each worktree whose directory is gone, as git worktree prune finds it.
+func (r *removal) stale() bool {
+	switch {
+	case r.byHand:
+		return true
+	case !r.gone:
+		return false
+	case r.list == nil:
+		return true
+	}
+
+	return slices.ContainsFunc(r.list, func(w listing) bool { return w.prunable })
 }
 
 func (r *removal) tree(ctx context.Context, path Worktree) error {
 	there, err := os.Stat(string(path))
 	if errors.Is(err, fs.ErrNotExist) {
-		r.prune = true
+		r.gone = true
 		return nil
 	}
 
@@ -392,7 +415,7 @@ func (r *removal) tree(ctx context.Context, path Worktree) error {
 		return err
 	}
 
-	r.prune = true
+	r.byHand = true
 	return nil
 }
 
