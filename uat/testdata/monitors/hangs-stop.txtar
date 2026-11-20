@@ -1,0 +1,27 @@
+# A monitor's command that hangs, and a gauge that hangs in a fix's gate, each stop their fix. kiln says what ran
+# past, for how long, and which setting bounds it.
+
+env KILN_OPEN=true
+
+# Given: kiln.json's timeout is 3 seconds. One monitor's command never ends. Another's gauge reads a crossing at
+# main, and never ends once its command has made a fix.
+
+# When: kiln monitor run runs.
+exec sh -c 'kiln monitor run || true'
+
+# Then: kiln status shows each fix stopped, with what ran past it.
+exec kiln status
+stdout '^deps: stopped, '
+stdout 'the monitor''s command "sleep 600" ran past kiln.json''s timeout of 3s, so kiln killed it'
+stdout '^tidy: stopped, '
+stdout 'the monitor''s gauge slow: its command ran past kiln.json''s timeout of 3s, so kiln killed it'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "timeout": "3s", "gauges": [
+ {"name": "slow", "command": "if [ -f fixed ]; then sleep 600; fi; echo 1", "max": 0}
+], "monitors": [
+ {"name": "deps", "every": "24h", "command": "sleep 600"},
+ {"name": "tidy", "every": "24h", "gauge": "slow", "command": "touch fixed"}
+]}
+-- ok.txt --
+fine
