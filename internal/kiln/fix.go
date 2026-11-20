@@ -25,6 +25,8 @@ import (
 //	agent, then commit and gate (+ check), up to rounds ── pass ─▶ audit ─▶ unchanged, waits, or lands
 //	  │ asks for the developer ─▶ needs you    │ fails ─▶ session failed    │ usage limit ─▶ usage limit
 //
+// Work that changes nothing ends unchanged, with no audit. Only an agent's work gets the audit.
+//
 // A gated check that couldn't run ends the fix couldn't run. A gauge in the gate whose command fails goes back to the
 // agent, as a crossed reading does. One whose command ran past kiln.json's timeout stops the fix. Past the last
 // round, or on a command alone that the gate fails, it stops. An accepted fix's landing sends each setback to the

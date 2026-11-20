@@ -84,8 +84,8 @@ func (run *monitorRunning) read(ctx context.Context, d monitorRead) error {
 	return run.monitor(ctx, d.monitor)
 }
 
-// refused says why kiln refuses d, which it never runs. It writes d's monitor line, and notifies, once for each state
-// of d's directory. A run that finds d's directory as the last run refused it writes nothing.
+// refused says why kiln refuses d, which it never runs. It writes d's monitor line, and notifies, unless the last run
+// refused d's directory as it stands. Then it writes nothing.
 func (run *monitorRunning) refused(ctx context.Context, d monitorRead) error {
 	main, err := run.r.mainTip(ctx)
 	if err != nil {

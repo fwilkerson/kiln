@@ -153,18 +153,15 @@ A gauge is a number you watch across landings, such as a mutation score or the t
 
 - Its `command` prints the number as its last line. It has exactly one of `min` and `max`, its line. A reading below
   `min`, or above `max`, crossed it.
-- kiln runs the command with `sh -c` at the landed commit, with main's tip before the landing in `$KILN_BASE`. So
-  `git diff --name-only --diff-filter=d "$KILN_BASE" HEAD` names the files one build left.
-- A reading kiln could not take is unknown, never zero, and never crossed.
-- A gauge never blocks a landing. A line that must hold is a gate command.
+- `kiln help gauges` says where and when kiln runs the command, what `$KILN_BASE` holds, and how it reads an
+  unknown number. So `git diff --name-only --diff-filter=d "$KILN_BASE" HEAD` names the files one build left.
+- A line that must hold is a gate command, since a gauge never blocks a landing.
 - Keep its script under `.kiln/gauges/`, where no build can change it.
 
 A monitor's `gauge` is a gauge too, named for the monitor, with its line in the monitor's `monitor.json`. Then:
 
-- The monitor's run gives `$KILN_BASE` as git's empty tree, so the same `git diff` names every file. A command that
-  names a commit's parents, such as `git log "$KILN_BASE"..HEAD`, fails there.
-- Its fix's gate gives `$KILN_BASE` as the commit where the fix left main, and fails while the reading crosses the
-  line. With `"gates": false`, the gate never reads it.
+- `kiln help monitors` says what `$KILN_BASE` holds in the monitor's run and in its fix's gate, and when that gate
+  reads the gauge.
 - Read only the files the commit still holds, as `--diff-filter=d` lists them. A change that only deletes files then
   reads no number, and no deleted file fails the command.
 - Print the same for the same finding, with no line numbers and no timestamps. kiln compares what the gauge printed
@@ -197,12 +194,8 @@ names a program that receives each notification instead:
 {"notify": ".kiln/notify"}
 ```
 
-- kiln reads the key at main's tip, and runs it with `sh -c` at the top of the checkout kiln runs in, outside the
-  sandbox, with your environment. A script it names is that checkout's copy. `$KILN_NOTICE` holds the notice, as
-  JSON. What the program prints goes to kiln's output.
-- `kiln help notifications` lists the notice's fields, when a build or a fix notifies, and how long kiln waits.
-- A program that fails, hangs or is missing changes no build's or fix's result. kiln says why in its output, then
-  prints the notification as OSC 9.
+- `kiln help notifications` says where and how kiln runs the program, and what the notice in `$KILN_NOTICE` holds.
+  It says when a build or a fix notifies, how long kiln waits, and what a program that fails changes.
 - `kiln monitor install`'s job writes kiln's output to `.git/kiln/monitor.log`, where no terminal shows OSC 9. To
   hear of a fix that job makes, name a `notify` program.
 - That job passes on only your `PATH` and `TMPDIR`, beside launchd's own `HOME`. Keep a secret, such as a

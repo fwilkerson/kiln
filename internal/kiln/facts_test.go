@@ -1,6 +1,7 @@
 package kiln
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -20,5 +21,17 @@ func TestFacts(t *testing.T) {
 		"or 24 when unset":                     defaultHours == 24,
 		"a whole number from 0 to 65535":       ^settings{}.Hours == 65535,
 		"It is 1 hour when unset":              defaultTimeout == time.Hour,
+		"The notify program gets 30 s":         notifyWait == 30*time.Second,
+		`and "rounds": 3`:                      sharedRounds(t) == 3,
 	})
+}
+
+// sharedRounds is the rounds that kiln init adds to a preset's kiln.json that lacks them.
+func sharedRounds(t *testing.T) int {
+	var shared struct{ Rounds int }
+	if err := json.Unmarshal([]byte(sharedDefaults), &shared); err != nil {
+		t.Fatal(err)
+	}
+
+	return shared.Rounds
 }

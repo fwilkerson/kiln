@@ -68,7 +68,7 @@
 //	.kiln/agents/verify.md      how the acceptance tests are written, and a split build's verify agent
 //	.kiln/agents/audit.md       the audit
 //	.kiln/reviewers/            the agents /shape runs on a spec before it is approved, which no build runs
-//	.kiln/skills/shape/         /shape, which writes a spec with the developer, and the template kiln queue reads
+//	.kiln/skills/shape/         /shape, which writes a spec with the developer, and its template
 //	.kiln/gauges/               the scripts a gauge's command runs
 //	.kiln/monitors/<name>/      a monitor: its scripts, its agent and its settings, out of a fix's reach
 //
@@ -165,7 +165,8 @@
 // It refuses a path that path.Clean changes, but for its last slash, or one that starts with a slash. It refuses a
 // list in which one path's part before {spec} starts another's, or equals it, with case folded. It refuses a spec
 // when a harness path is one of its paths, or holds one, or lies under one. It refuses a build agent that says how
-// to write the tests. Such a line names a path's part before {spec}, where the part starts a path.
+// to write the tests. Such a line is an older default's heading for them, or its line on what the build writes. Or
+// it names a path's part before {spec}, where the part starts a path.
 //
 // # Builds
 //
@@ -217,10 +218,10 @@
 // The gate runs kiln.json's commands, read from main's tip, with sh -c at the build's commit and at main. It passes
 // when every command exits 0, but for tests that fail at main too. A command names its failed tests in go test's
 // output. Or it writes them as JUnit XML, to the path kiln gives it in $KILN_JUNIT. A failure that names no test is
-// never excused. With JUnit XML, a run cut short fails too: each test run at main must run at the build's commit.
-// kiln keeps the last 16 KiB of each command's output. It runs them at main again only once
-// main or the commands change. The gate holds commands.lock, with the check or gauge it reads, so no gate runs beside
-// another. Its line in the ledger starts once it holds the lock, so a build's time counts no wait.
+// never excused. With JUnit XML, a run cut short fails too: each test run at main must run at the build's commit. kiln
+// keeps the last 16 KiB of each command's output. It runs them at main again only once main, the commands, or the paths
+// a split build removes there change. The gate holds commands.lock, with the check or gauge it reads, so no gate runs
+// beside another. Its line in the ledger starts once it holds the lock, so a build's time counts no wait.
 //
 // The gate also fails on a change to a guarded path, however the path was written. A session's hook refuses an Edit
 // or a Write there before it happens. Each name is folded as APFS folds it:
@@ -254,8 +255,8 @@
 // refuses a monitor with no command and no agent.md. It refuses a monitor that may not write the tests while kiln
 // cannot guard them. acceptance then names no path, or one with no part before {spec}. It refuses a gauge whose
 // monitor's name a gauge in kiln.json has. A refusal holds back its one monitor: kiln monitor run runs the rest, and
-// says why. It notifies once for each state of that monitor's directory. kiln status and kiln tui show it refused,
-// with why. kiln monitor run with its name refuses, and says why.
+// says why. It notifies when it first refuses that monitor's directory, and again each time the directory changes. kiln
+// status and kiln tui show it refused, with why. kiln monitor run with its name refuses, and says why.
 //
 // kiln monitor add copies a monitor into .kiln/monitors/<name>/, for the developer to commit on main. It takes the
 // name of one kiln ships, such as bugs. One that needs a language's tools sits under its preset's name, such as
@@ -848,7 +849,8 @@ func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
 }
 
 // queueable reads .kiln/specs/<name>.md at main, a spec kiln queue may take. Its Status is Approved, and its form
-// follows the template. Main must hold a kiln.json, a build agent and an audit agent that kiln can use.
+// follows the template. Main must hold a kiln.json, a build agent, a verify agent and an audit agent that kiln can
+// use.
 func (r *Repo) queueable(ctx context.Context, main git.Rev, name Spec) ([]byte, error) {
 	if err := r.ready(ctx, main); err != nil {
 		return nil, err
@@ -1046,12 +1048,13 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 	return nil
 }
 
-// Takes answers the names command would not refuse, for the shell to complete. For queue, accept and reject, they are
-// specs, and for accept and reject, waiting fixes too. For tui, they are the specs kiln holds or its ledger holds. For
-// "monitor run" and "monitor show", they are the monitors kiln reads at main's tip. While kiln refuses one there, they
-// are none. For "monitor add", they are the monitors kiln ships that fit the preset .kiln/init.json records, as
-// ShippedMonitors says. Each whose directory the checkout holds already is left out. For doctor, they are the specs the
-// working tree holds, each by a name a spec may have. Other commands take none.
+// Takes answers the names command takes, for the shell to complete. For queue, accept and reject, they are specs, and
+// for accept and reject, waiting fixes too. For tui, they are the specs kiln holds or its ledger holds. For "monitor
+// run" and "monitor show", they are the monitors at main's tip, refused or not. kiln monitor run then says why it
+// refuses one. While kiln refuses kiln.json there, they are none. For "monitor add", they are the monitors kiln ships
+// that fit the preset .kiln/init.json records, as ShippedMonitors says. Each whose directory the checkout holds already
+// is left out. For doctor, they are the specs the working tree holds, each by a name a spec may have. Other commands
+// take none.
 func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	switch command {
 	case "tui":
@@ -1180,9 +1183,9 @@ func (r *Repo) mayQueue(ctx context.Context, b book, main git.Rev, name Spec) er
 	return b.may(queueCommand, name, r.changed(ctx, name, spec))
 }
 
-// Status shows each spec kiln holds, and where it stands, but no monitor's fix. Then it shows each gauge at main's
-// tip, with its latest reading. It shows each monitor main's tip holds, and where it stands. Last, it says when .kiln/
-// at main's tip lacks kiln init's record, or is behind what kiln init writes.
+// Status shows each spec kiln holds, and where it stands, but no monitor's fix. Then it shows each gauge at main's tip,
+// with its latest reading. It shows each monitor main's tip holds, and where it stands, unless kiln refuses kiln.json
+// there. Last, it says when .kiln/ at main's tip lacks kiln init's record, or is behind what kiln init writes.
 func (r *Repo) Status(ctx context.Context, out io.Writer) error {
 	main, err := r.mainTip(ctx)
 	if err != nil {

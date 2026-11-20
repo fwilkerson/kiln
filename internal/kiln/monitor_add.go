@@ -141,7 +141,8 @@ func dirByPath(name string) string {
 }
 
 // ShippedMonitors prints each monitor kiln ships, one a line, with the preset it fits. One that sits under a preset's
-// name, such as go/docs, fits that preset alone. Each line names the preset .kiln/init.json records, where it differs.
+// name, such as go/docs, fits that preset alone. Its line also names the preset .kiln/init.json records, when kiln
+// ships that preset.
 func (r *Repo) ShippedMonitors(out io.Writer) error {
 	rec, err := r.lastInit()
 	if err != nil {

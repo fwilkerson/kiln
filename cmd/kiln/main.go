@@ -40,9 +40,9 @@
 //	kiln complete [<command>]                         _kiln, the zsh completion, runs it
 //
 // kiln complete lists kiln's commands, one per line. With a command, it lists the names that command would not refuse.
-// For accept and reject, those include the waiting fixes. For monitor run and monitor show, they are the monitors. For
-// monitor add, they are the monitors kiln ships that fit the preset .kiln/init.json records. For help, they are the
-// topics of kiln's docs.
+// For accept and reject, those include the waiting fixes. For monitor run and monitor show, they are every monitor,
+// refused ones too, so monitor run can say why. For monitor add, they are the monitors kiln ships that fit the preset
+// .kiln/init.json records. For help, they are the topics of kiln's docs.
 //
 // kiln exits 0 when the command did what it says, and 1 when it refused or failed. kiln help prints the usage to
 // stdout. A usage error exits 2, and prints the usage to stderr under a line that names the mistake. A kiln hook

@@ -31,8 +31,9 @@ import (
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
 //	gauge     after a landing, one per gauge: its name, the landed commit, its value or none, and its line and side
 //	monitor   when kiln monitor run runs a monitor: its name, main's tip, git's ID of its directory, a hash of what
-//	          its check or gauge printed, and what it found: healthy, couldn't run, held, or a fix, which names its
-//	          build. A monitor with a gauge adds the gauge's name, its reading of the whole repository, and its line
+//	          its check or gauge printed, and what it found: healthy, couldn't run, refused, held, or a fix, which
+//	          names its build. A monitor with a gauge adds the gauge's name, its reading of the whole repository, and
+//	          its line
 //
 // A fix's build writes a build's lines, under its monitor's name, and its build line names the monitor. It ends
 // landed, stopped, waits on its branch, needs you, session failed, or usage limit. Or it ends couldn't run, unchanged,
