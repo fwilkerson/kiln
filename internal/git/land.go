@@ -145,18 +145,26 @@ func (g *Git) Tip(ctx context.Context, branch Branch) (Rev, error) {
 }
 
 func (g *Git) tip(ctx context.Context, ref string) (Rev, error) {
-	out, err := g.in(ctx, g.repo, "for-each-ref", "--format=%(refname)%00%(objectname)", ref)
+	tips, err := g.tips(ctx, ref)
+	return tips[ref], err
+}
+
+// tips maps each of refs that is there to the commit it points to, in one git. A ref git matches only by its prefix
+// is not there.
+func (g *Git) tips(ctx context.Context, refs ...string) (map[string]Rev, error) {
+	out, err := g.in(ctx, g.repo, append([]string{"for-each-ref", "--format=%(refname)%00%(objectname)"}, refs...)...)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
+	tips := map[string]Rev{}
 	for line := range strings.Lines(out) {
-		if name, hash, _ := strings.Cut(strings.TrimSuffix(line, "\n"), "\x00"); name == ref {
-			return Rev(hash), nil
+		if name, hash, _ := strings.Cut(strings.TrimSuffix(line, "\n"), "\x00"); slices.Contains(refs, name) {
+			tips[name] = Rev(hash)
 		}
 	}
 
-	return "", nil
+	return tips, nil
 }
 
 // moved is the check that a move did what it was asked. A fast-forward to a commit the tip already holds exits 0, and
@@ -311,54 +319,62 @@ func overlap(a, b string) bool {
 	return a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
 }
 
-// Remove removes the worktree at path, if it is there, and then branch, if it is not "". It refuses a path that holds
-// the main checkout, or a directory that is not a worktree.
-func (g *Git) Remove(ctx context.Context, path Worktree, branch Branch) error {
+// Remove removes each worktree or clone at paths that is there, then each of branches that is there. It refuses a
+// path that holds the main checkout, or a directory that is not a worktree. It tries each path, and removes no branch
+// once one fails.
+func (g *Git) Remove(ctx context.Context, paths []Worktree, branches ...Branch) error {
 	unlock, err := g.lockWorktrees(ctx)
 	if err != nil {
 		return err
 	}
 
 	defer unlock()
-	path = g.at(path)
-	if err := g.removeTree(ctx, path); err != nil {
-		return err
+	r := &removal{g: g}
+	for _, path := range paths {
+		err = errors.Join(err, r.tree(ctx, g.at(path)))
 	}
 
-	if branch == "" {
-		return nil
-	}
-
-	tip, err := g.Tip(ctx, branch)
-	if err != nil || tip == "" {
-		return err
-	}
-
-	_, err = g.in(ctx, g.repo, "branch", "--quiet", "-D", string(branch))
-	return err
-}
-
-func (g *Git) removeTree(ctx context.Context, path Worktree) error {
-	there, err := os.Stat(string(path))
-	if errors.Is(err, fs.ErrNotExist) {
-		return g.prune(ctx)
+	if r.prune {
+		err = errors.Join(err, g.prune(ctx))
 	}
 
 	if err != nil {
 		return err
 	}
 
-	if err := g.holdsMain(path); err != nil {
+	return g.deleteBranches(ctx, branches)
+}
+
+// removal is one Remove under the worktrees lock. It lists the worktrees once: removing one changes whether git lists
+// no other. prune says a path was gone, or removed by hand, so git still lists it until a prune.
+type removal struct {
+	g     *Git
+	list  []listing
+	prune bool
+}
+
+func (r *removal) tree(ctx context.Context, path Worktree) error {
+	there, err := os.Stat(string(path))
+	if errors.Is(err, fs.ErrNotExist) {
+		r.prune = true
+		return nil
+	}
+
+	if err != nil {
 		return err
 	}
 
-	listed, err := g.listed(ctx, there)
+	if err := r.g.holdsMain(path); err != nil {
+		return err
+	}
+
+	listed, err := r.listed(ctx, there)
 	if err != nil {
 		return err
 	}
 
 	if listed {
-		_, err := g.in(ctx, g.repo, "worktree", "remove", "--force", string(path))
+		_, err := r.g.in(ctx, r.g.repo, "worktree", "remove", "--force", string(path))
 		return err
 	}
 
@@ -370,7 +386,35 @@ func (g *Git) removeTree(ctx context.Context, path Worktree) error {
 		return err
 	}
 
-	return g.prune(ctx)
+	r.prune = true
+	return nil
+}
+
+// deleteBranches deletes each of branches that is there, with one git to find them and one to delete them.
+func (g *Git) deleteBranches(ctx context.Context, branches []Branch) error {
+	if len(branches) == 0 {
+		return nil
+	}
+
+	refs := make([]string, len(branches))
+	for i, b := range branches {
+		refs[i] = b.ref()
+	}
+
+	tips, err := g.tips(ctx, refs...)
+	there := []string{"branch", "--quiet", "-D"}
+	for _, b := range branches {
+		if tips[b.ref()] != "" {
+			there = append(there, string(b))
+		}
+	}
+
+	if err != nil || len(there) == 3 {
+		return err
+	}
+
+	_, err = g.in(ctx, g.repo, there...)
+	return err
 }
 
 func (g *Git) prune(ctx context.Context) error {
@@ -388,13 +432,17 @@ func (g *Git) holdsMain(path Worktree) error {
 }
 
 // listed says whether git lists the worktree whose directory is there.
-func (g *Git) listed(ctx context.Context, there os.FileInfo) (bool, error) {
-	list, err := g.worktreeList(ctx)
-	if err != nil {
-		return false, err
+func (r *removal) listed(ctx context.Context, there os.FileInfo) (bool, error) {
+	if r.list == nil {
+		list, err := r.g.worktreeList(ctx)
+		if err != nil {
+			return false, err
+		}
+
+		r.list = list
 	}
 
-	return slices.ContainsFunc(list, func(w listing) bool {
+	return slices.ContainsFunc(r.list, func(w listing) bool {
 		info, err := os.Stat(string(w.path))
 		return err == nil && os.SameFile(there, info)
 	}), nil

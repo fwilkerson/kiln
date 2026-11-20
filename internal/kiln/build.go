@@ -531,7 +531,7 @@ func (b *build) start(ctx context.Context) error {
 	}
 
 	// A branch an earlier build of the spec left would hold work from a spec as it was approved before.
-	if err := b.r.git.Remove(ctx, b.tree, b.rec.Name.branch()); err != nil {
+	if err := b.r.git.Remove(ctx, []git.Worktree{b.tree}, b.rec.Name.branch()); err != nil {
 		return err
 	}
 

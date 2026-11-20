@@ -53,7 +53,7 @@ func (b *build) audit(ctx context.Context) (string, error) {
 	findings, err := b.auditTries(ctx, l, head)
 	// recount reads the worktree of an audit kiln stopped, so it stays until then.
 	if ctx.Err() == nil {
-		err = errors.Join(err, b.r.git.Remove(ctx, git.Worktree(l.Dir), ""))
+		err = errors.Join(err, b.r.git.Remove(ctx, []git.Worktree{git.Worktree(l.Dir)}))
 	}
 
 	return findings, err

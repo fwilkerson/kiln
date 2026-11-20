@@ -65,7 +65,7 @@ func install(ctx context.Context) error {
 	}
 
 	err = build(ctx, tree, tip)
-	return errors.Join(err, g.Remove(ctx, git.Worktree(tree), ""))
+	return errors.Join(err, g.Remove(ctx, []git.Worktree{git.Worktree(tree)}))
 }
 
 // build installs kiln and its completion from the checkout at tree, of the commit tip.

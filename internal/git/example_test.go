@@ -36,7 +36,7 @@ func Example() {
 	fmt.Println("moved:", way == nil)
 	stale := must(g.Move(ctx, "main", landed, onto))
 	fmt.Println("refused, since main is no longer at onto:", stale.Tip == landed)
-	check(g.Remove(ctx, tree, "kiln/x"))
+	check(g.Remove(ctx, []git.Worktree{tree}, "kiln/x"))
 	// Output:
 	// conflict: <nil>
 	// landed: [x.go]

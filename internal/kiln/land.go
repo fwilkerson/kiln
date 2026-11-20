@@ -239,7 +239,7 @@ func (b *build) checkoutMain(ctx context.Context) error {
 		return err
 	}
 
-	if err := b.r.git.Remove(ctx, b.tree, b.rec.Name.branch()); err != nil {
+	if err := b.r.git.Remove(ctx, []git.Worktree{b.tree}, b.rec.Name.branch()); err != nil {
 		return err
 	}
 

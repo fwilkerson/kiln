@@ -11,7 +11,7 @@
 //	// way.Tip:   main moved meanwhile, as another landing moves it
 //	// way.Busy:  a rebase, a bisect or another git is busy with main, in that worktree
 //	// way.Files: the developer's files that moving main would overwrite
-//	err = g.Remove(ctx, tree, "kiln/x")
+//	err = g.Remove(ctx, []git.Worktree{tree}, "kiln/x")
 //
 // A conflict and a refused move are answers, not errors. An error names the git command that failed and what it
 // printed. A branch is named by its short name, as refs/heads/ holds it. A relative path is the main checkout's.

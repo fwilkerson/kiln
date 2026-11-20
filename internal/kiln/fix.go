@@ -118,7 +118,7 @@ func (r *Repo) startFix(ctx context.Context, out io.Writer, f *fixing, line entr
 // fixWork runs the fix: the command first, then the agent when the command left the gate failing.
 func (b *build) fixWork(ctx context.Context) error {
 	name := b.rec.Name
-	if err := b.r.git.Remove(ctx, b.tree, name.branch()); err != nil {
+	if err := b.r.git.Remove(ctx, []git.Worktree{b.tree}, name.branch()); err != nil {
 		return err
 	}
 

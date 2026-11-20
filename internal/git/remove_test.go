@@ -42,7 +42,11 @@ func TestRemove(t *testing.T) {
 
 // remove calls Remove on path and branch, which may be "".
 func remove(t *testing.T, g *git.Git, path git.Worktree, branch git.Branch) error {
-	return g.Remove(t.Context(), path, branch)
+	if branch == "" {
+		return g.Remove(t.Context(), []git.Worktree{path})
+	}
+
+	return g.Remove(t.Context(), []git.Worktree{path}, branch)
 }
 
 // left says what a Remove that answered err left: path, the worktrees git lists, and the branches.
