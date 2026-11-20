@@ -51,7 +51,7 @@ Triage the service's errors.
 
 Fix the error, or ask for the developer.
 -- .kiln/monitors/errors/monitor.json --
-{"every": "1h", "gates": false}
+{"hours": 1, "gates": false}
 -- _given/finding --
 error: card declined by the payment provider
 -- _given/finding-2 --

@@ -49,7 +49,7 @@ fi
 echo ran >>"$WORK/_given/command.log"
 echo tried >>state.txt
 -- .kiln/monitors/bump/monitor.json --
-{"every": "1h"}
+{"hours": 1}
 -- state.txt --
 stale
 -- _given/command.log --

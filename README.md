@@ -155,7 +155,7 @@ owns once added:
 .kiln/monitors/bugs/
   check          a script whose last line of output says whether a fix is due
   agent.md       the agent that fixes what the check found
-  monitor.json   how often it runs, {"every": "1h"}, and what its fix may do
+  monitor.json   how often it runs, {"hours": 1}, and what its fix may do
 ```
 
 A check is any script whose last line of output says whether a fix is due:

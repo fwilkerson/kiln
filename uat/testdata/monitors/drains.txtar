@@ -31,7 +31,7 @@ echo "{\"fix\": true, \"summary\": \"$n in queue/\", \"drain\": true}"
 -- .kiln/monitors/queue/command --
 rm "$(ls queue/* | head -n 1)"
 -- .kiln/monitors/queue/monitor.json --
-{"every": "1h", "gates": false}
+{"hours": 1, "gates": false}
 -- queue/a --
 a
 -- queue/b --

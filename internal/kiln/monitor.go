@@ -57,8 +57,8 @@ type monitor struct {
 
 // settings are a monitor's monitor.json. Each key may be left out.
 type settings struct {
-	// Every is how often the monitor runs, a Go duration in whole hours, at least 1h. It is 24h when unset.
-	Every string `json:"every"`
+	// Hours is how often the monitor runs, in whole hours. 0 runs it at each kiln monitor run.
+	Hours uint16 `json:"hours"`
 	// Gates says whether the check or the gauge joins the fix's gate. It is true when unset.
 	Gates *bool `json:"gates"`
 	// Accept says whether a fix waits on its branch for kiln accept.
@@ -69,17 +69,12 @@ type settings struct {
 	gaugeLine
 }
 
-// everyDay is how often a monitor runs when its monitor.json names no interval.
-const everyDay = 24 * time.Hour
+// defaultHours is the hours of a monitor whose monitor.json names none, or which holds no monitor.json.
+const defaultHours = 24
 
 // interval is how often m runs.
 func (m monitor) interval() time.Duration {
-	if m.Every == "" {
-		return everyDay
-	}
-
-	d, _ := time.ParseDuration(m.Every)
-	return d
+	return time.Duration(m.Hours) * time.Hour
 }
 
 // gated is whether m's check or gauge joins its fix's gate.
@@ -187,7 +182,7 @@ func (r *Repo) readDir(ctx context.Context, at git.Rev, c config, d monitorDir) 
 // readMonitor reads the monitor name from the files its directory holds, and from raw, its monitor.json or nil. c is
 // kiln.json. It refuses a monitor kiln could not run, as the package doc lists.
 func (c config) readMonitor(name Spec, files []string, raw []byte) (monitor, error) {
-	m := monitor{Name: name, command: slices.Contains(files, commandScript),
+	m := monitor{Name: name, Hours: defaultHours, command: slices.Contains(files, commandScript),
 		agent: slices.Contains(files, monitorAgent)}
 	if raw != nil {
 		dec := json.NewDecoder(bytes.NewReader(raw))
@@ -223,8 +218,6 @@ func (c config) monitorRefusal(m monitor, files []string) string {
 	case stray != "":
 		return fmt.Sprintf("holds %s, a file kiln does not read: a monitor's own files are %s, and a helper goes in "+
 			"a subdirectory, such as lib/", stray, strings.Join(roleFiles, ", "))
-	case m.Every != "" && !wholeHours(m.Every):
-		return "runs every interval that is not whole hours, at least 1h, such as \"24h\""
 	case slices.Contains(files, checkScript) && slices.Contains(files, gaugeScript):
 		return "holds both a check and a gauge, where it may hold one"
 	case m.finder == gaugeScript && m.sides() != 1:
@@ -249,12 +242,6 @@ func strayFile(files []string) string {
 	}
 
 	return ""
-}
-
-// wholeHours is whether every is a Go duration in whole hours, at least 1h.
-func wholeHours(every string) bool {
-	d, err := time.ParseDuration(every)
-	return err == nil && d >= time.Hour && d%time.Hour == 0
 }
 
 // monitorNamed is the monitor of monitors named name.

@@ -52,5 +52,5 @@ stdout '^the docs, brought up to date$'
 -- .kiln/monitors/docs/command --
 echo 'the docs, brought up to date' >docs.txt
 -- .kiln/monitors/docs/monitor.json --
-{"every": "168h", "accept": true}
+{"hours": 168, "accept": true}
 -- _given/main-before --

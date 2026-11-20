@@ -164,17 +164,17 @@ project owns it from then on. `go doc ./internal/kiln` says what `kiln monitor a
   gauge          in place of check: a gauge named for the monitor, whose reading past its line asks for a fix
   command        a fix that needs no model, run outside the sandbox
   agent.md       an agent's file, run when command left the gate failing, or is absent
-  monitor.json   the keys below, each optional: {"every": "1h", "tests": true}
+  monitor.json   the keys below, each optional: {"hours": 1, "tests": true}
 ```
 
-| Key      | What it holds                                                                        |
-|----------|--------------------------------------------------------------------------------------|
-| `every`  | How often it runs: a Go duration in whole hours, at least `1h`. Without it, `24h`. |
-| `gates`  | `false` keeps the check or gauge out of the fix's gate.                              |
-| `accept` | `true` keeps each fix on its branch until `kiln accept <name>`.                      |
-| `tests`  | `true` lets a fix write under each `acceptance` path's part before `{spec}`.         |
-| `min`    | Beside a gauge, its line: `min` or `max`, never both, as a gauge in `kiln.json` has. |
-| `max`    |                                                                                      |
+| Key      | What it holds                                                                          |
+|----------|----------------------------------------------------------------------------------------|
+| `hours`  | How often it runs, in whole hours from 0 to 65535. Without it, 24. 0 runs it each run. |
+| `gates`  | `false` keeps the check or gauge out of the fix's gate.                                |
+| `accept` | `true` keeps each fix on its branch until `kiln accept <name>`.                        |
+| `tests`  | `true` lets a fix write under each `acceptance` path's part before `{spec}`.           |
+| `min`    | Beside a gauge, its line: `min` or `max`, never both, as a gauge in `kiln.json` has.   |
+| `max`    |                                                                                        |
 
 ```text
 kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ─────────────────────────▶ healthy

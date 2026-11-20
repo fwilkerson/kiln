@@ -186,15 +186,15 @@
 //	  gauge          finds a problem by a number in place of a check: the monitor's gauge, with min or max its line
 //	  command        fixes it with no model, outside the sandbox
 //	  agent.md       fixes it in a session, from an agent's file, as Agents says
-//	  monitor.json   {"every": "1h", "gates": false, "accept": true, "tests": true, "min": 80}
+//	  monitor.json   {"hours": 1, "gates": false, "accept": true, "tests": true, "min": 80}
 //
-// A helper a script runs goes in a subdirectory, such as lib/. Its interval is every, or 24h when unset. kiln refuses a
-// file directly under .kiln/monitors/, and a monitor whose name no spec could have. It refuses a file directly in a
-// monitor's directory that is none of the five above. It refuses an interval under an hour, or not in whole hours, and
-// a key it does not know. It refuses a check beside a gauge, a gauge with no line, and a line with no gauge. It refuses
-// a monitor with no command and no agent.md. It refuses a monitor that may not write the tests while kiln cannot guard
-// them. acceptance then names no path, or one with no part before {spec}. It refuses a gauge whose monitor's name a
-// gauge in kiln.json has.
+// A helper a script runs goes in a subdirectory, such as lib/. Its interval is hours, a whole number from 0 to 65535,
+// or 24 when unset. 0 runs it at each kiln monitor run. kiln refuses a file directly under .kiln/monitors/, and a
+// monitor whose name no spec could have. It refuses a file directly in a monitor's directory that is none of the five
+// above. It refuses a key it does not know, and a value of the wrong type. It refuses a check beside a gauge, a gauge
+// with no line, and a line with no gauge. It refuses a monitor with no command and no agent.md. It refuses a monitor
+// that may not write the tests while kiln cannot guard them. acceptance then names no path, or one with no part before
+// {spec}. It refuses a gauge whose monitor's name a gauge in kiln.json has.
 //
 // One kiln monitor run:
 //

@@ -1018,7 +1018,7 @@ func TestLandedBefore(t *testing.T) {
 func landedThenKilled(t *testing.T, monitor bool) (*build, git.Rev) {
 	t.Setenv(openVar, "true")
 	b, repo, _ := landingBuild(t)
-	writeMonitor(t, repo, "x", map[string]string{"command": "true", "monitor.json": `{"every": "1h", "tests": true}`})
+	writeMonitor(t, repo, "x", map[string]string{"command": "true", "monitor.json": `{"hours": 1, "tests": true}`})
 	shell(t, repo, "git add . && git commit --quiet -m monitor")
 	b.rec = record{Name: "x", State: building, Accepted: true, Monitor: monitor, Build: "b",
 		Approved: git.Rev(shell(t, repo, "git rev-parse HEAD"))}

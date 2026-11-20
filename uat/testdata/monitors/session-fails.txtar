@@ -28,7 +28,7 @@ Keep the docs true to the code.
 
 Compare the docs with the code.
 -- .kiln/monitors/drift/monitor.json --
-{"every": "1h"}
+{"hours": 1}
 -- claude.json --
 {
  "fix": {

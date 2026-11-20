@@ -15,7 +15,7 @@ import (
 // source is a monitor kiln ships, by name, or a directory, by a path.
 func TestMonitorAdd(t *testing.T) {
 	team := t.TempDir()
-	writeAll(t, team, map[string]string{"deps/command": "go get -u ./...", "deps/monitor.json": `{"every": "168h"}`,
+	writeAll(t, team, map[string]string{"deps/command": "go get -u ./...", "deps/monitor.json": `{"hours": 168}`,
 		"deps/notes/why.md": "Why deps.", "broken/check": "true"})
 	for name, tc := range map[string]struct {
 		source         string

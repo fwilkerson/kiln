@@ -25,16 +25,18 @@ func TestMonitorConfig(t *testing.T) {
 	}{
 		"a command alone":              {files: "command"},
 		"an agent alone":               {files: "agent.md"},
-		"a check, a command and keys":  {files: "check command", settings: `{"every": "1h", "gates": false, "accept": true}`},
+		"a check, a command and keys":  {files: "check command", settings: `{"hours": 1, "gates": false, "accept": true}`},
 		"a gauge and its line":         {files: "gauge agent.md", settings: `{"min": 10}`},
 		"a gauge out of the gate":      {files: "gauge agent.md", settings: `{"max": 0, "gates": false}`},
 		"a helper in a subdirectory":   {files: "check agent.md lib/lost lib/notes/why.md"},
 		"a file kiln does not read":    {files: "command README.md", refused: true},
 		"chek beside agent.md":         {files: "chek agent.md", refused: true},
 		"a name no spec could have":    {name: "Deps", files: "command", refused: true},
-		"under an hour":                {files: "command", settings: `{"every": "30m"}`, refused: true},
-		"not whole hours":              {files: "command", settings: `{"every": "90m"}`, refused: true},
-		"no duration":                  {files: "command", settings: `{"every": "daily"}`, refused: true},
+		"half an hour":                 {files: "command", settings: `{"hours": 0.5}`, refused: true},
+		"a negative interval":          {files: "command", settings: `{"hours": -1}`, refused: true},
+		"a word for an interval":       {files: "command", settings: `{"hours": "daily"}`, refused: true},
+		"over the decoder's limit":     {files: "command", settings: `{"hours": 65536}`, refused: true},
+		"the old key, every":           {files: "command", settings: `{"every": "24h"}`, refused: true},
 		"a key kiln does not know":     {files: "check command", settings: `{"drain": true}`, refused: true},
 		"a check alone":                {files: "check", refused: true},
 		"a check and a gauge":          {files: "check gauge agent.md", settings: `{"min": 10}`, refused: true},
@@ -68,13 +70,13 @@ func TestMonitorConfig(t *testing.T) {
 	}
 }
 
-// TestMonitorDirs holds that kiln reads each directory under .kiln/monitors/ at a commit as a monitor, by name. A
-// file directly there is refused, since a monitor is a directory.
+// TestMonitorDirs holds that kiln reads each directory under .kiln/monitors/ at a commit as a monitor, by name. One
+// with no monitor.json runs daily. A file directly under .kiln/monitors/ is refused, since a monitor is a directory.
 func TestMonitorDirs(t *testing.T) {
 	r, repo := scratchRepo(t)
 	shell(t, repo, `mkdir .kiln && echo '{"gate": ["true"], "acceptance": "uat/{spec}/"}' >.kiln/kiln.json`)
 	writeMonitor(t, repo, "b", map[string]string{"command": "true"})
-	writeMonitor(t, repo, "a", map[string]string{"check": "true", "agent.md": "Fix it.", "monitor.json": `{"every": "1h"}`,
+	writeMonitor(t, repo, "a", map[string]string{"check": "true", "agent.md": "Fix it.", "monitor.json": `{"hours": 1}`,
 		"notes/lost": "true"})
 	shell(t, repo, "git add . && git commit --quiet -m start")
 	_, monitors, err := r.monitors(t.Context(), "main")
@@ -82,9 +84,13 @@ func TestMonitorDirs(t *testing.T) {
 		t.Fatalf("main holds monitors %v, %v; want a and b", monitors, err)
 	}
 
-	a := monitors[0]
+	a, b := monitors[0], monitors[1]
 	if !claim.Holds(a.Name == "a", a.finder == checkScript, a.agent, a.interval() == time.Hour, a.tree != "") {
 		t.Errorf("a reads as %+v, want a check, an agent, every hour, and its directory's ID", a)
+	}
+
+	if b.interval() != 24*time.Hour {
+		t.Errorf("b, with no monitor.json, runs every %v, want every 24h", b.interval())
 	}
 
 	shell(t, repo, "echo true >.kiln/monitors/stray && git add . && git commit --quiet -m stray")
@@ -115,11 +121,10 @@ func writeAll(t *testing.T, dir string, files map[string]string) {
 }
 
 // TestDue holds when a monitor is due. It is when it never ran, its check couldn't run, or a usage limit ended its
-// fix. It is when its fix was cut short. Otherwise it is due once its interval, less half an hour, has passed. A
-// monitor.json that names no interval runs daily.
+// fix. It is when its fix was cut short. Otherwise it is due once its interval, less half an hour, has passed.
 func TestDue(t *testing.T) {
 	ran := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
-	daily := monitor{Name: "deps"}
+	daily := monitor{Name: "deps", Hours: defaultHours}
 	for name, tc := range map[string]struct {
 		found, outcome string
 		later          time.Duration
