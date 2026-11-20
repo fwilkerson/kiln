@@ -1,0 +1,124 @@
+package kiln
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// TestInitUpdates holds how a second kiln init brings .kiln/ up to date with a newer kiln's defaults. ship changes
+// the preset, as a newer kiln would, and edit changes .kiln/, as the developer would. The second run names no preset,
+// so it takes the one .kiln/init.json records.
+func TestInitUpdates(t *testing.T) {
+	const build = ".kiln/agents/build.md"
+	newCheck := "printf -- '- Run make check.\\n' >build-checks.md"
+	tests := []struct {
+		name, ship, edit string
+		said             string   // a line kiln init prints
+		holds            []string // what build.md holds after
+		lacks            []string
+	}{
+		{name: "an unchanged file takes the new default", ship: newCheck,
+			said: "updated " + build, holds: []string{"- Run make check.\n"}, lacks: []string{"go vet"}},
+		{name: "an edited file keeps the edit, and takes the new default", ship: newCheck,
+			edit: "sed -i '' 's/^You build one spec: /You build one spec, by house rules: /' " + build,
+			said: "merged " + build + "\n", holds: []string{"by house rules", "- Run make check.\n"},
+			lacks: []string{"go vet", "<<<<<<<"}},
+		{name: "an edit kiln's change touches is a conflict", ship: newCheck,
+			edit:  "sed -i '' 's/with .gofmt./with gofumpt/' " + build,
+			said:  "merged " + build + ", with conflicts: resolve them before you commit it",
+			holds: []string{"<<<<<<< " + build + "\n", "gofumpt", "- Run make check.\n", ">>>>>>> kiln init's new default"}},
+		{name: "with no record, each difference is a conflict",
+			edit: "echo 'House rule.' >>" + build + " && rm .kiln/init.json",
+			said: "merged " + build + ", with conflicts", holds: []string{"<<<<<<< " + build + "\nHouse rule.\n"}},
+		{name: "a deleted default is written again, and kiln.json is the project's",
+			ship: "echo '{\"gate\": [\"make\"], \"acceptance\": \"a/{spec}/\"}' >kiln.json",
+			edit: "rm " + build, said: "wrote " + build, holds: []string{"go vet"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, repo := scratchRepo(t)
+			team := teamPreset(t, t.TempDir())
+			if err := r.Init(t.Context(), new(strings.Builder), InitOptions{Preset: team}); err != nil {
+				t.Fatal(err)
+			}
+
+			config := shell(t, repo, "cat .kiln/kiln.json")
+			shell(t, team, cmpOr(tt.ship, "true"))
+			shell(t, repo, cmpOr(tt.edit, "true"))
+			var out strings.Builder
+			if err := r.Init(t.Context(), &out, InitOptions{}); err != nil {
+				t.Fatal(err)
+			}
+
+			if !strings.Contains(out.String(), tt.said) || shell(t, repo, "cat .kiln/kiln.json") != config {
+				t.Errorf("kiln init said:\n%s\nwant a line %q, and kiln.json kept", out.String(), tt.said)
+			}
+
+			wantHolds(t, shell(t, repo, "cat "+build)+"\n", tt.holds, tt.lacks)
+		})
+	}
+}
+
+// wantHolds holds that got holds each of holds, and none of lacks.
+func wantHolds(t *testing.T, got string, holds, lacks []string) {
+	t.Helper()
+	for _, want := range holds {
+		if !strings.Contains(got, want) {
+			t.Errorf("build.md lacks %q:\n%s", want, got)
+		}
+	}
+
+	for _, unwanted := range lacks {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("build.md holds %q:\n%s", unwanted, got)
+		}
+	}
+}
+
+// TestStatusSaysInitBehind holds that kiln status says when .kiln/ at main's tip is behind kiln init's defaults. It
+// says when main lacks kiln init's record, and says nothing while .kiln/ is up to date. A record may name a directory.
+func TestStatusSaysInitBehind(t *testing.T) {
+	r, repo := scratchRepo(t)
+	team := teamPreset(t, filepath.Join(repo, "team"))
+	if err := r.Init(t.Context(), new(strings.Builder), InitOptions{Preset: team}); err != nil {
+		t.Fatal(err)
+	}
+
+	commit := " && git add -A && git commit --quiet --no-verify -m x"
+	for _, step := range []struct{ change, want string }{
+		{"true", ""},
+		{"echo '- Run make check.' >team/build-checks.md",
+			".kiln/ is behind the defaults of kiln init's preset ./team: run kiln init, which merges them with your " +
+				"edits\n"},
+		{"git rm --quiet .kiln/init.json", ".kiln/ holds no record of what kiln init wrote: run kiln init, which " +
+			"leaves each difference from its defaults as a conflict\n"},
+	} {
+		shell(t, repo, step.change+commit)
+		var out strings.Builder
+		if err := r.Status(t.Context(), &out); err != nil {
+			t.Fatal(err)
+		}
+
+		if got, _ := strings.CutPrefix(out.String(), "kiln holds no approved spec\n"); got != step.want {
+			t.Errorf("after %s, kiln status said:\n%s\nwant:\n%s", step.change, out.String(), step.want)
+		}
+	}
+}
+
+// teamPreset copies Go's preset into dir, as a team keeps a preset of its own, and answers dir.
+func teamPreset(t *testing.T, dir string) string {
+	t.Helper()
+	p, err := presetNamed("go", "")
+	if err == nil {
+		err = os.CopyFS(dir, p.files)
+	}
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return dir
+}

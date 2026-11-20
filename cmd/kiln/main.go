@@ -1,8 +1,8 @@
 // Command kiln builds the specs a developer approved, with headless Claude Code sessions, and lands them on main.
 //
-//	kiln init [--preset go|python]
-//	                         write a preset of kiln's defaults into .kiln/, Go's by default, and install the
-//	                         pre-commit hook
+//	kiln init [--preset go|python|<dir>]
+//	                         write a preset of kiln's defaults into .kiln/, Go's by default, or merge a newer
+//	                         kiln's into yours; and install the pre-commit hook
 //	kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 //	kiln fire                build each queued spec, one at a time, until none is queued
 //	kiln status              show where each spec stands, and each gauge's latest reading
@@ -52,9 +52,9 @@ import (
 )
 
 const usage = `usage:
-  kiln init [--preset go|python]
-                           write a preset of kiln's defaults into .kiln/, Go's by default, and install the
-                           pre-commit hook
+  kiln init [--preset go|python|<dir>]
+                           write a preset of kiln's defaults into .kiln/, Go's by default, or merge a newer
+                           kiln's into yours; and install the pre-commit hook
   kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
   kiln fire                build each queued spec, one at a time, until none is queued
   kiln status              show where each spec stands, and each gauge's latest reading
@@ -197,11 +197,11 @@ func noArgs(do func(*kiln.Repo, context.Context, io.Writer) error) repoCommand {
 	}
 }
 
-// initRepo is kiln init, which takes the preset's name in --preset, and no other argument.
+// initRepo is kiln init, which takes the preset's name or directory in --preset, and no other argument.
 func initRepo(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	preset := flags.String("preset", "", "the preset to write: go or python")
+	preset := flags.String("preset", "", "the preset to write: go, python, or a directory laid out as one")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		return usageError("takes only --preset <name>")
 	}

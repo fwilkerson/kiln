@@ -49,8 +49,9 @@
 //
 // # Files
 //
-// A project tells kiln how its builds run in .kiln/, on main. kiln init starts it from a preset, go or python. A
-// preset is kiln.json and the "Tailor this" sections of the build, verify and audit agents:
+// A project tells kiln how its builds run in .kiln/, on main. kiln init starts it from a preset: go, python, or a
+// directory laid out as one. A preset is kiln.json and the "Tailor this" sections of the build, verify and audit
+// agents. Run again, kiln init brings .kiln/ up to date with the kiln that runs it, as Init says:
 //
 //	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
 //	                            the MCP servers a session calls, the gauges, the workflow, where the acceptance
@@ -61,6 +62,7 @@
 //	.kiln/agents/verify.md      how the acceptance tests are written, and a split build's verify agent
 //	.kiln/agents/audit.md       the audit
 //	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
+//	.kiln/init.json             what kiln init last wrote, and its preset, which its next run merges the edits against
 //
 // kiln keeps its own files out of the working tree. Main is the branch named main:
 //
@@ -880,9 +882,11 @@ func (r *Repo) mayQueue(ctx context.Context, b book, main git.Rev, name Spec) er
 }
 
 // Status shows each spec kiln holds, and where it stands, but no monitor's fix. Then it shows each gauge kiln.json
-// names at main's tip, with its latest reading. Last, it shows each monitor kiln.json names, and where it stands.
+// names at main's tip, with its latest reading. It shows each monitor kiln.json names, and where it stands. Last, it
+// says when .kiln/ at main's tip lacks kiln init's record, or is behind what kiln init writes.
 func (r *Repo) Status(ctx context.Context, out io.Writer) error {
-	if _, err := r.mainTip(ctx); err != nil {
+	main, err := r.mainTip(ctx)
+	if err != nil {
 		return err
 	}
 
@@ -904,7 +908,11 @@ func (r *Repo) Status(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	return r.monitorStatus(ctx, out)
+	if err := r.monitorStatus(ctx, out); err != nil {
+		return err
+	}
+
+	return r.initStatus(ctx, main, out)
 }
 
 // status shows where the spec of r stands, as kiln status does.

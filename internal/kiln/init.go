@@ -11,9 +11,14 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
+	"strings"
+
+	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/kiln/internal/proc"
 )
 
 // defaults are what kiln init writes into .kiln/ for every preset. A preset fills each marker in their prompts, and
@@ -29,26 +34,43 @@ var linked = []string{"skills/shape", "agents/zoom-out.md", "agents/comprehensio
 // initHint is how a refusal says to start .kiln/. It names the preset, since kiln init with none writes Go's.
 const initHint = "run kiln init --preset go or python, as the project is, and commit what it writes"
 
+// initFile is kiln init's record of the defaults it last wrote, which its next run merges the project's edits against.
+const initFile = kilnDir + "/init.json"
+
 // InitOptions are what the developer chose for kiln init.
 type InitOptions struct {
-	// Preset names the preset Init writes, go or python. "" means go, even in a project that started from python.
+	// Preset names the preset Init writes: go, python, or a directory laid out as one. A directory's path holds a
+	// slash, and a relative one is from the working directory. "" means the preset .kiln/init.json names, or go.
 	Preset string
 }
 
-// Init writes kiln's defaults into .kiln/ in the checkout, as opt's preset fills them. It writes each where .kiln/
-// holds no file of its name. To a kiln.json that is there, it adds only rounds, the key every preset shares, if the
-// file lacks it. It links /shape and its reviewers into .claude/, each where .claude/ holds nothing of its name.
-// It says so when the repository has no branch main, which each command that reads main then refuses. It prints
-// kiln.json's gate, the commands the pre-commit hook runs on each commit to main. The hook refuses a commit to main
-// that fails them. Last, Init installs the hook, or says why it installed none, as installHook says. Init refuses a
-// preset it does not know before it writes anything.
+// Init brings .kiln/ in the checkout up to date with kiln's defaults, as opt's preset fills them. It writes each
+// default that .kiln/ lacks. A file the project left as Init last wrote it takes the new default. Into a file the
+// project changed, git merge-file merges the change between the last default and the new one. It leaves each
+// conflict between the usual markers, and names the file. With no record of the last default, each difference from
+// the new one is a conflict. Init changes only the working tree. It records each default it wrote, and the preset, in
+// .kiln/init.json.
+//
+// kiln.json is the project's settings: its gate, and what a session reaches. A merge could change either unread, so
+// Init never merges kiln.json. To one that is there, it adds only rounds, the key every preset shares, if it lacks it.
+//
+// Init links /shape and its reviewers into .claude/, each where .claude/ holds nothing of its name. It says so when
+// the repository has no branch main, which each command that reads main then refuses. It prints kiln.json's gate,
+// the commands the pre-commit hook runs on each commit to main. The hook refuses a commit to main that fails them.
+// Last, Init installs the hook, or says why it installed none, as installHook says. Init refuses a preset it does
+// not know, or cannot read, before it writes anything.
 func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
-	p, err := presetNamed(opt.Preset)
+	last, err := r.lastInit()
 	if err != nil {
 		return err
 	}
 
-	wrote, err := r.writeDefaults(p, out)
+	p, err := r.initPreset(opt.Preset, last.Preset)
+	if err != nil {
+		return err
+	}
+
+	wrote, err := r.writeDefaults(ctx, p, last, out)
 	if err != nil {
 		return err
 	}
@@ -72,6 +94,21 @@ func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	}
 
 	return r.installHook(ctx, out)
+}
+
+// initPreset is the preset kiln init writes: the one named, else the one recorded, else the first built-in. A path
+// named is from the working directory, and a path recorded is from the checkout's top.
+func (r *Repo) initPreset(named, recorded string) (preset, error) {
+	if named == "" {
+		return presetNamed(cmpOr(recorded, builtIns[0]), r.top)
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return preset{}, err
+	}
+
+	return presetNamed(named, wd)
 }
 
 // sayGate prints the gate's commands of the checkout's kiln.json, which the pre-commit hook runs on each commit to
@@ -100,52 +137,224 @@ func (r *Repo) sayGate(out io.Writer, wrote bool) error {
 	return nil
 }
 
-// writeDefaults writes each of p's files that .kiln/ lacks, and adds to kiln.json the shared keys it lacks. It
-// answers whether it wrote anything.
-func (r *Repo) writeDefaults(p preset, out io.Writer) (wrote bool, err error) {
+// initStatus says, in kiln status, when .kiln/ at main's tip is behind the defaults kiln init writes now. Where main
+// holds kiln.json but no record of kiln init, it says so.
+func (r *Repo) initStatus(ctx context.Context, main git.Rev, out io.Writer) error {
+	raw, found, err := r.git.Show(ctx, main, initFile)
+	if err != nil {
+		return err
+	}
+
+	if !found {
+		_, set, err := r.git.Show(ctx, main, configFile)
+		if set {
+			fmt.Fprintf(out, "%s/ holds no record of what kiln init wrote: run kiln init, which leaves each "+
+				"difference from its defaults as a conflict\n", kilnDir)
+		}
+
+		return err
+	}
+
+	from, behind, err := r.behind(raw)
+	switch {
+	case err != nil:
+		fmt.Fprintf(out, "kiln could not tell whether %s/ is up to date: %v\n", kilnDir, err)
+	case behind:
+		fmt.Fprintf(out, "%s/ is behind the defaults of kiln init's preset %s: run kiln init, which merges them "+
+			"with your edits\n", kilnDir, from)
+	}
+
+	return nil
+}
+
+// behind answers whether raw, a record of kiln init, differs from what kiln init would write now. It answers the
+// preset the record names too, with its path from the checkout's top.
+func (r *Repo) behind(raw []byte) (string, bool, error) {
+	last, err := parseInit(raw)
+	if err != nil {
+		return "", false, err
+	}
+
+	from := cmpOr(last.Preset, builtIns[0])
+	p, err := presetNamed(from, r.top)
+	if err != nil {
+		return from, false, err
+	}
+
+	files, err := presetFiles(p)
+	now := newRecord(from, files)
+	return from, !maps.EqualFunc(last.Files, now.Files, slices.Equal[[]string]), err
+}
+
+// initRecord is what initFile holds: the preset kiln init last wrote, and each default but kiln.json. A default is
+// kept as its lines, so a diff of the record reads as a diff of the files.
+type initRecord struct {
+	Preset string              `json:"preset"`
+	Files  map[string][]string `json:"files"`
+}
+
+// newRecord is the record of files, the defaults of the preset named, but kiln.json, which kiln init never merges.
+func newRecord(preset string, files map[string][]byte) initRecord {
+	rec := initRecord{Preset: preset, Files: map[string][]string{}}
+	for name, raw := range files {
+		if name != "kiln.json" {
+			rec.Files[name] = strings.Split(string(raw), "\n")
+		}
+	}
+
+	return rec
+}
+
+// file is the default kiln init last wrote at name, under .kiln/, or nil when the record holds none there.
+func (rec initRecord) file(name string) []byte {
+	lines, ok := rec.Files[name]
+	if !ok {
+		return nil
+	}
+
+	return []byte(strings.Join(lines, "\n"))
+}
+
+// parseInit reads raw, the content of initFile.
+func parseInit(raw []byte) (initRecord, error) {
+	var rec initRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		return rec, fmt.Errorf("%s: %w", initFile, err)
+	}
+
+	return rec, nil
+}
+
+// lastInit reads initFile in the checkout. With no file there, it answers an empty record.
+func (r *Repo) lastInit() (initRecord, error) {
+	raw, err := os.ReadFile(filepath.Join(r.top, initFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return initRecord{}, nil
+	}
+
+	if err != nil {
+		return initRecord{}, err
+	}
+
+	return parseInit(raw)
+}
+
+// writeDefaults brings each of p's files in .kiln/ up to date, as writeDefault says, then records them in initFile.
+// last is the record kiln init left before. writeDefaults prints a line for each file it changed, and answers
+// whether it changed any.
+func (r *Repo) writeDefaults(ctx context.Context, p preset, last initRecord, out io.Writer) (wrote bool, err error) {
 	files, err := presetFiles(p)
 	if err != nil {
 		return false, err
 	}
 
+	say := func(line string) {
+		if line != "" {
+			wrote = true
+			fmt.Fprintln(out, line)
+		}
+	}
+
 	for _, name := range slices.Sorted(maps.Keys(files)) {
-		rel := path.Join(kilnDir, name)
-		changed, err := r.writeDefault(rel, files[name])
+		line, err := r.writeDefault(ctx, name, last.file(name), files[name])
 		if err != nil {
 			return wrote, err
 		}
 
-		if changed {
-			wrote = true
-			fmt.Fprintf(out, "wrote %s\n", rel)
-		}
+		say(line)
 	}
 
-	return wrote, nil
+	line, err := r.writeRecord(newRecord(p.recorded(r.top), files))
+	say(line)
+	return wrote, err
 }
 
-// writeDefault writes raw at rel, unless the checkout holds a file there. Into kiln.json, it adds only the shared keys
-// the file lacks. It answers whether it changed the file.
-func (r *Repo) writeDefault(rel string, raw []byte) (bool, error) {
+// writeDefault brings the file at name, under .kiln/, to want, the default kiln init writes now. It keeps the
+// project's edits since base, the default kiln init last wrote there. It answers the line kiln init prints, or ""
+// when it changed nothing.
+func (r *Repo) writeDefault(ctx context.Context, name string, base, want []byte) (string, error) {
+	rel := path.Join(kilnDir, name)
 	target := filepath.Join(r.top, rel)
-	old, err := os.ReadFile(target)
+	have, err := os.ReadFile(target)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
+		return "wrote " + rel, writeFile(target, want)
 	case err != nil:
-		return false, err
-	case rel != configFile:
-		return false, nil
-	default:
-		if raw, err = addKeys(old, raw); err != nil || raw == nil {
-			return false, err
+		return "", err
+	case rel == configFile:
+		return keepConfig(target, have, want)
+	case bytes.Equal(have, want), bytes.Equal(base, want):
+		return "", nil
+	case bytes.Equal(have, base):
+		return "updated " + rel, os.WriteFile(target, want, 0o644)
+	}
+
+	return r.mergeDefault(ctx, rel, base, want)
+}
+
+// keepConfig adds to have, the kiln.json at target, the shared keys it lacks, as want holds them. It answers the line
+// kiln init prints, or "" when have lacks none.
+func keepConfig(target string, have, want []byte) (string, error) {
+	raw, err := addKeys(have, want)
+	if err != nil || raw == nil {
+		return "", err
+	}
+
+	return "wrote " + configFile, os.WriteFile(target, raw, 0o644)
+}
+
+// mergeDefault merges into the file at rel the change from base to want, with git merge-file. It leaves each
+// conflict between the usual markers, and the line it answers says so.
+func (r *Repo) mergeDefault(ctx context.Context, rel string, base, want []byte) (string, error) {
+	dir, err := os.MkdirTemp("", "kiln-init-")
+	if err != nil {
+		return "", err
+	}
+
+	defer os.RemoveAll(dir)
+	sides := []string{filepath.Join(dir, "base"), filepath.Join(dir, "default")}
+	for i, raw := range [][]byte{base, want} {
+		if err := os.WriteFile(sides[i], raw, 0o600); err != nil {
+			return "", err
 		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return false, err
+	_, err = plainGit(ctx, r.top, proc.Git.Env(r.env), "merge-file", "-L", rel, "-L", "kiln init's last default",
+		"-L", "kiln init's new default", rel, sides[0], sides[1])
+	// git merge-file exits with its count of conflicts, up to 127, and higher only when it fails.
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() < 128 {
+		return "merged " + rel + ", with conflicts: resolve them before you commit it", nil
 	}
 
-	return true, os.WriteFile(target, raw, 0o644)
+	return "merged " + rel, err
+}
+
+// writeRecord writes rec to initFile, unless the file holds it already. It answers the line kiln init prints, or ""
+// when it wrote nothing.
+func (r *Repo) writeRecord(rec initRecord) (string, error) {
+	var raw bytes.Buffer
+	enc := json.NewEncoder(&raw)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(rec); err != nil {
+		return "", err
+	}
+
+	target := filepath.Join(r.top, initFile)
+	if old, err := os.ReadFile(target); err == nil && bytes.Equal(old, raw.Bytes()) {
+		return "", nil
+	}
+
+	return "wrote " + initFile, writeFile(target, raw.Bytes())
+}
+
+// writeFile writes raw at target, with the directories above it.
+func writeFile(target string, raw []byte) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+
+	return os.WriteFile(target, raw, 0o644)
 }
 
 // sharedKeys are the keys of kiln.json whose default is the same in every preset. A re-run of kiln init adds only
