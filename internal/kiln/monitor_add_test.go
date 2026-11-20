@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -92,6 +93,35 @@ func TestShippedMonitors(t *testing.T) {
 				t.Errorf("%s/%s names %q, of kiln's own repository", name, f, kilnOwn.Find(raw))
 			}
 		}
+	}
+}
+
+// TestShippedDocsCheck holds the summary of the docs monitor kiln ships, which kiln status and each notice show.
+func TestShippedDocsCheck(t *testing.T) {
+	for changed, want := range map[string]string{
+		"a":   `"summary": "1 package changed since `,
+		"a b": `"summary": "2 packages changed since `,
+	} {
+		t.Run(changed, func(t *testing.T) {
+			r, repo := scratchRepo(t)
+			if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := r.MonitorAdd("go/docs", io.Discard); err != nil {
+				t.Fatal(err)
+			}
+
+			shell(t, repo, "git add -A && git commit --quiet --no-verify -m start")
+			for pkg := range strings.FieldsSeq(changed) {
+				writeAll(t, repo, map[string]string{pkg + "/" + pkg + ".go": "package " + pkg + "\n"})
+			}
+
+			out := shell(t, repo, "git add -A && git commit --quiet --no-verify -m change && .kiln/monitors/docs/check")
+			if last := out[strings.LastIndex(out, "\n")+1:]; !strings.Contains(last, want) {
+				t.Errorf("the check's verdict is %s; want one that holds %s", last, want)
+			}
+		})
 	}
 }
 

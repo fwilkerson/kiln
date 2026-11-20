@@ -8,7 +8,7 @@
 # the monitor after a fix that found nothing false.
 set -eu
 
-# kiln runs this script as sh .kiln/monitors/<name>/check, so its directory names the monitor.
+# kiln runs this script by its path, .kiln/monitors/<name>/check, so its directory names the monitor.
 dir=$(dirname "$0")
 monitor=$(basename "$dir")
 base=$(git log -1 --format=%H --fixed-strings --grep="kiln fixed it for the monitor $monitor," HEAD)
@@ -17,6 +17,8 @@ base=$(git log -1 --format=%H --fixed-strings --grep="kiln fixed it for the moni
 packages=$(git diff --name-only --diff-filter=d "$base" HEAD -- '*.go' | grep -v '_test\.go$' |
   while read -r file; do dirname "$file"; done | sort -u)
 count=$(printf '%s\n' "$packages" | grep -c . || true)
+noun=packages
+[ "$count" -ne 1 ] || noun=package
 
 if [ "$count" -eq 0 ]; then
   echo '{"fix": false, "summary": "no Go code changed since the docs were last read"}'
@@ -30,4 +32,4 @@ echo "$packages"
 echo
 echo "git diff $since HEAD -- <package> shows what changed in one."
 echo
-echo "{\"fix\": true, \"summary\": \"$count packages changed since $since\"}"
+echo "{\"fix\": true, \"summary\": \"$count $noun changed since $since\"}"
