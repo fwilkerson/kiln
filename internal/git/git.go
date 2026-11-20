@@ -134,6 +134,11 @@ type Git struct {
 	resolve   sync.Once
 	env       []string
 	worktrees sync.Mutex
+	// common.dir is read and written only while holding common.
+	common struct {
+		sync.Mutex
+		dir string
+	}
 }
 
 // New returns the git found on env's PATH, working on the repository whose main checkout is repo. Its only error is a
@@ -290,9 +295,21 @@ func (g *Git) at(path Worktree) Worktree {
 	return Worktree(filepath.Join(string(g.repo), string(path)))
 }
 
-// CommonDir is the repository's git directory that every worktree shares.
+// CommonDir is the repository's git directory that every worktree shares. It asks git once, then answers from memory,
+// since a repository's git directory stays put while kiln runs.
 func (g *Git) CommonDir(ctx context.Context) (string, error) {
-	return g.line(ctx, g.repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	g.common.Lock()
+	defer g.common.Unlock()
+	if g.common.dir != "" {
+		return g.common.dir, nil
+	}
+
+	dir, err := g.line(ctx, g.repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err == nil {
+		g.common.dir = dir
+	}
+
+	return dir, err
 }
 
 // Checkout puts branch, made from the commit at, in a new worktree at path. If that fails part way, it removes what
