@@ -237,7 +237,8 @@ kiln monitor show <name> show how a monitor's last run ended, then wait for retu
 kiln doctor [<name>]     print each problem in the project's setup, with its fix; or a spec's form too
 kiln ledger [--kind <kind>] [--name <name>] [--last <n>]
                          print what kiln's ledger holds, one JSON object a line, for a script to read
-kiln help                print this usage, as kiln --help and kiln -h do```
+kiln help                print this usage, as kiln --help and kiln -h do
+```
 
 ## Read more
 
