@@ -17,15 +17,11 @@ cmp stdout $WORK/_given/main-before
 # kiln status shows the monitor healthy, with its reading beside the gauge's line.
 exec kiln status
 stdout '^lows: healthy'
-stdout '^\s*count: 0, line ≤ 0$'
+stdout '^\s*lows: 0, line ≤ 0$'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "rounds": 2, "gauges": [
- {"name": "count", "command": "sh .kiln/gauges/count", "max": 0}
-], "monitors": [
- {"name": "lows", "every": "24h", "gauge": "count", "agent": ".kiln/agents/fixer.md", "prompt": "Make each file the gauge names say fine."}
-]}
--- .kiln/gauges/count --
+{"gate": ["true"], "rounds": 2}
+-- .kiln/monitors/lows/gauge --
 n=0
 read=
 for f in $(git diff --name-only --diff-filter=d "$KILN_BASE" HEAD -- '*.txt'); do
@@ -38,8 +34,12 @@ done
 if [ -n "$read" ]; then
   echo "$n"
 fi
--- .kiln/agents/fixer.md --
+-- .kiln/monitors/lows/agent.md --
 Fix the files the gauge names.
+
+Make each file the gauge names say fine.
+-- .kiln/monitors/lows/monitor.json --
+{"max": 0}
 -- ok.txt --
 fine
 -- _given/main-before --

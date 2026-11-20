@@ -39,8 +39,6 @@ type config struct {
 	Harness []string `json:"harness,omitempty"`
 	// Reaudit holds paths the audit reads again whenever the work's own change to them differs from what it read.
 	Reaudit []string `json:"reaudit,omitempty"`
-	// Monitors are the jobs kiln monitor run runs on their schedule, each of which may start a fix.
-	Monitors []monitor `json:"monitors,omitempty"`
 }
 
 // splitWorkflow is the workflow whose build session writes the code, and whose verify session writes the tests.
@@ -181,11 +179,7 @@ func parseConfig(raw []byte) (config, error) {
 		}
 	}
 
-	if err := c.checkGauges(); err != nil {
-		return c, err
-	}
-
-	return c, c.checkMonitors()
+	return c, c.checkGauges()
 }
 
 // bareHost is whether h names a host as Claude Code's allowedDomains reads one. Such a host holds letters, digits,
@@ -201,7 +195,7 @@ func (c config) checkGauges() error {
 	named := map[string]bool{}
 	for _, g := range c.Gauges {
 		switch {
-		case g.Name == "", named[g.Name], (g.Min == nil) == (g.Max == nil):
+		case g.Name == "", named[g.Name], g.sides() != 1:
 			return fmt.Errorf("%s names a gauge with no name, a name another gauge has, or not exactly one of "+
 				"min and max: %q", configFile, g.Name)
 		}
@@ -210,6 +204,16 @@ func (c config) checkGauges() error {
 	}
 
 	return nil
+}
+
+// gaugeNamed is the gauge of c named name.
+func (c config) gaugeNamed(name string) (gauge, bool) {
+	i := slices.IndexFunc(c.Gauges, func(g gauge) bool { return g.Name == name })
+	if i < 0 {
+		return gauge{}, false
+	}
+
+	return c.Gauges[i], true
 }
 
 func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {

@@ -14,20 +14,20 @@ exec git log -1 --format=%b main
 stdout 'for the monitor stale'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
- {"name": "stale", "every": "24h", "check": "sh .kiln/monitors/stale", "agent": ".kiln/agents/stale.md", "prompt": "Write the note."}
-]}
--- .kiln/monitors/stale --
+{"gate": ["true"]}
+-- .kiln/monitors/stale/check --
 if [ -e note.txt ]; then
   echo '{"fix": false, "summary": "note.txt is there"}'
 else
   echo '{"fix": true, "summary": "note.txt is missing"}'
 fi
--- .kiln/agents/stale.md --
+-- .kiln/monitors/stale/agent.md --
 Write the missing note.
+
+Write the note.
 -- claude.json --
 {
- "stale": {
+ "fix": {
   "1": {
    "1": [
     {

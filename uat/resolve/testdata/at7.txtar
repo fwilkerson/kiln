@@ -17,21 +17,23 @@ exec kiln accept stale
 grep 'doc\.txt' .claude-calls/audit/2/1/prompt
 
 # The audit's findings go back to the fix's session. When the session answers them, main has not moved yet.
-grep 'doc\.txt:2 drops the title' .claude-calls/stale/1/3/prompt
+grep 'doc\.txt:2 drops the title' .claude-calls/fix/1/3/prompt
 cmp .tmp/main-at-answer .tmp/main-before
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "rounds": 3, "monitors": [
- {"name": "stale", "every": "24h", "check": "sh .kiln/monitors/stale", "agent": ".kiln/agents/stale.md", "prompt": "Mark the doc fixed.", "accept": true}
-]}
--- .kiln/monitors/stale --
+{"gate": ["true"], "rounds": 3}
+-- .kiln/monitors/stale/check --
 if grep -q fixed doc.txt; then
   echo '{"fix": false, "summary": "doc.txt is fixed"}'
 else
   echo '{"fix": true, "summary": "doc.txt is stale"}'
 fi
--- .kiln/agents/stale.md --
+-- .kiln/monitors/stale/agent.md --
 Mark the doc fixed.
+
+Mark the doc fixed.
+-- .kiln/monitors/stale/monitor.json --
+{"accept": true}
 -- doc.txt --
 title
 stale
@@ -39,7 +41,7 @@ stale
 extra
 -- claude.json --
 {
- "stale": {"1": {
+ "fix": {"1": {
   "1": [
    {"tool": {"name": "Bash", "input": {"command": "printf 'title\\nfixed\\n' >doc.txt && echo 'extra, fixed' >extra.txt"}}},
    {"result": {"result": "Marked the doc fixed.\n{\"title\": \"fix(doc): mark the doc fixed\"}"}}

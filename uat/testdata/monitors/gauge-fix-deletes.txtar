@@ -23,12 +23,8 @@ exec kiln status
 stdout '^lows: healthy'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "rounds": 2, "gauges": [
- {"name": "count", "command": "sh .kiln/gauges/count", "max": 0}
-], "monitors": [
- {"name": "lows", "every": "24h", "gauge": "count", "agent": ".kiln/agents/fixer.md", "prompt": "Make each file the gauge names say fine."}
-]}
--- .kiln/gauges/count --
+{"gate": ["true"], "rounds": 2}
+-- .kiln/monitors/lows/gauge --
 n=0
 read=
 for f in $(git diff --name-only --diff-filter=d "$KILN_BASE" HEAD -- '*.txt'); do
@@ -41,15 +37,19 @@ done
 if [ -n "$read" ]; then
   echo "$n"
 fi
--- .kiln/agents/fixer.md --
+-- .kiln/monitors/lows/agent.md --
 Fix the files the gauge names.
+
+Make each file the gauge names say fine.
+-- .kiln/monitors/lows/monitor.json --
+{"max": 0}
 -- ok.txt --
 fine
 -- a.txt --
 low a
 -- claude.json --
 {
-  "fixer": {"1": {"1": [
+  "fix": {"1": {"1": [
     {"tool": {"name": "Bash", "input": {"command": "rm a.txt"}}},
     {"result": {"result": "Deleted a.txt."}}
   ]}},

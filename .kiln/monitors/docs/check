@@ -1,15 +1,18 @@
 #!/bin/sh
-# The check of kiln's docs monitor. It asks for a fix when Go code changed since the docs were last read against it.
+# The check of the docs monitor. It asks for a fix when Go code changed since the docs were last read against it.
 # It prints each package that changed, and each doc beside them, for the monitor's agent. Its last line is the JSON
 # object kiln reads.
 #
-# The docs were last read at the monitor's last fix on main. Before its first fix, they were read when this script
-# last changed. It prints the same until the code changes again, so kiln holds the monitor after a fix that found
-# nothing false.
+# The docs were last read at the monitor's last fix on main, whose message names the monitor. Before its first fix, they
+# were read when the monitor's directory last changed. It prints the same until the code changes again, so kiln holds
+# the monitor after a fix that found nothing false.
 set -eu
 
-base=$(git log -1 --format=%H --fixed-strings --grep="fix(docs): land the monitor's fix" HEAD)
-[ -n "$base" ] || base=$(git log -1 --format=%H HEAD -- .kiln/monitors/docs)
+# kiln runs this script as sh .kiln/monitors/<name>/check, so its directory names the monitor.
+dir=$(dirname "$0")
+monitor=$(basename "$dir")
+base=$(git log -1 --format=%H --fixed-strings --grep="kiln fixed it for the monitor $monitor," HEAD)
+[ -n "$base" ] || base=$(git log -1 --format=%H HEAD -- "$dir")
 
 packages=$(git diff --name-only --diff-filter=d "$base" HEAD -- '*.go' | grep -v '_test\.go$' |
   while read -r file; do dirname "$file"; done | sort -u)

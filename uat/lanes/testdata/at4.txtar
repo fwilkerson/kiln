@@ -21,7 +21,7 @@ exec kiln monitor run
 # Then: it drops the fix cut short, and runs the monitor's check again, which starts a new fix.
 stdout '^notes: dropped its fix, which a kiln cut short$'
 exec sh -c 'test "$(grep -c ran .tmp/check.log)" -gt 1'
-exists .claude-calls/notes/2/1/call.json
+exists .claude-calls/fix/2/1/call.json
 
 # The spec's build goes on in the session it had,
 exec kiln status
@@ -37,18 +37,18 @@ exec git show main:x.txt
 stdout '^x$'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
- {"name": "notes", "every": "24h", "check": "sh .kiln/monitors/notes", "agent": ".kiln/agents/notes.md", "prompt": "Write the note."}
-]}
--- .kiln/monitors/notes --
+{"gate": ["true"]}
+-- .kiln/monitors/notes/check --
 echo ran >>"$WORK/.tmp/check.log"
 if [ -e note.txt ]; then
   echo '{"fix": false, "summary": "note.txt is there"}'
 else
   echo '{"fix": true, "summary": "note.txt is missing"}'
 fi
--- .kiln/agents/notes.md --
+-- .kiln/monitors/notes/agent.md --
 Write the missing note.
+
+Write the note.
 -- .kiln/specs/x.md --
 ### 1. X is there
 
@@ -59,7 +59,7 @@ Write the missing note.
 x
 -- claude.json --
 {
- "notes": {
+ "fix": {
   "1": {"1": [
    {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/fixing\"; i=0; while [ ! -e \"$WORK/.tmp/never\" ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done"}}},
    {"result": {"result": "Cut short."}}

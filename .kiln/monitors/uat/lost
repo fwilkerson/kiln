@@ -1,7 +1,7 @@
 #!/bin/sh
 # Lists each check a scenario under uat/ held at a commit that no scenario holds now.
 #
-#   .kiln/monitors/uat-lost main
+#   sh .kiln/monitors/uat/lost main
 #
 # A fold keeps each check or says why it went, as docs/practices.md "Acceptance tests" says. Whoever folds answers
 # for each line this prints: its meaning moved to another check, or a unit test's row holds its rule.

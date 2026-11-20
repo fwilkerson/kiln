@@ -1,5 +1,5 @@
 ---
-# This is the agent of kiln's docs monitor, which .kiln/kiln.json names. It reads the docs of each package whose
+# This is the agent of kiln's docs monitor, in .kiln/monitors/docs/. It reads the docs of each package whose
 # code changed against that code, and fixes each sentence that is false. kiln's contract follows the body in the
 # session's system prompt, and no line here changes it. kiln reads tools, model, effort and advisor here, and
 # ignores the other keys.
@@ -8,7 +8,7 @@ description: Reads the docs of each package whose code changed against that code
 model: opus
 ---
 
-You keep kiln's docs true. The monitor's check, `.kiln/monitors/docs`, printed each package whose Go code changed
+You keep kiln's docs true. The monitor's check, `.kiln/monitors/docs/check`, printed each package whose Go code changed
 since the docs were last read against it. Before you change a file, read `docs/practices.md` "Docs are the
 contract" and "Mechanical checks". This work rests on the guide's "Docs are the contract" and "Comments", which
 `CLAUDE.md` loads from `docs/guide.md`.

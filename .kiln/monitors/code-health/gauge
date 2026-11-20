@@ -1,8 +1,8 @@
 #!/bin/sh
-# The gauge health of kiln's code-health monitor. It reads each Go file changed since $KILN_BASE that the commit still
-# holds, and prints each one that go tool health scores below 10, the lowest first, with what health found in it.
+# The gauge of kiln's code-health monitor. It reads each Go file changed since $KILN_BASE that the commit still holds,
+# and prints each one that go tool health scores below 10, the lowest first, with what health found in it.
 #
-#   KILN_BASE=<commit or tree> .kiln/gauges/health
+#   KILN_BASE=<commit or tree> sh .kiln/monitors/code-health/gauge
 #
 # Its last line is the lowest score of those files, or 10. It prints no number where it read no Go file. It leaves
 # out uat/, which a fix never writes.

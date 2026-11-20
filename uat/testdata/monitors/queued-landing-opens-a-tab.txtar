@@ -29,6 +29,8 @@ stdout 'docs.*stopped'
 grep -count=2 opened .git/opened
 
 -- .kiln/kiln.json --
-{"gate": ["test ! -f broken"], "monitors": [
- {"name": "docs", "every": "168h", "command": "echo 'the docs, brought up to date' >docs.txt", "accept": true}
-]}
+{"gate": ["test ! -f broken"]}
+-- .kiln/monitors/docs/command --
+echo 'the docs, brought up to date' >docs.txt
+-- .kiln/monitors/docs/monitor.json --
+{"every": "168h", "accept": true}

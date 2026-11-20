@@ -13,8 +13,10 @@ exec git show main:change.txt
 stdout '^changed$'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
- {"name": "errors", "every": "1h", "check": "sh .kiln/monitors/errors", "gates": false, "command": "echo changed >change.txt"}
-]}
--- .kiln/monitors/errors --
+{"gate": ["true"]}
+-- .kiln/monitors/errors/check --
 echo '{"fix": true, "summary": "the service logged an error"}'
+-- .kiln/monitors/errors/command --
+echo changed >change.txt
+-- .kiln/monitors/errors/monitor.json --
+{"every": "1h", "gates": false}

@@ -11,7 +11,7 @@
 //	kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
 //	kiln monitor install     set up a launchd job that runs kiln monitor run in the repository each hour
 //	kiln monitor run [<name>]
-//	                         run each monitor kiln.json names that is due; or run one now, due or not
+//	                         run each monitor that is due; or run one now, due or not
 //	kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
 //	kiln help                print this usage, as kiln --help and kiln -h do
 //
@@ -63,7 +63,7 @@ const usage = `usage:
   kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
   kiln monitor install     set up a launchd job that runs kiln monitor run in the repository each hour
   kiln monitor run [<name>]
-                           run each monitor kiln.json names that is due; or run one now, due or not
+                           run each monitor that is due; or run one now, due or not
   kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
   kiln help                print this usage, as kiln --help and kiln -h do
 `

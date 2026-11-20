@@ -42,14 +42,16 @@ exec sh -c 'ls .claude-calls/*/*/1/call.json | grep -cv "^.claude-calls/audit/"'
 stdout '^2$'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
- {"name": "errors", "every": "1h", "check": "sh .kiln/monitors/errors", "gates": false, "agent": ".kiln/agents/errors.md", "prompt": "Fix the error, or ask for the developer."}
-]}
--- .kiln/monitors/errors --
+{"gate": ["true"]}
+-- .kiln/monitors/errors/check --
 cat "$WORK/_given/finding"
 echo '{"fix": true, "summary": "the service logged an error"}'
--- .kiln/agents/errors.md --
+-- .kiln/monitors/errors/agent.md --
 Triage the service's errors.
+
+Fix the error, or ask for the developer.
+-- .kiln/monitors/errors/monitor.json --
+{"every": "1h", "gates": false}
 -- _given/finding --
 error: card declined by the payment provider
 -- _given/finding-2 --
@@ -59,7 +61,7 @@ error: the database refused a connection
 other work
 -- claude.json --
 {
- "errors": {
+ "fix": {
   "1": {
    "1": [
     {

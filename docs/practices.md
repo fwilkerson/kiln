@@ -21,8 +21,8 @@ differ, this file decides for kiln.
   project writes in `.kiln/`, and points to that package doc for what kiln then does. `README.md` shows the commands
   in use, and states no rule.
 - When two docs state one rule, keep the package doc's, and make the other point to it.
-- The `docs` monitor in `.kiln/kiln.json` reads the docs of each package whose code changed against that code. Its
-  fix waits for `kiln accept docs`.
+- The `docs` monitor, in `.kiln/monitors/docs/`, reads the docs of each package whose code changed against that code.
+  Its fix waits for `kiln accept docs`.
 
 ## Tests
 
@@ -34,8 +34,8 @@ differ, this file decides for kiln.
 - A test's condition holds one `||`. `claim.Holds`, from the practices module, takes the rest, as
   `TestSpecBeforeKiln` in `internal/kiln/agent_test.go` shows. `go doc -all github.com/fwilkerson/practices/claim`
   is its contract.
-- The `gate-time` monitor in `.kiln/kiln.json` makes the tests faster once the gate slows, by the rule its check's
-  header states. Its fix keeps each check, and waits for `kiln accept gate-time`.
+- The `gate-time` monitor, in `.kiln/monitors/gate-time/`, makes the tests faster once the gate slows, by the rule its
+  check's header states. Its fix keeps each check, and waits for `kiln accept gate-time`.
 
 ## Acceptance tests
 
@@ -54,7 +54,7 @@ organize current work by stories, then reorganize it by functional area. A story
   each described one state from their own side: nine of their scenarios held one of three fixtures, byte for byte.
 - Drop a scenario when a unit table's row holds its rule, and another scenario runs the same wiring through the
   command line. Keep one scenario for each transport, such as Go's test output and JUnit XML.
-- A fold keeps each check, or says why it went. `.kiln/monitors/uat-lost <commit>` lists the checks no scenario
+- A fold keeps each check, or says why it went. `sh .kiln/monitors/uat/lost <commit>` lists the checks no scenario
   has held since that commit.
 - Never merge a scenario that needs a pseudo-terminal with one that needs none. A sandboxed session runs only the
   second kind.
@@ -63,7 +63,7 @@ organize current work by stories, then reorganize it by functional area. A story
   held a copy of.
 - When one change rewrites many scenarios, the tests are saying what they share. Move it into the harness first.
 - Keep a scenario to one story a developer would tell. It may be long, when each step follows from the last.
-- The `uat` monitor in `.kiln/kiln.json` folds. Its check asks for a fix when an accepted spec still has a folder
+- The `uat` monitor, in `.kiln/monitors/uat/`, folds. Its check asks for a fix when an accepted spec still has a folder
   under `uat/`, or two scenarios bring the same fixture. Its fix waits for `kiln accept uat`.
 
 ## Working with agents on an API
@@ -76,9 +76,9 @@ organize current work by stories, then reorganize it by functional area. A story
 ## Mechanical checks
 
 - `gofmt`, and `go tool style`: blank lines, and the 20-word and 120-column limits. A hook runs it after each edit.
-- `go tool health .`: each Go file's score by the guide's "Inside a function". `TestHealth` holds the score of each
-  file under 10 in `held`, so no change lowers one. The `code-health` monitor in `.kiln/kiln.json` refactors the
-  files with the lowest scores, as its gauge `health` lists them, and deletes each from `held` once it scores 10.
+- `go tool health .`: each Go file's score by the guide's "Inside a function". `TestHealth` holds the score of each file
+  under 10 in `held`, so no change lowers one. The `code-health` monitor, in `.kiln/monitors/code-health/`, refactors
+  the files with the lowest scores, as its gauge lists them, and deletes each from `held` once it scores 10.
 - `arch_test.go` and `style_test.go`: import rules, modern Go, and doc names.
 - `TestFacts` in a package's `facts_test.go`: each number the package doc states, beside the constant that holds it.
   `repotest.Facts` fails when one moves without the other. A number a doc states gets a row there.

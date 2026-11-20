@@ -230,17 +230,18 @@ func TestStateOf(t *testing.T) {
 // first. A line from before the monitor named the gauge is no reading, nor is one of another monitor.
 func TestMonitorReadings(t *testing.T) {
 	r, repo := scratchRepo(t)
-	config := `{"gate": ["true"], "rounds": 1, "acceptance": "acceptance/{spec}/", "gauges": [{"name": "count", ` +
-		`"command": "true", "max": 0}], "monitors": [{"name": "m", "every": "24h", "gauge": "count", ` +
-		`"command": "true"}, {"name": "other", "every": "24h", "command": "true"}]}`
-	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json && git add . && git commit --quiet -m start")
+	config := `{"gate": ["true"], "rounds": 1, "acceptance": "acceptance/{spec}/"}`
+	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json")
+	writeMonitor(t, repo, "m", map[string]string{"gauge": "echo 0", "monitor.json": `{"max": 0}`, "command": "true"})
+	writeMonitor(t, repo, "other", map[string]string{"command": "true"})
+	shell(t, repo, "git add . && git commit --quiet -m start")
 	at, zero, two := time.Now().Add(-time.Hour), 0.0, 2.0
 	for i, e := range []entry{
 		{Monitor: "m", Found: foundHealthy},
-		{Monitor: "m", Found: foundFix, Gauge: "count", Value: &two},
-		{Monitor: "other", Found: foundHealthy, Gauge: "count", Value: &zero},
-		{Monitor: "m", Found: foundCouldNot, Gauge: "count"},
-		{Monitor: "m", Found: foundHealthy, Gauge: "count", Value: &zero},
+		{Monitor: "m", Found: foundFix, Gauge: "m", Value: &two},
+		{Monitor: "other", Found: foundHealthy, Gauge: "m", Value: &zero},
+		{Monitor: "m", Found: foundCouldNot, Gauge: "m"},
+		{Monitor: "m", Found: foundHealthy, Gauge: "m", Value: &zero},
 	} {
 		e.Kind, e.At, e.Max = monitorKind, at.Add(time.Duration(i)*time.Minute), &zero
 		if err := r.store.write(e); err != nil {
@@ -258,7 +259,7 @@ func TestMonitorReadings(t *testing.T) {
 		read = append(read, fmt.Sprintf("%s %s %s crossed %v", rd.Gauge, valueOf(rd.Value), rd.Line, rd.Crossed))
 	}
 
-	want := "count 2 ≤ 0 crossed true\ncount ? ≤ 0 crossed false\ncount 0 ≤ 0 crossed false"
+	want := "m 2 ≤ 0 crossed true\nm ? ≤ 0 crossed false\nm 0 ≤ 0 crossed false"
 	if got := strings.Join(read, "\n"); got != want || len(monitors[1].Monitor.Readings) > 0 {
 		t.Errorf("m's readings are\n%s\nwant\n%s\nand other's are %v, want none", got, want,
 			monitors[1].Monitor.Readings)
@@ -307,9 +308,10 @@ func cutShortFix(t *testing.T, accepted bool) *Repo {
 	}
 
 	r, repo := scratchRepo(t)
-	config := `{"gate": ["true"], "rounds": 1, "acceptance": "acceptance/{spec}/", "monitors": [{"name": "m", ` +
-		`"every": "24h", "command": "true"}]}`
-	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json && git add . && git commit --quiet -m start")
+	config := `{"gate": ["true"], "rounds": 1, "acceptance": "acceptance/{spec}/"}`
+	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json")
+	writeMonitor(t, repo, "m", map[string]string{"command": "true"})
+	shell(t, repo, "git add . && git commit --quiet -m start")
 	err := r.store.update(func(b *book) error {
 		b.Specs = []*record{{Name: "m", State: building, Build: "b", Monitor: true, Accepted: accepted,
 			PID: dead.Process.Pid}}

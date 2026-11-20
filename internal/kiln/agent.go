@@ -121,20 +121,20 @@ const (
 // agentFile is the path of a role's agent file.
 func agentFile(role string) string { return kilnDir + "/agents/" + role + ".md" }
 
-// agent reads the file of role's agent at the commit at. A commit with no such file is refused, and fix says what
+// agent reads the agent's file at path in the commit at. A commit with no such file is refused, and fix says what
 // to do about it.
-func (r *Repo) agent(ctx context.Context, at git.Rev, role, fix string) (agent, error) {
-	raw, found, err := r.git.Show(ctx, at, agentFile(role))
+func (r *Repo) agent(ctx context.Context, at git.Rev, path, fix string) (agent, error) {
+	raw, found, err := r.git.Show(ctx, at, path)
 	switch {
 	case err != nil:
 		return agent{}, err
 	case !found:
-		return agent{}, fmt.Errorf("%w: %s holds no %s: %s", errRefused, short(at), agentFile(role), fix)
+		return agent{}, fmt.Errorf("%w: %s holds no %s: %s", errRefused, short(at), path, fix)
 	}
 
 	a, err := parseAgent(string(raw))
 	if err != nil {
-		return a, fmt.Errorf("%w: %s at %s: %w", errRefused, agentFile(role), short(at), err)
+		return a, fmt.Errorf("%w: %s at %s: %w", errRefused, path, short(at), err)
 	}
 
 	return a, nil
@@ -212,7 +212,7 @@ func (b *build) agentLaunch(ctx context.Context, role string, l claude.Launch) (
 func (b *build) agentAt(ctx context.Context, role string) (agent, error) {
 	// A build queued by a kiln from before .kiln/ held its agents names a commit without them.
 	fix := fmt.Sprintf("the build was queued before main held it, so run kiln queue %s again", b.rec.Name)
-	return b.r.agent(ctx, b.rec.Approved, role, fix)
+	return b.r.agent(ctx, b.rec.Approved, agentFile(role), fix)
 }
 
 // sides is what each session of a build may write, as kiln.json at the build's approval says.

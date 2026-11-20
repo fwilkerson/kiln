@@ -129,7 +129,7 @@ reading of it crossed.
 
 Spec 7 lets a project set each role's prompt, tools, model and effort. Spec 10 added a second fixed workflow, split,
 whose verify role writes the tests apart from the build. Spec 11's monitors gave a project roles of its own: a
-monitor's agent is one, named by its file under `.kiln/agents/`, in a workflow of one role with the audit. A project
+monitor's agent is one, its directory's `agent.md`, in a workflow of one role with the audit. A project
 could name a workflow of several roles, their order, and which role a role's findings go back to, such as a triage
 agent that hands to a separate fix agent.
 

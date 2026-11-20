@@ -152,16 +152,16 @@ func fixText(b *tui.Build) string {
 	return text.String()
 }
 
-// Monitors answers each monitor kiln.json names at main's tip, where it stands, and its fixes, oldest first. A
-// monitor that names a gauge holds its readings of the whole repository, oldest first.
+// Monitors answers each monitor main's tip holds, where it stands, and its fixes, oldest first. A monitor with a
+// gauge holds its readings of the whole repository, oldest first.
 func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
 	main, err := v.r.mainTip(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// A main with no kiln.json kiln can read names no monitor, and the specs still show.
-	c, _ := v.r.config(ctx, main)
+	// A main with no kiln.json or monitor kiln can read shows no monitor, and the specs still show.
+	_, monitors, _ := v.r.monitors(ctx, main)
 	entries, err := v.r.store.entries()
 	if err != nil {
 		return nil, err
@@ -180,8 +180,8 @@ func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
 	}
 
 	all, now := histories(entries), v.r.now()
-	shown := make([]tui.Spec, len(c.Monitors))
-	for i, m := range c.Monitors {
+	shown := make([]tui.Spec, len(monitors))
+	for i, m := range monitors {
 		h := all[m.Name]
 		s := h.standing(m, k.find(m.Name))
 		shown[i] = tui.Spec{Name: string(m.Name), State: s.state(), Builds: fixes[m.Name],
@@ -193,9 +193,9 @@ func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
 }
 
 // repositoryReadings are the readings of m's gauge in m's monitor lines, as kiln wrote them. A line from before m
-// named that gauge names none, and is no reading.
+// held its gauge names none, and is no reading.
 func repositoryReadings(entries []entry, m monitor) []tui.Reading {
-	if m.Gauge == "" {
+	if m.finder != gaugeScript {
 		return nil
 	}
 
@@ -205,7 +205,7 @@ func repositoryReadings(entries []entry, m monitor) []tui.Reading {
 			continue
 		}
 
-		if e.Gauge == m.Gauge {
+		if e.Gauge == string(m.Name) {
 			readings = append(readings, e.tuiReading())
 		}
 	}

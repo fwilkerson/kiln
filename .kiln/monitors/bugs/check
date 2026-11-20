@@ -1,10 +1,11 @@
 #!/bin/sh
-# The check of kiln's bugs monitor. Its last line is the JSON object kiln reads.
+# The check of the bugs monitor. Its last line is the JSON object kiln reads.
 #
 #   at main's tip    asks for a fix while bugs/ holds a bug, and prints the first by name, for the monitor's agent
 #   in a fix's gate  passes once the fix deletes that first bug, and adds or deletes no other
 #
-# So a queue of bugs drains one fix at a time, and no fix lands that leaves its bug's file in bugs/.
+# So a queue of bugs drains one fix at a time, and no fix lands that leaves its bug's file in bugs/. At main's tip, its
+# verdict asks kiln to drain: to check again as soon as a fix lands.
 set -eu
 
 # bugs lists the bugs commit $1 holds, one Markdown file each, by name.
@@ -39,4 +40,4 @@ echo "Fix this bug, $first, and no other:"
 echo
 cat "$first"
 echo
-echo "{\"fix\": true, \"summary\": \"$count in bugs/, first $first\"}"
+echo "{\"fix\": true, \"summary\": \"$count in bugs/, first $first\", \"drain\": true}"

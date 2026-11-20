@@ -25,58 +25,5 @@
     "go env GOCACHE GOMODCACHE",
     "echo \"$(go env GOPATH | cut -d: -f1)/pkg/sumdb\"",
     "uv cache dir"
-  ],
-  "gauges": [
-    {
-      "name": "health",
-      "command": ".kiln/gauges/health",
-      "min": 10
-    }
-  ],
-  "monitors": [
-    {
-      "name": "uat",
-      "every": "24h",
-      "check": ".kiln/monitors/uat",
-      "agent": ".kiln/agents/fold.md",
-      "prompt": "Fold what the check found into uat/testdata/, as your instructions say.",
-      "accept": true,
-      "tests": true
-    },
-    {
-      "name": "code-health",
-      "every": "24h",
-      "gauge": "health",
-      "agent": ".kiln/agents/refactor.md",
-      "prompt": "Refactor the three files the gauge lists first until go tool health finds nothing in them, as your instructions say."
-    },
-    {
-      "name": "bugs",
-      "every": "1h",
-      "check": ".kiln/monitors/bugs",
-      "agent": ".kiln/agents/bugfix.md",
-      "prompt": "Fix the one bug the check printed, as your instructions say.",
-      "tests": true,
-      "drain": true
-    },
-    {
-      "name": "docs",
-      "every": "24h",
-      "check": ".kiln/monitors/docs",
-      "gates": false,
-      "agent": ".kiln/agents/docs.md",
-      "prompt": "Read the docs of each package the check printed against its code, as your instructions say.",
-      "accept": true
-    },
-    {
-      "name": "gate-time",
-      "every": "24h",
-      "check": ".kiln/monitors/gate-time",
-      "gates": false,
-      "agent": ".kiln/agents/speedup.md",
-      "prompt": "Make the tests faster, from the slowest the check printed, as your instructions say.",
-      "accept": true,
-      "tests": true
-    }
   ]
 }

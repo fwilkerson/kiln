@@ -131,25 +131,19 @@ landing. `kiln status` shows the latest reading, and `kiln tui` each landing's. 
 ## Monitors
 
 A monitor is a job kiln runs on a schedule, with no terminal open. Its check looks for a problem. When it finds
-one, an agent fixes it, and the fix is gated, audited and landed like any build.
+one, an agent fixes it, and the fix is gated, audited and landed like any build. A monitor is a directory:
 
-```json
-{
-  "monitors": [{
-    "name": "bugs",
-    "every": "1h",
-    "check": ".kiln/monitors/bugs",
-    "agent": "bugfix.md",
-    "prompt": "Fix the one bug the check printed, as your instructions say."
-  }]
-}
+```text
+.kiln/monitors/bugs/
+  check          a script whose last line of output says whether a fix is due
+  agent.md       the agent that fixes what the check found
+  monitor.json   how often it runs, {"every": "1h"}, and what its fix may do
 ```
 
 A check is any script whose last line of output says whether a fix is due:
 
 ```sh
-#!/bin/sh
-# .kiln/monitors/bugs: ask for a fix while bugs/ holds a bug report.
+# .kiln/monitors/bugs/check: ask for a fix while bugs/ holds a bug report.
 first=$(ls bugs/*.md 2>/dev/null | head -n 1)
 [ -n "$first" ] || { echo '{"fix": false, "summary": "bugs/ holds no bug"}'; exit 0; }
 cat "$first"
@@ -164,7 +158,7 @@ monitors:
 bugs: landed, last ran 2026-11-17 00:24, runs next after 2026-11-17 00:54
 ```
 
-kiln runs its own repository this way. Its [`bugs`](.kiln/monitors/bugs) monitor fixes what is filed under
+kiln runs its own repository this way. Its [`bugs`](.kiln/monitors/bugs/) monitor fixes what is filed under
 `bugs/`, each with a test that fails first. `code-health` refactors the files a gauge scores lowest, `uat` tidies
 the acceptance tests of accepted specs, `docs` reads the docs of changed packages against their code, and
 `gate-time` makes the tests faster once the gate's times in kiln's ledger rise. An

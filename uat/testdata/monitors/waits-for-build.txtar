@@ -23,12 +23,12 @@ exec kiln monitor run
 grep -count=1 'ran' $WORK/_given/check.log
 
 -- .kiln/kiln.json --
-{"gate": ["test -e ready"], "monitors": [
- {"name": "deps", "every": "24h", "check": "sh .kiln/monitors/deps", "command": "true"}
-]}
--- .kiln/monitors/deps --
+{"gate": ["test -e ready"]}
+-- .kiln/monitors/deps/check --
 echo ran >>"$WORK/_given/check.log"
 echo '{"fix": false, "summary": "every module is current"}'
+-- .kiln/monitors/deps/command --
+true
 -- _given/check.log --
 -- .kiln/specs/x.md --
 ### 1. X is ready

@@ -15,7 +15,7 @@ commands in use.
   agents/critic.md
   skills/shape/SKILL.md      /shape, which writes a spec with you
   skills/shape/template.md   the form kiln queue holds a spec to
-  monitors/                  the scripts a monitor's check runs
+  monitors/<name>/           a monitor: its check or gauge, its command or agent, and its monitor.json
   gauges/                    the scripts a gauge's command runs
 ```
 
@@ -39,8 +39,7 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
   "workflow": "split",
   "harness": ["internal/testutil/"],
   "reaudit": ["migrations/"],
-  "gauges": [{"name": "test-seconds", "command": ".kiln/gauges/test-seconds", "max": 60}],
-  "monitors": [{"name": "deps", "every": "24h", "check": ".kiln/monitors/deps", "agent": "deps.md"}]
+  "gauges": [{"name": "test-seconds", "command": ".kiln/gauges/test-seconds", "max": 60}]
 }
 ```
 
@@ -56,7 +55,6 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 | `harness`    | Paths both sessions of a split build may write                              | the commit queued |
 | `reaudit`    | Paths the audit reads again whenever the work changes them                  | main's tip        |
 | `gauges`     | Numbers kiln reads after each landing                                       | main's tip        |
-| `monitors`   | Jobs kiln runs on a schedule, each of which may start a fix                 | main's tip        |
 
 kiln reads the gate from main's tip, never from the build's checkout, so a build cannot weaken its own gate. It
 refuses a `kiln.json` with a key it does not know.
@@ -139,7 +137,7 @@ A gauge is a number you watch across landings, such as a mutation score or the t
 - A gauge never blocks a landing. A line that must hold is a gate command.
 - Keep its script under `.kiln/gauges/`, where no build can change it.
 
-A monitor may name a gauge in place of a check. Then:
+A monitor's `gauge` is a gauge too, named for the monitor, with its line in the monitor's `monitor.json`. Then:
 
 - The monitor's run gives `$KILN_BASE` as git's empty tree, so the same `git diff` names every file. A command that
   names a commit's parents, such as `git log "$KILN_BASE"..HEAD`, fails there.
@@ -150,34 +148,29 @@ A monitor may name a gauge in place of a check. Then:
 - Print the same for the same finding, with no line numbers and no timestamps. kiln compares what the gauge printed
   to decide whether anything changed.
 
-### monitors
+## Monitors
 
-A monitor looks for a problem on a schedule, and fixes it.
+A monitor looks for a problem on a schedule, and fixes it. It is a directory under `.kiln/monitors/`, named for the
+monitor, and its fix builds on the branch `kiln/<name>`. kiln reads each file below at main's tip, each optional,
+and runs each script with `sh`, so none needs to be executable.
 
-```json
-{
-  "name": "bugs",
-  "every": "1h",
-  "check": ".kiln/monitors/bugs",
-  "agent": ".kiln/agents/bugfix.md",
-  "prompt": "Fix the one bug the check printed, as your instructions say.",
-  "tests": true
-}
+```text
+.kiln/monitors/bugs/
+  check          finds a problem: its last line of stdout is {"fix": true, "summary": "..."}, or false
+  gauge          in place of check: a gauge named for the monitor, whose reading past its line asks for a fix
+  command        a fix that needs no model, run outside the sandbox
+  agent.md       an agent's file, run when command left the gate failing, or is absent
+  monitor.json   the keys below, each optional: {"every": "1h", "tests": true}
 ```
 
-| Key       | What it holds                                                                                      |
-|-----------|----------------------------------------------------------------------------------------------------|
-| `name`    | The monitor's name, by a spec's name's rule. Its fix builds on the branch `kiln/<name>`.           |
-| `every`   | How often it runs: a Go duration in whole hours, at least `1h`.                                    |
-| `check`   | A script whose last line of stdout is `{"fix": true, "summary": "..."}`, or `false`.               |
-| `gauge`   | In place of `check`: the name of one of `gauges`, read over the whole repository.                  |
-| `command` | A fix that needs no model, run with `sh -c`, outside the sandbox.                                  |
-| `agent`   | An agent's file under `.kiln/agents/`. It runs when `command` left the gate failing, or is absent. |
-| `prompt`  | What follows the check's or gauge's output, and the gate's, in the agent's first message.          |
-| `gates`   | `false` keeps the check out of the fix's gate. Only beside a `check`.                              |
-| `accept`  | `true` keeps each fix on its branch until `kiln accept <name>`.                                    |
-| `tests`   | `true` lets a fix write under each `acceptance` path's part before `{spec}`.                       |
-| `drain`   | `true` checks again as soon as a fix lands, and fixes again, in the same run.                      |
+| Key      | What it holds                                                                        |
+|----------|--------------------------------------------------------------------------------------|
+| `every`  | How often it runs: a Go duration in whole hours, at least `1h`. Without it, `24h`. |
+| `gates`  | `false` keeps the check or gauge out of the fix's gate.                              |
+| `accept` | `true` keeps each fix on its branch until `kiln accept <name>`.                      |
+| `tests`  | `true` lets a fix write under each `acceptance` path's part before `{spec}`.         |
+| `min`    | Beside a gauge, its line: `min` or `max`, never both, as a gauge in `kiln.json` has. |
+| `max`    |                                                                                      |
 
 ```text
 kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ─────────────────────────▶ healthy
@@ -188,13 +181,16 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 - `kiln monitor install` gives the launchd job the `PATH` it was run with, and its `TMPDIR` if it has one. The
   gate's tests write their temporary files there. Spotlight watches macOS's own temporary directory, so a heavy
   suite runs lighter with `TMPDIR` on a volume that holds `.metadata_never_index`. Set it, then install again.
-- A monitor names a `command`, an `agent` or both, and a `check` or a `gauge`, never both.
+- A monitor holds a `command`, an `agent.md` or both, and a `check` or a `gauge`, never both. A script finds its
+  own directory as `$(dirname "$0")`, and the monitor's name as that directory's.
 - The rest of a check's stdout goes to the agent. A check that exits non-zero, or prints no such last line, couldn't
   run, and starts no fix. So does a gauge kiln could not read.
+- The agent's first message holds what the check or gauge printed, and what the gate printed after `command`. Then
+  it says to fix what the monitor found, as the agent's instructions say: the body of `agent.md`.
 - A monitor is due when it never ran, when its check or gauge couldn't run, when a usage limit ended its fix, or
   when its fix was cut short. Otherwise it is due once its last run started its interval, less half an hour, ago.
-- A fix is a build with no spec. The gate holds it, with the check added unless `"gates": false`. That setting is
-  for a check that reads something a fix cannot change until it is deployed. A gauge always joins the gate.
+- A fix is a build with no spec. The gate holds it, with the check or gauge added unless `"gates": false`. That
+  setting is for a check that reads something a fix cannot change until it is deployed.
 - A fix never writes under `.kiln/`. Without `"tests": true`, it never writes under an `acceptance` path's part
   before `{spec}` either, so it cannot change a lasting suite.
 - An agent asks for you with the last line of its reply: `{"ask": true, "summary": "..."}`. kiln then drops what it
@@ -203,9 +199,9 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
   Conventional Commit of at most 72 characters. Without one, the title is `fix(<monitor>): land the monitor's fix`.
 - When main moved past a fix that waits for `kiln accept`, the accept may send the fix back to its session. The
   package doc of `internal/kiln` says how that landing goes, under Monitors: `go doc ./internal/kiln`.
-- `"drain": true` is for a queue that each fix takes one item from, such as a folder of bug reports. After a fix
-  lands, kiln runs the check again at once, due or not, and starts the next fix. The run ends when the check asks
-  for no fix, when the monitor is held, or when a fix does not land. It needs a check or a gauge.
+- A check's verdict that adds `"drain": true` drains a queue that each fix takes one item from, such as a folder of
+  bug reports. After the fix lands, kiln runs the check again at once, due or not, and starts the next fix. The run
+  ends when the check asks for no fix, when the monitor is held, or when a fix does not land.
 - `kiln monitor run` refuses only while another `kiln monitor run` runs, or `kiln accept` lands a fix. So a long
   run, such as one that drains, is never joined by the next hour's. It runs beside `kiln fire`, which builds specs
   meanwhile. The package doc of `internal/kiln` says how the two share the gate, under Lanes: `go doc ./internal/kiln`.
