@@ -1411,6 +1411,45 @@ func TestGaugeTree(t *testing.T) {
 	}
 }
 
+// TestGaugeReadsNothing holds that a gauge whose command prints nothing read nothing in that landing. kiln says so,
+// and writes no reading, so kiln status keeps showing the last reading kiln took, with its landing.
+func TestGaugeReadsNothing(t *testing.T) {
+	r, repo := scratchRepo(t)
+	t.Cleanup(func() { _ = removeTree(r.trees) })
+	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "gauges": [{"name": "n", "max": 5, ` +
+		`"command": ".kiln/gauges/n"}]}`, ".kiln/gauges/n": countTxt})
+	shell(t, repo, "chmod +x .kiln/gauges/n && git add . && git commit --quiet -m start")
+	var out strings.Builder
+	start := git.Rev(shell(t, repo, "git rev-parse HEAD"))
+	b := &build{r: r, rec: record{Name: "x", Build: "b-x"}, out: &out, landed: start}
+	b.record(entry{Kind: builtKind, Spec: "x"})
+	var landings []string
+	for _, change := range []string{"echo low >a.txt && git add a.txt", "true"} {
+		shell(t, repo, change+" && git commit --quiet --allow-empty -m landing")
+		b.onto, b.landed = b.landed, git.Rev(shell(t, repo, "git rev-parse HEAD"))
+		landings = append(landings, short(b.landed))
+		if err := b.readGauges(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var status strings.Builder
+	err := r.gaugeStatus(t.Context(), &status)
+	want := "gauge n: 1, line ≤ 5, at x's landing " + landings[0] + "\n"
+	said := strings.Contains(out.String(), "x: gauge n: nothing to read in this landing, as its command printed "+
+		"nothing")
+	if !claim.Holds(err == nil, said, status.String() == want) {
+		t.Errorf("the landings said:\n%s\nkiln status shows %q, %v; want the second to read nothing, and %q",
+			out.String(), status.String(), err, want)
+	}
+}
+
+// countTxt is a gauge that counts the .txt files changed since $KILN_BASE. It prints nothing where none changed.
+const countTxt = `files=$(git diff --name-only "$KILN_BASE" HEAD -- '*.txt')
+[ -z "$files" ] && exit 0
+echo "$files" | wc -l
+`
+
 // checkInAwk is a healthy check whose first line runs it with awk. sh cannot read it.
 const checkInAwk = "#!/usr/bin/awk -f\nBEGIN { print \"{\\\"fix\\\": false, \\\"summary\\\": \\\"fine\\\"}\" }\n"
 

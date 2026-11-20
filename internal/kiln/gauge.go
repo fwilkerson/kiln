@@ -134,6 +134,12 @@ func (b *build) readEach(ctx context.Context) error {
 			}
 		}
 
+		if rd.nothing {
+			// No reading is written, so the last one kiln took still stands, with its landing.
+			b.say("gauge %s: nothing to read in this landing, as %s", g.Name, rd.why)
+			continue
+		}
+
 		why := ""
 		if rd.why != "" {
 			why = ", since " + rd.why
@@ -199,9 +205,11 @@ func (r *Repo) gauges(ctx context.Context) (config, []gauge, error) {
 
 // gaugeRead is what one run of a gauge's command read.
 type gaugeRead struct {
-	// value is the reading, or nil when kiln could not take it. why then says why.
-	value *float64
-	why   string
+	// value is the reading, or nil when kiln could not take it. why then says why. nothing is whether the command
+	// exited 0 and printed nothing, as a gauge does that read no file.
+	value   *float64
+	why     string
+	nothing bool
 	// failed is whether the command failed, and last the last line of its stderr, or of its stdout. past is the
 	// *ranPast of a command kiln killed at its limit, or nil.
 	failed bool
@@ -231,6 +239,8 @@ func (s projectShell) readGauge(ctx context.Context, tree git.Worktree, command 
 		rd.failed, rd.last, rd.why, rd.past = true, "", "its command "+err.Error(), err
 	case err != nil:
 		rd.failed, rd.why = true, "its command failed: "+cmpOr(rd.last, err.Error())
+	case strings.TrimSpace(out.stdout) == "":
+		rd.nothing, rd.why = true, "its command printed nothing"
 	case !ok:
 		rd.why = "its command's last line is no number"
 	default:

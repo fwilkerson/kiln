@@ -29,7 +29,8 @@ import (
 //	gate      after each gate: when it ended, whether it passed, whether it gated a landing, and whether it ran the
 //	          commands at main too
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
-//	gauge     after a landing, one per gauge: its name, the landed commit, its value or none, and its line and side
+//	gauge     after a landing, one per gauge whose command printed something or failed: its name, the landed
+//	          commit, its value or none, and its line and side
 //	monitor   when kiln monitor run runs a monitor: its name, main's tip, git's ID of its directory, a hash of what
 //	          its check or gauge printed, and what it found: healthy, couldn't run, refused, held, or a fix, which
 //	          names its build. A monitor with a gauge adds the gauge's name, its reading of the whole repository, and

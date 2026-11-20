@@ -486,11 +486,13 @@
 // git diff "$KILN_BASE" HEAD names every file, and git log "$KILN_BASE"..HEAD fails. The worktree holds only the
 // commit's files. So a command that reads the changed files should list them with git diff --diff-filter=d. The reading
 // is the last line of stdout, trimmed, as a decimal number. A command that fails, or prints no number last, reads
-// unknown. kiln says why, by the last line of its stderr, or of its stdout. Hangs says why for a command past the
-// timeout. kiln writes each reading to its ledger with its line, and judges it against that line wherever it shows. A
-// reading below min, or above max, crossed its line. An unknown one never did. The kiln that landed the build prints
-// the readings after its summary, and only then starts the next build. A gauge never blocks a landing, and nothing
-// reads a landing kiln missed. The read holds commands.lock, so it waits for a gate, and a gate waits for it.
+// unknown. One that exits 0 and prints nothing read nothing: kiln says so, and writes no reading. So kiln status keeps
+// showing the last reading kiln took, with its landing. kiln says why, by the last line of its stderr, or of its
+// stdout. Hangs says why for a command past the timeout. kiln writes each reading to its ledger with its line, and
+// judges it against that line wherever it shows. A reading below min, or above max, crossed its line. An unknown one
+// never did. The kiln that landed the build prints the readings after its summary, and only then starts the next build.
+// A gauge never blocks a landing, and nothing reads a landing kiln missed. The read holds commands.lock, so it waits
+// for a gate, and a gate waits for it.
 //
 // # Notifications
 //

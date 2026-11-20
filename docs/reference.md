@@ -155,6 +155,8 @@ A gauge is a number you watch across landings, such as a mutation score or the t
   `min`, or above `max`, crossed it.
 - `kiln help gauges` says where and when kiln runs the command, what `$KILN_BASE` holds, and how it reads an
   unknown number. So `git diff --name-only --diff-filter=d "$KILN_BASE" HEAD` names the files one build left.
+- Print nothing when the landing holds nothing to read. kiln then says the landing read nothing, and `kiln status` keeps
+  showing the last reading, with its landing.
 - A line that must hold is a gate command, since a gauge never blocks a landing.
 - Keep its script under `.kiln/gauges/`, where no build can change it.
 
