@@ -286,8 +286,6 @@ const openLimit = 2 * time.Minute
 // open opens a Ghostty tab, which runs kiln monitor show for the monitor name. The tab's environment is Ghostty's,
 // not kiln's, so kiln names its own path and the repository's. Once the opener has run for limit, kiln kills its group.
 func (r *Repo) open(ctx context.Context, name Spec, limit time.Duration) error {
-	ctx, cancel := context.WithTimeout(ctx, limit)
-	defer cancel()
 	args := []string{shellQuote(r.exe) + " monitor show " + string(name), r.top}
 	cmd := exec.CommandContext(ctx, "osascript", append([]string{"-e", newTab}, args...)...)
 	if opener := envValue(r.env, openVar); opener != "" {
@@ -296,9 +294,10 @@ func (r *Repo) open(ctx context.Context, name Spec, limit time.Duration) error {
 
 	var out bytes.Buffer
 	cmd.Env, cmd.Stdout, cmd.Stderr = proc.Shell.Env(r.env), &out, &out
-	err := proc.Run(cmd)
+	err := proc.Run(cmd, limit)
+	_, past := errors.AsType[*proc.RanPast](err)
 	switch {
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+	case past:
 		return fmt.Errorf("%s ran past %s, so kiln killed it", cmd.Path, shownDuration(limit))
 	case err != nil:
 		return fmt.Errorf("%s: %w: %s", cmd.Path, err, strings.TrimSpace(out.String()))

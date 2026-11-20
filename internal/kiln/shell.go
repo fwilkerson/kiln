@@ -29,20 +29,17 @@ func (s projectShell) with(vars ...string) projectShell {
 	return s
 }
 
-// run runs command in dir, and answers what it printed, and the error it ended with. Once command has run for
-// s.limit, run kills its group, and answers a *ranPast.
+// run runs command in dir, and answers what it printed, and the error it ended with. When the shell still runs once
+// s.limit has passed, run kills its group, and answers a *ranPast.
 func (s projectShell) run(ctx context.Context, dir git.Worktree, command string) (output, error) {
-	bounded, cancel := context.WithTimeout(ctx, s.limit)
-	defer cancel()
 	var stdout, stderr bytes.Buffer
 	both := &lockedBuffer{}
-	cmd := exec.CommandContext(bounded, "/bin/sh", "-c", command)
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
 	cmd.Dir, cmd.Env = string(dir), s.env
 	cmd.Stdout, cmd.Stderr = io.MultiWriter(&stdout, both), io.MultiWriter(&stderr, both)
-	err := proc.Run(cmd)
+	err := proc.Run(cmd, s.limit)
 	out := output{stdout: stdout.String(), stderr: stderr.String(), both: both.String()}
-	// Run answers nil for output held past its grace, so the context alone says the limit was met.
-	if ctx.Err() == nil && errors.Is(bounded.Err(), context.DeadlineExceeded) {
+	if _, past := errors.AsType[*proc.RanPast](err); past {
 		return out, &ranPast{limit: s.limit}
 	}
 

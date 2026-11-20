@@ -273,9 +273,10 @@ func TestReportNamesLostFailure(t *testing.T) {
 }
 
 // TestCommandLeavesChild holds that a command which leaves a child behind ends once its shell exits. The child gets
-// 10 s to close the command's output. kiln then kills the command's group, and keeps what the command printed.
+// 10 s to close the command's output. kiln then kills the command's group, and keeps what the command printed. A
+// limit that passes while the child holds the output is no run past it: the command ended in time.
 func TestCommandLeavesChild(t *testing.T) {
-	for name, run := range commandRunners(t, config{}.shell(os.Environ())) {
+	for name, run := range commandRunners(t, config{Timeout: timeout(2 * time.Second)}.shell(os.Environ())) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()

@@ -17,7 +17,7 @@ import (
 func TestRunKeepsQuietChild(t *testing.T) {
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", "sleep 30 >/dev/null 2>&1 & echo $! > "+pidFile)
-	if err := proc.Run(cmd); err != nil {
+	if err := proc.Run(cmd, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 
