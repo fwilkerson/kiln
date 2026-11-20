@@ -343,9 +343,9 @@ func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
 	return b.round(back)
 }
 
-// findings runs the audit, unless it has answered. It runs it again when the work changed a path kiln.json's reaudit
-// names otherwise than the audit last read. That audit counts as a round, and past the last one the build
-// stops. It answers the findings, or "" when the audit found none or did not run.
+// findings runs the audit, unless it has read the work. It runs it again when the work changed a path kiln.json's
+// reaudit names otherwise than the audit last read. That audit counts as a round, and past the last one the build
+// stops. It answers the findings, or "" when the audit found none or had nothing to read.
 func (b *build) findings(ctx context.Context) (string, reason, error) {
 	head, err := b.r.git.Head(ctx, b.tree)
 	if err != nil {
@@ -365,13 +365,8 @@ func (b *build) findings(ctx context.Context) (string, reason, error) {
 	}
 
 	findings, err := b.audit(ctx)
-	if err != nil {
+	if err != nil || findings == "" {
 		return "", reason{}, err
-	}
-
-	b.set(func(r *record) { r.Audited = head })
-	if findings == "" {
-		return "", reason{}, nil
 	}
 
 	return findings, why, nil

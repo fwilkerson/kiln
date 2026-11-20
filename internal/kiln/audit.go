@@ -17,7 +17,8 @@ var tally = regexp.MustCompile(`found (\d+)\s*$`)
 
 // audit runs the audit agent on the directories the build changed, and its acceptance tests. It answers the findings,
 // or "" for none. An audit that names no finding count is all findings. An audit that ends with no result runs again,
-// in a new session, up to auditTries times.
+// in a new session, up to auditTries times. Once the audit answers, the record's Audited names the commit it read. A
+// build that changed nothing to read records no read.
 func (b *build) audit(ctx context.Context) (string, error) {
 	head, dirs, files, err := b.changedFiles(ctx)
 	if err != nil || len(dirs) == 0 {
@@ -51,6 +52,10 @@ func (b *build) audit(ctx context.Context) (string, error) {
 	}
 
 	findings, err := b.auditTries(ctx, l, head)
+	if err == nil {
+		b.set(func(r *record) { r.Audited = head })
+	}
+
 	// recount reads the worktree of an audit kiln stopped, so it stays until then.
 	if ctx.Err() == nil {
 		err = errors.Join(err, b.r.git.Remove(ctx, git.Worktree(l.Dir), ""))

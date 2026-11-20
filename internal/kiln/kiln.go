@@ -117,7 +117,7 @@
 //	commit     kiln commits whatever the session left; a merge it left in conflict: back, as a round
 //	gate       fails: back, as a round; past kiln.json's rounds, the build stops
 //	audit      a session of its own, in <trees>/.audit-<name>, up to 3 tries; findings: back, with no round spent
-//	           none when the build changed nothing outside .kiln/
+//	           none while the build changes nothing outside .kiln/; it runs once the build does
 //	           again, as a round, once the work changes a path kiln.json's reaudit names since the audit read it
 //	amended?   .kiln/specs/<name>.amend.md: the build waits on its branch, for kiln accept or kiln reject
 //	rebase     onto main's tip, as one commit; a conflict, or nothing changed on main: back, as a round

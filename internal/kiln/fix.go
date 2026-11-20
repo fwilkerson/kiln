@@ -390,7 +390,10 @@ func (b *build) fixFindings(ctx context.Context) (string, reason, error) {
 		return "", reason{}, err
 	}
 
-	b.set(func(r *record) { r.Audited = head })
+	if answer {
+		b.set(func(r *record) { r.Audited = head })
+	}
+
 	b.fix.answering = findings != ""
 	return findings, why, nil
 }
