@@ -643,12 +643,7 @@ func (b *build) pause(ctx context.Context, until time.Time) error {
 // undo answers each path an audit run changed in its worktree at dir, committed or not, since the commit read. Then
 // it puts the worktree back at read, so the next run of the audit sees only the build's work.
 func (r *Repo) undo(ctx context.Context, dir git.Worktree, read git.Rev) ([]string, error) {
-	head, err := r.git.Head(ctx, dir)
-	if err != nil {
-		return nil, err
-	}
-
-	changed, err := r.git.Status(ctx, dir)
+	head, changed, err := r.git.Status(ctx, dir)
 	if err != nil {
 		return nil, err
 	}

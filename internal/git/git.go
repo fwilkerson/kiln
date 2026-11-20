@@ -581,15 +581,36 @@ func unmerged(status string) []string {
 	return files
 }
 
-// Status lists each path at checkout that differs from the commit at HEAD, untracked files included.
-func (g *Git) Status(ctx context.Context, checkout Worktree) ([]string, error) {
-	out, err := g.in(ctx, checkout, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+// Status answers the commit at checkout's HEAD, and lists each path at checkout that differs from it, untracked files
+// included. One git answers both.
+func (g *Git) Status(ctx context.Context, checkout Worktree) (Rev, []string, error) {
+	out, err := g.in(ctx, checkout, "status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all",
+		"--no-renames")
+	var head Rev
 	var found []string
-	for _, p := range paths(out) {
-		found = append(found, p[min(3, len(p)):])
+	for _, entry := range paths(out) {
+		kind, rest, _ := strings.Cut(entry, " ")
+		switch kind {
+		case "#":
+			if oid, ok := strings.CutPrefix(rest, "branch.oid "); ok && oid != "(initial)" {
+				head = Rev(oid)
+			}
+		case "1":
+			found = append(found, pathAfter(entry, 8))
+		case "u":
+			found = append(found, pathAfter(entry, 10))
+		case "?":
+			found = append(found, rest)
+		}
 	}
 
-	return found, err
+	return head, found, err
+}
+
+// pathAfter is the path that ends entry, a line of git status --porcelain=v2, after its first n fields.
+func pathAfter(entry string, n int) string {
+	fields := strings.SplitN(entry, " ", n+1)
+	return fields[len(fields)-1]
 }
 
 // Reset puts the branch at checkout, and its files, back at commit, and removes every untracked file.
