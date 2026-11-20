@@ -465,12 +465,16 @@ func (b *build) sinceAccept(ctx context.Context, head git.Rev) error {
 
 // fixChanged answers the fix's commit, and whether it changes anything since it left main.
 func (b *build) fixChanged(ctx context.Context) (head git.Rev, changed bool, err error) {
-	head, base, err := b.fixBase(ctx)
+	if head, err = b.r.git.Head(ctx, b.tree); err != nil {
+		return "", false, err
+	}
+
+	main, err := b.r.mainTip(ctx)
 	if err != nil {
 		return "", false, err
 	}
 
-	paths, err := b.r.git.Changed(ctx, base, head)
+	paths, err := b.r.git.Branched(ctx, main, head)
 	return head, len(paths) > 0, err
 }
 

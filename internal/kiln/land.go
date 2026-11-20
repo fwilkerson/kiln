@@ -14,8 +14,8 @@ import (
 
 // land rebases the build's work onto main as one commit, and gates it. Then it moves main
 // there, only if main has not moved since the rebase; if it has, land starts again. from is the commit to rebase,
-// or "" to start from main's tip. Before the gate, retire may add a commit. A path in allowed may change, though
-// guarded names it.
+// which the build's checkout holds, or "" to start from main's tip. Before the gate, retire may add a commit. A path
+// in allowed may change, though guarded names it.
 //
 // It answers the commit main moved to. Or it answers what kept the work from landing, for the session. That is a
 // conflict, work that changes nothing on main, or the gate. A landing that doesn't move main puts the branch back
@@ -24,9 +24,11 @@ import (
 // The record keeps it until the build records it, so the next kiln records it if this one can't.
 func (b *build) land(ctx context.Context, from git.Rev, retire retiring, allowed ...string) (landed git.Rev,
 	back setback, err error) {
-	before, err := b.r.git.Head(ctx, b.tree)
-	if err != nil {
-		return "", setback{}, err
+	before := from
+	if before == "" {
+		if before, err = b.r.git.Head(ctx, b.tree); err != nil {
+			return "", setback{}, err
+		}
 	}
 
 	b.set(func(r *record) { r.Before = before })
