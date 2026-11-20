@@ -61,14 +61,15 @@
 //	                            tests live, the harness, the paths the audit reads again, and the program that
 //	                            receives each notification
 //	.kiln/kiln.schema.json      kiln.json's JSON Schema, for an editor, which kiln init writes over each time
-//	.kiln/monitors/<name>/      a monitor: its scripts, its agent and its settings, out of a fix's reach
-//	.kiln/gauges/               the scripts a gauge's command runs
+//	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
+//	.kiln/init.json             what kiln init last wrote, and its preset, which its next run merges the edits against
 //	.kiln/agents/build.md       the build agent
 //	.kiln/agents/verify.md      how the acceptance tests are written, and a split build's verify agent
 //	.kiln/agents/audit.md       the audit
 //	.kiln/reviewers/            the agents /shape runs on a spec before it is approved, which no build runs
-//	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
-//	.kiln/init.json             what kiln init last wrote, and its preset, which its next run merges the edits against
+//	.kiln/skills/shape/         /shape, which writes a spec with the developer, and the template kiln queue reads
+//	.kiln/gauges/               the scripts a gauge's command runs
+//	.kiln/monitors/<name>/      a monitor: its scripts, its agent and its settings, out of a fix's reach
 //
 // A command that refuses kiln.json, an agent's file or a spec prints each problem on a line, with its fix. kiln
 // doctor names each in the working tree, before a commit, as Doctor says.
