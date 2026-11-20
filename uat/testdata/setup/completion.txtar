@@ -24,6 +24,15 @@ cmp .tmp/accept _given/accept
 # kiln queue gets the queued spec and the one with no record, and neither the spec waiting for UAT nor the starter.
 cmp .tmp/queue _given/queue
 
+# When: the completion asks for kiln monitor's commands, and for what kiln monitor add takes.
+exec kiln complete monitor
+stdout '^add$'
+exec kiln complete monitor add
+
+# Then: kiln monitor add gets the monitors kiln ships.
+stdout '^bugs$'
+stdout '^go/docs$'
+
 -- _given/accept --
 a
 -- _given/queue --

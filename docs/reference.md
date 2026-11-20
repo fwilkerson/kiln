@@ -154,6 +154,10 @@ A monitor looks for a problem on a schedule, and fixes it. It is a directory und
 monitor, and its fix builds on the branch `kiln/<name>`. kiln reads each file below at main's tip, each optional,
 and runs each script with `sh`, so none needs to be executable.
 
+`kiln monitor add bugs` writes the `bugs` monitor kiln ships into `.kiln/monitors/bugs/`, and
+`kiln monitor add ../monitors/deps` the one in that directory. Commit what it writes on main, where kiln reads it. The
+project owns it from then on. `go doc ./internal/kiln` says what `kiln monitor add` refuses, under `MonitorAdd`.
+
 ```text
 .kiln/monitors/bugs/
   check          finds a problem: its last line of stdout is {"fix": true, "summary": "..."}, or false

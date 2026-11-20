@@ -9,6 +9,9 @@
 //	kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
 //	kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
 //	kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
+//	kiln monitor add <name>|<dir>
+//	                         copy a monitor into .kiln/monitors/: one kiln ships, such as bugs or go/docs, or the
+//	                         one in a directory, by a path that starts with . or /
 //	kiln monitor install     set up a launchd job that runs kiln monitor run in the repository each hour
 //	kiln monitor run [<name>]
 //	                         run each monitor that is due; or run one now, due or not
@@ -30,7 +33,8 @@
 //	kiln complete [<command>]                         _kiln, the zsh completion, runs it
 //
 // kiln complete lists kiln's commands, one per line. With a command, it lists the names that command would not refuse.
-// For accept and reject, those include the waiting fixes. For monitor run and monitor show, they are the monitors.
+// For accept and reject, those include the waiting fixes. For monitor run and monitor show, they are the monitors. For
+// monitor add, they are the monitors kiln ships.
 //
 // kiln exits 0 when the command did what it says, and 1 when it refused or failed. kiln help prints the usage to
 // stdout. A usage error exits 2, and prints the usage to stderr under a line that names the mistake. A kiln hook
@@ -61,6 +65,9 @@ const usage = `usage:
   kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
   kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
   kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
+  kiln monitor add <name>|<dir>
+                           copy a monitor into .kiln/monitors/: one kiln ships, such as bugs or go/docs, or the
+                           one in a directory, by a path that starts with . or /
   kiln monitor install     set up a launchd job that runs kiln monitor run in the repository each hour
   kiln monitor run [<name>]
                            run each monitor that is due; or run one now, due or not
@@ -83,32 +90,36 @@ var onRepo = map[string]repoCommand{
 	"monitor": monitor,
 }
 
-// monitor is kiln monitor install, kiln monitor run [<name>], or kiln monitor show <name>.
+// monitor is kiln monitor add <name>|<dir>, kiln monitor install, kiln monitor run [<name>], or kiln monitor show
+// <name>.
 func monitor(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
 	usage := strings.Join(args[:min(1, len(args))], "") + "/" + fmt.Sprint(len(args))
 	do, ok := monitorCommands[usage]
 	if !ok {
-		return usageError("takes install, run [<name>] or show <name>")
+		return usageError("takes add <name>|<dir>, install, run [<name>] or show <name>")
 	}
 
-	name := kiln.Spec(strings.Join(args[min(1, len(args)):], ""))
-	return do(ctx, r, name, out)
+	return do(ctx, r, strings.Join(args[min(1, len(args)):], ""), out)
 }
 
 // monitorRun is kiln monitor run, for every monitor that is due, or for the one named.
-func monitorRun(ctx context.Context, r *kiln.Repo, name kiln.Spec, out *os.File) error {
-	return r.MonitorRun(ctx, name, out)
+func monitorRun(ctx context.Context, r *kiln.Repo, name string, out *os.File) error {
+	return r.MonitorRun(ctx, kiln.Spec(name), out)
 }
 
-// monitorCommands holds kiln monitor's commands, by their name and their count of arguments, the name included.
-var monitorCommands = map[string]func(context.Context, *kiln.Repo, kiln.Spec, *os.File) error{
-	"install/1": func(ctx context.Context, r *kiln.Repo, _ kiln.Spec, out *os.File) error {
+// monitorCommands holds kiln monitor's commands, by their name and their count of arguments, the name included. Each
+// takes the argument after its name, or "".
+var monitorCommands = map[string]func(context.Context, *kiln.Repo, string, *os.File) error{
+	"add/2": func(_ context.Context, r *kiln.Repo, source string, out *os.File) error {
+		return r.MonitorAdd(source, out)
+	},
+	"install/1": func(ctx context.Context, r *kiln.Repo, _ string, out *os.File) error {
 		return r.MonitorInstall(ctx, out)
 	},
 	"run/1": monitorRun,
 	"run/2": monitorRun,
-	"show/2": func(ctx context.Context, r *kiln.Repo, name kiln.Spec, out *os.File) error {
-		return r.MonitorShow(ctx, name, os.Stdin, out)
+	"show/2": func(ctx context.Context, r *kiln.Repo, name string, out *os.File) error {
+		return r.MonitorShow(ctx, kiln.Spec(name), os.Stdin, out)
 	},
 }
 
@@ -234,8 +245,8 @@ func tui(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
 	return r.TUI(ctx, name, os.Stdin, out)
 }
 
-// complete lists kiln's commands, or with a command, the names it takes. kiln monitor takes its own commands, and
-// kiln monitor run and show take the monitors' names.
+// complete lists kiln's commands, or with a command, the names it takes. kiln monitor takes its own commands. kiln
+// monitor run and show take the monitors' names, and kiln monitor add the names of those kiln ships.
 func complete(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) > 2 {
 		return usageError("takes a command, and its subcommand")
@@ -259,7 +270,7 @@ func takes(ctx context.Context, args []string) ([]string, error) {
 	case len(args) == 0:
 		return commands, nil
 	case len(args) == 1 && args[0] == "monitor":
-		return []string{"install", "run", "show"}, nil
+		return []string{"add", "install", "run", "show"}, nil
 	}
 
 	r, err := kiln.Open(ctx, ".", os.Environ())

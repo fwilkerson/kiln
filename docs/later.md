@@ -194,3 +194,14 @@ the rounds.
 - **Why it was left out:** the developer chose the round on 2026-11-19. A merge of main is a turn of the session, as
   a failed gate's fix is.
 - **Build it when:** a build stops out of rounds that conflicts with the other lane's landings spent.
+
+## Adding a monitor from a git repository
+
+`kiln monitor add` takes a monitor kiln ships, or a directory. A team that keeps its monitors in a repository of its
+own clones that repository, then adds from the clone. A third source was weighed on 2026-11-19: a git URL, such as
+`kiln monitor add github.com/team/monitors/deps`, which kiln would fetch itself.
+
+- **Why it was left out:** a clone is one command. A fetch inside kiln brings the network, a sign-in, and a version to
+  pin, and no team keeps monitors apart from its project yet.
+- **Build it when:** a team adds monitors from a shared repository, and finds the clone the step it forgets, or wants
+  an added monitor brought up to its source's latest.

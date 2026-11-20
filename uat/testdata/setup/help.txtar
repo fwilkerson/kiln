@@ -24,7 +24,7 @@ stderr '\Akiln: unknown command bogus\nusage:'
 ! stdout .
 stderr '\Akiln queue: takes one spec''s name\nusage:'
 ! exec kiln monitor bogus
-stderr '\Akiln monitor: takes install, run \[<name>\] or show <name>\nusage:'
+stderr '\Akiln monitor: takes add <name>\|<dir>, install, run \[<name>\] or show <name>\nusage:'
 ! exec kiln hook --spec x
 stderr '\Akiln hook: usage: kiln never writes the arguments \["--spec" "x"\]\nusage:'
 exec sh -c 'for c in bogus queue "monitor bogus" "hook --spec x"; do kiln $c 2>/dev/null </dev/null; test $? -eq 2 || exit 1; done'

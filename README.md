@@ -131,7 +131,25 @@ landing. `kiln status` shows the latest reading, and `kiln tui` each landing's. 
 ## Monitors
 
 A monitor is a job kiln runs on a schedule, with no terminal open. Its check looks for a problem. When it finds
-one, an agent fixes it, and the fix is gated, audited and landed like any build. A monitor is a directory:
+one, an agent fixes it, and the fix is gated, audited and landed like any build. kiln ships three:
+
+| Monitor        | What it fixes                                                                        |
+|----------------|--------------------------------------------------------------------------------------|
+| `bugs`         | each bug report filed under `bugs/`, one fix at a time, with a test that fails first |
+| `go/docs`      | each Go package doc a change made false, for `kiln accept docs`                      |
+| `go/gate-time` | a gate that slowed, by making the Go tests faster, for `kiln accept gate-time`       |
+
+```console
+$ kiln monitor add bugs           # writes .kiln/monitors/bugs/, for you to commit on main
+$ kiln monitor install            # once: a launchd job then runs kiln monitor run each hour
+$ kiln monitor run bugs           # or run one now
+$ kiln status
+monitors:
+bugs: landed, last ran 2026-11-17 00:24, runs next after 2026-11-17 00:54
+```
+
+`kiln monitor add ../monitors/deps` adds one a team keeps in a directory. A monitor is a directory, which the project
+owns once added:
 
 ```text
 .kiln/monitors/bugs/
@@ -150,14 +168,6 @@ cat "$first"
 echo '{"fix": true, "summary": "a bug waits in bugs/"}'
 ```
 
-```console
-$ kiln monitor install            # once: a launchd job then runs kiln monitor run each hour
-$ kiln monitor run bugs           # or run one now
-$ kiln status
-monitors:
-bugs: landed, last ran 2026-11-17 00:24, runs next after 2026-11-17 00:54
-```
-
 kiln runs its own repository this way. Its [`bugs`](.kiln/monitors/bugs/) monitor fixes what is filed under
 `bugs/`, each with a test that fails first. `code-health` refactors the files a gauge scores lowest, `uat` tidies
 the acceptance tests of accepted specs, `docs` reads the docs of changed packages against their code, and
@@ -174,6 +184,7 @@ kiln status                      show where each spec and monitor stands, and ea
 kiln tui [<name>]                show every build, live and past, in a full-screen view
 kiln accept <name>               take the work: retire the spec, land its amendments, or land a waiting fix
 kiln reject <name>               turn the amendments away, or drop a waiting fix
+kiln monitor add <name>|<dir>    add a monitor kiln ships, or one from a directory, to .kiln/monitors/
 kiln monitor install             set up the launchd job that runs kiln monitor run each hour
 kiln monitor run [<name>]        run each monitor that is due, or one now
 kiln monitor show <name>         show how a monitor's last run ended

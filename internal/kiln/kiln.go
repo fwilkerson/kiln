@@ -8,6 +8,7 @@
 //	err = r.TUI(ctx, "", os.Stdin, os.Stdout) // every build, live and past, in a full-screen view
 //	err = r.Accept(ctx, "x", os.Stdout)       // takes the work: lands its amendments, and retires the spec
 //	err = r.Reject(ctx, "x", os.Stdout)       // turns the amendments away: drops the build, and its branch
+//	err = r.MonitorAdd("bugs", os.Stdout)     // copies the bugs monitor kiln ships into .kiln/monitors/bugs/
 //	err = r.MonitorRun(ctx, "", os.Stdout)    // runs each monitor in .kiln/monitors/ that is due
 //	names, err := r.Takes(ctx, "queue")       // the specs kiln queue would not refuse
 //
@@ -786,7 +787,8 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 
 // Takes answers the names command would not refuse, for the shell to complete. For queue, accept and reject, they
 // are specs, and for accept and reject, waiting fixes too. For tui, they are the specs kiln holds or its ledger holds.
-// For "monitor run" and "monitor show", they are the monitors main's tip holds. Other commands take none.
+// For "monitor run" and "monitor show", they are the monitors main's tip holds. For "monitor add", they are the
+// monitors kiln ships. Other commands take none.
 func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	switch command {
 	case "tui":
@@ -797,6 +799,8 @@ func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 		return r.queueNames(ctx)
 	case "monitor run", "monitor show":
 		return r.monitorNames(ctx)
+	case "monitor add":
+		return shippedNames(), nil
 	}
 
 	return nil, nil
