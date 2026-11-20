@@ -221,6 +221,8 @@ type checked struct {
 	// reading is a gauge's reading, as a monitor line holds it: the gauge's name, its value and its line. Its Gauge
 	// is "" for a check.
 	reading entry
+	// past is whether the check or gauge couldn't run because it ran past kiln.json's timeout.
+	past bool
 }
 
 // verdictLine is a check's last line of stdout.
@@ -244,7 +246,7 @@ func (s projectShell) runMonitorCheck(ctx context.Context, dir git.Worktree, com
 	var v verdictLine
 	switch {
 	case past:
-		c.summary = "the check " + err.Error()
+		c.summary, c.past = "the check "+err.Error(), true
 	case err != nil:
 		c.summary = cmpOr(out.last(), fmt.Sprintf("the check failed: %v", err))
 	case !jsonLine(last, &v) || v.Fix == nil:
@@ -319,5 +321,5 @@ func (s projectShell) measured(ctx context.Context, tree git.Worktree, g gauge, 
 
 	e := entry{Gauge: g.Name, Value: rd.value, gaugeLine: g.gaugeLine}
 	return checked{ran: rd.value != nil, fix: g.crossed(rd.value), summary: rd.summary(e), printed: rd.printed,
-		found: rd.found, reading: e}, nil
+		found: rd.found, reading: e, past: rd.past != nil}, nil
 }

@@ -58,9 +58,11 @@ func TestDue(t *testing.T) {
 	for name, tc := range map[string]struct {
 		found, outcome string
 		later          time.Duration
-		due            bool
+		due, past      bool
 	}{
 		"healthy a moment ago":              {found: foundHealthy, later: time.Minute},
+		"its check ran past the timeout":    {found: foundCouldNot, past: true, later: time.Minute},
+		"that, its interval later":          {found: foundCouldNot, past: true, later: 24 * time.Hour, due: true},
 		"healthy, its interval less slack":  {found: foundHealthy, later: 23*time.Hour + 30*time.Minute, due: true},
 		"healthy, just short of that":       {found: foundHealthy, later: 23*time.Hour + 29*time.Minute},
 		"its check couldn't run":            {found: foundCouldNot, later: time.Minute, due: true},
@@ -79,7 +81,7 @@ func TestDue(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var entries []entry
 			if tc.found != "" {
-				line := entry{Kind: monitorKind, Monitor: "deps", At: ran, Found: tc.found, Build: "b"}
+				line := entry{Kind: monitorKind, Monitor: "deps", At: ran, Found: tc.found, Build: "b", Past: tc.past}
 				entries = append(entries, line)
 			}
 
@@ -91,6 +93,31 @@ func TestDue(t *testing.T) {
 				t.Errorf("due %v, want %v", due, tc.due)
 			}
 		})
+	}
+}
+
+// TestStuck holds that a check or gauge past the timeout holds its monitor until main or its entry changes. A run
+// held for it keeps it held, and any other run since releases it.
+func TestStuck(t *testing.T) {
+	stuck := entry{Kind: monitorKind, Monitor: "m", Main: "a", Entry: "e", Found: foundCouldNot, Past: true}
+	heldFor := entry{Kind: monitorKind, Monitor: "m", Main: "a", Entry: "e", Found: foundHeld, Past: true}
+	healthy := entry{Kind: monitorKind, Monitor: "m", Main: "a", Entry: "e", Found: foundHealthy}
+	for name, tc := range map[string]struct {
+		lines     []entry
+		main, ent string
+		held      bool
+	}{
+		"the same main and entry":     {lines: []entry{stuck}, main: "a", ent: "e", held: true},
+		"main moved":                  {lines: []entry{stuck}, main: "b", ent: "e"},
+		"its entry changed":           {lines: []entry{stuck}, main: "a", ent: "f"},
+		"a run held for it since":     {lines: []entry{stuck, heldFor}, main: "a", ent: "e", held: true},
+		"a run that finished since":   {lines: []entry{stuck, healthy}, main: "a", ent: "e"},
+		"a check that never ran past": {lines: []entry{healthy}, main: "a", ent: "e"},
+	} {
+		now := entry{Main: git.Rev(tc.main), Entry: tc.ent}
+		if held := histories(tc.lines)["m"].stuckAt(now); held != tc.held {
+			t.Errorf("%s: held %v, want %v", name, held, tc.held)
+		}
 	}
 }
 

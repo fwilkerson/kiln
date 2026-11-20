@@ -11,14 +11,24 @@ exec sh -c 'kiln monitor run || true'
 # Then: no fix starts.
 ! exists .claude-calls
 
-# kiln status shows that each monitor couldn't run, with why, and that each runs at the next kiln monitor run.
+# kiln status shows that each monitor couldn't run, with why. Each runs at the next kiln monitor run, but the one that
+# ran past the timeout, which would hold the gate as long again. It waits for its interval.
 exec kiln status
 stdout '^broken: couldn''t run, .*runs at the next kiln monitor run$'
 stdout 'the tool is missing'
 stdout '^silent: couldn''t run, .*runs at the next kiln monitor run$'
 stdout 'quiet: its command''s last line is no number'
-stdout '^stuck: couldn''t run, .*runs at the next kiln monitor run$'
+stdout '^stuck: couldn''t run, .*runs next after '
 stdout 'slow: its command ran past kiln.json''s timeout of 3s, so kiln killed it'
+
+# When: a day later, with main and the monitors unchanged, kiln monitor run runs again.
+env KILN_NOW=2099-01-01T00:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: the monitor whose gauge ran past the timeout is held, and its gauge never runs, until main or its entry
+# changes.
+stdout '^stuck: held: its check or gauge ran past kiln.json''s timeout at main [0-9a-f]+; it runs once main or its'
+! stdout 'slow: its command ran past'
 
 -- .kiln/kiln.json --
 {"gate": ["true"], "timeout": "3s", "gauges": [

@@ -206,9 +206,10 @@
 //	  gauges   read after a landing, as after a build's
 //	  again    with "drain": true, after a fix that landed: from check, due or not, until no fix lands
 //
-// A monitor is due when it never ran, or its check or gauge couldn't run. It is due when a usage limit ended its fix,
-// or its fix was cut short. Otherwise it is due once its last run started its interval, less 30 minutes, ago.
-// $KILN_NOW, as RFC 3339, stands for the clock. A monitor with neither check nor gauge starts a fix each run it is due.
+// A monitor is due when it never ran, or its check or gauge couldn't run but did not hang. It is due when a usage
+// limit ended its fix, or its fix was cut short. Otherwise it is due once its last run started its interval, less 30
+// minutes, ago. $KILN_NOW, as RFC 3339, stands for the clock. A monitor with neither check nor gauge starts a fix each
+// run it is due.
 //
 // Its check's last line of stdout is {"fix": true|false, "summary": "..."}. A check that exits non-zero, or prints
 // no such line, couldn't run. kiln then keeps its last line of stdout and stderr, but for a check past the timeout,
@@ -308,7 +309,9 @@
 //	a gauge read after a landing                           unknown, with those words as why
 //
 // The timeout counts only the time the Mac is awake, as Go's timers do. It never sends work back as a round. A round
-// would wait out the same hang again, holding the same lock. kiln gives the command that opens a Ghostty tab 2
+// would wait out the same hang again, holding the same lock. So a monitor whose check or gauge ran past it waits for
+// its interval. Then it is held, and runs no check, until main's tip or its entry changes. kiln monitor run with its
+// name runs it anyway. kiln gives the command that opens a Ghostty tab 2
 // minutes, then kills it, and the fix's result stands. A pause for a usage limit lasts until the limit resets. A wait
 // for commands.lock lasts as long as the bounded work that holds it. kiln precommit reads the timeout from the working
 // tree, as it reads the gate. A command past it refuses the commit.

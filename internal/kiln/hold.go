@@ -12,6 +12,8 @@ type history struct {
 	outcomes map[string]entry
 	// running holds the start line of each of its fixes' session runs that has no end line yet, by build.
 	running map[string]entry
+	// stuck is its last monitor line whose check or gauge ran past kiln.json's timeout, while each line since is Past.
+	stuck entry
 }
 
 // histories reads each monitor's history from the ledger, by its name.
@@ -31,6 +33,7 @@ func histories(entries []entry) map[Spec]*history {
 		case e.Kind == monitorKind:
 			h := of(e.Monitor)
 			h.last = e
+			h.stuck = stuckAfter(h.stuck, e)
 			if e.Found == foundFix {
 				h.lastFix = e
 				fixes[e.Build] = e.Monitor
@@ -77,11 +80,36 @@ func (h *history) due(m monitor, now time.Time) bool {
 	}
 
 	switch h.result(h.last) {
-	case foundCouldNot, outLimit, outDropped:
+	case outLimit, outDropped:
 		return true
+	case foundCouldNot:
+		// One that ran past the timeout would hold commands.lock as long again, so it waits for its interval.
+		return !h.last.Past || !now.Before(h.next(m))
 	}
 
 	return !now.Before(h.next(m))
+}
+
+// stuckAfter is the stuck line of a history whose stuck line was stuck, once the monitor line e follows it.
+func stuckAfter(stuck, e entry) entry {
+	switch {
+	case !e.Past:
+		return entry{}
+	case e.Found == foundCouldNot:
+		return e
+	}
+
+	return stuck
+}
+
+// stuckAt is whether the monitor's check or gauge ran past kiln.json's timeout at the main and entry now holds. Its
+// run would hang again on the same input, so the monitor is held until one of them changes.
+func (h *history) stuckAt(now entry) bool {
+	if h == nil || h.stuck.Kind == "" {
+		return false
+	}
+
+	return h.stuck.Main == now.Main && h.stuck.Entry == now.Entry
 }
 
 // next is when m is due again, once its last run's interval less slack has passed.

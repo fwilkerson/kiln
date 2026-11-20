@@ -195,6 +195,7 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
   run, and starts no fix. So does a gauge kiln could not read.
 - A monitor is due when it never ran, when its check or gauge couldn't run, when a usage limit ended its fix, or
   when its fix was cut short. Otherwise it is due once its last run started its interval, less half an hour, ago.
+  A check or gauge that ran past `timeout` waits for its interval, and then for a change to main or its entry.
 - A fix is a build with no spec. The gate holds it, with the check added unless `"gates": false`. That setting is
   for a check that reads something a fix cannot change until it is deployed. A gauge always joins the gate.
 - A fix never writes under `.kiln/`. Without `"tests": true`, it never writes under an `acceptance` path's part

@@ -170,7 +170,34 @@ func (run *monitorRunning) pass(ctx context.Context, m monitor, dueOrNot bool) (
 		return false, nil
 	}
 
+	if held, err := run.heldStuck(ctx, m, h, dueOrNot); err != nil || held {
+		return false, err
+	}
+
 	return run.check(ctx, m, h, k.find(m.Name))
+}
+
+// heldStuck holds m while main's tip and m's entry are those its check or gauge ran past the timeout at. It writes
+// m's monitor line then. A run due or not, as one by name, holds none. It answers whether it held m.
+func (run *monitorRunning) heldStuck(ctx context.Context, m monitor, h *history, dueOrNot bool) (bool, error) {
+	if dueOrNot {
+		return false, nil
+	}
+
+	main, err := run.r.mainTip(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	line := entry{Kind: monitorKind, Monitor: m.Name, At: run.r.now(), Main: main, Entry: m.hash(), Found: foundHeld,
+		Past: true}
+	if !h.stuckAt(line) {
+		return false, nil
+	}
+
+	line.Summary = fmt.Sprintf("its check or gauge ran past %s at main %s; it runs once main or its entry changes",
+		timeoutKey, short(main))
+	return true, run.write(line)
 }
 
 // check runs m's check, or reads its gauge, at main's tip, and writes its monitor line. A finding starts a fix,
@@ -184,7 +211,7 @@ func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec
 
 	line := entry{Kind: monitorKind, Monitor: m.Name, At: run.r.now(), Main: main, Entry: m.hash(),
 		Printed: hashOf(found.printed), Summary: found.summary, Found: foundOf(found), Gauge: found.reading.Gauge,
-		Value: found.reading.Value, gaugeLine: found.reading.gaugeLine}
+		Value: found.reading.Value, gaugeLine: found.reading.gaugeLine, Past: found.past}
 	if line.Found == foundFix && run.held(m, h, rec, line) {
 		line.Found = foundHeld
 	}
