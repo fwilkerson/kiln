@@ -44,6 +44,39 @@ func TestMove(t *testing.T) {
 	}
 }
 
+// TestMoveCheckedOutNowhere holds that a branch no worktree holds moves by its ref, and only from where the landing
+// found it. The checkout, on another branch, gets no file.
+func TestMoveCheckedOutNowhere(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		expected func(h history) git.Rev
+		want     func(h history) outcome
+	}{
+		"main is where the landing found it": {
+			expected: func(h history) git.Rev { return h.first },
+			want:     func(h history) outcome { return outcome{main: h.landed} },
+		},
+		"another landing moved main first": {
+			expected: func(h history) git.Rev { return h.second },
+			want:     func(h history) outcome { return outcome{refused: true, refusedAt: h.first, main: h.first} },
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			h := makeHistory(t)
+			sh(t, h.repo, "git checkout --quiet other")
+			way, err := h.git.Move(t.Context(), "main", h.landed, tc.expected(h))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if got, want := h.outcome(t, way), tc.want(h); got != want {
+				t.Errorf("got %+v; want %+v", got, want)
+			}
+		})
+	}
+}
+
 // outcome is what a move left. It holds any refusal and the tip it names, where main is, and whether landed is out.
 type outcome struct {
 	refused   bool
