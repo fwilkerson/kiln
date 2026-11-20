@@ -183,6 +183,8 @@ kiln reject <name>               turn the amendments away, or drop a waiting fix
 kiln monitor install             set up the launchd job that runs kiln monitor run each hour
 kiln monitor run [<name>]        run each monitor that is due, or one now
 kiln monitor show <name>         show how a monitor's last run ended
+kiln ledger [--kind <kind>] [--name <name>] [--last <n>]
+                                 print what kiln's ledger holds, one JSON object a line, for a script
 ```
 
 ## Read more

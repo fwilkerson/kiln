@@ -31,6 +31,16 @@ exec kiln status
 stdout '^x: waiting for UAT$'
 ! stdout 'stopped|amendments'
 
+# kiln ledger prints the build for a script, with the sums its summary shows.
+exec kiln ledger --kind build --name x
+stdout -count=1 '^\{'
+stdout '^\{"kind":"build","build":"[a-z0-9]{12}","name":"x","fix":false,.*"outcome":"landed","seconds":[0-9.]+,"cost_usd":0\.42,"turns":3,"failed_calls":1,"rounds":0,"audits":1,"findings":1\}$'
+
+# Its first gate ran the gate's commands at main too. Its landing's gate read the checks kept there.
+exec kiln ledger --kind gate --name x
+stdout '\A\{"kind":"gate",[^\n]*"landing":false,"ran_main":true\}\n'
+stdout '"landing":true,"ran_main":false\}\n\z'
+
 # The first audit ended with no result, so it ran again. Its finding went back to the session, which fixed it
 # before the work landed.
 exists .claude-calls/audit/2/1/call.json

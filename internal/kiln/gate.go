@@ -150,6 +150,8 @@ type verdict struct {
 	failing []string
 	// rounds is how many times kiln.json lets a failing gate go back to the session.
 	rounds int
+	// ranMain is whether the gate ran the commands at main, rather than reading the checks kept from an earlier gate.
+	ranMain bool
 }
 
 // judge passes a gate when each check at the tip exited 0, or failed on tests failing at main. A check that is broken
@@ -302,13 +304,13 @@ func (held commands) gate(ctx context.Context, without []string, guards ...guard
 		return verdict{}, err
 	}
 
-	atMain, err := held.atMain(ctx, main, c.Gate, without)
+	atMain, ran, err := held.atMain(ctx, main, c.Gate, without)
 	if err != nil {
 		return verdict{}, err
 	}
 
 	v := judge(tip, atMain, refused)
-	v.rounds = c.Rounds
+	v.rounds, v.ranMain = c.Rounds, ran
 	return v, nil
 }
 
@@ -381,40 +383,40 @@ func (r *Repo) removed(ctx context.Context, head git.Rev, p string, without []st
 const checksVersion = 2
 
 // atMain runs gate, the gate's commands, at main's tip, less the paths without, in a worktree of its own. It keeps
-// the checks, and runs them again only once main, without or the commands change. It runs under held, so every kiln
-// shares the worktree, one at a time.
-func (held commands) atMain(ctx context.Context, main git.Rev, gate []string, without []string) ([]check, error) {
+// the checks, and runs them again only once main, without or the commands change. Its bool is whether it ran them. It
+// runs under held, so every kiln shares the worktree, one at a time.
+func (held commands) atMain(ctx context.Context, main git.Rev, gate, without []string) ([]check, bool, error) {
 	r := held.r
 	// The count of without tells where its paths end and the commands begin.
 	parts := append([]string{fmt.Sprint(checksVersion), string(main), fmt.Sprint(len(without))}, without...)
 	key := strings.Join(append(parts, gate...), "\x00")
 	b, err := r.store.read()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	if checks, ok := b.Main[key]; ok {
-		return checks, nil
+		return checks, false, nil
 	}
 
 	tree := git.Worktree(filepath.Join(r.trees, mainTree))
 	if err := r.git.Detached(ctx, tree, main); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// The next Detached puts back what this removes.
 	for _, p := range without {
 		if err := os.RemoveAll(filepath.Join(string(tree), p)); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 
 	checks, err := runChecks(ctx, tree, gate, r.env)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	return checks, r.store.update(func(b *book) error {
+	return checks, true, r.store.update(func(b *book) error {
 		b.Main = map[string][]check{key: checks}
 		return nil
 	})

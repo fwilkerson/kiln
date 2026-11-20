@@ -13,6 +13,8 @@
 //	kiln monitor run [<name>]
 //	                         run each monitor kiln.json names that is due; or run one now, due or not
 //	kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
+//	kiln ledger [--kind <kind>] [--name <name>] [--last <n>]
+//	                         print what kiln's ledger holds, one JSON object a line, for a script to read
 //	kiln help                print this usage, as kiln --help and kiln -h do
 //
 // Each refuses a spec in a state it does not take, as go doc ./internal/kiln shows.
@@ -22,6 +24,8 @@
 // next.
 //
 // kiln tui draws only on a terminal. With its output elsewhere, it draws nothing, and refuses.
+//
+// kiln ledger prints each kind of line, and each field, that go doc ./internal/kiln lists under kiln ledger.
 //
 // kiln runs three commands of its own, which the developer never types:
 //
@@ -65,11 +69,13 @@ const usage = `usage:
   kiln monitor run [<name>]
                            run each monitor kiln.json names that is due; or run one now, due or not
   kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
+  kiln ledger [--kind <kind>] [--name <name>] [--last <n>]
+                           print what kiln's ledger holds, one JSON object a line, for a script to read
   kiln help                print this usage, as kiln --help and kiln -h do
 `
 
 // commands are the developer's commands, as kiln complete lists them.
-var commands = []string{"init", "queue", "fire", "status", "tui", "accept", "reject", "monitor"}
+var commands = []string{"init", "queue", "fire", "status", "tui", "accept", "reject", "monitor", "ledger"}
 
 // onRepo holds each of the developer's commands, which act on the repository in the working directory.
 var onRepo = map[string]repoCommand{
@@ -81,6 +87,7 @@ var onRepo = map[string]repoCommand{
 	"accept":  oneName((*kiln.Repo).Accept),
 	"reject":  oneName((*kiln.Repo).Reject),
 	"monitor": monitor,
+	"ledger":  ledger,
 }
 
 // monitor is kiln monitor install, kiln monitor run [<name>], or kiln monitor show <name>.
@@ -207,6 +214,24 @@ func initRepo(ctx context.Context, r *kiln.Repo, args []string, out *os.File) er
 	}
 
 	return r.Init(ctx, out, kiln.InitOptions{Preset: *preset})
+}
+
+// ledger is kiln ledger, which takes --kind, --name and --last, and no other argument.
+func ledger(_ context.Context, r *kiln.Repo, args []string, out *os.File) error {
+	flags := flag.NewFlagSet("ledger", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	kind := flags.String("kind", "", "the kind of line to print")
+	name := flags.String("name", "", "the spec or monitor whose lines to print")
+	last := flags.Int("last", 0, "how many of the last lines to print")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
+		return usageError("takes only --kind <kind>, --name <name> and --last <n>")
+	}
+
+	if *last < 0 {
+		return usageError("takes a --last of 0 or more")
+	}
+
+	return r.Ledger(out, kiln.LedgerOptions{Kind: *kind, Name: kiln.Spec(*name), Last: *last})
 }
 
 // oneName is a command that takes one spec's name.

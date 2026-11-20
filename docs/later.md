@@ -139,11 +139,14 @@ agent that hands to a separate fix agent.
 ## A gate's kind in the ledger
 
 The `gate-time` monitor compares the upper quartile of the last 20 passing gates' times with the 20 before. A gate
-that also runs main's checks, to excuse a test that fails at main too, takes about twice as long. The ledger's entry
-for a gate does not say whether it ran them, so a run of such gates reads as a slower suite.
+that also runs main's checks, to excuse a test that fails at main too, takes about twice as long. The check counts
+both kinds of gate, so a run of such gates reads as a slower suite.
 
 - **Why it was left out:** on 2026-11-18 the check read +5% against a +50% line, so the noise stayed far below it.
-- **Build it when:** the monitor fires on gates that ran main's checks, rather than on slower tests.
+- **Since 2026-11-19:** each gate's line in the ledger says whether it ran main's checks, and `kiln ledger` prints
+  it as `ran_main`. A gate from before then says neither.
+- **Build it when:** the monitor fires on gates that ran main's checks, rather than on slower tests. The check then
+  keeps the gates whose `ran_main` is false.
 
 ## `kiln tui` on a light terminal
 

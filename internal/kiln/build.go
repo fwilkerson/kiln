@@ -775,7 +775,12 @@ func (b *build) gated(ctx context.Context, held commands, without []string, guar
 		v, err = b.gatedCheck(ctx, held, v)
 	}
 
-	b.record(entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed, Landing: b.now().Before != ""})
+	e := entry{Kind: gateKind, At: start, End: time.Now(), Passed: v.passed, Landing: b.now().Before != ""}
+	if err == nil {
+		e.RanMain = &v.ranMain
+	}
+
+	b.record(e)
 	if err == nil {
 		b.set(func(r *record) { r.Limit = &v.rounds })
 	}

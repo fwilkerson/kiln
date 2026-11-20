@@ -150,6 +150,28 @@ A monitor may name a gauge in place of a check. Then:
 - Print the same for the same finding, with no line numbers and no timestamps. kiln compares what the gauge printed
   to decide whether anything changed.
 
+A gauge can read kiln's own numbers from `kiln ledger`, which prints the ledger one JSON object a line, as
+[What kiln records](#what-kiln-records) says. The median cost of the last ten builds that ended, in dollars:
+
+```sh
+#!/bin/sh
+set -eu
+builds=$(kiln ledger --kind build)
+printf '%s\n' "$builds" | jq -s 'map(select(.outcome != null and .cost_usd != null) | .cost_usd) | .[-10:] | sort
+  | if length > 0 then (.[(length - 1) / 2 | floor] + .[length / 2 | floor]) / 2 else empty end'
+```
+
+The slowest of the last twenty gates that passed on a build's work, in seconds, as `{"max": 300}` would watch it:
+
+```sh
+#!/bin/sh
+set -eu
+gates=$(kiln ledger --kind gate)
+printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seconds) | .[-20:] | max // empty'
+```
+
+Each takes its output whole first, so a failed `kiln ledger` fails the gauge, rather than reading no number.
+
 ### monitors
 
 A monitor looks for a problem on a schedule, and fixes it.
@@ -277,9 +299,38 @@ and for the spec names each command would not refuse.
 
 ```text
 .git/kiln/
-  ledger.jsonl                    each build's time, cost, turns and failed calls, and each gauge's readings
+  ledger.jsonl                    each build, session run, gate, outcome, gauge reading and monitor run
   sessions/<id>/stream.jsonl      each session's stream, for why a number is what it is
 ```
+
+`ledger.jsonl` is kiln's own, and changes with kiln. A script reads it through `kiln ledger`, whose lines are a
+contract: `go doc ./internal/kiln` lists each kind and field, under kiln ledger. A build's line holds its time, cost,
+turns, failed calls, rounds, and how often the audit sent findings back.
+
+```console
+$ kiln ledger --kind build --last 1 | jq .
+{
+  "kind": "build",
+  "build": "k3v9q2x7m1ab",
+  "name": "x",
+  "fix": false,
+  "at": "2026-11-18T05:00:00Z",
+  "size": 2,
+  "outcome": "landed",
+  "seconds": 540.2,
+  "cost_usd": 1.84,
+  "turns": 41,
+  "failed_calls": 2,
+  "rounds": 1,
+  "audits": 1,
+  "findings": 1
+}
+```
+
+- `--kind` keeps one kind of line: `build`, `run`, `gate`, `reading` or `monitor`.
+- `--name` keeps the lines of one spec's builds, or of one monitor's runs and fixes.
+- `--last <n>` keeps the last n lines of those, oldest first.
+- It runs from any worktree of the repository, and waits on no build.
 
 A landed build's commit message holds its time, cost, turns and failed calls too. kiln removes every checkout a
 build made once the build lands, is accepted, is rejected or is queued anew. A build that stopped, or waits on its

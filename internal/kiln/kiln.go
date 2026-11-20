@@ -10,6 +10,7 @@
 //	err = r.Reject(ctx, "x", os.Stdout)       // turns the amendments away: drops the build, and its branch
 //	err = r.MonitorRun(ctx, "", os.Stdout)    // runs each monitor kiln.json names that is due
 //	names, err := r.Takes(ctx, "queue")       // the specs kiln queue would not refuse
+//	err = r.Ledger(os.Stdout, kiln.LedgerOptions{Kind: "gate"}) // each gate, one JSON object a line
 //
 // Where each command moves a spec:
 //
@@ -296,6 +297,77 @@
 // them, which names each file changed since kiln accept:
 //
 //	Changed since kiln accept: <path>, <path>
+//
+// # kiln ledger
+//
+// kiln ledger prints the ledger for a script, one JSON object a line, oldest first by when each started:
+//
+//	kiln ledger --kind build --last 10 | jq -s 'map(.cost_usd // empty)'
+//
+// Its options keep one kind, the lines of one spec or monitor, or the last few. It reads the one ledger that every
+// worktree shares. It takes no lock: kiln appends each line whole, and kiln ledger skips a line cut short.
+//
+// Each object holds kind, then the fields its kind lists below, in that order. A time is RFC 3339, in UTC, to the
+// second, as jq's fromdate reads it. A field whose type allows null holds null while kiln does not know it:
+//
+//	build                          a spec's build, or a monitor's fix
+//	  build         string         its ID, which each of its lines names
+//	  name          string         its spec, or the fix's monitor
+//	  fix           bool           whether it is a monitor's fix
+//	  at            time           when it started
+//	  size          number         its spec's acceptance tests, or 0 for a fix
+//	  outcome       string|null    how it ended, as its last outcome line says; null while it builds
+//	  seconds       number|null    its runs' time plus its gates'
+//	  cost_usd      number|null    its runs' cost
+//	  turns         number|null    its runs' turns
+//	  failed_calls  number|null    its runs' failed calls
+//	  rounds        number|null    the highest round a run of it started in, or 0 when no failure went back
+//	  audits        number         the audit's reads of its work; a retry is no new read
+//	  findings      number         the reads whose findings went back to its sessions
+//	run                            a session run
+//	  build         string         its build's ID
+//	  name          string         its build's name
+//	  role          string         its session's role, such as build, verify or audit
+//	  session       string         its Claude Code session's ID
+//	  at            time           when it started
+//	  end           time|null      when it ended
+//	  seconds       number|null    its time
+//	  ended         string|null    how it ended: result, no result or usage limit
+//	  cost_usd      number|null    its cost
+//	  turns         number|null    its turns
+//	  failed_calls  number|null    its failed calls
+//	gate                           a run of the gate
+//	  build         string         its build's ID
+//	  name          string         its build's name
+//	  at            time           when it started, once it held commands.lock
+//	  end           time           when it ended
+//	  seconds       number         its time
+//	  passed        bool           whether it passed
+//	  landing       bool           whether it gated a landing, the work rebased onto main
+//	  ran_main      bool|null      whether it ran the commands at main too, rather than read the checks kept there
+//	reading                        a gauge's reading of a landing
+//	  build         string         the landed build's ID
+//	  name          string         the landed build's name
+//	  gauge         string         the gauge's name
+//	  at            time           when kiln read it
+//	  landed        string         the commit it read
+//	  value         number|null    the reading
+//	  crossed       bool           whether it crossed its line
+//	monitor                        a monitor's run
+//	  name          string         the monitor's name
+//	  at            time           when it started
+//	  main          string         main's tip as it started
+//	  found         string         what it found: healthy, couldn't run, held or fix
+//	  build         string|null    the ID of the fix it started
+//	  summary       string         its check's summary, or why it couldn't run
+//	  gauge         string|null    the gauge it read in place of a check
+//	  value         number|null    that gauge's reading
+//	  crossed       bool           whether that reading crossed the gauge's line
+//
+// A sum, such as a build's cost, is null while one of its runs lacks its part. A run lacks its time and failed calls
+// until it ends. A build's rounds are null while a run's start line does not say why it started. A gate's ran_main is
+// null for a gate kiln recorded before it said. A build's outcome is landed, stopped, waits on its branch, dropped or
+// accepted. A fix's may also be needs you, session failed, usage limit, couldn't run, unchanged or rejected.
 //
 // # Gauges
 //
