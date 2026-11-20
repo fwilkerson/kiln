@@ -97,53 +97,46 @@ func hashOf(text string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// checkMonitors refuses a monitor kiln could not run, as the package doc lists.
-func (c config) checkMonitors() error {
+// monitorsRefusals refuse each monitor kiln could not run, as the package doc lists.
+func (c config) monitorsRefusals() refusals {
+	var refused refusals
 	named := map[Spec]bool{}
 	for _, m := range c.Monitors {
-		if why := c.monitorRefusal(m, named); why != "" {
-			return fmt.Errorf("%s names a monitor %q that %s", configFile, m.Name, why)
-		}
-
+		refused = append(refused, c.monitorRefusals(m, named).about(
+			fmt.Sprintf("%s names a monitor %q that", configFile, m.Name))...)
 		named[m.Name] = true
 	}
 
-	return nil
+	return refused
 }
 
-// monitorRefusal says why kiln.json may not name m, or "". named holds the monitors named before it.
-func (c config) monitorRefusal(m monitor, named map[Spec]bool) string {
-	switch {
-	case m.Name == "", named[m.Name]:
-		return "has no name, or a name another monitor has"
-	case !specName.MatchString(string(m.Name)):
-		return "has a name no spec could have, such as deps"
-	case !wholeHours(m.Every):
-		return "runs every interval that is not whole hours, at least 1h, such as \"24h\""
-	}
-
-	if why := c.gaugeRefusal(m); why != "" {
-		return why
-	}
-
-	return c.stepsRefusal(m)
-}
-
-// gaugeRefusal says why kiln.json may not name m's gauge, or "".
-func (c config) gaugeRefusal(m monitor) string {
-	_, found := c.gaugeNamed(m.Gauge)
-	switch {
-	case m.Gauge == "":
-		return ""
-	case !found:
-		return "names a gauge that gauges does not hold"
-	case m.Check != "":
-		return "names both a check and a gauge, where it may name one"
-	case m.Gates != nil:
-		return "names gates beside a gauge, which always joins the gate; gates says whether a check joins it"
-	}
-
-	return ""
+// monitorRefusals say why kiln.json may not name m. named holds the monitors named before it.
+func (c config) monitorRefusals(m monitor, named map[Spec]bool) refusals {
+	_, gaugeFound := c.gaugeNamed(m.Gauge)
+	return broken(
+		rule{m.Name == "", refusal{"has no name", "name it as a spec is named, such as \"deps\""}},
+		rule{m.Name != "" && named[m.Name], refusal{"has the name of a monitor before it", "rename one"}},
+		rule{m.Name != "" && !specName.MatchString(string(m.Name)), refusal{"has a name no spec could have",
+			"name it in lower-case letters, digits and hyphens, such as \"deps\""}},
+		rule{!wholeHours(m.Every), refusal{"runs every interval that is not whole hours, at least 1h",
+			"name one such as \"24h\""}},
+		rule{m.Gauge != "" && !gaugeFound, refusal{"names a gauge that gauges does not hold",
+			"add it to gauges, or name one there"}},
+		rule{m.Gauge != "" && m.Check != "", refusal{"names both a check and a gauge, where it may name one",
+			"drop one"}},
+		rule{m.Gauge != "" && m.Gates != nil, refusal{"names gates beside a gauge, which always joins the gate",
+			"drop gates, which says whether a check joins it"}},
+		rule{m.Command == "" && m.Agent == "", refusal{"names no command and no agent, so it fixes nothing",
+			"name one"}},
+		rule{m.Agent != "" && m.role() == "", refusal{"names an agent that is no file directly under .kiln/agents/",
+			"name one such as \"triage.md\""}},
+		rule{m.role() == auditRole, refusal{"names the audit as its agent, which changes nothing",
+			"name another agent"}},
+		rule{m.Drain && !m.finds(), refusal{"drains with no check and no gauge, so nothing says when its queue " +
+			"is empty", "name a check, or drop drain"}},
+		rule{!m.Tests && c.unguarded(), refusal{"may not write the tests, while acceptance names no path before " +
+			"{spec} for kiln to guard", "give each acceptance path a part before {spec}, or say \"tests\": true"}},
+	)
 }
 
 // gaugeNamed is the gauge of c named name.
@@ -160,24 +153,6 @@ func (c config) gaugeNamed(name string) (gauge, bool) {
 func wholeHours(every string) bool {
 	d, err := time.ParseDuration(every)
 	return err == nil && d >= time.Hour && d%time.Hour == 0
-}
-
-// stepsRefusal says why kiln.json may not name m's steps, or "".
-func (c config) stepsRefusal(m monitor) string {
-	switch {
-	case m.Command == "" && m.Agent == "":
-		return "names no command and no agent, so it fixes nothing"
-	case m.Agent != "" && m.role() == "":
-		return "names an agent that is no file under .kiln/agents/, such as \"triage.md\""
-	case m.role() == auditRole:
-		return "names the audit as its agent, which changes nothing"
-	case m.Drain && !m.finds():
-		return "drains with no check and no gauge, so nothing says when its queue is empty"
-	case !m.Tests && c.unguarded():
-		return "may not write the tests, while acceptance names no path before {spec} for kiln to guard"
-	}
-
-	return ""
 }
 
 // monitorNamed is the monitor of c named name.

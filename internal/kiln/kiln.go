@@ -9,6 +9,7 @@
 //	err = r.Accept(ctx, "x", os.Stdout)       // takes the work: lands its amendments, and retires the spec
 //	err = r.Reject(ctx, "x", os.Stdout)       // turns the amendments away: drops the build, and its branch
 //	err = r.MonitorRun(ctx, "", os.Stdout)    // runs each monitor kiln.json names that is due
+//	err = r.Doctor(ctx, "", os.Stdout)        // each problem in the working tree's setup, with its fix
 //	names, err := r.Takes(ctx, "queue")       // the specs kiln queue would not refuse
 //
 // Where each command moves a spec:
@@ -56,6 +57,7 @@
 //	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
 //	                            the MCP servers a session calls, the gauges, the workflow, where the acceptance
 //	                            tests live, the harness, the paths the audit reads again, and the monitors
+//	.kiln/kiln.schema.json      kiln.json's JSON Schema, for an editor, which kiln init writes over each time
 //	.kiln/monitors/             the scripts a monitor's check runs, out of a fix's reach
 //	.kiln/gauges/               the scripts a gauge's command runs, which a monitor may name in place of a check
 //	.kiln/agents/build.md       the build agent
@@ -64,6 +66,9 @@
 //	.kiln/reviewers/            the agents /shape runs on a spec before it is approved, which no build runs
 //	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
 //	.kiln/init.json             what kiln init last wrote, and its preset, which its next run merges the edits against
+//
+// A command that refuses kiln.json, an agent's file or a spec prints each problem on a line, with its fix. kiln
+// doctor names each in the working tree, before a commit, as Doctor says.
 //
 // kiln keeps its own files out of the working tree. Main is the branch named main:
 //
@@ -369,9 +374,12 @@ const (
 	kilnDir = ".kiln"
 )
 
-// noMain says a repository has no branch main, or no commit on it, and how to make one. kiln init prints it.
-const noMain = "kiln builds on the branch " + mainBranch + ", which this repository lacks: commit to " + mainBranch +
-	", or run git branch -m " + mainBranch
+// noMainRefusal says a repository has no branch main, or no commit on it, and how to make one.
+var noMainRefusal = refusal{"kiln builds on the branch " + mainBranch + ", which this repository lacks",
+	"commit to " + mainBranch + ", or run git branch -m " + mainBranch}
+
+// noMain is noMainRefusal on one line, as kiln init prints it.
+var noMain = noMainRefusal.String()
 
 // errNoMain refuses a command that reads main, in a repository that noMain describes.
 var errNoMain = fmt.Errorf("%w: %s", errRefused, noMain)
@@ -445,9 +453,12 @@ func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
 		trees:  filepath.Join(cache, fmt.Sprintf("%s-%x", filepath.Base(top), sum[:4])),
 		env:    env,
 		exe:    exe,
-		claude: claude.New(claude.Config{Program: "claude", Env: env, Sessions: filepath.Join(kept, "sessions")}),
+		claude: claude.New(claude.Config{Program: claudeProgram, Env: env, Sessions: filepath.Join(kept, "sessions")}),
 	}, nil
 }
+
+// claudeProgram is the claude that runs each session, found on the PATH of the environment Open was given.
+const claudeProgram = "claude"
 
 // cacheDir is kiln's directory under the user's cache directory.
 func cacheDir() (string, error) {
@@ -495,13 +506,12 @@ const hookMark = "# kiln's pre-commit hook"
 // installHook installs the pre-commit hook in the repository's own hooks directory. Where core.hooksPath is set, or
 // another pre-commit hook is there, it writes none. It then says why, and the line to add to the developer's own hook.
 func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
-	env := proc.Git.Env(r.env)
-	set, err := plainGit(ctx, r.top, env, "config", "--default", "", "--get", "core.hooksPath")
+	set, err := plainGit(ctx, r.top, proc.Git.Env(r.env), "config", "--default", "", "--get", "core.hooksPath")
 	if err != nil {
 		return err
 	}
 
-	hooks, err := plainGit(ctx, r.top, env, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
+	hooks, err := r.hooksDir(ctx)
 	if err != nil {
 		return err
 	}
@@ -513,14 +523,14 @@ func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
 		}
 
 		fmt.Fprintf(out, "installed no pre-commit hook, since core.hooksPath names %s, %s; add this line to your "+
-			"own pre-commit hook: kiln precommit\n", set, whose)
+			"own pre-commit hook: %s\n", set, whose, precommitLine)
 		return nil
 	}
 
 	hook := filepath.Join(hooks, "pre-commit")
 	if old, err := os.ReadFile(hook); err == nil && !bytes.Contains(old, []byte(hookMark)) {
-		fmt.Fprintf(out, "installed no pre-commit hook, since %s is another one; add this line to it: kiln precommit\n",
-			hook)
+		fmt.Fprintf(out, "installed no pre-commit hook, since %s is another one; add this line to it: %s\n", hook,
+			precommitLine)
 		return nil
 	}
 
@@ -534,6 +544,14 @@ func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
 
 	fmt.Fprintf(out, "installed %s\n", hook)
 	return nil
+}
+
+// precommitLine is the line a developer's own pre-commit hook adds, to run the gate as kiln's hook does.
+const precommitLine = "kiln precommit"
+
+// hooksDir is the directory whose hooks git runs: the one core.hooksPath names, or the repository's own.
+func (r *Repo) hooksDir(ctx context.Context) (string, error) {
+	return plainGit(ctx, r.top, proc.Git.Env(r.env), "rev-parse", "--path-format=absolute", "--git-path", "hooks")
 }
 
 // hookScript is the pre-commit hook that runs exe's precommit.
@@ -571,6 +589,16 @@ var (
 	specName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	approved = regexp.MustCompile(`(?m)^Status: Approved\b`)
 )
+
+// misnamed refuses a name no spec could have, before kiln reads a file by it.
+func (s Spec) misnamed() refusals {
+	if specName.MatchString(string(s)) {
+		return nil
+	}
+
+	return refusals{{fmt.Sprintf("%q is not a spec's name", s),
+		"name it in lower-case letters, digits and hyphens, such as checkout-flow"}}
+}
 
 // Queue records main's tip as the commit of .kiln/specs/<name>.md, and queues a new build of it. It refuses a name
 // that is not a spec's, and a spec main does not hold. It refuses one whose Status is not Approved, or whose form
@@ -624,49 +652,73 @@ func (r *Repo) queueable(ctx context.Context, main git.Rev, name Spec) ([]byte, 
 		return nil, err
 	}
 
-	if c, err := r.config(ctx, main); err == nil {
-		if _, ok := c.monitorNamed(name); ok {
-			return nil, fmt.Errorf("%w: %s names a monitor %s, and one name is never both a spec's and a "+
-				"monitor's: rename one", errRefused, configFile, name)
-		}
-
-		if why := c.harnessRefusal(name); why != "" {
-			return nil, fmt.Errorf("%w: %s", errRefused, why)
-		}
+	c, err := r.config(ctx, main)
+	if err != nil {
+		return nil, err
 	}
 
-	if err := formOf(string(spec)); err != nil {
-		return nil, fmt.Errorf("%w: %s leaves /shape's template: %w", errRefused, name.file(), err)
+	if refused := c.specRefusals(name, spec); len(refused) > 0 {
+		return nil, fmt.Errorf("%w: %w", errRefused, refused)
 	}
 
 	return spec, nil
 }
 
+// specRefusals say why kiln queue refuses the spec name, whose text is spec, but for its Status. They are its form,
+// its acceptance paths against the harness, and a monitor of its name.
+func (c config) specRefusals(name Spec, spec []byte) refusals {
+	refused := c.harnessRefusals(name)
+	if _, ok := c.monitorNamed(name); ok {
+		refused = append(refused, refusal{fmt.Sprintf("%s names a monitor %s, and one name is never both a "+
+			"spec's and a monitor's", configFile, name), "rename one"})
+	}
+
+	return append(refused, formOf(string(spec)).about(name.file()+" leaves /shape's template:")...)
+}
+
 // ready refuses while main, at main, holds no kiln.json, build agent, verify agent or audit agent that kiln can use.
-// kiln.json must name where the acceptance tests live. The build agent must not say how to write them.
 func (r *Repo) ready(ctx context.Context, main git.Rev) error {
 	c, err := r.config(ctx, main)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errRefused, err)
 	}
 
-	if why := c.acceptanceRefusal(); why != "" {
-		return fmt.Errorf("%w: %s %s", errRefused, configFile, why)
+	refused, err := c.readiness(ctx, r.filesAt(main))
+	if err != nil {
+		return err
 	}
 
-	agents := map[string]agent{}
-	for _, role := range []string{buildRole, verifyRole, auditRole} {
-		if agents[role], err = r.agent(ctx, main, role, initHint); err != nil {
-			return err
-		}
-	}
-
-	if line := testsText(agents[buildRole].body, c.fixedParts()); line != "" {
-		return fmt.Errorf("%w: %s says how to write the acceptance tests, in %q: move that text to %s, which "+
-			"every build reads", errRefused, agentFile(buildRole), line, agentFile(verifyRole))
+	if len(refused) > 0 {
+		return fmt.Errorf("%w: %w", errRefused, refused)
 	}
 
 	return nil
+}
+
+// readiness says why kiln queue refuses c, with the build, verify and audit agents that f holds. c must name where
+// the acceptance tests live. The build agent must not say how to write them. It answers an error only when f could
+// not be read.
+func (c config) readiness(ctx context.Context, f files) (refusals, error) {
+	refused := c.acceptanceRefusals()
+	var build agent
+	for _, role := range []string{buildRole, verifyRole, auditRole} {
+		a, err := f.agent(ctx, role, initHint)
+		if err := refused.add(err); err != nil {
+			return nil, err
+		}
+
+		if role == buildRole {
+			build = a
+		}
+	}
+
+	if line := testsText(build.body, c.fixedParts()); line != "" {
+		refused = append(refused, refusal{fmt.Sprintf("%s says how to write the acceptance tests, in %q",
+			agentFile(buildRole), line), fmt.Sprintf("move that text to %s, which every build reads",
+			agentFile(verifyRole))})
+	}
+
+	return refused, nil
 }
 
 // testsText is the first line of body that says how to write the acceptance tests, or "". An older default build
@@ -675,7 +727,8 @@ func (r *Repo) ready(ctx context.Context, main git.Rev) error {
 func testsText(body string, fixed []string) string {
 	for line := range strings.Lines(body) {
 		line = strings.TrimSpace(line)
-		names := func(part string) bool { return startsPath(line, part) }
+		// A part of "" is no path's, so it says nothing about where the tests live.
+		names := func(part string) bool { return part != "" && startsPath(line, part) }
 		switch {
 		case line == "## Acceptance tests",
 			strings.HasPrefix(line, "- The code of each of the spec's acceptance tests"),
@@ -711,8 +764,8 @@ func inPath(r rune) bool {
 
 // approvedSpec reads .kiln/specs/<name>.md at main, a spec whose Status is Approved.
 func (r *Repo) approvedSpec(ctx context.Context, main git.Rev, name Spec) ([]byte, error) {
-	if !specName.MatchString(string(name)) {
-		return nil, fmt.Errorf("%w: %q is not a spec's name, such as checkout-flow", errRefused, name)
+	if refused := name.misnamed(); refused != nil {
+		return nil, fmt.Errorf("%w: %w", errRefused, refused)
 	}
 
 	spec, found, err := r.git.Show(ctx, main, name.file())
@@ -783,11 +836,14 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 
 // Takes answers the names command would not refuse, for the shell to complete. For queue, accept and reject, they
 // are specs, and for accept and reject, waiting fixes too. For tui, they are the specs kiln holds or its ledger holds.
-// For "monitor run" and "monitor show", they are the monitors kiln.json names. Other commands take none.
+// For "monitor run" and "monitor show", they are the monitors kiln.json names. For doctor, they are the specs the
+// working tree holds, each by a name a spec may have. Other commands take none.
 func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	switch command {
 	case "tui":
 		return r.viewed(ctx)
+	case "doctor":
+		return r.treeSpecs()
 	case acceptCommand, rejectCommand:
 		return r.taking(command)
 	case queueCommand:
@@ -797,6 +853,30 @@ func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	}
 
 	return nil, nil
+}
+
+// specFile is the spec whose file under .kiln/specs/ is named file. It answers false for an amendment's file, and a
+// file whose name no spec could have.
+func specFile(file string) (Spec, bool) {
+	name, ok := strings.CutSuffix(file, ".md")
+	return Spec(name), ok && !strings.HasSuffix(file, amendSuffix) && Spec(name).misnamed() == nil
+}
+
+// treeSpecs answers the specs the working tree holds, by a name a spec may have, but none of their amendments.
+func (r *Repo) treeSpecs() ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(r.top, specsDir))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+
+	var names []string
+	for _, e := range entries {
+		if name, ok := specFile(e.Name()); ok {
+			names = append(names, string(name))
+		}
+	}
+
+	return names, err
 }
 
 // viewed answers the specs kiln tui opens on.

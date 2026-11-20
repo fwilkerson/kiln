@@ -1,4 +1,5 @@
 {
+  "$schema": "./kiln.schema.json",
   "gate": [
     "go vet ./...",
     "go test ./..."

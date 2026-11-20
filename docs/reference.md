@@ -6,6 +6,7 @@ commands in use.
 ```text
 .kiln/
   kiln.json                  the settings below
+  kiln.schema.json           kiln.json's JSON Schema, which an editor reads by kiln.json's "$schema"
   specs/<name>.md            a spec, and <name>.amend.md, the amendments a build asks for
   init.json                  what kiln init last wrote, which its next run merges your edits against
   agents/build.md            the build agent: frontmatter, then its prompt
@@ -19,10 +20,10 @@ commands in use.
 ```
 
 `kiln init` writes these from a preset, and links `/shape` and each reviewer into `.claude/`. The project owns
-them from then on. Run `kiln init` again once you upgrade kiln: it merges kiln's new defaults with your edits, in the
-working tree, for you to read and commit. `kiln status` says when `.kiln/` on main is behind. `kiln.json` stays
-yours: kiln init adds only `rounds`, when the file lacks it. `go doc ./internal/kiln Repo.Init` says how it merges
-each file.
+them from then on, but for `kiln.schema.json`, which `kiln init` writes over each time. Run `kiln init` again once
+you upgrade kiln: it merges kiln's new defaults with your edits, in the working tree, for you to read and commit.
+`kiln status` says when `.kiln/` on main is behind. `kiln.json` stays yours: kiln init adds only `$schema` and
+`rounds`, where the file lacks them. `go doc ./internal/kiln Repo.Init` says how it merges each file.
 
 A preset of your own is a directory laid out as kiln's in [`internal/kiln/presets/`](../internal/kiln/presets/):
 `kiln.json`, then `build-checks.md`, `verify-tests.md` and `audit-tests.md`, the "Tailor this" sections of the
@@ -37,6 +38,7 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 
 ```json
 {
+  "$schema": "./kiln.schema.json",
   "gate": ["go vet ./...", "go test ./..."],
   "rounds": 3,
   "hosts": ["proxy.golang.org", "sum.golang.org"],
@@ -53,6 +55,7 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 
 | Key          | What it holds                                                               | Read at           |
 |--------------|-----------------------------------------------------------------------------|-------------------|
+| `$schema`    | The JSON Schema an editor checks this file against, which kiln never reads  | never             |
 | `gate`       | Commands that must pass before work lands, each run with `sh -c`. Required. | main's tip        |
 | `rounds`     | How many times a failing gate goes back to the session before a build stops | main's tip        |
 | `hosts`      | The only hosts a session's commands reach                                   | main's tip        |
@@ -66,7 +69,12 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 | `monitors`   | Jobs kiln runs on a schedule, each of which may start a fix                 | main's tip        |
 
 kiln reads the gate from main's tip, never from the build's checkout, so a build cannot weaken its own gate. It
-refuses a `kiln.json` with a key it does not know.
+refuses a `kiln.json` with a key it does not know. `kiln doctor` reads the working tree's `kiln.json`, before you
+commit it, and prints each refusal any kiln command would make of it.
+
+`"$schema": "./kiln.schema.json"` points an editor, such as GoLand or VS Code, at the schema `kiln init` writes beside
+`kiln.json`. The editor then completes each key, shows its doc, and marks a key kiln does not know or a value of the
+wrong type. The schema holds each key's type, not the rules `kiln doctor` checks, such as a host with no scheme.
 
 ### gate and rounds
 

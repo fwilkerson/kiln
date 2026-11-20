@@ -107,6 +107,9 @@ start a third. Beyond that, run a reviewer again only when the developer asks.
 
 ## 5. Ask for approval
 
+First run `kiln doctor <name>`, which prints each problem kiln queue would refuse in the spec, and in the project.
+Fix each problem in the spec. Bring each other problem to the developer beside the request.
+
 Ask the developer to approve the spec. Put beside the request each contested finding, and each finding two reviewers
 reported that you brought to the developer. Put each risk the spec accepts there too, since only the developer
 accepts one. A risk is a way the work can go wrong that the spec names and leaves open; a Non-goal is not one. For

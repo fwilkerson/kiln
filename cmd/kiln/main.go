@@ -13,6 +13,7 @@
 //	kiln monitor run [<name>]
 //	                         run each monitor kiln.json names that is due; or run one now, due or not
 //	kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
+//	kiln doctor [<name>]     print each problem in the project's setup, with its fix; or a spec's form too
 //	kiln help                print this usage, as kiln --help and kiln -h do
 //
 // Each refuses a spec in a state it does not take, as go doc ./internal/kiln shows.
@@ -65,11 +66,12 @@ const usage = `usage:
   kiln monitor run [<name>]
                            run each monitor kiln.json names that is due; or run one now, due or not
   kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
+  kiln doctor [<name>]     print each problem in the project's setup, with its fix; or a spec's form too
   kiln help                print this usage, as kiln --help and kiln -h do
 `
 
 // commands are the developer's commands, as kiln complete lists them.
-var commands = []string{"init", "queue", "fire", "status", "tui", "accept", "reject", "monitor"}
+var commands = []string{"init", "queue", "fire", "status", "tui", "accept", "reject", "monitor", "doctor"}
 
 // onRepo holds each of the developer's commands, which act on the repository in the working directory.
 var onRepo = map[string]repoCommand{
@@ -81,6 +83,7 @@ var onRepo = map[string]repoCommand{
 	"accept":  oneName((*kiln.Repo).Accept),
 	"reject":  oneName((*kiln.Repo).Reject),
 	"monitor": monitor,
+	"doctor":  doctor,
 }
 
 // monitor is kiln monitor install, kiln monitor run [<name>], or kiln monitor show <name>.
@@ -222,16 +225,31 @@ func oneName(do func(*kiln.Repo, context.Context, kiln.Spec, io.Writer) error) r
 
 // tui is kiln tui, which takes a spec's name or none.
 func tui(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
-	if len(args) > 1 {
-		return usageError("takes one spec's name, or none")
-	}
-
-	var name kiln.Spec
-	if len(args) == 1 {
-		name = kiln.Spec(args[0])
+	name, err := nameOrNone(args)
+	if err != nil {
+		return err
 	}
 
 	return r.TUI(ctx, name, os.Stdin, out)
+}
+
+// doctor is kiln doctor, which takes a spec's name or none.
+func doctor(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
+	name, err := nameOrNone(args)
+	if err != nil {
+		return err
+	}
+
+	return r.Doctor(ctx, name, out)
+}
+
+// nameOrNone is the one spec's name args hold, or "" for none.
+func nameOrNone(args []string) (kiln.Spec, error) {
+	if len(args) > 1 {
+		return "", usageError("takes one spec's name, or none")
+	}
+
+	return kiln.Spec(strings.Join(args, "")), nil
 }
 
 // complete lists kiln's commands, or with a command, the names it takes. kiln monitor takes its own commands, and

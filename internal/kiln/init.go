@@ -21,6 +21,14 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
+// schema is kiln.json's JSON Schema, which an editor reads by kiln.json's "$schema". TestSchema builds it from config.
+//
+//go:embed kiln.schema.json
+var schema []byte
+
+// schemaFile is where kiln init writes schema.
+const schemaFile = kilnDir + "/kiln.schema.json"
+
 // defaults are what kiln init writes into .kiln/ for every preset. A preset fills each marker in their prompts, and
 // adds kiln.json. The project owns them from then on.
 //
@@ -49,11 +57,12 @@ type InitOptions struct {
 // .gitkeep keeps no reviewer. A file the project left as Init last wrote it takes the new default. Into a file the
 // project changed, git merge-file merges the change between the last default and the new one. It leaves each
 // conflict between the usual markers, and names the file. With no record of the last default, each difference from
-// the new one is a conflict. Init stages and commits nothing. It records each default of the preset, and the preset,
-// in .kiln/init.json.
+// the new one is a conflict. It writes kiln.schema.json over, since kiln owns it. Init stages and commits nothing.
+// It records each default of the preset, and the preset, in .kiln/init.json.
 //
 // kiln.json is the project's settings: its gate, and what a session reaches. A merge could change either unread, so
-// Init never merges kiln.json. To one that is there, it adds only rounds, the key every preset shares, if it lacks it.
+// Init never merges kiln.json. A kiln.json that is there gains only $schema and rounds, the keys every preset
+// shares, where it lacks them.
 //
 // Init links /shape, and each reviewer's file in .kiln/reviewers/, into .claude/. It links each where .claude/ holds
 // nothing of its name, or a link that reaches nothing. It removes each link in .claude/agents/ to a reviewer's file
@@ -293,7 +302,13 @@ func (r *Repo) writeDefaults(ctx context.Context, p preset, last initRecord, out
 		say(line)
 	}
 
-	line, err := r.writeRecord(newRecord(p.recorded(r.top), files))
+	line, err := r.writeSchema()
+	if err != nil {
+		return wrote, err
+	}
+
+	say(line)
+	line, err = r.writeRecord(newRecord(p.recorded(r.top), files))
 	say(line)
 	return wrote, err
 }
@@ -374,6 +389,18 @@ func (r *Repo) mergeDefault(ctx context.Context, rel string, base, want []byte) 
 	return "merged " + rel, err
 }
 
+// writeSchema writes schema over the file at schemaFile, since kiln owns it. It answers the line kiln init prints,
+// or "" when the file holds schema already.
+func (r *Repo) writeSchema() (string, error) {
+	target := filepath.Join(r.top, schemaFile)
+	// A file kiln cannot read is written over, as a missing one is.
+	if old, _ := os.ReadFile(target); bytes.Equal(old, schema) {
+		return "", nil
+	}
+
+	return "wrote " + schemaFile, writeFile(target, schema)
+}
+
 // writeRecord writes rec to initFile, unless the file holds it already. It answers the line kiln init prints, or ""
 // when it wrote nothing.
 func (r *Repo) writeRecord(rec initRecord) (string, error) {
@@ -404,7 +431,7 @@ func writeFile(target string, raw []byte) error {
 
 // sharedKeys are the keys of kiln.json whose default is the same in every preset. A re-run of kiln init adds only
 // these, so it never adds one language's commands to a project in another.
-var sharedKeys = []string{"rounds"}
+var sharedKeys = []string{"$schema", "rounds"}
 
 // addKeys adds to the JSON object old each of sharedKeys that it lacks, as from holds it. It keeps each byte of old,
 // and puts each added key after the last, indented as that key. It answers nil when old lacks none.
@@ -425,7 +452,8 @@ func addKeys(old, from []byte) ([]byte, error) {
 
 	var add bytes.Buffer
 	for _, key := range sharedKeys {
-		if _, ok := have[key]; ok {
+		_, has := have[key]
+		if _, ok := want[key]; has || !ok {
 			continue
 		}
 
@@ -600,9 +628,11 @@ func badReviewer(file, raw string) error {
 
 	switch name := strings.TrimSuffix(file, ".md"); {
 	case keys["name"] != name:
-		return fmt.Errorf("its frontmatter's name is %q; make it %q, its file's name", keys["name"], name)
+		return refusals{{fmt.Sprintf("its frontmatter's name is %q", keys["name"]),
+			fmt.Sprintf("make it %q, its file's name", name)}}
 	case keys["description"] == "":
-		return errors.New("its frontmatter has no description, which Claude Code needs to run it")
+		return refusals{{"its frontmatter has no description, which Claude Code needs to run it",
+			"add one that says what the reviewer reads for"}}
 	}
 
 	return nil

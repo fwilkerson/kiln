@@ -656,7 +656,8 @@ func (b *build) fixEnded(ctx context.Context) error {
 func (b *build) fixLaunch(ctx context.Context, resume bool, prompt string) (claude.Launch, error) {
 	f, name := b.fix, b.rec.Name
 	role := f.monitor.role()
-	a, err := b.r.agent(ctx, b.rec.Approved, role, "commit it to main, or name another agent in the monitor's entry")
+	a, err := b.r.filesAt(b.rec.Approved).agent(ctx, role,
+		"commit it to main, or name another agent in the monitor's entry")
 	if err != nil {
 		return claude.Launch{}, err
 	}

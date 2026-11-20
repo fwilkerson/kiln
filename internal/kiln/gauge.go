@@ -29,7 +29,9 @@ type gauge struct {
 
 // gaugeLine is a gauge's line. A reading below Min, or above Max, crossed it. kiln.json sets exactly one of them.
 type gaugeLine struct {
+	// Min is the line a reading below crosses.
 	Min *float64 `json:"min,omitempty"`
+	// Max is the line a reading above crosses.
 	Max *float64 `json:"max,omitempty"`
 }
 

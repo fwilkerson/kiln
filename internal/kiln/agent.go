@@ -3,7 +3,11 @@ package kiln
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -35,7 +39,8 @@ var efforts = []string{"low", "medium", "high", "xhigh", "max"}
 func parseAgent(raw string) (agent, error) {
 	a := agent{model: "opus"}
 	if m := conflictMarker.FindString(raw); m != "" {
-		return a, fmt.Errorf("it holds a conflict's marker, %q: resolve the conflict, then commit the file", m)
+		return a, refusals{{fmt.Sprintf("it holds a conflict's marker, %q", m),
+			"resolve the conflict, then commit the file"}}
 	}
 
 	front, body, err := frontmatter(raw)
@@ -44,17 +49,17 @@ func parseAgent(raw string) (agent, error) {
 	}
 
 	a.body = strings.TrimSpace(body)
+	var refused refusals
 	for line := range strings.Lines(front) {
-		if err := a.read(line); err != nil {
-			return a, err
-		}
+		refused = append(refused, a.read(line)...)
 	}
 
-	return a, a.badEffort()
+	return a, append(refused, a.badEffort()...).err()
 }
 
-// read reads one line of the frontmatter into a. It skips a # line, and a line with no colon.
-func (a *agent) read(line string) error {
+// read reads one line of the frontmatter into a, and refuses the line kiln cannot read. It skips a # line, and a line
+// with no colon.
+func (a *agent) read(line string) refusals {
 	key, value, ok := field(line)
 	// A YAML list would read as no tools, which gives every tool: the opposite of what its writer meant.
 	noNames := value == "" || strings.HasPrefix(value, "[")
@@ -62,7 +67,8 @@ func (a *agent) read(line string) error {
 	case !ok:
 		return nil
 	case key == "tools" && noNames:
-		return fmt.Errorf("its tools are not tool names, separated by commas, on the line of tools:")
+		return refusals{{"its tools are not tool names on the line of tools, separated by commas",
+			"write them as tools: Read, Grep"}}
 	}
 
 	a.set(key, value)
@@ -70,12 +76,13 @@ func (a *agent) read(line string) error {
 }
 
 // badEffort refuses an effort Claude Code does not take. An agent that names none runs at Claude Code's own.
-func (a *agent) badEffort() error {
+func (a *agent) badEffort() refusals {
 	if a.effort == "" || slices.Contains(efforts, a.effort) {
 		return nil
 	}
 
-	return fmt.Errorf("its effort, %q, is none of %s", a.effort, strings.Join(efforts, ", "))
+	return refusals{{fmt.Sprintf("its effort, %q, is none of %s", a.effort, strings.Join(efforts, ", ")),
+		"name one, or drop effort"}}
 }
 
 // set sets the field key names to value, unless value is empty.
@@ -125,7 +132,7 @@ func frontmatter(raw string) (front, body string, err error) {
 		i += len(line) + 1
 	}
 
-	return "", "", fmt.Errorf("its frontmatter has no closing ---")
+	return "", "", refusals{{"its frontmatter has no closing ---", "end it with a line of ---"}}
 }
 
 const (
@@ -137,23 +144,50 @@ const (
 // agentFile is the path of a role's agent file.
 func agentFile(role string) string { return kilnDir + "/agents/" + role + ".md" }
 
-// agent reads the file of role's agent at the commit at. A commit with no such file is refused, and fix says what
-// to do about it.
-func (r *Repo) agent(ctx context.Context, at git.Rev, role, fix string) (agent, error) {
-	raw, found, err := r.git.Show(ctx, at, agentFile(role))
+// files reads a project's files by their paths from the top, as a commit or the working tree holds them.
+type files struct {
+	// at names where, as a refusal says it: a commit, or the working tree.
+	at   string
+	read func(ctx context.Context, path string) (raw []byte, found bool, err error)
+}
+
+// filesAt reads the files the commit at holds.
+func (r *Repo) filesAt(at git.Rev) files {
+	return files{at: short(at), read: func(ctx context.Context, path string) ([]byte, bool, error) {
+		return r.git.Show(ctx, at, path)
+	}}
+}
+
+// workingTree reads the files the working tree of r's checkout holds, edits and all. That is the checkout kiln was
+// opened in, which may be a linked worktree.
+func (r *Repo) workingTree() files {
+	return files{at: "the working tree", read: func(_ context.Context, path string) ([]byte, bool, error) {
+		raw, err := os.ReadFile(filepath.Join(r.top, filepath.FromSlash(path)))
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, false, nil
+		}
+
+		return raw, err == nil, err
+	}}
+}
+
+// agent reads the file of role's agent from f. It refuses a file f lacks, with fix saying what to do about it. It
+// refuses a file kiln cannot read, with each reason.
+func (f files) agent(ctx context.Context, role, fix string) (agent, error) {
+	raw, found, err := f.read(ctx, agentFile(role))
 	switch {
 	case err != nil:
 		return agent{}, err
 	case !found:
-		return agent{}, fmt.Errorf("%w: %s holds no %s: %s", errRefused, short(at), agentFile(role), fix)
+		return agent{}, refusals{{fmt.Sprintf("%s holds no %s", f.at, agentFile(role)), fix}}
 	}
 
 	a, err := parseAgent(string(raw))
-	if err != nil {
-		return a, fmt.Errorf("%w: %s at %s: %w", errRefused, agentFile(role), short(at), err)
+	if refused, ok := errors.AsType[refusals](err); ok {
+		return a, refused.about(fmt.Sprintf("%s, as %s holds it,", agentFile(role), f.at))
 	}
 
-	return a, nil
+	return a, err
 }
 
 var (
@@ -228,7 +262,7 @@ func (b *build) agentLaunch(ctx context.Context, role string, l claude.Launch) (
 func (b *build) agentAt(ctx context.Context, role string) (agent, error) {
 	// A build queued by a kiln from before .kiln/ held its agents names a commit without them.
 	fix := fmt.Sprintf("the build was queued before main held it, so run kiln queue %s again", b.rec.Name)
-	return b.r.agent(ctx, b.rec.Approved, role, fix)
+	return b.r.filesAt(b.rec.Approved).agent(ctx, role, fix)
 }
 
 // sides is what each session of a build may write, as kiln.json at the build's approval says.

@@ -62,8 +62,8 @@ func presetFiles(p preset) (map[string][]byte, error) {
 	return files, err
 }
 
-// usableConfig refuses raw, a preset's kiln.json, when kiln could not use it, or it lacks a key every preset shares.
-// kiln init then refuses the preset before it writes anything.
+// usableConfig refuses raw, a preset's kiln.json, when kiln could not use it, or it lacks rounds. kiln init then
+// refuses the preset before it writes anything. $schema may be missing, since kiln reads kiln.json without it.
 func usableConfig(raw []byte) error {
 	if _, err := parseConfig(raw); err != nil {
 		return fmt.Errorf("kiln.json: %w", err)
@@ -74,10 +74,8 @@ func usableConfig(raw []byte) error {
 		return err
 	}
 
-	for _, key := range sharedKeys {
-		if _, ok := keys[key]; !ok {
-			return fmt.Errorf("kiln.json lacks %s, which every preset holds", key)
-		}
+	if _, ok := keys["rounds"]; !ok {
+		return errors.New("kiln.json lacks rounds, which every preset holds")
 	}
 
 	return nil
