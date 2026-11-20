@@ -170,6 +170,8 @@ type build struct {
 	landed, onto git.Rev
 	// side is what each session may write, once read.
 	side *sides
+	// auditing is the commit auditTry checked out in the audit's worktree, which undo puts back after each run.
+	auditing git.Rev
 	// mu guards rec while a split build's two sessions run at once. set, now, record and say hold it.
 	mu sync.Mutex
 	// fix is a monitor's fix, or nil for a spec's build.
@@ -434,7 +436,7 @@ func (b *build) waitsOnBranch(ctx context.Context, head git.Rev) (bool, error) {
 
 // landWork lands the work at head. An accepted spec is retired in the landing. A setback goes back to the session.
 func (b *build) landWork(ctx context.Context, head git.Rev) (string, reason, error) {
-	var retire func(context.Context, git.Rev) error
+	var retire retiring
 	if b.rec.Accepted {
 		retire = b.retire
 	}
@@ -596,9 +598,9 @@ func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claud
 		b.say("kiln could not measure session %s's stream: %v", l.Session, err)
 	}
 
-	read, err := b.r.auditRead(ctx, l)
-	if err != nil {
-		return claude.Ended{}, err
+	var read git.Rev
+	if l.Role == auditRole {
+		read = b.auditing
 	}
 
 	b.record(entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed, PID: os.Getpid(),
@@ -618,15 +620,6 @@ func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claud
 	}
 
 	return ended, errors.Join(err, undone)
-}
-
-// auditRead is the commit an audit run that l launches reads. It is "" for any other run.
-func (r *Repo) auditRead(ctx context.Context, l claude.Launch) (git.Rev, error) {
-	if l.Role != auditRole {
-		return "", nil
-	}
-
-	return r.git.Head(ctx, git.Worktree(l.Dir))
 }
 
 // pause pauses the build for a usage limit, until it resets. A limit with no reset pauses it for unknownReset.

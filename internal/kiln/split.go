@@ -457,7 +457,7 @@ func (b *build) bothSides(ctx context.Context, files []string, tips map[string]g
 // as a round: work that changes nothing goes to the build session. Otherwise main moved, so kiln fetches it into
 // both clones and merges it where the merge is clean. A conflict goes to the session whose side holds the file.
 func (b *build) splitLand(ctx context.Context, head git.Rev) (turn, error) {
-	var retire func(context.Context, git.Rev) error
+	var retire retiring
 	if b.rec.Accepted {
 		retire = b.retire
 	}
