@@ -41,6 +41,11 @@ func TestAgentFile(t *testing.T) {
 		"tools as a YAML block list are refused":         {file: "---\ntools:\n  - Read\n---\nA.\n", refused: true},
 		"tools as a YAML flow list are refused":          {file: "---\ntools: [Read, Grep]\n---\nA.\n", refused: true},
 		"tools that name nothing are refused":            {file: "---\ntools: \"\"\n---\nA.\n", refused: true},
+		"a conflict's markers are refused": {
+			file:    "Build.\n<<<<<<< .kiln/agents/build.md\nmine\n=======\nkiln's\n>>>>>>> kiln init's new default\n",
+			refused: true,
+		},
+		"a heading underlined with = is no marker": {file: "Build\n=======\n", want: `"Build\n=======" [] "opus" "" ""`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			a, err := parseAgent(tc.file)

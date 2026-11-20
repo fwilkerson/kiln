@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -20,15 +21,23 @@ type agent struct {
 	model, effort, advisor string
 }
 
+// conflictMarker is a line that opens or closes a merge conflict. A line of = alone may underline a heading.
+var conflictMarker = regexp.MustCompile(`(?m)^(<{7}|>{7})( .*)?$`)
+
 // efforts are the efforts an agent's file may name.
 var efforts = []string{"low", "medium", "high", "xhigh", "max"}
 
 // parseAgent reads an agent's file. A file with no frontmatter is all body. A tools key names its tools on its own
 // line, separated by commas, as Claude Code's agent files write them. It refuses a list in any other form. Without
 // model, the agent runs Opus. Without effort or advisor, kiln names none, and each is Claude Code's own. The project
-// says which a session runs with, never kiln.
+// says which a session runs with, never kiln. It refuses a file that holds a conflict's marker, as kiln init or git
+// leaves one.
 func parseAgent(raw string) (agent, error) {
 	a := agent{model: "opus"}
+	if m := conflictMarker.FindString(raw); m != "" {
+		return a, fmt.Errorf("it holds a conflict's marker, %q: resolve the conflict, then commit the file", m)
+	}
+
 	front, body, err := frontmatter(raw)
 	if err != nil {
 		return a, err

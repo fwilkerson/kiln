@@ -94,7 +94,8 @@
 //
 // # Agents
 //
-// kiln queue reads the build, verify and audit agents' files at the commit it queues. It refuses one it can't use.
+// kiln queue reads the build, verify and audit agents' files at the commit it queues. It refuses one it can't use,
+// such as one that holds a conflict's marker.
 // Every session of the build runs with them as they stood there. An agent's file names the session's tools, model,
 // effort and advisor in its frontmatter. Without tools, it has every tool. Without model, it runs Opus. Without effort
 // or advisor, kiln names none, and each is Claude Code's own. Its body comes first in the session's system prompt.
