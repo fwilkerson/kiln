@@ -403,7 +403,7 @@ type Repo struct {
 // Open opens the repository that holds dir. env is the environment of every process kiln starts, less what each
 // withholds.
 func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
-	top, err := plainGit(ctx, dir, proc.Git.Env(env), "rev-parse", "--show-toplevel")
+	top, common, err := found(ctx, dir, proc.Git.Env(env))
 	if err != nil {
 		return nil, fmt.Errorf("%s is in no git repository: %w", dir, err)
 	}
@@ -417,9 +417,10 @@ func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
 		return nil, err
 	}
 
-	common, err := g.CommonDir(ctx)
-	if err != nil {
-		return nil, err
+	if common == "" {
+		if common, err = g.CommonDir(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	exe, err := os.Executable()
@@ -444,6 +445,19 @@ func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
 		exe:    exe,
 		claude: claude.New(claude.Config{Program: "claude", Env: env, Sessions: filepath.Join(kept, "sessions")}),
 	}, nil
+}
+
+// found answers the top of the repository that holds dir, and its common git directory, from one git. Where that git
+// fails, found asks for the top alone, and answers its error and no common directory. A git before 2.31 refuses
+// --path-format, and Check then names the git too old.
+func found(ctx context.Context, dir string, env []string) (top, common string, err error) {
+	out, err := plainGit(ctx, dir, env, "rev-parse", "--show-toplevel", "--path-format=absolute", "--git-common-dir")
+	if top, common, both := strings.Cut(out, "\n"); err == nil && both {
+		return top, common, nil
+	}
+
+	top, err = plainGit(ctx, dir, env, "rev-parse", "--show-toplevel")
+	return top, "", err
 }
 
 // cacheDir is kiln's directory under the user's cache directory.
