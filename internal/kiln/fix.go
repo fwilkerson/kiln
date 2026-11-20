@@ -15,7 +15,6 @@ import (
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
-	"github.com/fwilkerson/kiln/internal/proc"
 )
 
 // A monitor's fix is a build with no spec, on kiln/<name>, in the monitor's worktree:
@@ -27,9 +26,9 @@ import (
 //	  │ asks for the developer ─▶ needs you    │ fails ─▶ session failed    │ usage limit ─▶ usage limit
 //
 // A gated check that couldn't run ends the fix couldn't run. A gauge in the gate whose command fails goes back to the
-// agent, as a crossed reading does. Past the last round, or on a command alone that the gate fails, it stops. An
-// accepted fix's landing sends each setback to the agent's session, through the same loop. Each ending but landed
-// stops it.
+// agent, as a crossed reading does. One whose command ran past kiln.json's timeout stops the fix. Past the last
+// round, or on a command alone that the gate fails, it stops. An accepted fix's landing sends each setback to the
+// agent's session, through the same loop. Each ending but landed stops it.
 
 var (
 	//go:embed contract/monitor.md
@@ -147,11 +146,21 @@ func (b *build) fixWork(ctx context.Context) error {
 }
 
 // commandGate runs the monitor's command in the fix's worktree, outside the sandbox, then commits and gates its work.
+// A command that ran past kiln.json's timeout stops the fix. Its half-done work is no work to gate.
 func (b *build) commandGate(ctx context.Context) (verdict, error) {
+	c, err := b.r.tipConfig(ctx)
+	if err != nil {
+		return verdict{}, err
+	}
+
 	command := b.fix.monitor.path(commandScript)
-	out, err := runShell(ctx, b.tree, command, proc.Shell.Env(b.r.env))
+	out, err := c.shell(b.r.env).run(ctx, b.tree, command)
 	if ctx.Err() != nil {
 		return verdict{}, ctx.Err()
+	}
+
+	if _, past := errors.AsType[*ranPast](err); past {
+		return verdict{}, fmt.Errorf("the monitor's command %q %w", command, err)
 	}
 
 	if err != nil {
@@ -714,7 +723,7 @@ const (
 )
 
 // gatedCheck adds a fix's gated check, or its gauge, to the gate's verdict v. The gate fails while the check asks for a
-// fix, whatever it exits with. A check that couldn't run is a checkFailed.
+// fix, whatever it exits with. A check that couldn't run is a checkFailed. Each runs as kiln.json at main's tip says.
 func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdict, error) {
 	switch {
 	case b.fix == nil || !b.fix.monitor.gated():
@@ -723,20 +732,25 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 		return b.gatedGauge(ctx, held, v)
 	}
 
+	c, err := b.r.tipConfig(ctx)
+	if err != nil {
+		return v, err
+	}
+
 	command := b.fix.monitor.path(checkScript)
-	c, err := b.r.runMonitorCheck(ctx, b.tree, command)
+	found, err := c.shell(b.r.env).runMonitorCheck(ctx, b.tree, command)
 	switch {
 	case err != nil:
 		return v, err
-	case !c.ran:
-		return v, &checkFailed{line: c.summary}
-	case !c.fix:
+	case !found.ran:
+		return v, &checkFailed{line: found.summary}
+	case !found.fix:
 		return v, nil
 	}
 
-	report := fmt.Sprintf("The monitor's check, `%s`, still asks for a fix: %s", command, c.summary)
-	if c.found != "" {
-		report += "\n\n" + c.found
+	report := fmt.Sprintf("The monitor's check, `%s`, still asks for a fix: %s", command, found.summary)
+	if found.found != "" {
+		report += "\n\n" + found.found
 	}
 
 	v.passed = false
@@ -747,14 +761,15 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 
 // gatedGauge adds the reading of a fix's gauge, over what the fix changed, to the gate's verdict v. The gate fails
 // while the reading crosses the gauge's line, or its command fails. A reading of no number never crossed. The gauge's
-// line is its monitor's at main's tip, where the monitor may hold the gauge no longer.
+// line is its monitor's at main's tip, where the monitor may hold the gauge no longer. Its command runs as kiln.json
+// there says. A command that ran past kiln.json's timeout stops the fix, as the gate's own commands do.
 func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdict, error) {
 	main, err := b.r.mainTip(ctx)
 	if err != nil {
 		return v, err
 	}
 
-	_, monitors, err := b.r.monitors(ctx, main)
+	c, monitors, err := b.r.monitors(ctx, main)
 	if err != nil {
 		return v, err
 	}
@@ -765,9 +780,12 @@ func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdi
 	}
 
 	g := m.gauge()
-	rd, err := b.readFix(ctx, held, g)
-	if err != nil {
+	rd, err := b.readFix(ctx, held, g, c.shell(b.r.env))
+	switch {
+	case err != nil:
 		return v, err
+	case rd.past != nil:
+		return v, fmt.Errorf("the monitor's gauge %s: its command %w", g.Name, rd.past)
 	}
 
 	e := entry{Gauge: g.Name, Value: rd.value, gaugeLine: g.gaugeLine}
@@ -787,9 +805,10 @@ func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdi
 	return v, nil
 }
 
-// readFix reads g over what the fix changed, at its commit. It reads in the monitor's check's worktree, never the
-// fix's, so a file the gauge leaves never lands. It answers an error only once kiln is interrupted, or git fails.
-func (b *build) readFix(ctx context.Context, held commands, g gauge) (gaugeRead, error) {
+// readFix reads g over what the fix changed, at its commit, as s runs its command. It reads in the monitor's check's
+// worktree, never the fix's, so a file the gauge leaves never lands. It answers an error only once kiln is
+// interrupted, or git fails.
+func (b *build) readFix(ctx context.Context, held commands, g gauge, s projectShell) (gaugeRead, error) {
 	head, base, err := b.fixBase(ctx)
 	if err != nil {
 		return gaugeRead{}, err
@@ -800,5 +819,5 @@ func (b *build) readFix(ctx context.Context, held commands, g gauge) (gaugeRead,
 		return gaugeRead{}, err
 	}
 
-	return b.r.readGauge(ctx, tree, g.Command, base)
+	return s.readGauge(ctx, tree, g.Command, base)
 }

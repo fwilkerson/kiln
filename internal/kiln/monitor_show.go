@@ -41,6 +41,8 @@ func (h *history) standing(m monitor, rec *record) standing {
 	s := standing{last: h.last.At, next: h.next(m)}
 	e := h.last
 	switch {
+	case e.Past:
+		s.result, s.summary = e.Found, e.Summary
 	case e.Found == foundHeld && h.lastFix.Kind != "":
 		s.outcome, s.fixed = h.result(h.lastFix), true
 		s.result = foundHeld + ": " + fixResult(s.outcome)

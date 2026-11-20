@@ -2,6 +2,7 @@ package kiln
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/fwilkerson/kiln/internal/git"
-	"github.com/fwilkerson/kiln/internal/proc"
 )
 
 // gauge is a command kiln.json names, or a monitor's gauge, which prints a number. Its line is where that number
@@ -108,7 +108,7 @@ func (b *build) readGauges(ctx context.Context) error {
 // readEach reads the gauges, one at a time, in a worktree of their own at the landed commit. It holds commandsLock
 // while it reads. So no gate runs beside a gauge, and one kiln at a time uses the worktree.
 func (b *build) readEach(ctx context.Context) error {
-	gauges, err := b.r.gauges(ctx)
+	c, gauges, err := b.r.gauges(ctx)
 	if err != nil || len(gauges) == 0 {
 		return err
 	}
@@ -129,7 +129,7 @@ func (b *build) readEach(ctx context.Context) error {
 		// A landing kiln could not check out reads unknown on each gauge, never as missing.
 		rd := gaugeRead{why: fmt.Sprintf("kiln could not check out the landing: %v", treeErr)}
 		if treeErr == nil {
-			if rd, err = b.r.readGauge(ctx, tree, g.Command, b.onto); err != nil {
+			if rd, err = c.shell(b.r.env).readGauge(ctx, tree, g.Command, b.onto); err != nil {
 				return err
 			}
 		}
@@ -178,11 +178,12 @@ func removeTree(dir string) error {
 	return os.RemoveAll(dir)
 }
 
-// gauges are the gauges at main's tip: each kiln.json names, then each monitor's, named for its monitor.
-func (r *Repo) gauges(ctx context.Context) ([]gauge, error) {
+// gauges are kiln.json at main's tip, and its gauges: each kiln.json names, then each monitor's, named for its
+// monitor.
+func (r *Repo) gauges(ctx context.Context) (config, []gauge, error) {
 	main, err := r.mainTip(ctx)
 	if err != nil {
-		return nil, err
+		return config{}, nil, err
 	}
 
 	c, monitors, err := r.monitors(ctx, main)
@@ -193,7 +194,7 @@ func (r *Repo) gauges(ctx context.Context) ([]gauge, error) {
 		}
 	}
 
-	return gauges, err
+	return c, gauges, err
 }
 
 // gaugeRead is what one run of a gauge's command read.
@@ -201,9 +202,11 @@ type gaugeRead struct {
 	// value is the reading, or nil when kiln could not take it. why then says why.
 	value *float64
 	why   string
-	// failed is whether the command failed, and last the last line of its stderr, or of its stdout.
+	// failed is whether the command failed, and last the last line of its stderr, or of its stdout. past is the
+	// *ranPast of a command kiln killed at its limit, or nil.
 	failed bool
 	last   string
+	past   error
 	// printed is the command's stdout, which a monitor's hold compares, and found what it printed above its number.
 	printed, found string
 	// both is all the command wrote, to stdout and stderr.
@@ -211,10 +214,10 @@ type gaugeRead struct {
 }
 
 // readGauge runs command in tree, with base in $KILN_BASE, and answers what it read. It answers an error only once
-// kiln is interrupted.
-func (r *Repo) readGauge(ctx context.Context, tree git.Worktree, command string, base git.Rev) (gaugeRead, error) {
-	env := append(slices.Clone(proc.Shell.Env(r.env)), baseVar+"="+string(base))
-	out, err := runShell(ctx, tree, command, env)
+// kiln is interrupted. A command that ran past s's limit failed, and its reading says so.
+func (s projectShell) readGauge(ctx context.Context, tree git.Worktree, command string,
+	base git.Rev) (gaugeRead, error) {
+	out, err := s.with(baseVar+"="+string(base)).run(ctx, tree, command)
 	if ctx.Err() != nil {
 		return gaugeRead{}, ctx.Err()
 	}
@@ -222,7 +225,10 @@ func (r *Repo) readGauge(ctx context.Context, tree git.Worktree, command string,
 	rd := gaugeRead{last: out.why(), printed: out.stdout, both: out.both}
 	_, rd.found = lastOf(out.stdout)
 	value, ok := readingOf(out.stdout)
+	_, past := errors.AsType[*ranPast](err)
 	switch {
+	case past:
+		rd.failed, rd.last, rd.why, rd.past = true, "", "its command "+err.Error(), err
 	case err != nil:
 		rd.failed, rd.why = true, "its command failed: "+cmpOr(rd.last, err.Error())
 	case !ok:
@@ -278,7 +284,7 @@ func shownReading(e entry) string {
 
 // gaugeStatus shows each gauge at main's tip, with its latest reading and the landing it measured.
 func (r *Repo) gaugeStatus(ctx context.Context, out io.Writer) error {
-	gauges, err := r.gauges(ctx)
+	_, gauges, err := r.gauges(ctx)
 	if err != nil {
 		fmt.Fprintf(out, "kiln could not read its gauges: %v\n", err)
 		return nil

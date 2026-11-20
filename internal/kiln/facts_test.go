@@ -19,5 +19,6 @@ func TestFacts(t *testing.T) {
 		"kiln waits 30 s for it":               notifyWait == 30*time.Second,
 		"or 24 when unset":                     defaultHours == 24,
 		"a whole number from 0 to 65535":       ^settings{}.Hours == 65535,
+		"It is 1 hour when unset":              defaultTimeout == time.Hour,
 	})
 }

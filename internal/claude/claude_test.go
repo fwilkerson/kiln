@@ -37,7 +37,8 @@ func TestOverage(t *testing.T) {
 	}
 
 	c := claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: filepath.Join(dir, "sessions")})
-	ended, err := c.Run(t.Context(), claude.Launch{Session: session, Role: "build", Prompt: "Build x.", Dir: dir})
+	ended, err := c.Run(t.Context(), claude.Launch{Session: session, Role: "build", Prompt: "Build x.", Dir: dir,
+		Silence: time.Hour})
 	stream, _ := os.ReadFile(filepath.Join(dir, "sessions", session, "stream.jsonl"))
 	_, ranOn := os.Stat(filepath.Join(dir, "ran-on"))
 	switch {
@@ -58,16 +59,18 @@ echo '%s'
 while :; do (sleep 20 &); done
 `
 
-// TestKillForks holds that Run returns promptly once it kills a session, at overage or when its context ends.
-// No child the session forked as it died holds Run past the kill.
+// TestKillForks holds that Run returns promptly once it kills a session. It kills one at overage, when its context
+// ends, or after its Silence. No child the session forked as it died holds Run past the kill.
 func TestKillForks(t *testing.T) {
 	cases := []struct {
-		name, first string
-		wait        time.Duration
-		limited     bool
+		name, first   string
+		wait, silence time.Duration
+		limited       bool
+		silent        bool
 	}{
-		{"overage", `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","isUsingOverage":true}}`, time.Hour, true},
-		{"interrupted", `{"type":"system"}`, 300 * time.Millisecond, false},
+		{"overage", `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","isUsingOverage":true}}`, time.Hour, time.Hour, true, false},
+		{"interrupted", `{"type":"system"}`, 300 * time.Millisecond, time.Hour, false, false},
+		{"silent", `{"type":"system"}`, time.Hour, 300 * time.Millisecond, false, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -75,10 +78,13 @@ func TestKillForks(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), c.wait)
 				defer cancel()
 				began := time.Now()
-				ended := runForking(t, ctx, c.first)
+				ended, err := runForking(t, ctx, c.first, c.silence)
+				_, silent := errors.AsType[*claude.Silent](err)
 				switch took := time.Since(began); {
 				case (ended.Limit != nil) != c.limited:
 					t.Fatalf("Run answered %+v; want a usage limit: %v", ended, c.limited)
+				case silent != c.silent:
+					t.Fatalf("Run answered %v; want a *Silent: %v", err, c.silent)
 				case took > 3*time.Second:
 					t.Fatalf("Run took %v to return after the kill", took)
 				}
@@ -88,7 +94,8 @@ func TestKillForks(t *testing.T) {
 }
 
 // runForking runs forking, which prints first, through Run in a directory of its own, and answers how it ended.
-func runForking(t *testing.T, ctx context.Context, first string) claude.Ended {
+// silence is the Launch's Silence.
+func runForking(t *testing.T, ctx context.Context, first string, silence time.Duration) (claude.Ended, error) {
 	const session = "0b8e6c1e-2f4d-4f6a-9b1c-3d5e7f9a1b2d"
 	dir := t.TempDir()
 	program := filepath.Join(dir, "claude")
@@ -97,6 +104,29 @@ func runForking(t *testing.T, ctx context.Context, first string) claude.Ended {
 	}
 
 	c := claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: filepath.Join(dir, "sessions")})
-	ended, _ := c.Run(ctx, claude.Launch{Session: session, Role: "build", Prompt: "Build x.", Dir: dir})
-	return ended
+	return c.Run(ctx, claude.Launch{Session: session, Role: "build", Prompt: "Build x.", Dir: dir, Silence: silence})
+}
+
+// talking stands in for a claude that prints a line each 300 ms, for 3 s, then its result.
+const talking = `#!/bin/bash
+cat >/dev/null
+for i in 1 2 3 4 5 6 7 8 9 10; do echo '{"type":"system"}'; sleep 0.3; done
+echo '{"type":"result","is_error":false,"result":"Talked."}'
+`
+
+// TestTalkingSession holds that Run measures a session's silence from its last line, not its start. A session that
+// prints more often than its Silence runs to its result, however long it runs.
+func TestTalkingSession(t *testing.T) {
+	const session = "0b8e6c1e-2f4d-4f6a-9b1c-3d5e7f9a1b2e"
+	dir := t.TempDir()
+	program := filepath.Join(dir, "claude")
+	if err := os.WriteFile(program, []byte(talking), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	c := claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: filepath.Join(dir, "sessions")})
+	l := claude.Launch{Session: session, Role: "build", Prompt: "Build x.", Dir: dir, Silence: 1500 * time.Millisecond}
+	if ended, err := c.Run(t.Context(), l); err != nil || ended.Text != "Talked." {
+		t.Errorf("Run answered %+v, %v; want the session's result", ended, err)
+	}
 }

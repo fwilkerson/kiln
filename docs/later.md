@@ -220,3 +220,17 @@ complete each key and mark a wrong one. A monitor's `monitor.json` could have on
   `kiln monitor run` makes. A schema would add a file kiln owns, and a key to each monitor, for little.
 - **Build it when:** a key of `monitor.json` takes a value the decoder accepts and kiln refuses, or a developer asks
   an editor to complete one.
+
+## A ceiling on what one build or fix spends
+
+kiln.json's `timeout` ends a hang: a command that never returns, or a session that falls silent. A session that works
+on, turn after turn, is no hang. A ceiling on one build's or one fix's cost, turns or time would stop it, and say
+which ceiling it met.
+
+- **Why it was left out:** on 2026-11-20 the ledger held 65 builds and fixes that ran a session, over 192 session
+  runs. The median spent $1.67. The costliest spent $31 in 291 turns, over 7 runs. The longest single run took 161
+  turns, and the costliest $20. No run had ended at a usage limit. The rounds already cap how many runs a build
+  makes. A session draws on the developer's plan and never bills overage, so the plan's usage limit caps what all
+  the work spends. kiln pauses a build there, and ends a fix.
+- **Build it when:** a build or fix spends more than twice the costliest so far, or a single run passes 500 turns. Or
+  a usage limit pauses a build while one session drew most of the window.

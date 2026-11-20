@@ -182,9 +182,11 @@ func TestDue(t *testing.T) {
 	for name, tc := range map[string]struct {
 		found, outcome string
 		later          time.Duration
-		due            bool
+		due, past      bool
 	}{
 		"healthy a moment ago":              {found: foundHealthy, later: time.Minute},
+		"its check ran past the timeout":    {found: foundCouldNot, past: true, later: time.Minute},
+		"that, its interval later":          {found: foundCouldNot, past: true, later: 24 * time.Hour, due: true},
 		"healthy, its interval less slack":  {found: foundHealthy, later: 23*time.Hour + 30*time.Minute, due: true},
 		"healthy, just short of that":       {found: foundHealthy, later: 23*time.Hour + 29*time.Minute},
 		"its check couldn't run":            {found: foundCouldNot, later: time.Minute, due: true},
@@ -203,7 +205,7 @@ func TestDue(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var entries []entry
 			if tc.found != "" {
-				line := entry{Kind: monitorKind, Monitor: "deps", At: ran, Found: tc.found, Build: "b"}
+				line := entry{Kind: monitorKind, Monitor: "deps", At: ran, Found: tc.found, Build: "b", Past: tc.past}
 				entries = append(entries, line)
 			}
 
@@ -215,6 +217,31 @@ func TestDue(t *testing.T) {
 				t.Errorf("due %v, want %v", due, tc.due)
 			}
 		})
+	}
+}
+
+// TestStuck holds that a check or gauge past the timeout holds its monitor until main or its directory changes. A run
+// held for it keeps it held, and any other run since releases it.
+func TestStuck(t *testing.T) {
+	stuck := entry{Kind: monitorKind, Monitor: "m", Main: "a", Entry: "e", Found: foundCouldNot, Past: true}
+	heldFor := entry{Kind: monitorKind, Monitor: "m", Main: "a", Entry: "e", Found: foundHeld, Past: true}
+	healthy := entry{Kind: monitorKind, Monitor: "m", Main: "a", Entry: "e", Found: foundHealthy}
+	for name, tc := range map[string]struct {
+		lines     []entry
+		main, ent string
+		held      bool
+	}{
+		"the same main and entry":     {lines: []entry{stuck}, main: "a", ent: "e", held: true},
+		"main moved":                  {lines: []entry{stuck}, main: "b", ent: "e"},
+		"its entry changed":           {lines: []entry{stuck}, main: "a", ent: "f"},
+		"a run held for it since":     {lines: []entry{stuck, heldFor}, main: "a", ent: "e", held: true},
+		"a run that finished since":   {lines: []entry{stuck, healthy}, main: "a", ent: "e"},
+		"a check that never ran past": {lines: []entry{healthy}, main: "a", ent: "e"},
+	} {
+		now := entry{Main: git.Rev(tc.main), Entry: tc.ent}
+		if held := histories(tc.lines)["m"].stuckAt(now); held != tc.held {
+			t.Errorf("%s: held %v, want %v", name, held, tc.held)
+		}
 	}
 }
 
@@ -286,6 +313,7 @@ func TestCheck(t *testing.T) {
 		command        string
 		ran, fix       bool
 		summary, found string
+		limit          time.Duration
 	}{
 		"healthy":                {command: `echo '{"fix": false, "summary": "fine"}'`, ran: true, summary: "fine"},
 		"a finding above it":     {command: `echo CVE-1; echo '{"fix": true, "summary": "one"}'`, ran: true, fix: true, summary: "one", found: "CVE-1"},
@@ -295,10 +323,11 @@ func TestCheck(t *testing.T) {
 		"an object with no fix":  {command: `echo '{"summary": "s"}'`, summary: `{"summary": "s"}`},
 		"nothing at all":         {command: `true`, summary: "the check printed nothing"},
 		"an exit with no output": {command: `exit 3`, summary: "the check failed: exit status 3"},
+		"one that runs past":     {command: `echo '{"fix": true, "summary": "s"}'; sleep 30`, limit: 500 * time.Millisecond, summary: "the check ran past kiln.json's timeout of 500ms, so kiln killed it"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := &Repo{env: os.Environ()}
-			c, err := r.runMonitorCheck(t.Context(), git.Worktree(t.TempDir()), tc.command)
+			s := config{Timeout: timeout(tc.limit)}.shell(os.Environ())
+			c, err := s.runMonitorCheck(t.Context(), git.Worktree(t.TempDir()), tc.command)
 			if err != nil {
 				t.Fatal(err)
 			}

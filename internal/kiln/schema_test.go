@@ -109,6 +109,8 @@ func schemaOf(t *testing.T, typ reflect.Type, docs map[string]string) *schemaNod
 		return &schemaNode{AnyOf: []*schemaNode{{Type: "string"}, {Type: "array", Items: &schemaNode{Type: "string"}}}}
 	case reflect.TypeFor[json.RawMessage]():
 		return &schemaNode{}
+	case reflect.TypeFor[timeout]():
+		return &schemaNode{Type: "string"}
 	}
 
 	switch typ.Kind() {

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestAcceptanceForms holds that kiln.json's acceptance reads as a list, and a string as a list of one. An old
@@ -50,6 +51,32 @@ func TestHosts(t *testing.T) {
 	}
 }
 
+// TestTimeout holds what kiln.json may name as its timeout: a Go duration above zero, or none for an hour. A refusal
+// names the value.
+func TestTimeout(t *testing.T) {
+	for name, tc := range map[string]struct {
+		key  string
+		want time.Duration
+	}{
+		"none":         {want: time.Hour},
+		"two hours":    {key: `, "timeout": "2h"`, want: 2 * time.Hour},
+		"zero":         {key: `, "timeout": "0s"`},
+		"below zero":   {key: `, "timeout": "-1h"`},
+		"no unit":      {key: `, "timeout": "7200"`},
+		"a bare count": {key: `, "timeout": 7200`},
+	} {
+		c, err := parseConfig([]byte(`{"gate": ["true"]` + tc.key + `}`))
+		switch refused := tc.want == 0; {
+		case (err != nil) != refused:
+			t.Errorf("%s: parseConfig answers %v, want refused %v", name, err, refused)
+		case refused && !strings.Contains(err.Error(), "timeout"):
+			t.Errorf("%s: parseConfig answers %v, which does not name the timeout", name, err)
+		case !refused && c.killAfter() != tc.want:
+			t.Errorf("%s: kiln kills after %v, want %v", name, c.killAfter(), tc.want)
+		}
+	}
+}
+
 // TestWritablePaths holds that a writable command's paths reach a session only when each is absolute. Claude Code
 // would read a relative one from where the session runs. A refusal names the path.
 func TestWritablePaths(t *testing.T) {
@@ -58,7 +85,7 @@ func TestWritablePaths(t *testing.T) {
 		"echo /tmp/a cache":  "cache",
 		"echo ./cache":       "./cache",
 	} {
-		_, err := (&Repo{top: t.TempDir()}).printed(context.Background(), command)
+		_, err := (&Repo{top: t.TempDir()}).printed(context.Background(), config{}.shell(nil), command)
 		switch {
 		case (err != nil) != (refused != ""):
 			t.Errorf("%s: printed answers %v, want refused %q", command, err, refused)

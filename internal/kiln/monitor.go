@@ -1,24 +1,18 @@
 package kiln
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
 	"path"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/git"
-	"github.com/fwilkerson/kiln/internal/proc"
 )
 
 // monitorsDir holds a directory for each monitor, named for the monitor.
@@ -313,6 +307,8 @@ type checked struct {
 	// reading is a gauge's reading, as a monitor line holds it: the gauge's name, its value and its line. Its Gauge
 	// is "" for a check.
 	reading entry
+	// past is whether the check or gauge couldn't run because it ran past kiln.json's timeout.
+	past bool
 }
 
 // verdictLine is a check's last line of stdout.
@@ -322,10 +318,10 @@ type verdictLine struct {
 	Drain   bool   `json:"drain"`
 }
 
-// runMonitorCheck runs command with sh -c in dir, as a gauge's command runs, and reads what it found. It answers an
-// error only once kiln is interrupted.
-func (r *Repo) runMonitorCheck(ctx context.Context, dir git.Worktree, command string) (checked, error) {
-	out, err := runShell(ctx, dir, command, proc.Shell.Env(r.env))
+// runMonitorCheck runs command in dir, as a gauge's command runs, and reads what it found. It answers an error only
+// once kiln is interrupted. A check that ran past s's limit couldn't run.
+func (s projectShell) runMonitorCheck(ctx context.Context, dir git.Worktree, command string) (checked, error) {
+	out, err := s.run(ctx, dir, command)
 	if ctx.Err() != nil {
 		return checked{}, ctx.Err()
 	}
@@ -333,8 +329,11 @@ func (r *Repo) runMonitorCheck(ctx context.Context, dir git.Worktree, command st
 	c := checked{printed: out.stdout}
 	last, found := lastOf(c.printed)
 	c.found = found
+	_, past := errors.AsType[*ranPast](err)
 	var v verdictLine
 	switch {
+	case past:
+		c.summary, c.past = "the check "+err.Error(), true
 	case err != nil:
 		c.summary = cmpOr(out.last(), fmt.Sprintf("the check failed: %v", err))
 	case !jsonLine(last, &v) || v.Fix == nil:
@@ -346,49 +345,6 @@ func (r *Repo) runMonitorCheck(ctx context.Context, dir git.Worktree, command st
 	return c, nil
 }
 
-// output is what a check's or a gauge's command printed: each stream, and both as they arrived.
-type output struct {
-	stdout, stderr, both string
-}
-
-// last is the last line the command wrote, to stdout or stderr, that holds more than space.
-func (o output) last() string {
-	last, _ := lastOf(o.both)
-	return last
-}
-
-// why is the last line of stderr, or of stdout where stderr has none. Two pipes keep no order between them, so a
-// failed command's last line of stderr says why it failed.
-func (o output) why() string {
-	last, _ := lastOf(o.stderr)
-	if last == "" {
-		last, _ = lastOf(o.stdout)
-	}
-
-	return last
-}
-
-// kilnVar names the path of the kiln that runs a script. The script runs it in place of a kiln on the PATH.
-const kilnVar = "KILN"
-
-// runShell runs command with sh -c in dir, with env and $KILN, in a process group of its own. It answers what the
-// command printed, and the error it ended with.
-func runShell(ctx context.Context, dir git.Worktree, command string, env []string) (output, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return output{}, err
-	}
-
-	var stdout, stderr bytes.Buffer
-	both := &lockedBuffer{}
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
-	// Of two values of one variable, the last wins. So this kiln's path replaces one a caller passed on.
-	cmd.Dir, cmd.Env = string(dir), append(slices.Clone(env), kilnVar+"="+exe)
-	cmd.Stdout, cmd.Stderr = io.MultiWriter(&stdout, both), io.MultiWriter(&stderr, both)
-	err = proc.Run(cmd)
-	return output{stdout: stdout.String(), stderr: stderr.String(), both: both.String()}, err
-}
-
 // lastOf splits out, trimmed, into its last line and what comes above it.
 func lastOf(out string) (last, above string) {
 	out = strings.TrimRight(out, "\r\n\t ")
@@ -396,38 +352,20 @@ func lastOf(out string) (last, above string) {
 	return strings.TrimSpace(out[i+1:]), strings.TrimRight(out[:max(i, 0)], "\r\n")
 }
 
-// lockedBuffer is a buffer two writers share, a command's stdout and its stderr.
-type lockedBuffer struct {
-	// mu guards b. Write and String hold it.
-	mu sync.Mutex
-	b  bytes.Buffer
-}
-
-func (l *lockedBuffer) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.b.Write(p)
-}
-
-func (l *lockedBuffer) String() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.b.String()
-}
-
 // checkTree is the worktree, under the cache directory, where a monitor's check or gauge runs. Its run reads main's
 // tip, and its fix's gate reads the fix's commit there. A spec's name never starts with a dot, so it is no build's
 // tree.
 const checkTree = ".monitor-check"
 
-// firstCheck runs m's check, or reads its gauge, in a worktree of its own at main. A monitor with neither asks for a
-// fix each time.
-func (held commands) firstCheck(ctx context.Context, m monitor, main git.Rev) (checked, error) {
+// firstCheck runs m's check, or reads its gauge, in a worktree of its own at main. c says how long a command may run.
+// A monitor with neither asks for a fix each time.
+func (held commands) firstCheck(ctx context.Context, c config, m monitor, main git.Rev) (checked, error) {
 	r := held.r
 	if !m.finds() {
 		return checked{ran: true, fix: true}, nil
 	}
 
+	s := c.shell(r.env)
 	tree, err := held.scratchTree(ctx, checkTree, main)
 	switch {
 	case errors.Is(ctx.Err(), context.Canceled):
@@ -435,7 +373,7 @@ func (held commands) firstCheck(ctx context.Context, m monitor, main git.Rev) (c
 	case err != nil:
 		return couldNotCheck(m, fmt.Sprintf("kiln could not check out main for the check: %v", err)), nil
 	case m.finder == checkScript:
-		return r.runMonitorCheck(ctx, tree, m.path(checkScript))
+		return s.runMonitorCheck(ctx, tree, m.path(checkScript))
 	}
 
 	empty, err := r.git.EmptyTree(ctx)
@@ -446,7 +384,7 @@ func (held commands) firstCheck(ctx context.Context, m monitor, main git.Rev) (c
 		return couldNotCheck(m, fmt.Sprintf("kiln could not name git's empty tree: %v", err)), nil
 	}
 
-	return r.measured(ctx, tree, m.gauge(), empty)
+	return s.measured(ctx, tree, m.gauge(), empty)
 }
 
 // couldNotCheck is a check of m that couldn't run, for why. Its reading names m's gauge, where m has one.
@@ -461,13 +399,13 @@ func couldNotCheck(m monitor, why string) checked {
 
 // measured reads g in tree, from base, as a check's verdict. On its line is healthy, and crossed asks for a fix. A
 // reading kiln could not take couldn't run. It answers an error only once kiln is interrupted.
-func (r *Repo) measured(ctx context.Context, tree git.Worktree, g gauge, base git.Rev) (checked, error) {
-	rd, err := r.readGauge(ctx, tree, g.Command, base)
+func (s projectShell) measured(ctx context.Context, tree git.Worktree, g gauge, base git.Rev) (checked, error) {
+	rd, err := s.readGauge(ctx, tree, g.Command, base)
 	if err != nil {
 		return checked{}, err
 	}
 
 	e := entry{Gauge: g.Name, Value: rd.value, gaugeLine: g.gaugeLine}
 	return checked{ran: rd.value != nil, fix: g.crossed(rd.value), summary: rd.summary(e), printed: rd.printed,
-		found: rd.found, reading: e}, nil
+		found: rd.found, reading: e, past: rd.past != nil}, nil
 }

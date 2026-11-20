@@ -28,7 +28,7 @@
 //
 // kiln runs on macOS alone. The process table is read with sysctl(3), not /bin/ps, which is setuid and which a
 // session's sandbox refuses to exec. [WorkingDirs] asks lsof, which it gives 5 s. [Run] gives a group 10 s to close a
-// command's output.
+// command's output, once the command exits within its limit.
 package proc
 
 import (
@@ -39,6 +39,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -105,25 +106,65 @@ func OwnGroup(cmd *exec.Cmd) {
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 }
 
-// Run runs cmd, made with [exec.CommandContext], in a process group of its own, as [OwnGroup] says. Once cmd's
-// process exits, what it started has [outputGrace] to close cmd's output. Run then kills cmd's process group, when
-// the output stayed open or cmd failed. A process that left the group survives. Run answers the error cmd's process
-// ended with, and nil for output held past the grace.
-func Run(cmd *exec.Cmd) error {
+// Run runs cmd, made with [exec.CommandContext], in a process group of its own, as [OwnGroup] says. When cmd's own
+// process still runs once limit has passed, Run kills its group, and answers a *[RanPast]. Once cmd's process exits,
+// what it started has [outputGrace] to close cmd's output. Run then kills cmd's process group, when the output stayed
+// open or cmd failed. A process that left the group survives. Run answers the error cmd's process ended with, and nil
+// for output held past the grace.
+func Run(cmd *exec.Cmd, limit time.Duration) error {
 	OwnGroup(cmd)
 	cmd.WaitDelay = outputGrace
-	err := cmd.Run()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	var past atomic.Bool
+	pid := cmd.Process.Pid
+	started, _ := Of(pid)
+	timer := time.AfterFunc(limit, func() {
+		// A process that exited ended in time, though a child still holds its output.
+		if stillRuns(pid, started.Born) {
+			past.Store(true)
+			_ = syscall.Kill(-pid, syscall.SIGKILL)
+		}
+	})
+
+	err := cmd.Wait()
+	timer.Stop()
 	held := errors.Is(err, exec.ErrWaitDelay)
 	// Go answers an ExitError, not ErrWaitDelay, when the output stayed open and the shell failed.
 	if _, failed := errors.AsType[*exec.ExitError](err); held || failed {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = syscall.Kill(-pid, syscall.SIGKILL)
 	}
 
-	if held {
+	switch {
+	case past.Load():
+		return &RanPast{Limit: limit}
+	case held:
 		return nil
 	}
 
 	return err
+}
+
+// stillRuns reports whether the process pid, started at born, has yet to exit. Born tells a reused pid apart.
+func stillRuns(pid int, born int64) bool {
+	p, err := Of(pid)
+	switch {
+	case err != nil, p.Zombie:
+		return false
+	}
+
+	return p.Born == born
+}
+
+// RanPast is [Run]'s error for a command whose own process still ran once Limit passed. Run killed its group.
+type RanPast struct {
+	Limit time.Duration
+}
+
+func (e *RanPast) Error() string {
+	return fmt.Sprintf("ran past %v, so its group was killed", e.Limit)
 }
 
 // Tail is an [io.Writer] that keeps only the last bytes written to it. Those may be the end of a child's

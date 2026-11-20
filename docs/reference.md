@@ -50,7 +50,8 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
   "harness": ["internal/testutil/"],
   "reaudit": ["migrations/"],
   "gauges": [{"name": "test-seconds", "command": ".kiln/gauges/test-seconds", "max": 60}],
-  "notify": ".kiln/notify"
+  "notify": ".kiln/notify",
+  "timeout": "2h"
 }
 ```
 
@@ -68,6 +69,7 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 | `reaudit`    | Paths the audit reads again whenever the work changes them                  | main's tip        |
 | `gauges`     | Numbers kiln reads after each landing                                       | main's tip        |
 | `notify`     | A program that receives each notification, run with `sh -c`                 | main's tip        |
+| `timeout`    | How long a command may run, or a session be silent, before kiln kills it    | main's tip        |
 
 kiln reads the gate from main's tip, never from the build's checkout, so a build cannot weaken its own gate. It
 refuses a `kiln.json` with a key it does not know. `kiln doctor` reads the working tree's `kiln.json`, before you
@@ -231,6 +233,21 @@ kiln's own repository keeps a `.kiln/notify` for Ghostty. A monitor's fix opens 
 forward. On the first tab, macOS asks to let kiln control Ghostty. Without that, the tab never opens, and the output
 says why.
 
+### timeout
+
+```json
+{"timeout": "2h"}
+```
+
+- It bounds each command kiln runs for you: the gate's, a monitor's check and command, a gauge, and a `writable`
+  command. It bounds how long a session may print nothing, too. The `notify` program has a wait of its own, as `notify`
+  above says.
+- Past it, kiln kills a command with its process group, and a session with each process it started. The build or
+  fix stops, or the check couldn't run, with words that name what ran past, the limit and this key. The package doc
+  of `internal/kiln` gives the default, and what each ends in, under Hangs: `go doc ./internal/kiln`.
+- It bounds a hang, not a slow run, so set it well above your gate's slowest run on a loaded machine. A suite that
+  took 2 minutes alone took up to 27 with eight sessions beside it.
+
 ## Monitors
 
 A monitor looks for a problem on a schedule, and fixes it. It is a directory under `.kiln/monitors/`, named for the
@@ -277,7 +294,8 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
   run, and starts no fix. So does a gauge kiln could not read.
 - The agent's first message holds what the check or gauge printed, and what the gate printed after `command`. Then
   it says to fix what the monitor found, as the agent's instructions say: the body of `agent.md`.
-- The package doc of `internal/kiln` says when a monitor is due, under Monitors: `go doc ./internal/kiln`.
+- The package doc of `internal/kiln` says when a monitor is due, under Monitors, and when a check or gauge that ran
+  past `timeout` holds it, under Hangs: `go doc ./internal/kiln`.
 - A fix is a build with no spec. The gate holds it, with the check or gauge added unless `"gates": false`. That
   setting is for a check that reads something a fix cannot change until it is deployed.
 - A fix never writes under `.kiln/`. Without `"tests": true`, it never writes under an `acceptance` path's part

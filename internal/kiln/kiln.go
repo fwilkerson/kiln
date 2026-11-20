@@ -231,25 +231,27 @@
 //	  gauges   read after a landing, as after a build's
 //	  again    when the check asked to drain, after a fix that landed: from check, due or not, until no fix lands
 //
-// A monitor is due when it never ran, or its check or gauge couldn't run. It is due when a usage limit ended its fix,
-// or its fix was cut short. Otherwise it is due once its last run started its interval, less 30 minutes, ago.
-// $KILN_NOW, as RFC 3339, stands for the clock. A monitor with neither check nor gauge starts a fix each run it is due.
+// A monitor is due when it never ran, or its check or gauge couldn't run but did not hang. It is due when a usage
+// limit ended its fix, or its fix was cut short. Otherwise it is due once its last run started its interval, less 30
+// minutes, ago. $KILN_NOW, as RFC 3339, stands for the clock. A monitor with neither check nor gauge starts a fix each
+// run it is due.
 //
 // A check that exits non-zero, or prints no verdict last, couldn't run. kiln then keeps its last line of stdout and
-// stderr. A verdict that adds "drain": true asks kiln to check again at once, once the fix lands. The agent's session
-// has the role fix. It reads what the check printed above its last line, and what the gate printed. Then it reads "Fix
-// what the monitor <name> found, as your instructions say, and end your turn." The gate adds the check, unless gates is
-// false, and fails while it asks for a fix. A fix that passes lands, or waits for kiln accept when accept is true. In
-// an accepted fix's landing, a conflict with main or a failed gate goes back to the fix's session. Each spends a round.
-// Before a failed gate goes back, kiln merges main into the branch. A fix with no session stops instead. Work that
-// changes nothing ends unchanged. An agent's reply whose last line is {"ask": true, "summary": "..."} ends the fix
-// needs you, with its report. One whose last line is {"title": "type(scope): summary"}, of at most 72 characters,
-// titles the commit that lands the fix. A landing keeps the title of the fix the developer accepted. A failed session
-// ends it session failed. A usage limit ends it at once, never waiting for the reset. In a landing, each of these stops
-// it and keeps the fix. So does work that changes nothing on main. Only a fix whose agent ran gets the audit. A
-// landing's audit reads each file whose own change since main differs from the accepted commit's. It runs when the work
-// so differs from the commit the audit last read, outside .kiln/. It skips the session's answer to its findings, but
-// for a path kiln.json's reaudit names. A landing whose turn kiln cut short resumes that turn first.
+// stderr, but for a check past the timeout, as Hangs says. A verdict that adds "drain": true asks kiln to check again
+// at once, once the fix lands. The agent's session has the role fix. It reads what the check printed above its last
+// line, and what the gate printed. Then it reads "Fix what the monitor <name> found, as your instructions say, and end
+// your turn." The gate adds the check, unless gates is false, and fails while it asks for a fix. A fix that passes
+// lands, or waits for kiln accept when accept is true. In an accepted fix's landing, a conflict with main or a failed
+// gate goes back to the fix's session. Each spends a round. Before a failed gate goes back, kiln merges main into the
+// branch. A fix with no session stops instead. Work that changes nothing ends unchanged. An agent's reply whose last
+// line is {"ask": true, "summary": "..."} ends the fix needs you, with its report. One whose last line is {"title":
+// "type(scope): summary"}, of at most 72 characters, titles the commit that lands the fix. A landing keeps the title of
+// the fix the developer accepted. A failed session ends it session failed. A usage limit ends it at once, never waiting
+// for the reset. In a landing, each of these stops it and keeps the fix. So does work that changes nothing on main.
+// Only a fix whose agent ran gets the audit. A landing's audit reads each file whose own change since main differs from
+// the accepted commit's. It runs when the work so differs from the commit the audit last read, outside .kiln/. It skips
+// the session's answer to its findings, but for a path kiln.json's reaudit names. A landing whose turn kiln cut short
+// resumes that turn first.
 //
 // A monitor's gauge is a gauge named for the monitor, which kiln reads after each landing too, as Gauges says. The
 // monitor's run reads it over the whole repository. It reads in the check's worktree at main's tip, with git's empty
@@ -258,8 +260,8 @@
 // the gauge printed above its number. At each gate of the fix, unless gates is false, kiln reads the gauge again. Its
 // line is the monitor's at main's tip. It reads in the check's worktree at the fix's commit, never the fix's own
 // worktree. $KILN_BASE is then the fix's merge base with main. The gate fails while that reading crosses the line, or
-// the command fails. Either goes back to the agent. A reading of no number never crossed, so a fix that deletes what
-// crossed lands.
+// the command fails. Either goes back to the agent, but for a command that ran past kiln.json's timeout, as Hangs says.
+// A reading of no number never crossed, so a fix that deletes what crossed lands.
 //
 // A monitor is held, and starts no fix, by its last fix's outcome. A change since that fix started releases it:
 //
@@ -305,6 +307,32 @@
 //
 // A session, an audit, a monitor's command and a pause for a usage limit hold no lock. kiln precommit takes none. A
 // kiln takes its lane first, then commands.lock, and never takes a lane while it holds commands.lock.
+//
+// # Hangs
+//
+// No hang holds a lane, commands.lock or the launchd job forever. kiln.json's timeout, a Go duration read at main's
+// tip, bounds two waits. It is 1 hour when unset:
+//
+//	a command kiln runs for the project    the gate's, a monitor's check or command, a gauge, a writable command
+//	a session                              how long it prints nothing
+//
+// A session that keeps printing is no hang, and the timeout never ends it. kiln kills a command past the timeout
+// with its process group, and a session with each process it started. Its words name what ran past, the timeout and
+// the setting:
+//
+//	what ran past                                          ends in
+//	a gate's command, a writable command, a monitor's      a stopped build or fix, with those words as its why
+//	command, a gauge in a fix's gate, or a session
+//	a monitor's check, or its gauge at main's tip          couldn't run, with those words as its summary
+//	a gauge read after a landing                           unknown, with those words as why
+//
+// The timeout counts only the time the Mac is awake, as Go's timers do. It never sends work back as a round. A round
+// would wait out the same hang again, holding the same lock. So a monitor whose check or gauge ran past it waits for
+// its interval. Then it is held, and runs no check, until main's tip, or any file in the monitor's directory, changes.
+// kiln monitor run with its name runs it anyway. The notify program gets 30 s, as Notifications says, since a notice
+// holds its kiln's lane. A pause for a usage limit lasts until the limit resets. A wait for commands.lock lasts as long
+// as the bounded work that holds it. kiln precommit reads the timeout from the working tree, as it reads the gate. A
+// command past it refuses the commit.
 //
 // # The ledger
 //
@@ -402,11 +430,11 @@
 // git diff "$KILN_BASE" HEAD names every file, and git log "$KILN_BASE"..HEAD fails. The worktree holds only the
 // commit's files. So a command that reads the changed files should list them with git diff --diff-filter=d. The reading
 // is the last line of stdout, trimmed, as a decimal number. A command that fails, or prints no number last, reads
-// unknown. kiln says why, by the last line of its stderr, or of its stdout. kiln writes each reading to its ledger with
-// its line, and judges it against that line wherever it shows. A reading below min, or above max, crossed its line. An
-// unknown one never did. The kiln that landed the build prints the readings after its summary, and only then starts the
-// next build. A gauge never blocks a landing, and nothing reads a landing kiln missed. The read holds commands.lock, so
-// it waits for a gate, and a gate waits for it.
+// unknown. kiln says why, by the last line of its stderr, or of its stdout. Hangs says why for a command past the
+// timeout. kiln writes each reading to its ledger with its line, and judges it against that line wherever it shows. A
+// reading below min, or above max, crossed its line. An unknown one never did. The kiln that landed the build prints
+// the readings after its summary, and only then starts the next build. A gauge never blocks a landing, and nothing
+// reads a landing kiln missed. The read holds commands.lock, so it waits for a gate, and a gate waits for it.
 //
 // # Notifications
 //

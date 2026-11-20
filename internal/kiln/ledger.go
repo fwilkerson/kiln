@@ -130,6 +130,8 @@ type entry struct {
 	Entry   string  `json:"entry,omitempty"`
 	Printed string  `json:"printed,omitempty"`
 	Found   string  `json:"found,omitempty"`
+	// Past marks a monitor line whose check or gauge ran past kiln.json's timeout, or was held for that.
+	Past bool `json:"past,omitempty"`
 	// Summary is a monitor line's check's summary, or why it couldn't run. A fix's outcome line holds the report's
 	// summary, the session's error, or why its gated check couldn't run. Report is the rest of an agent's report.
 	Summary string `json:"summary,omitempty"`

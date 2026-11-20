@@ -1,7 +1,7 @@
 # A reading kiln could not take starts no fix.
 
-# Given: a monitor that names a gauge whose command fails, and a second monitor that names a gauge whose command
-# prints no number.
+# Given: a monitor that names a gauge whose command fails, a second monitor that names a gauge whose command
+# prints no number, and a third that names a gauge whose command runs past kiln.json's timeout.
 
 # When: kiln monitor run runs.
 exec sh -c 'kiln monitor run || true'
@@ -9,18 +9,51 @@ exec sh -c 'kiln monitor run || true'
 # Then: no fix starts.
 ! exists .claude-calls
 
-# kiln status shows that each monitor couldn't run, with why, and that each runs at the next kiln monitor run.
+# kiln status shows that each monitor couldn't run, with why. Each runs at the next kiln monitor run, but the one that
+# ran past the timeout, which would hold the gate as long again. It waits for its interval.
 exec kiln status
 stdout '^broken: couldn''t run, .*runs at the next kiln monitor run$'
 stdout 'the tool is missing'
 stdout '^silent: couldn''t run, .*runs at the next kiln monitor run$'
 stdout 'silent: its command''s last line is no number'
+stdout '^stuck: couldn''t run, .*runs next after '
+stdout 'stuck: its command ran past kiln.json''s timeout of 3s, so kiln killed it'
+
+# When: a day later, with main and the monitors unchanged, kiln monitor run runs again.
+env KILN_NOW=2099-01-01T00:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: the monitor whose gauge ran past the timeout is held, and its gauge never runs, until main's tip or a file in
+# its directory changes.
+stdout '^stuck: held: its check or gauge ran past kiln.json''s timeout at main [0-9a-f]+; it runs once main''s tip'
+! stdout 'stuck: its command ran past'
 
 -- .kiln/kiln.json --
-{"gate": ["true"]}
+{"gate": ["true"], "timeout": "3s"}
 -- .kiln/monitors/broken/gauge --
 echo 'the tool is missing' >&2; exit 3
 -- .kiln/monitors/broken/agent.md --
+||||||| c6b6d22
+{"gate": ["true"], "gauges": [
+ {"name": "fails", "command": "echo 'the tool is missing' >&2; exit 3", "max": 0},
+ {"name": "quiet", "command": "echo 'nothing to count'", "max": 0}
+], "monitors": [
+ {"name": "broken", "every": "24h", "gauge": "fails", "agent": ".kiln/agents/fixer.md"},
+ {"name": "silent", "every": "24h", "gauge": "quiet", "agent": ".kiln/agents/fixer.md"}
+]}
+-- .kiln/agents/fixer.md --
+=======
+{"gate": ["true"], "timeout": "3s", "gauges": [
+ {"name": "fails", "command": "echo 'the tool is missing' >&2; exit 3", "max": 0},
+ {"name": "quiet", "command": "echo 'nothing to count'", "max": 0},
+ {"name": "slow", "command": "echo 1; sleep 600", "max": 0}
+], "monitors": [
+ {"name": "broken", "every": "24h", "gauge": "fails", "agent": ".kiln/agents/fixer.md"},
+ {"name": "silent", "every": "24h", "gauge": "quiet", "agent": ".kiln/agents/fixer.md"},
+ {"name": "stuck", "every": "24h", "gauge": "slow", "agent": ".kiln/agents/fixer.md"}
+]}
+-- .kiln/agents/fixer.md --
+>>>>>>> improve/guard-rails
 Fix the files the gauge names.
 -- .kiln/monitors/broken/monitor.json --
 {"max": 0}
@@ -29,6 +62,12 @@ echo 'nothing to count'
 -- .kiln/monitors/silent/agent.md --
 Fix the files the gauge names.
 -- .kiln/monitors/silent/monitor.json --
+{"max": 0}
+-- .kiln/monitors/stuck/gauge --
+echo 1; sleep 600
+-- .kiln/monitors/stuck/agent.md --
+Fix the files the gauge names.
+-- .kiln/monitors/stuck/monitor.json --
 {"max": 0}
 -- ok.txt --
 fine

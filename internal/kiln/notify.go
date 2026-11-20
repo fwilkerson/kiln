@@ -3,7 +3,6 @@ package kiln
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -32,8 +31,14 @@ const (
 	monitorNotice = "monitor"
 )
 
-// notifyWait is how long kiln waits for the notify program before it kills the program, and what it started.
+// notifyWait is how long kiln waits for the notify program before it kills the program, and what it started. A
+// notice holds its kiln's lane meanwhile, so it gets less than kiln.json's timeout, which is sized for a gate.
 const notifyWait = 30 * time.Second
+
+// notifyShell runs the notify program with env, a kiln's environment, for at most notifyWait.
+func notifyShell(env []string) projectShell {
+	return projectShell{env: proc.Shell.Env(env), limit: notifyWait, bound: "kiln's wait for notify"}
+}
 
 // notify hands n to the program kiln.json's notify names at main's tip. It prints n as OSC 9 on out when kiln.json
 // names none, or is unreadable, or the program fails. So no notification is lost, and kiln says why on out.
@@ -76,15 +81,9 @@ func (r *Repo) deliver(ctx context.Context, command string, n notice, out io.Wri
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, notifyWait)
-	defer cancel()
-	env := append(slices.Clone(proc.Shell.Env(r.env)), noticeVar+"="+string(raw))
-	printed, err := runShell(ctx, git.Worktree(r.top), command, env)
+	printed, err := notifyShell(r.env).with(noticeVar+"="+string(raw)).run(ctx, git.Worktree(r.top), command)
 	fmt.Fprint(out, printed.both)
-	switch {
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return fmt.Errorf("%s ran past %s, so kiln stopped it", command, notifyWait)
-	case err != nil:
+	if err != nil {
 		return fmt.Errorf("%s: %w", command, err)
 	}
 

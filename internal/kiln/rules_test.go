@@ -255,7 +255,7 @@ func goTest(exit int, output string) []check {
 func TestReportNamesLostFailure(t *testing.T) {
 	const command = `printf -- '--- FAIL: TestLost (0.00s)\nFAIL\nFAIL\texample.com/s\t0.1s\n'; ` +
 		`head -c 20000 /dev/zero | tr '\0' x; exit 1`
-	tip, err := runChecks(t.Context(), git.Worktree(t.TempDir()), []string{command}, os.Environ())
+	tip, err := runChecks(t.Context(), git.Worktree(t.TempDir()), []string{command}, config{}.shell(os.Environ()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,47 +273,83 @@ func TestReportNamesLostFailure(t *testing.T) {
 }
 
 // TestCommandLeavesChild holds that a command which leaves a child behind ends once its shell exits. The child gets
-// 10 s to close the command's output. kiln then kills the command's group, and keeps what the command printed.
+// 10 s to close the command's output. kiln then kills the command's group, and keeps what the command printed. A
+// limit that passes while the child holds the output is no run past it: the command ended in time.
 func TestCommandLeavesChild(t *testing.T) {
-	for name, run := range map[string]func(dir git.Worktree, command string) (string, error){
-		"a gate's command": func(dir git.Worktree, command string) (string, error) {
-			c, err := runCheck(t.Context(), dir, command, os.Environ())
-			return c.Output, err
-		},
-		"a monitor's check, command or gauge": func(dir git.Worktree, command string) (string, error) {
-			out, err := runShell(t.Context(), dir, command, os.Environ())
-			return out.both, err
-		},
-		"a writable command": func(dir git.Worktree, command string) (string, error) {
-			paths, err := (&Repo{top: string(dir)}).printed(t.Context(), command)
-			return strings.Join(paths, " "), err
-		},
-	} {
+	for name, run := range commandRunners(t, config{Timeout: timeout(2 * time.Second)}.shell(os.Environ())) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			began := time.Now()
 			out, err := run(git.Worktree(dir), "sleep 30 & echo $! > child; echo /started")
 			took := time.Since(began)
-			raw, _ := os.ReadFile(filepath.Join(dir, "child"))
-			var pid int
-			_, _ = fmt.Sscan(string(raw), &pid)
 			if err != nil || !claim.Holds(strings.TrimSpace(out) == "/started", took < 15*time.Second) {
 				t.Fatalf("answered %q, %v after %v; want /started within 15 s", out, err, took)
 			}
 
-			for range 50 {
-				if syscall.Kill(pid, 0) != nil {
-					return
-				}
-
-				time.Sleep(100 * time.Millisecond)
-			}
-
-			_ = syscall.Kill(pid, syscall.SIGKILL)
-			t.Errorf("the child, process %d, still runs", pid)
+			wantDead(t, dir)
 		})
 	}
+}
+
+// TestCommandRunsPast holds that kiln kills a command that runs past kiln.json's timeout, with each process of its
+// group. Its error names the limit and the setting, and no output it held keeps kiln waiting.
+func TestCommandRunsPast(t *testing.T) {
+	limit := 2 * time.Second
+	for name, run := range commandRunners(t, config{Timeout: timeout(limit)}.shell(os.Environ())) {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			began := time.Now()
+			_, err := run(git.Worktree(dir), "sleep 30 & echo $! > child; sleep 30")
+			took := time.Since(began)
+			const want = "ran past kiln.json's timeout of 2s, so kiln killed it"
+			if !claim.Holds(strings.Contains(fmt.Sprint(err), want), took < limit+5*time.Second) {
+				t.Fatalf("answered %v after %v; want %q at once", err, took, want)
+			}
+
+			wantDead(t, dir)
+		})
+	}
+}
+
+// commandRunners are the ways kiln runs one of the project's commands, as s runs it. Each answers what it printed.
+func commandRunners(t *testing.T, s projectShell) map[string]func(dir git.Worktree, command string) (string, error) {
+	return map[string]func(dir git.Worktree, command string) (string, error){
+		"a gate's command": func(dir git.Worktree, command string) (string, error) {
+			c, err := runCheck(t.Context(), dir, command, s)
+			return c.Output, err
+		},
+		"a monitor's check, command or gauge": func(dir git.Worktree, command string) (string, error) {
+			out, err := s.run(t.Context(), dir, command)
+			return out.both, err
+		},
+		"a writable command": func(dir git.Worktree, command string) (string, error) {
+			paths, err := (&Repo{top: string(dir)}).printed(t.Context(), s, command)
+			return strings.Join(paths, " "), err
+		},
+	}
+}
+
+// wantDead fails t unless the process whose ID dir's file child holds has ended, within 5 s.
+func wantDead(t *testing.T, dir string) {
+	raw, _ := os.ReadFile(filepath.Join(dir, "child"))
+	var pid int
+	// A pid of 0 would aim each signal below at the test's own process group.
+	if _, err := fmt.Sscan(string(raw), &pid); err != nil || pid <= 0 {
+		t.Fatalf("the command named no child: %q, %v", raw, err)
+	}
+
+	for range 50 {
+		if syscall.Kill(pid, 0) != nil {
+			return
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	_ = syscall.Kill(pid, syscall.SIGKILL)
+	t.Errorf("the child, process %d, still runs", pid)
 }
 
 // judgment is what TestGate compares of a verdict. reported is whether it has a report. hinted is whether the report
@@ -1275,7 +1311,7 @@ func TestGaugeRules(t *testing.T) {
 	// An interrupt of kiln is not the command's failure, so it reads no unknown.
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, err := (&Repo{}).readGauge(ctx, git.Worktree(t.TempDir()), "sleep 10", ""); err == nil {
+	if _, err := (config{}).shell(nil).readGauge(ctx, git.Worktree(t.TempDir()), "sleep 10", ""); err == nil {
 		t.Error("an interrupted gauge answers no error")
 	}
 
@@ -1304,15 +1340,18 @@ func TestGaugeVerdict(t *testing.T) {
 	for name, tc := range map[string]struct {
 		command, summary, found string
 		ran, fix                bool
+		limit                   time.Duration
 	}{
 		"on its line":                 {command: "echo 0", ran: true, summary: "count: 0, line ≤ 0"},
 		"crossed":                     {command: "echo a.txt is low; echo 1", ran: true, fix: true, summary: "count: 1, line ≤ 0, crossed", found: "a.txt is low"},
 		"no number":                   {command: "echo nothing to read", summary: "count: its command's last line is no number"},
 		"a command that says why":     {command: "echo no such tool >&2; echo 3; exit 1", summary: "no such tool"},
 		"a command that says nothing": {command: "exit 3", summary: "count: its command failed: exit status 3"},
+		"a command that runs past":    {command: "echo 1; sleep 30", limit: 500 * time.Millisecond, summary: "count: its command ran past kiln.json's timeout of 500ms, so kiln killed it"},
 	} {
 		g := gauge{Name: "count", Command: tc.command, Max: new(0.0)}
-		c, err := (&Repo{env: os.Environ()}).measured(t.Context(), git.Worktree(t.TempDir()), g, "")
+		s := config{Timeout: timeout(tc.limit)}.shell(os.Environ())
+		c, err := s.measured(t.Context(), git.Worktree(t.TempDir()), g, "")
 		got := fmt.Sprintf("%v %v %q %q", c.ran, c.fix, c.summary, c.found)
 		if want := fmt.Sprintf("%v %v %q %q", tc.ran, tc.fix, tc.summary, tc.found); err != nil || got != want {
 			t.Errorf("%s: got %s, %v; want %s", name, got, err, want)
@@ -1325,9 +1364,9 @@ func TestGaugeVerdict(t *testing.T) {
 func TestGaugeTree(t *testing.T) {
 	r, repo := scratchRepo(t)
 	t.Cleanup(func() { _ = removeTree(r.trees) })
-	config := `{"gate": ["true"], "rounds": 1, "gauges": [{"name": "n", "max": 5, "command": "` +
+	kilnJSON := `{"gate": ["true"], "rounds": 1, "gauges": [{"name": "n", "max": 5, "command": "` +
 		leavesReadOnly + `"}]}`
-	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json && git add . && git commit --quiet -m start")
+	shell(t, repo, "mkdir .kiln && echo '"+kilnJSON+"' >.kiln/kiln.json && git add . && git commit --quiet -m start")
 	b := &build{r: r, rec: record{Name: "x", Build: "b-x"}, out: io.Discard}
 	for landing := range 2 {
 		shell(t, repo, fmt.Sprintf("git commit --quiet --allow-empty -m landing-%d", landing))
@@ -1349,7 +1388,7 @@ func TestGaugeTree(t *testing.T) {
 	gauged := monitor{Name: "m", finder: gaugeScript, Max: new(5.0)}
 	held := heldBy(t, r)
 	for _, m := range []monitor{gauged, gauged, {Name: "u", finder: checkScript}} {
-		if found, err := held.firstCheck(t.Context(), m, "main"); err != nil || !found.ran {
+		if found, err := held.firstCheck(t.Context(), config{}, m, "main"); err != nil || !found.ran {
 			t.Errorf("%s's run answers %v, %q; want it ran", m.Name, err, found.summary)
 		}
 	}

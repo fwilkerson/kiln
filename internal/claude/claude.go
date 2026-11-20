@@ -1,10 +1,12 @@
 // Package claude runs Claude Code sessions headless, as claude -p, and reads how each one ended.
 //
 //	c := claude.New(claude.Config{Program: "claude", Env: os.Environ(), Sessions: dir})
-//	ended, err := c.Run(ctx, claude.Launch{Session: id, Role: "build", System: role, Prompt: prompt, Dir: tree})
+//	l := claude.Launch{Session: id, Role: "build", System: role, Prompt: prompt, Dir: tree, Silence: time.Hour}
+//	ended, err := c.Run(ctx, l)
 //	for err == nil && ended.Limit != nil {
 //		time.Sleep(time.Until(ended.Limit.Resets))
-//		ended, err = c.Run(ctx, claude.Launch{Session: id, Resume: true, Prompt: "Go on.", ...})
+//		l.Resume, l.Prompt = true, "Go on."
+//		ended, err = c.Run(ctx, l)
 //	}
 //
 // Run starts claude in Launch.Dir, with Launch.Prompt on its standard input:
@@ -40,6 +42,8 @@
 // them by their process tree, their group, and their working directory. Run waits at most 10 s for a child that holds
 // the session's output open.
 //
+// A session that prints nothing for Launch.Silence is hung. Run kills it, as below, and answers a *Silent.
+//
 // A usage limit ends a session with Ended.Limit. A limit is a rate_limit_event that rejects the session or bills
 // overage, or a result with API status 429. Overage bills beyond the plan, which no unattended session should do.
 // Run kills the session at the first such event, and reads none of its stream after.
@@ -61,6 +65,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/proc"
@@ -119,6 +124,17 @@ type Launch struct {
 	// DenyRead are absolute paths no command may read, but those under AllowRead, which reopens what it names. The
 	// sandbox holds them for a command. Deny's Read rules hold the Read tool, and Grep and Glob on a best effort.
 	DenyRead, AllowRead []string
+	// Silence is how long the session may print nothing before Run kills it as hung. Run refuses a Launch without one.
+	Silence time.Duration
+}
+
+// Silent is Run's error for a session that printed nothing for For. Run killed it, with each process it started.
+type Silent struct {
+	For time.Duration
+}
+
+func (e *Silent) Error() string {
+	return fmt.Sprintf("the session printed nothing for %v, so Run killed it", e.For)
 }
 
 // Ended is how a session ended.
@@ -151,7 +167,8 @@ const (
 var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // Run starts the session l names and waits for it to end. Its error is one that kept the session from starting, or
-// from being read. A session that failed is an Ended, not an error.
+// from being read. It is a *Silent for a session Run killed as hung. Any other session that failed is an Ended,
+// not an error.
 func (c Claude) Run(ctx context.Context, l Launch) (Ended, error) {
 	if err := c.check(l); err != nil {
 		return Ended{}, err
@@ -177,7 +194,7 @@ func (c Claude) Run(ctx context.Context, l Launch) (Ended, error) {
 	cmd := exec.CommandContext(ctx, program, arguments(l, dir)...)
 	cmd.Dir, cmd.Env = l.Dir, sessionEnv(c.c.Env)
 	cmd.Stdin = strings.NewReader(l.Prompt)
-	ended, stderr, err := run(cmd, stream)
+	ended, stderr, err := run(cmd, stream, l.Silence)
 	return ended, errors.Join(err, os.WriteFile(filepath.Join(dir, stderrFile), []byte(stderr), 0o600))
 }
 
@@ -192,6 +209,8 @@ func (c Claude) check(l Launch) error {
 		return fmt.Errorf("the directories %q and %q are not both absolute", l.Dir, c.c.Sessions)
 	case l.Role == "", strings.ContainsAny(l.Role, `/\`):
 		return fmt.Errorf("%q is not a role's name", l.Role)
+	case l.Silence <= 0:
+		return errors.New("a session needs a Silence, the longest it may print nothing")
 	}
 
 	return nil
@@ -253,8 +272,9 @@ func sessionEnv(env []string) []string {
 	return append(proc.Session.Env(env), own...)
 }
 
-// run runs cmd, a session ready to start, and copies each line it prints to stream.
-func run(cmd *exec.Cmd, stream io.Writer) (ended Ended, stderr string, err error) {
+// run runs cmd, a session ready to start, and copies each line it prints to stream. It kills a session that prints
+// nothing for silence, and answers a *Silent.
+func run(cmd *exec.Cmd, stream io.Writer, silence time.Duration) (ended Ended, stderr string, err error) {
 	tail := proc.NewTail(stderrKept)
 	cmd.Stderr = tail
 	proc.OwnGroup(cmd)
@@ -280,10 +300,17 @@ func run(cmd *exec.Cmd, stream io.Writer) (ended Ended, stderr string, err error
 
 	tree := watch(cmd.Process.Pid, cmd.Dir)
 	begun <- tree
+	var silent atomic.Bool
+	hush := time.AfterFunc(silence, func() {
+		silent.Store(true)
+		_ = cmd.Cancel()
+	})
+
 	var read reading
 	lines := bufio.NewScanner(out)
 	lines.Buffer(nil, 64<<20)
 	for lines.Scan() {
+		hush.Reset(silence)
 		_, _ = stream.Write(append(lines.Bytes(), '\n'))
 		read.line(lines.Bytes())
 		// A session that runs on past a limit bills overage, or resumes later from work it has already finished.
@@ -295,7 +322,13 @@ func run(cmd *exec.Cmd, stream io.Writer) (ended Ended, stderr string, err error
 
 	scanned := lines.Err()
 	err = cmd.Wait()
+	// The timer runs on through Wait, so a session that closed its output but never exits is killed too.
+	hush.Stop()
 	tree.end()
+	if silent.Load() {
+		return read.ended(), tail.String(), &Silent{For: silence}
+	}
+
 	if _, exited := errors.AsType[*exec.ExitError](err); err != nil && !exited {
 		return read.ended(), tail.String(), err
 	}
