@@ -409,10 +409,6 @@ func (g *Git) Detached(ctx context.Context, path Worktree, commit Rev) error {
 	defer unlock()
 	path = g.at(path)
 	if _, err := os.Stat(filepath.Join(string(path), ".git")); err != nil {
-		if _, err := g.in(ctx, g.repo, "worktree", "prune"); err != nil {
-			return err
-		}
-
 		return g.addWorktree(ctx, path, "--detach", string(path), string(commit))
 	}
 
@@ -434,16 +430,20 @@ func (g *Git) addWorktree(ctx context.Context, path Worktree, args ...string) er
 		return err
 	}
 
-	add := append([]string{"worktree", "add", "--quiet", "--no-checkout"}, args...)
+	// The checkout inside git worktree add is a child git, and -c reaches it through the environment.
+	add := append([]string{"-c", "core.symlinks=false", "worktree", "add", "--quiet"}, args...)
 	if _, err := g.in(ctx, g.repo, add...); err != nil {
-		return err
+		// git refuses the path of a worktree deleted by hand until a prune clears it.
+		if _, pruned := g.in(ctx, g.repo, "worktree", "prune"); pruned != nil {
+			return errors.Join(err, pruned)
+		}
+
+		if _, err := g.in(ctx, g.repo, add...); err != nil {
+			return err
+		}
 	}
 
-	if _, err := g.in(ctx, path, "config", "set", "--worktree", "core.symlinks", "false"); err != nil {
-		return err
-	}
-
-	_, err := g.in(ctx, path, "reset", "--quiet", "--hard")
+	_, err := g.in(ctx, path, "config", "set", "--worktree", "core.symlinks", "false")
 	return err
 }
 
