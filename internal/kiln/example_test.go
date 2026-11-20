@@ -38,12 +38,12 @@ func Example() {
 	// wrote .kiln/agents/build.md
 	// wrote .kiln/agents/verify.md
 	// wrote .kiln/kiln.json
+	// wrote .kiln/kiln.schema.json
 	// wrote .kiln/reviewers/comprehension.md
 	// wrote .kiln/reviewers/critic.md
 	// wrote .kiln/reviewers/zoom-out.md
 	// wrote .kiln/skills/shape/SKILL.md
 	// wrote .kiln/skills/shape/template.md
-	// wrote .kiln/kiln.schema.json
 	// wrote .kiln/init.json
 	// linked .claude/skills/shape to ../../.kiln/skills/shape
 	// linked .claude/agents/comprehension.md to ../../.kiln/reviewers/comprehension.md

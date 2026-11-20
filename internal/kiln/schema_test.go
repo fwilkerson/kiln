@@ -14,10 +14,10 @@ import (
 	"testing"
 )
 
-var writeSchema = flag.Bool("write", false, "write kiln.schema.json from config's fields and their docs")
+var writeSchema = flag.Bool("write", false, "write defaults/kiln.schema.json from config's fields and their docs")
 
-// TestSchema fails while kiln.schema.json differs from the JSON Schema of config, built from its fields and their
-// docs. An editor reads it to complete and check kiln.json.
+// TestSchema fails while defaults/kiln.schema.json differs from the JSON Schema of config, built from its fields and
+// their docs. An editor reads it to complete and check kiln.json.
 func TestSchema(t *testing.T) {
 	root := schemaOf(t, reflect.TypeFor[config](), typeDocs(t))
 	root.Schema, root.Title = "http://json-schema.org/draft-07/schema#", "kiln.json"
@@ -33,18 +33,21 @@ func TestSchema(t *testing.T) {
 
 	got.WriteByte('\n')
 	if *writeSchema {
-		if err := os.WriteFile("kiln.schema.json", got.Bytes(), 0o644); err != nil {
+		if err := os.WriteFile(schemaDefault, got.Bytes(), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
 		return
 	}
 
-	if !bytes.Equal(got.Bytes(), schema) {
-		t.Errorf("kiln.schema.json differs from config: run go test ./internal/kiln -run TestSchema -write, then " +
-			"cp internal/kiln/kiln.schema.json .kiln/")
+	if want, err := defaults.ReadFile(schemaDefault); err != nil || !bytes.Equal(got.Bytes(), want) {
+		t.Errorf("%s differs from config, %v: run go test ./internal/kiln -run TestSchema -write, then cp "+
+			"internal/kiln/%[1]s .kiln/", schemaDefault, err)
 	}
 }
+
+// schemaDefault is the schema among the defaults, from this package's directory.
+const schemaDefault = "defaults/kiln.schema.json"
 
 // schemaNode is a JSON Schema, of the keywords config needs.
 type schemaNode struct {

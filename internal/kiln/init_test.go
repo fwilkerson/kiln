@@ -2,8 +2,10 @@ package kiln
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -78,6 +80,61 @@ func wantHolds(t *testing.T, got string, holds, lacks []string) {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("build.md holds %q:\n%s", unwanted, got)
 		}
+	}
+}
+
+// TestInitAgain holds what kiln init writes: the defaults, the reviewers, the schema, and its record of each. A
+// second run writes nothing. Without a record, an edited reviewer merges, and a deleted one stays deleted. An edited
+// schema is written over, since kiln owns it.
+func TestInitAgain(t *testing.T) {
+	r, repo := scratchRepo(t)
+	var first, again, third strings.Builder
+	if err := r.Init(t.Context(), &first, InitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec, err := r.lastInit()
+	for _, name := range []string{"agents/build.md", "reviewers/critic.md", "kiln.schema.json"} {
+		if _, ok := rec.Files[name]; err != nil || !ok {
+			t.Errorf("kiln init's record lacks %s, %v; it records %v", name, err, slices.Sorted(maps.Keys(rec.Files)))
+		}
+	}
+
+	if err := r.Init(t.Context(), &again, InitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(again.String(), "wrote") || strings.Contains(again.String(), "linked") {
+		t.Errorf("a second kiln init said:\n%s\nwant it to write and link nothing", again.String())
+	}
+
+	shell(t, repo, "rm .kiln/init.json .kiln/reviewers/zoom-out.md && echo 'House rule.' >>.kiln/reviewers/critic.md "+
+		"&& echo '{}' >.kiln/kiln.schema.json")
+	if err := r.Init(t.Context(), &third, InitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	wantHolds(t, third.String(), []string{"merged .kiln/reviewers/critic.md, with conflicts",
+		"updated .kiln/kiln.schema.json\n", "wrote .kiln/init.json\n"}, []string{"wrote .kiln/reviewers/zoom-out.md"})
+}
+
+// TestOwnInitRecord holds that kiln's own .kiln/init.json records the defaults kiln init writes now. So kiln status
+// never says that kiln's own .kiln/ is behind.
+func TestOwnInitRecord(t *testing.T) {
+	top, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	own, err := os.ReadFile(filepath.Join(top, initFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Repo{top: top}
+	if _, behind, err := r.behind(own); err != nil || behind {
+		t.Errorf("kiln's own %s is behind the defaults, %v: run kiln init in kiln's checkout, and commit what it "+
+			"merges", initFile, err)
 	}
 }
 

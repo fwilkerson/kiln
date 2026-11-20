@@ -208,3 +208,15 @@ own clones that repository, then adds from the clone. A third source was weighed
   pin, and no team keeps monitors apart from its project yet.
 - **Build it when:** a team adds monitors from a shared repository, and finds the clone the step it forgets, or wants
   an added monitor brought up to its source's latest.
+
+## A JSON Schema for monitor.json
+
+`kiln.json` has a JSON Schema, generated from kiln's config, which `kiln init` writes beside it so an editor can
+complete each key and mark a wrong one. A monitor's `monitor.json` could have one the same way, named by a
+`"$schema"` key in each.
+
+- **Why it was left out:** on 2026-11-20 `monitor.json` held six keys, and none refuses a value the JSON decoder
+  takes. `kiln doctor` reads each `monitor.json` in the working tree, before a commit, through the refusals
+  `kiln monitor run` makes. A schema would add a file kiln owns, and a key to each monitor, for little.
+- **Build it when:** a key of `monitor.json` takes a value the decoder accepts and kiln refuses, or a developer asks
+  an editor to complete one.

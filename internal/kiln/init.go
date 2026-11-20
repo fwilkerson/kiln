@@ -21,12 +21,8 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// schema is kiln.json's JSON Schema, which an editor reads by kiln.json's "$schema". TestSchema builds it from config.
-//
-//go:embed kiln.schema.json
-var schema []byte
-
-// schemaFile is where kiln init writes schema.
+// schemaFile is kiln.json's JSON Schema, which an editor reads by kiln.json's "$schema". kiln init writes it from the
+// defaults, where TestSchema builds it from config.
 const schemaFile = kilnDir + "/kiln.schema.json"
 
 // defaults are what kiln init writes into .kiln/ for every preset. A preset fills each marker in their prompts, and
@@ -310,13 +306,7 @@ func (r *Repo) writeDefaults(ctx context.Context, p preset, last initRecord, out
 		say(line)
 	}
 
-	line, err := r.writeSchema()
-	if err != nil {
-		return wrote, err
-	}
-
-	say(line)
-	line, err = r.writeRecord(newRecord(p.recorded(r.top), files))
+	line, err := r.writeRecord(newRecord(p.recorded(r.top), files))
 	say(line)
 	return wrote, err
 }
@@ -338,8 +328,8 @@ func (r *Repo) deletedReviewers(files map[string][]byte) map[string]bool {
 }
 
 // writeDefault brings the file at name, under .kiln/, to want, the default kiln init writes now. It keeps the
-// project's edits since base, the default kiln init last wrote there. It answers the line kiln init prints, or ""
-// when it changed nothing.
+// project's edits since base, the default kiln init last wrote there. It writes over the schema, which kiln owns. It
+// answers the line kiln init prints, or "" when it changed nothing.
 func (r *Repo) writeDefault(ctx context.Context, name string, base, want []byte) (string, error) {
 	rel := path.Join(kilnDir, name)
 	target := filepath.Join(r.top, rel)
@@ -351,6 +341,8 @@ func (r *Repo) writeDefault(ctx context.Context, name string, base, want []byte)
 		return "", err
 	case rel == configFile:
 		return keepConfig(target, have, want)
+	case rel == schemaFile && !bytes.Equal(have, want):
+		return "updated " + rel, os.WriteFile(target, want, 0o644)
 	case bytes.Equal(have, want), bytes.Equal(base, want):
 		return "", nil
 	case bytes.Equal(have, base):
@@ -395,18 +387,6 @@ func (r *Repo) mergeDefault(ctx context.Context, rel string, base, want []byte) 
 	}
 
 	return "merged " + rel, err
-}
-
-// writeSchema writes schema over the file at schemaFile, since kiln owns it. It answers the line kiln init prints,
-// or "" when the file holds schema already.
-func (r *Repo) writeSchema() (string, error) {
-	target := filepath.Join(r.top, schemaFile)
-	// A file kiln cannot read is written over, as a missing one is.
-	if old, _ := os.ReadFile(target); bytes.Equal(old, schema) {
-		return "", nil
-	}
-
-	return "wrote " + schemaFile, writeFile(target, schema)
 }
 
 // writeRecord writes rec to initFile, unless the file holds it already. It answers the line kiln init prints, or ""
