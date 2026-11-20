@@ -114,6 +114,23 @@ func TestMonitorDirs(t *testing.T) {
 	}
 }
 
+// TestContractGauge holds that a fix's contract says the gate reads the monitor's gauge only where the gate does.
+func TestContractGauge(t *testing.T) {
+	for name, tc := range map[string]struct {
+		m    monitor
+		says bool
+	}{
+		"a gauge in the gate":     {m: monitor{finder: gaugeScript}, says: true},
+		"a gauge out of the gate": {m: monitor{finder: gaugeScript, Gates: new(false)}},
+		"a check in the gate":     {m: monitor{finder: checkScript}},
+	} {
+		f := &fixing{monitor: tc.m}
+		if says := strings.Contains(f.contract("m"), "reads the monitor's gauge"); says != tc.says {
+			t.Errorf("%s: the contract says the gate reads the gauge: %v, want %v", name, says, tc.says)
+		}
+	}
+}
+
 // writeMonitor writes the monitor name's directory under .kiln/monitors/ in repo, with each of files by its path.
 // Each script kiln runs is executable.
 func writeMonitor(t *testing.T, repo string, name string, files map[string]string) {

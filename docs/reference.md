@@ -142,7 +142,7 @@ A monitor's `gauge` is a gauge too, named for the monitor, with its line in the 
 - The monitor's run gives `$KILN_BASE` as git's empty tree, so the same `git diff` names every file. A command that
   names a commit's parents, such as `git log "$KILN_BASE"..HEAD`, fails there.
 - Its fix's gate gives `$KILN_BASE` as the commit where the fix left main, and fails while the reading crosses the
-  line.
+  line. With `"gates": false`, the gate never reads it.
 - Read only the files the commit still holds, as `--diff-filter=d` lists them. A change that only deletes files then
   reads no number, and no deleted file fails the command.
 - Print the same for the same finding, with no line numbers and no timestamps. kiln compares what the gauge printed

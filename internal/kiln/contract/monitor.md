@@ -40,10 +40,8 @@ kiln keeps the title of your last reply that gave one, until the developer accep
 
 You work in your own worktree, on the monitor's branch, `kiln/%[1]s`. Commit as you go, or leave your changes: when
 you end your turn, kiln commits what is left, and runs the gate. The gate runs `.kiln/kiln.json`'s commands at your
-commit and at main. Make every one pass, but for a test that fails at main too. The gate also reads the monitor's
-gauge, where it holds one, over what the fix changed, and fails while that reading crosses the gauge's line. A
-failing gate comes back to you,
-and so do the audit's findings. Work that changes nothing on main never lands. Never push, and never move or reset
+commit and at main. Make every one pass, but for a test that fails at main too.%[3]s A failing gate comes back to
+you, and so do the audit's findings. Work that changes nothing on main never lands. Never push, and never move or reset
 main: kiln lands your work.
 
 A fix the developer accepted comes back to you when main moved before it landed, with the files in conflict or the

@@ -688,7 +688,13 @@ func (f *fixing) contract(name Spec) string {
 			quoted(f.side.acceptance))
 	}
 
-	return fmt.Sprintf(monitorContract, name, tests)
+	gauge := ""
+	if f.monitor.finder == gaugeScript && f.monitor.gated() {
+		gauge = " The gate also reads the monitor's gauge over what the fix changed, and fails while that reading " +
+			"crosses the gauge's line."
+	}
+
+	return fmt.Sprintf(monitorContract, name, tests, gauge)
 }
 
 const (
