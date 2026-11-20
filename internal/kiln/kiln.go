@@ -789,8 +789,8 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 
 // Takes answers the names command would not refuse, for the shell to complete. For queue, accept and reject, they
 // are specs, and for accept and reject, waiting fixes too. For tui, they are the specs kiln holds or its ledger holds.
-// For "monitor run" and "monitor show", they are the monitors main's tip holds. For "monitor add", they are the
-// monitors kiln ships. Other commands take none.
+// For "monitor run" and "monitor show", they are the monitors kiln reads at main's tip. While kiln refuses one there,
+// they are none. For "monitor add", they are the monitors kiln ships. Other commands take none.
 func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	switch command {
 	case "tui":
@@ -832,14 +832,20 @@ func (r *Repo) taking(command string) ([]string, error) {
 	return names, err
 }
 
-// monitorNames answers the monitors' directories under .kiln/monitors/ at main's tip.
+// monitorNames answers the monitors kiln reads at main's tip. It refuses, naming none, where kiln refuses one there.
 func (r *Repo) monitorNames(ctx context.Context) ([]string, error) {
 	main, err := r.mainTip(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return r.git.Files(ctx, main, monitorsDir)
+	_, monitors, err := r.monitors(ctx, main)
+	names := make([]string, len(monitors))
+	for i, m := range monitors {
+		names[i] = string(m.Name)
+	}
+
+	return names, err
 }
 
 // queueNames answers the specs on main that kiln queue would not refuse.

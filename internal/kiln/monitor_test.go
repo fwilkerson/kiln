@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -94,6 +95,10 @@ func TestMonitorDirs(t *testing.T) {
 		t.Errorf("b, with no monitor.json, runs every %v, want every 24h", b.interval())
 	}
 
+	if names, err := r.Takes(t.Context(), "monitor run"); !slices.Equal(names, []string{"a", "b"}) {
+		t.Errorf("kiln complete monitor run answers %v, %v; want a and b", names, err)
+	}
+
 	shell(t, repo, "chmod -x .kiln/monitors/b/command && git commit --quiet -am plain")
 	if _, _, err := r.monitors(t.Context(), "main"); err == nil || !strings.Contains(err.Error(), "chmod +x") {
 		t.Errorf("a command git holds without the executable bit answers %v, want it refused, naming chmod +x", err)
@@ -102,6 +107,10 @@ func TestMonitorDirs(t *testing.T) {
 	shell(t, repo, "echo true >.kiln/monitors/stray && git add . && git commit --quiet -m stray")
 	if _, _, err := r.monitors(t.Context(), "main"); err == nil || !strings.Contains(err.Error(), "is a file") {
 		t.Errorf("a file under .kiln/monitors/ answers %v, want it refused as a file", err)
+	}
+
+	if names, _ := r.Takes(t.Context(), "monitor run"); len(names) > 0 {
+		t.Errorf("kiln complete monitor run answers %v, which kiln monitor run refuses", names)
 	}
 }
 
