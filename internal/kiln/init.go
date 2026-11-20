@@ -227,19 +227,19 @@ func (r *Repo) initStatus(ctx context.Context, main git.Rev, out io.Writer) erro
 }
 
 // behind answers whether raw, a record of kiln init, differs from what kiln init would write now. It answers the
-// preset the record names too, with its path from the checkout's top.
+// preset kiln init would write too, as initPreset finds it, with its path from the checkout's top.
 func (r *Repo) behind(raw []byte) (string, bool, error) {
 	last, err := parseInit(raw)
 	if err != nil {
 		return "", false, err
 	}
 
-	from := last.Preset
-	p, err := presetNamed(from, r.top)
+	p, err := r.initPreset("", last.Preset, io.Discard)
 	if err != nil {
-		return from, false, err
+		return last.Preset, false, err
 	}
 
+	from := p.recorded(r.top)
 	files, err := presetFiles(p)
 	now := newRecord(from, files)
 	return from, !maps.EqualFunc(last.Files, now.Files, slices.Equal[[]string]), err

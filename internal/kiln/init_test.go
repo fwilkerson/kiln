@@ -187,10 +187,11 @@ func TestInitPicksPreset(t *testing.T) {
 			}
 
 			config, _ := os.ReadFile(filepath.Join(repo, configFile))
+			_, made := os.Stat(filepath.Join(repo, kilnDir))
 			if !claim.Holds(strings.HasPrefix(got, tt.said), string(config) == presetConfig(t, tt.want),
-				(err == nil) == (tt.want != "")) {
-				t.Errorf("kiln init said:\n%s\nand wrote kiln.json:\n%s\nwant it to start %q, from preset %q", got,
-					config, tt.said, tt.want)
+				(err == nil) == (tt.want != ""), (made == nil) == (tt.want != "")) {
+				t.Errorf("kiln init said:\n%s\nand wrote kiln.json:\n%s\nwant it to start %q, from preset %q, and "+
+					".kiln/ only from a preset", got, config, tt.said, tt.want)
 			}
 		})
 	}
