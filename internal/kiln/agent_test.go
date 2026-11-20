@@ -166,11 +166,14 @@ func TestInitKeeps(t *testing.T) {
 
 // TestInitReviewers holds how kiln init links the reviewers a project keeps. It refuses a reviewer that Claude Code
 // could not run, before it writes anything. It writes no default reviewer into a reviewers folder that is there. It
-// links each reviewer there, in place of a link that reaches nothing. It removes each link to a reviewer that is gone.
+// links each reviewer there, in place of a link that reaches nothing. It links one in place of a link to its old file
+// in .kiln/agents/, and says that file is unused. It removes each link to a reviewer that is gone.
 func TestInitReviewers(t *testing.T) {
 	r, repo := scratchRepo(t)
-	shell(t, repo, `mkdir -p .kiln/reviewers .claude/agents && touch .kiln/reviewers/.gitkeep && `+
+	shell(t, repo, `mkdir -p .kiln/reviewers .kiln/agents .claude/agents && touch .kiln/reviewers/.gitkeep && `+
 		`printf -- '---\nname: upgrade\n---\n' >.kiln/reviewers/upgrade.md && `+
+		`printf -- '---\nname: legacy\ndescription: Reads a spec.\n---\n' >.kiln/reviewers/legacy.md && `+
+		`echo old >.kiln/agents/legacy.md && ln -s ../../.kiln/agents/legacy.md .claude/agents && `+
 		`ln -s ../../.kiln/agents/upgrade.md .claude/agents && `+
 		`ln -s ../../.kiln/reviewers/critic.md .claude/agents && ln -s ../../.kiln/agents/gone.md .claude/agents`)
 	err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"})
@@ -189,9 +192,12 @@ func TestInitReviewers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const unlinked = "unlinked .claude/agents/critic.md, since .kiln/reviewers/critic.md is gone\n"
-	if !strings.Contains(out.String(), unlinked) {
-		t.Errorf("kiln init said:\n%s\nwant the line %q", out.String(), unlinked)
+	for _, line := range []string{"unlinked .claude/agents/critic.md, since .kiln/reviewers/critic.md is gone\n",
+		"linked .claude/agents/legacy.md to ../../.kiln/reviewers/legacy.md, in place of its link to " +
+			".kiln/agents/legacy.md, which kiln no longer reads: delete that file\n"} {
+		if !strings.Contains(out.String(), line) {
+			t.Errorf("kiln init said:\n%s\nwant the line %q", out.String(), line)
+		}
 	}
 
 	for p, want := range map[string]bool{
@@ -203,9 +209,11 @@ func TestInitReviewers(t *testing.T) {
 		}
 	}
 
-	link, err := os.Readlink(filepath.Join(repo, ".claude/agents/upgrade.md"))
-	if link != "../../.kiln/reviewers/upgrade.md" {
-		t.Errorf(".claude/agents/upgrade.md links to %q, %v", link, err)
+	for _, name := range []string{"upgrade", "legacy"} {
+		link, err := os.Readlink(filepath.Join(repo, ".claude/agents", name+".md"))
+		if link != "../../.kiln/reviewers/"+name+".md" {
+			t.Errorf(".claude/agents/%s.md links to %q, %v", name, link, err)
+		}
 	}
 }
 

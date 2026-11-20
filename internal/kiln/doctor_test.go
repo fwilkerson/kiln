@@ -71,6 +71,9 @@ func TestDoctor(t *testing.T) {
 			want: []string{`.kiln/reviewers/critic.md, its frontmatter's name is "other": make it "critic"`,
 				".kiln/reviewers/critic.md, its frontmatter has no description",
 				`.kiln/skills/shape/SKILL.md holds a conflict's marker, "<<<<<<< .kiln/skills/shape/SKILL.md": resolve`}},
+		"a reviewer whose link reaches another file": {change: "ln -sf ../../.kiln/agents/build.md .claude/agents/critic.md",
+			want: []string{".claude/agents/critic.md links to ../../.kiln/agents/build.md, not .kiln/reviewers/critic.md, " +
+				"so /shape runs another file: remove the link, then run kiln init, which links the reviewer"}},
 		"a record of kiln init that is no JSON": {change: "echo '{' >.kiln/init.json",
 			want: []string{".kiln/init.json: "}},
 		"a spec that leaves the form": {spec: "form",

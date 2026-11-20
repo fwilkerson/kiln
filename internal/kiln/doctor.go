@@ -23,14 +23,14 @@ import (
 
 // Doctor prints each problem kiln's commands would refuse or fail on, in the project as its working tree holds it. Each
 // names its fix. Doctor reads kiln.json, and refuses it as every kiln command would. It reads the build, verify and
-// audit agents as kiln queue reads them. It reads the reviewers as kiln init does, and each file kiln init recorded,
-// for a conflict it left there. It reads each monitor under .kiln/monitors/ as kiln monitor run reads it at main's tip.
-// It reads the files git would commit there, and agent.md as the fix's session reads it. Where a command of kiln.json
-// starts with a path, such as notify's, Doctor reads the script there. It needs the branch main, a claude on the PATH,
-// and a pre-commit hook that runs kiln precommit. With a monitor, it notes when no launchd job runs in a checkout of
-// the repository. With a name, it reads that spec as kiln queue would, but not its Status. It notes each key of
-// kiln.json that differs from main's, which kiln acts on. Doctor writes nothing, and calls no model and no network. It
-// fails when it found a problem.
+// audit agents as kiln queue reads them. It reads the reviewers as kiln init does, with each reviewer's link in
+// .claude/agents/. It reads each file kiln init recorded, for a conflict it left there. It reads each monitor under
+// .kiln/monitors/ as kiln monitor run reads it at main's tip. It reads the files git would commit there, and agent.md
+// as the fix's session reads it. Where a command of kiln.json starts with a path, such as notify's, Doctor reads the
+// script there. It needs the branch main, a claude on the PATH, and a pre-commit hook that runs kiln precommit. With a
+// monitor, it notes when no launchd job runs in a checkout of the repository. With a name, it reads that spec as kiln
+// queue would, but not its Status. It notes each key of kiln.json that differs from main's, which kiln acts on. Doctor
+// writes nothing, and calls no model and no network. It fails when it found a problem.
 func (r *Repo) Doctor(ctx context.Context, name Spec, out io.Writer) error {
 	d, err := r.diagnose(ctx, name)
 	if err != nil {
@@ -127,10 +127,12 @@ func (r *Repo) diagnoseProject(ctx context.Context, c config, monitors []monitor
 	}
 
 	d.found = append(d.found, refused...)
-	_, err = r.reviewers()
+	reviewers, err := r.reviewers()
 	if err := d.found.add(err); err != nil {
 		return err
 	}
+
+	d.found = append(d.found, r.reviewerLinks(reviewers)...)
 
 	conflicts, err := initConflicts(ctx, tree)
 	if err != nil {
@@ -154,6 +156,24 @@ func (r *Repo) diagnoseProject(ctx context.Context, c config, monitors []monitor
 
 	d.found = append(d.found, c.scriptRefusals(r.top)...)
 	return nil
+}
+
+// reviewerLinks refuse each of files, reviewers' files in .kiln/reviewers/, whose link in .claude/agents/ reaches
+// another file. /shape would run that file in the reviewer's place.
+func (r *Repo) reviewerLinks(files []string) refusals {
+	var refused refusals
+	for _, f := range files {
+		at := filepath.Join(r.top, ".claude", "agents", f)
+		target, err := os.Readlink(at)
+		if err != nil || sameFile(at, filepath.Join(r.top, kilnDir, "reviewers", f)) {
+			continue
+		}
+
+		refused = append(refused, refusal{fmt.Sprintf(".claude/agents/%s links to %s, not %s/reviewers/%s, so /shape "+
+			"runs another file", f, target, kilnDir, f), "remove the link, then run kiln init, which links the reviewer"})
+	}
+
+	return refused
 }
 
 // initConflicts refuse each file kiln init recorded that f holds with a conflict's marker, but an agent's file. kiln

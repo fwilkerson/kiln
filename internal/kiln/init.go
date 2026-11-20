@@ -71,8 +71,9 @@ type InitOptions struct {
 // shares, where it lacks them.
 //
 // Init links /shape, and each reviewer's file in .kiln/reviewers/, into .claude/. It links each where .claude/ holds
-// nothing of its name, or a link that reaches nothing. It removes each link in .claude/agents/ to a reviewer's file
-// that is gone. It says so when the repository has no branch main, which each command that reads main then refuses.
+// nothing of its name, or a link that reaches nothing. It replaces a link to a reviewer's old file in
+// .kiln/agents/, and says that file is unused. It removes each link in .claude/agents/ to a reviewer's file that is
+// gone. It says so when the repository has no branch main, which each command that reads main then refuses.
 // It prints kiln.json's gate, the commands the pre-commit hook runs on each commit to main. The hook refuses a commit
 // to main that fails them. Last, Init installs the hook, or says why it installed none, as installHook says.
 //
@@ -676,17 +677,19 @@ func lastMember(obj []byte) (at int, indent string, err error) {
 	return at, indent, nil
 }
 
-// link links .claude/<p> to .kiln/<own>, unless .claude/ holds something of that name that reaches a file. It says so
-// when that file is not .kiln/<own>, so the developer can rename one.
+// link links .claude/<p> to .kiln/<own>, unless .claude/ holds something of that name that reaches a file. It links
+// in place of a link to a reviewer's old file in .kiln/agents/, and says that file is unused. It says so when another
+// file is there, so the developer can rename one.
 func (r *Repo) link(p, own string, out io.Writer) error {
 	at := filepath.Join(r.top, ".claude", p)
 	to := filepath.Join(r.top, kilnDir, own)
+	old := r.oldReviewer(at, own)
 	_, err := os.Lstat(at)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 	case err != nil:
 		return err
-	case reachesNothing(at):
+	case reachesNothing(at), old != "":
 		// A link to a file moved away holds nothing of the developer's, so kiln's link takes its place.
 		if err := os.Remove(at); err != nil {
 			return err
@@ -712,8 +715,26 @@ func (r *Repo) link(p, own string, out io.Writer) error {
 		return err
 	}
 
+	if old != "" {
+		fmt.Fprintf(out, "linked .claude/%s to %s, in place of its link to %s, which kiln no longer reads: delete "+
+			"that file\n", p, target, old)
+		return nil
+	}
+
 	fmt.Fprintf(out, "linked .claude/%s to %s\n", p, target)
 	return nil
+}
+
+// oldReviewer is the reviewer's file in .kiln/agents/ that the link at reaches, from before kiln read reviewers in
+// .kiln/reviewers/. own is the reviewer's file there. It answers "" when at reaches no such file.
+func (r *Repo) oldReviewer(at, own string) string {
+	dir, file := path.Split(own)
+	old := path.Join(kilnDir, "agents", file)
+	if dir != "reviewers/" || !sameFile(at, filepath.Join(r.top, old)) {
+		return ""
+	}
+
+	return old
 }
 
 // linkReviewers links .claude/agents/<file> to each reviewer's file in .kiln/reviewers/, as link does. It removes
