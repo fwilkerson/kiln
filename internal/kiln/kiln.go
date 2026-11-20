@@ -342,6 +342,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -574,12 +575,15 @@ var (
 // the state the spec is in, as the package doc shows. A stopped build, or one waiting for UAT, is dropped for the new
 // one.
 func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
-	main, err := r.mainTip(ctx)
-	if err != nil {
+	main, files, err := r.git.ShowTip(ctx, mainBranch, append(readyPaths(), name.file())...)
+	switch {
+	case err != nil:
 		return err
+	case main == "":
+		return errNoMain
 	}
 
-	spec, err := r.queueable(ctx, main, name)
+	spec, err := queueable(main, files, name)
 	if err != nil {
 		return err
 	}
@@ -608,27 +612,26 @@ func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
 	return nil
 }
 
-// queueable reads .kiln/specs/<name>.md at main, a spec kiln queue may take. Its Status is Approved, and its form
-// follows the template. Main must hold a kiln.json, a build agent and an audit agent that kiln can use.
-func (r *Repo) queueable(ctx context.Context, main git.Rev, name Spec) ([]byte, error) {
-	if err := r.ready(ctx, main); err != nil {
-		return nil, err
-	}
-
-	spec, err := r.approvedSpec(ctx, main, name)
+// queueable answers .kiln/specs/<name>.md among files, what main holds at main by path: a spec kiln queue may take.
+// Its Status is Approved, and its form follows the template. Main must be ready, as ready says.
+func queueable(main git.Rev, files map[string][]byte, name Spec) ([]byte, error) {
+	c, err := ready(main, files)
 	if err != nil {
 		return nil, err
 	}
 
-	if c, err := r.config(ctx, main); err == nil {
-		if _, ok := c.monitorNamed(name); ok {
-			return nil, fmt.Errorf("%w: %s names a monitor %s, and one name is never both a spec's and a "+
-				"monitor's: rename one", errRefused, configFile, name)
-		}
+	spec, err := approvedSpec(files, name)
+	if err != nil {
+		return nil, err
+	}
 
-		if why := c.harnessRefusal(name); why != "" {
-			return nil, fmt.Errorf("%w: %s", errRefused, why)
-		}
+	if _, ok := c.monitorNamed(name); ok {
+		return nil, fmt.Errorf("%w: %s names a monitor %s, and one name is never both a spec's and a "+
+			"monitor's: rename one", errRefused, configFile, name)
+	}
+
+	if why := c.harnessRefusal(name); why != "" {
+		return nil, fmt.Errorf("%w: %s", errRefused, why)
 	}
 
 	if err := formOf(string(spec)); err != nil {
@@ -638,31 +641,38 @@ func (r *Repo) queueable(ctx context.Context, main git.Rev, name Spec) ([]byte, 
 	return spec, nil
 }
 
-// ready refuses while main, at main, holds no kiln.json, build agent, verify agent or audit agent that kiln can use.
-// kiln.json must name where the acceptance tests live. The build agent must not say how to write them.
-func (r *Repo) ready(ctx context.Context, main git.Rev) error {
-	c, err := r.config(ctx, main)
+// readyPaths are the paths ready reads: kiln.json and the build, verify and audit agents.
+func readyPaths() []string {
+	return []string{configFile, agentFile(buildRole), agentFile(verifyRole), agentFile(auditRole)}
+}
+
+// ready answers kiln.json among files, what main holds at main by path. It refuses while main holds no kiln.json,
+// build agent, verify agent or audit agent that kiln can use. kiln.json must name where the acceptance tests live.
+// The build agent must not say how to write them.
+func ready(main git.Rev, files map[string][]byte) (config, error) {
+	raw, found := files[configFile]
+	c, err := readConfig(raw, found)
 	if err != nil {
-		return fmt.Errorf("%w: %w", errRefused, err)
+		return config{}, fmt.Errorf("%w: %w", errRefused, err)
 	}
 
 	if why := c.acceptanceRefusal(); why != "" {
-		return fmt.Errorf("%w: %s %s", errRefused, configFile, why)
+		return config{}, fmt.Errorf("%w: %s %s", errRefused, configFile, why)
 	}
 
 	agents := map[string]agent{}
 	for _, role := range []string{buildRole, verifyRole, auditRole} {
-		if agents[role], err = r.agent(ctx, main, role, initHint); err != nil {
-			return err
+		if agents[role], err = agentIn(files, main, role, initHint); err != nil {
+			return config{}, err
 		}
 	}
 
 	if line := testsText(agents[buildRole].body, c.fixedParts()); line != "" {
-		return fmt.Errorf("%w: %s says how to write the acceptance tests, in %q: move that text to %s, which "+
-			"every build reads", errRefused, agentFile(buildRole), line, agentFile(verifyRole))
+		return config{}, fmt.Errorf("%w: %s says how to write the acceptance tests, in %q: move that text to %s, "+
+			"which every build reads", errRefused, agentFile(buildRole), line, agentFile(verifyRole))
 	}
 
-	return nil
+	return c, nil
 }
 
 // testsText is the first line of body that says how to write the acceptance tests, or "". An older default build
@@ -705,16 +715,14 @@ func inPath(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("._-/", r)
 }
 
-// approvedSpec reads .kiln/specs/<name>.md at main, a spec whose Status is Approved.
-func (r *Repo) approvedSpec(ctx context.Context, main git.Rev, name Spec) ([]byte, error) {
+// approvedSpec answers .kiln/specs/<name>.md among files, what main holds by path: a spec whose Status is Approved.
+func approvedSpec(files map[string][]byte, name Spec) ([]byte, error) {
 	if !specName.MatchString(string(name)) {
 		return nil, fmt.Errorf("%w: %q is not a spec's name, such as checkout-flow", errRefused, name)
 	}
 
-	spec, found, err := r.git.Show(ctx, main, name.file())
+	spec, found := files[name.file()]
 	switch {
-	case err != nil:
-		return nil, err
 	case !found:
 		return nil, fmt.Errorf("%w: main holds no %s: commit it there first", errRefused, name.file())
 	case !approved.Match(spec):
@@ -837,9 +845,17 @@ func (r *Repo) queueNames(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	main, err := r.mainTip(ctx)
-	if err != nil {
+	main, held, err := r.git.ShowTip(ctx, mainBranch, readyPaths()...)
+	switch {
+	case err != nil:
 		return nil, err
+	case main == "":
+		return nil, errNoMain
+	}
+
+	// Main that is not ready refuses every spec, so no spec need be read.
+	if _, err := ready(main, held); err != nil {
+		return nil, nil
 	}
 
 	files, err := r.git.Files(ctx, main, specsDir)
@@ -850,9 +866,17 @@ func (r *Repo) queueNames(ctx context.Context) ([]string, error) {
 	var names []string
 	for _, f := range files {
 		name, ok := strings.CutSuffix(f, ".md")
-		err := r.mayQueue(ctx, b, main, Spec(name))
+		if !ok {
+			continue
+		}
+
+		spec, err := r.queueableAt(ctx, main, held, Spec(name))
+		if err == nil {
+			err = b.may(queueCommand, Spec(name), r.changed(ctx, Spec(name), spec))
+		}
+
 		switch {
-		case !ok, errors.Is(err, errRefused):
+		case errors.Is(err, errRefused):
 			continue
 		case err != nil:
 			return nil, err
@@ -864,14 +888,19 @@ func (r *Repo) queueNames(ctx context.Context) ([]string, error) {
 	return names, nil
 }
 
-// mayQueue answers nil when kiln queue would take name, with main's tip at main, or why it refuses.
-func (r *Repo) mayQueue(ctx context.Context, b book, main git.Rev, name Spec) error {
-	spec, err := r.queueable(ctx, main, name)
+// queueableAt reads name's spec at main, main's tip, and answers it as queueable does. held is what ready read there.
+func (r *Repo) queueableAt(ctx context.Context, main git.Rev, held map[string][]byte, name Spec) ([]byte, error) {
+	spec, found, err := r.git.Show(ctx, main, name.file())
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return b.may(queueCommand, name, r.changed(ctx, name, spec))
+	files := maps.Clone(held)
+	if found {
+		files[name.file()] = spec
+	}
+
+	return queueable(main, files, name)
 }
 
 // Status shows each spec kiln holds, and where it stands, but no monitor's fix. Then it shows each gauge kiln.json

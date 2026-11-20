@@ -46,13 +46,13 @@ func TestShow(t *testing.T) {
 	}
 }
 
-// TestShowTip holds what ShowTip answers: a branch's commit and the file there. A branch git lacks has no commit.
+// TestShowTip holds what ShowTip answers: a branch's commit and the files there. A branch git lacks has no commit.
 func TestShowTip(t *testing.T) {
 	t.Parallel()
 	repo := t.TempDir()
 	sh(t, repo, "git init --quiet -b main && git config user.name t && git config user.email t@t")
 	sh(t, repo, "echo one >f && git add f && git commit --quiet -m first && git branch old && "+
-		"echo two >f && git commit --quiet -am second")
+		"echo two >f && mkdir dir && echo in >dir/g && git add -A && git commit --quiet -m second")
 	g, err := git.New(repo, os.Environ())
 	if err != nil {
 		t.Fatal(err)
@@ -66,20 +66,20 @@ func TestShowTip(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		branch git.Branch
-		path   string
+		paths  []string
 		want   string
 	}{
-		{"the tip's file", "main", "f", "main \"two\\n\" true, no error"},
-		{"another branch's file", "old", "f", "old \"one\\n\" true, no error"},
-		{"a path the tip lacks", "main", "none", "main \"\" false, no error"},
-		{"a branch git lacks", "none", "f", "no commit \"\" false, no error"},
+		{"the tip's files", "main", []string{"f", "dir/g"}, `main map["dir/g":"in\n" "f":"two\n"], no error`},
+		{"another branch's file", "old", []string{"f"}, `old map["f":"one\n"], no error`},
+		{"paths the tip lacks", "main", []string{"none", "dir", "f"}, `main map["f":"two\n"], no error`},
+		{"a branch git lacks", "none", []string{"f"}, `no commit map[], no error`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			tip, content, found, err := g.ShowTip(t.Context(), tc.branch, tc.path)
+			tip, files, err := g.ShowTip(t.Context(), tc.branch, tc.paths...)
 			failed := map[bool]string{false: "no error", true: "an error"}[err != nil]
-			if got := fmt.Sprintf("%s %q %v, %s", named[tip], content, found, failed); got != tc.want {
-				t.Errorf("ShowTip(%s, %q) answered %s (%v); want %s", tc.branch, tc.path, got, err, tc.want)
+			if got := fmt.Sprintf("%s %q, %s", named[tip], files, failed); got != tc.want {
+				t.Errorf("ShowTip(%s, %q) answered %s (%v); want %s", tc.branch, tc.paths, got, err, tc.want)
 			}
 		})
 	}

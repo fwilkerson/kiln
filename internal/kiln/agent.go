@@ -125,10 +125,23 @@ func agentFile(role string) string { return kilnDir + "/agents/" + role + ".md" 
 // to do about it.
 func (r *Repo) agent(ctx context.Context, at git.Rev, role, fix string) (agent, error) {
 	raw, found, err := r.git.Show(ctx, at, agentFile(role))
-	switch {
-	case err != nil:
+	if err != nil {
 		return agent{}, err
-	case !found:
+	}
+
+	files := map[string][]byte{}
+	if found {
+		files[agentFile(role)] = raw
+	}
+
+	return agentIn(files, at, role, fix)
+}
+
+// agentIn reads role's agent among files, what the commit at holds by path. A commit with no such file is refused,
+// and fix says what to do about it.
+func agentIn(files map[string][]byte, at git.Rev, role, fix string) (agent, error) {
+	raw, found := files[agentFile(role)]
+	if !found {
 		return agent{}, fmt.Errorf("%w: %s holds no %s: %s", errRefused, short(at), agentFile(role), fix)
 	}
 

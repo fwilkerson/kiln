@@ -223,7 +223,7 @@ func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {
 
 // mainConfig answers main's tip, as mainTip does, and kiln.json there, as config reads it. One git reads both.
 func (r *Repo) mainConfig(ctx context.Context) (git.Rev, config, error) {
-	main, raw, found, err := r.git.ShowTip(ctx, mainBranch, configFile)
+	main, files, err := r.git.ShowTip(ctx, mainBranch, configFile)
 	switch {
 	case err != nil:
 		return "", config{}, err
@@ -231,6 +231,7 @@ func (r *Repo) mainConfig(ctx context.Context) (git.Rev, config, error) {
 		return "", config{}, errNoMain
 	}
 
+	raw, found := files[configFile]
 	c, err := readConfig(raw, found)
 	return main, c, err
 }

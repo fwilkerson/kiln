@@ -815,54 +815,85 @@ func (g *Git) Show(ctx context.Context, at Rev, path string) ([]byte, bool, erro
 	return content, found, nil
 }
 
-// ShowTip reads the file at path in the commit branch points to, as [Git.Show] does, and answers that commit. With no
-// such branch, it answers "" and no file. One git learns the commit, then reads the file there.
-func (g *Git) ShowTip(ctx context.Context, branch Branch, path string) (Rev, []byte, bool, error) {
+// ShowTip reads the files at paths in the commit branch points to, as [Git.Show] reads one, and answers that commit.
+// It maps each path that holds a file there to the file. With no such branch, it answers "" and no file. One git
+// learns the commit, then reads each file there.
+func (g *Git) ShowTip(ctx context.Context, branch Branch, paths ...string) (Rev, map[string][]byte, error) {
 	args := []string{"cat-file", "--batch-command", "-Z"}
 	cmd := g.command(ctx, call{dir: string(g.repo)}, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	in, err := cmd.StdinPipe()
 	if err != nil {
-		return "", nil, false, err
+		return "", nil, err
 	}
 
 	out, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", nil, false, err
+		return "", nil, err
 	}
 
 	if err := cmd.Start(); err != nil {
-		return "", nil, false, ended(args, err, "")
+		return "", nil, ended(args, err, "")
 	}
 
 	answers := bufio.NewReader(out)
-	tip, asked := askTip(in, answers, branch, path)
-	file, read := io.ReadAll(answers)
-	if err := errors.Join(asked, read, ended(args, cmd.Wait(), stderr.String())); err != nil {
-		return "", nil, false, err
+	tip, files, asked := askTip(in, answers, branch, paths)
+	_, rest := io.Copy(io.Discard, answers)
+	if err := errors.Join(asked, rest, ended(args, cmd.Wait(), stderr.String())); err != nil {
+		return "", nil, err
 	}
 
-	content, found := blob(string(file))
-	return tip, content, found, nil
+	return tip, files, nil
 }
 
-// askTip asks cat-file for the commit branch points to, then for the file at path there, by the commit's hash. A
-// branch that moves between the two questions still answers one commit's file. It closes in once it asks no more.
-func askTip(in io.WriteCloser, answers *bufio.Reader, branch Branch, path string) (Rev, error) {
+// askTip asks cat-file for the commit branch points to, then for each file at paths there, by the commit's hash. A
+// branch that moves meanwhile still answers one commit's files. Each answer is read before the next question.
+func askTip(in io.WriteCloser, answers *bufio.Reader, branch Branch, paths []string) (Rev, map[string][]byte, error) {
 	defer in.Close()
 	if _, err := io.WriteString(in, "info "+branch.ref()+"^{commit}\x00"); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	header, err := answers.ReadString(0)
 	if err != nil || kind(header) != "commit" {
+		return "", nil, err
+	}
+
+	tip, files := Rev(strings.Fields(header)[0]), map[string][]byte{}
+	for _, p := range paths {
+		if _, err := io.WriteString(in, "contents "+tip.commit()+":"+p+"\x00"); err != nil {
+			return "", nil, err
+		}
+
+		answer, err := contents(answers)
+		if err != nil {
+			return "", nil, err
+		}
+
+		if content, found := blob(answer); found {
+			files[p] = content
+		}
+	}
+
+	return tip, files, nil
+}
+
+// contents reads cat-file -Z's next answer to a contents question: its header, then the content of a found object.
+func contents(answers *bufio.Reader) (string, error) {
+	header, err := answers.ReadString(0)
+	if err != nil || kind(header) == "" {
+		return header, err
+	}
+
+	size, err := strconv.Atoi(strings.Fields(strings.TrimSuffix(header, "\x00"))[2])
+	if err != nil {
 		return "", err
 	}
 
-	tip := Rev(strings.Fields(header)[0])
-	_, err = io.WriteString(in, "contents "+tip.commit()+":"+path+"\x00")
-	return tip, err
+	content := make([]byte, size+1)
+	_, err = io.ReadFull(answers, content)
+	return header + string(content), err
 }
 
 // blob reads cat-file -Z's answer for a file: a header and the content, or the name asked for and "missing". A
