@@ -1,7 +1,5 @@
 # 4. A session that asks for the developer keeps the fix.
 
-env KILN_OPEN=true
-
 # Given: a fix as in test 1,
 exec sh -c 'kiln monitor run || true'
 exec kiln status

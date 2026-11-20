@@ -1,7 +1,5 @@
 # 2. An accepted fix that the gate fails on main as it moved lands.
 
-env KILN_OPEN=true
-
 # Given: such a fix, waiting on its branch: its agent marked each note done.
 exec sh -c 'kiln monitor run || true'
 exec kiln status

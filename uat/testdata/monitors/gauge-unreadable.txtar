@@ -1,7 +1,5 @@
 # A reading kiln could not take starts no fix.
 
-env KILN_OPEN=true
-
 # Given: a monitor that names a gauge whose command fails, and a second monitor that names a gauge whose command
 # prints no number.
 

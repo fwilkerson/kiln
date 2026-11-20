@@ -1,7 +1,5 @@
 # 1. A spec builds and lands while a monitor's fix is at work.
 
-env KILN_OPEN=true
-
 # Given: kiln monitor run at work on a fix, whose agent's session has not ended its turn. The session touches
 # .tmp/fixing, then waits for .tmp/fix-go.
 exec kiln monitor run &mon&

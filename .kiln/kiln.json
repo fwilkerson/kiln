@@ -26,6 +26,7 @@
     "echo \"$(go env GOPATH | cut -d: -f1)/pkg/sumdb\"",
     "uv cache dir"
   ],
+  "notify": ".kiln/notify",
   "gauges": [
     {
       "name": "health",

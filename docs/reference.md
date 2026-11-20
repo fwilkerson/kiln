@@ -40,7 +40,8 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
   "harness": ["internal/testutil/"],
   "reaudit": ["migrations/"],
   "gauges": [{"name": "test-seconds", "command": ".kiln/gauges/test-seconds", "max": 60}],
-  "monitors": [{"name": "deps", "every": "24h", "check": ".kiln/monitors/deps", "agent": "deps.md"}]
+  "monitors": [{"name": "deps", "every": "24h", "check": ".kiln/monitors/deps", "agent": "deps.md"}],
+  "notify": ".kiln/notify"
 }
 ```
 
@@ -57,6 +58,7 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 | `reaudit`    | Paths the audit reads again whenever the work changes them                  | main's tip        |
 | `gauges`     | Numbers kiln reads after each landing                                       | main's tip        |
 | `monitors`   | Jobs kiln runs on a schedule, each of which may start a fix                 | main's tip        |
+| `notify`     | A program that receives each notification, run with `sh -c`                 | main's tip        |
 
 kiln reads the gate from main's tip, never from the build's checkout, so a build cannot weaken its own gate. It
 refuses a `kiln.json` with a key it does not know.
@@ -213,6 +215,44 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 A monitor is held, and starts no fix, by how its last fix ended, until a change releases it. The package doc of
 `internal/kiln` lists each hold and what releases it, under Monitors: `go doc ./internal/kiln`.
 
+### notify
+
+kiln notifies you when a build or a fix needs you. Without `notify`, it prints each notification in its output as
+OSC 9, which a terminal such as Ghostty shows with `desktop-notifications` on. `notify` names a program that
+receives each one instead:
+
+```json
+{"notify": ".kiln/notify"}
+```
+
+- kiln runs it with `sh -c` at the top of the checkout kiln runs in, outside the sandbox, with your environment.
+  `$KILN_NOTICE` holds the notice, as JSON. What the program prints goes to kiln's output.
+- The package doc of `internal/kiln` lists the notice's fields, when a build or a fix notifies, and how long kiln
+  waits, under Notifications: `go doc ./internal/kiln`.
+- A program that fails, hangs or is missing changes no build's or fix's result. kiln says why in its output, which
+  `kiln monitor install`'s job writes to `.git/kiln/monitor.log`.
+- That job passes on only your `PATH` and `TMPDIR`, beside launchd's own `HOME`. Keep a secret, such as a
+  webhook's URL, in a file under your home directory, never in the repository.
+
+This `.kiln/notify` posts each notification to a Slack incoming webhook. Make it executable, and commit it:
+
+```sh
+#!/bin/sh
+set -eu
+printf '%s' "$KILN_NOTICE" |
+  jq '{text: "kiln: \(.name) \(.state)\n\(.summary)\nnext: \(.next)"}' |
+  curl --silent --show-error --fail --max-time 10 --header 'Content-Type: application/json' \
+    --data-binary @- "$(cat "$HOME/.config/kiln/slack-webhook")" >/dev/null
+```
+
+Drop the `jq` line to post the notice as it is, for a webhook that reads kiln's JSON. macOS ships `jq` in
+`/usr/bin`.
+
+kiln's own repository keeps a `.kiln/notify` for Ghostty. A monitor's fix opens a tab that runs
+`kiln monitor show <name>`, behind the tab you work in. The tab notifies you, and a click on the notification brings it
+forward. On the first tab, macOS asks to let kiln control Ghostty. Without that, the tab never opens, and the output
+says why.
+
 ## Agents
 
 ```markdown
@@ -237,9 +277,8 @@ You audit a build's work. ...
 
 ## When a build waits on you
 
-`kiln fire` and `kiln accept` print a terminal notification, as OSC 9, that names the spec and its state. Ghostty
-shows it with `desktop-notifications` on. Then the build sums itself up, and its last line is the command to run
-next.
+`kiln fire` and `kiln accept` notify you, as `notify` above says, with the spec and its state. Then the build sums
+itself up, and its last line is the command to run next.
 
 ```text
 x: stopped: the gate still failed after its last round:
@@ -260,11 +299,8 @@ x: stopped: the gate still failed after its last round:
 - kiln signs each commit it makes when your git config sets `commit.gpgSign`. A key that would ask for its passphrase
   stops the landing, never waits: load the key with `ssh-add`, then queue or accept again.
 - `kiln tui` shows each build's spec as the commit it was queued at held it.
-- A monitor's fix that lands, stops, waits or asks for you opens a tab in Ghostty's front window, with its summary
-  and the command to run next. `go doc ./internal/kiln` says when, under Monitors. The app and the tab you work in
-  stay in front. The tab notifies you, and a click on the notification brings it forward. `kiln monitor show <name>`
-  shows the same. On the first tab, macOS asks to let kiln control Ghostty. Without that, the tab never opens, and
-  `.git/kiln/monitor.log` says why.
+- A monitor's fix that lands, stops, waits or asks for you notifies you too, from `kiln monitor run`.
+  `kiln monitor show <name>` shows how a monitor's last run ended, with its summary and the command to run next.
 
 ## Installing from source
 

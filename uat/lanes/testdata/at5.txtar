@@ -1,7 +1,5 @@
 # 5. A build whose kiln stopped is taken up while a monitor's fix is at work.
 
-env KILN_OPEN=true
-
 # Given: a spec whose kiln fire was interrupted while its build session worked. The session's first call touches
 # .tmp/building, then waits for a file no step makes.
 exec kiln queue x

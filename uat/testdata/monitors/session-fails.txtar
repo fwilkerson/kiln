@@ -1,7 +1,5 @@
 # A session that fails.
 
-env KILN_OPEN=true
-
 # Given: a monitor with only an agent, whose session fails.
 
 # When: the developer runs kiln monitor run,

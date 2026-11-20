@@ -1,7 +1,5 @@
 # A monitor runs when it is due, or when named.
 
-env KILN_OPEN=true
-
 # Given: a daily monitor that ran healthy a moment ago, and a second monitor that has never run.
 exec kiln monitor run
 grep -count=1 'ran' $WORK/_given/daily.log

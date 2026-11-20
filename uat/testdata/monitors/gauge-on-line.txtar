@@ -1,7 +1,5 @@
 # A gauge on its line starts no fix.
 
-env KILN_OPEN=true
-
 # Given: a monitor that names a gauge, and a main in which the gauge reads on its line over the whole repository.
 exec git rev-parse main
 cp stdout $WORK/_given/main-before

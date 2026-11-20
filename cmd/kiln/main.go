@@ -12,14 +12,13 @@
 //	kiln monitor install     set up a launchd job that runs kiln monitor run in the repository each hour
 //	kiln monitor run [<name>]
 //	                         run each monitor kiln.json names that is due; or run one now, due or not
-//	kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
+//	kiln monitor show <name> show how a monitor's last run ended, then wait for return
 //	kiln help                print this usage, as kiln --help and kiln -h do
 //
 // Each refuses a spec in a state it does not take, as go doc ./internal/kiln shows.
 //
-// A build that ends stopped, waiting for UAT, or waiting on its branch prints a terminal notification. The kiln fire,
-// kiln accept or kiln monitor run that built it prints it, as OSC 9. Then it sums the build up, and says what to run
-// next.
+// A build that ends stopped, waiting for UAT, or waiting on its branch notifies the developer. go doc ./internal/kiln
+// says how, under Notifications. Then the kiln that built it sums the build up, and says what to run next.
 //
 // kiln tui draws only on a terminal. With its output elsewhere, it draws nothing, and refuses.
 //
@@ -64,7 +63,7 @@ const usage = `usage:
   kiln monitor install     set up a launchd job that runs kiln monitor run in the repository each hour
   kiln monitor run [<name>]
                            run each monitor kiln.json names that is due; or run one now, due or not
-  kiln monitor show <name> show how a monitor's last run ended, in the window kiln opens for it
+  kiln monitor show <name> show how a monitor's last run ended, then wait for return
   kiln help                print this usage, as kiln --help and kiln -h do
 `
 

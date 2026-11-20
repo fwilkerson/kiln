@@ -1,7 +1,5 @@
 # 7. The audit reads what the session changed.
 
-env KILN_OPEN=true
-
 # Given: a fix as in test 6.
 exec sh -c 'kiln monitor run || true'
 exec kiln status

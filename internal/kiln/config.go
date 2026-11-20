@@ -41,6 +41,8 @@ type config struct {
 	Reaudit []string `json:"reaudit,omitempty"`
 	// Monitors are the jobs kiln monitor run runs on their schedule, each of which may start a fix.
 	Monitors []monitor `json:"monitors,omitempty"`
+	// Notify is the command that receives each notification, run with sh -c. "" prints each as OSC 9.
+	Notify string `json:"notify,omitempty"`
 }
 
 // splitWorkflow is the workflow whose build session writes the code, and whose verify session writes the tests.

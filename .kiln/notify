@@ -1,0 +1,45 @@
+#!/bin/sh
+# The notify program of kiln's own repository, which .kiln/kiln.json names. It reads the notice, JSON, from
+# $KILN_NOTICE. go doc ./internal/kiln lists its fields, under Notifications.
+#
+# A spec's notice prints an OSC 9 sequence into the kiln that built it, which Ghostty shows as a notification.
+# A monitor's notice opens a Ghostty tab, behind the tab the developer works in, that runs kiln monitor show. That
+# tab notifies, so a click on its notification brings the tab forward.
+set -eu
+
+field() { printf '%s\n' "$KILN_NOTICE" | /usr/bin/jq -r ".$1 // empty"; }
+name=$(field name)
+
+if [ "$(field kind)" = spec ]; then
+  # The body starts with kiln:, so a spec named 4 can't read as OSC 9;4, a progress bar Ghostty draws.
+  printf '\033]9;kiln: %s %s\a' "$name" "$(field state)"
+  exit 0
+fi
+
+# The tab's environment is Ghostty's, not kiln's, so the tab names kiln by its path, quoted for the shell.
+kiln=$(command -v kiln | sed "s/'/'\\\\''/g")
+
+# Ghostty selects a new tab, so the script selects the developer's tab again. Ghostty may also come forward, so the
+# script brings back the app that was in front. It uses open, since telling that app to activate needs a permission.
+# Handing Ghostty a script file instead of a command makes it ask each time.
+exec osascript - "'$kiln' monitor show $name" "$(field top)" <<'EOF'
+on run argv
+	set prior to POSIX path of (path to frontmost application)
+	tell application "Ghostty"
+		set cfg to new surface configuration
+		set command of cfg to item 1 of argv
+		set initial working directory of cfg to item 2 of argv
+		if (count of windows) > 0 then
+			set was to selected tab of front window
+			new tab in front window with configuration cfg
+			select tab was
+		else
+			new window with configuration cfg
+		end if
+	end tell
+	if prior does not end with "/Ghostty.app/" then
+		delay 0.3
+		do shell script "open -a " & quoted form of prior
+	end if
+end run
+EOF

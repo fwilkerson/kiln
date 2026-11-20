@@ -5,13 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/git"
-	"github.com/fwilkerson/kiln/internal/proc"
 	"github.com/fwilkerson/kiln/internal/tui"
 )
 
@@ -213,26 +210,16 @@ func fixNext(name Spec, outcome string) string {
 	return ""
 }
 
-// MonitorShow shows how the last run of the monitor name ended, in the tab kiln opens for it. It writes an OSC 9
-// sequence, which Ghostty shows as a notification. The result follows, with its summary, report or error, and the
-// command to run next. Then it waits for return on in. It refuses a monitor the ledger holds no run of.
+// MonitorShow shows how the last run of the monitor name ended, such as in a tab a notify program opens. It writes
+// an OSC 9 sequence first, so a terminal such as Ghostty notifies from that tab. The result follows, with its
+// summary, report or error, and the command to run next. Then it waits for return on in. It refuses a monitor the
+// ledger holds no run of.
 func (r *Repo) MonitorShow(ctx context.Context, name Spec, in io.Reader, out io.Writer) error {
-	entries, err := r.store.entries()
+	s, next, err := r.lastStanding(name)
 	if err != nil {
 		return err
 	}
 
-	h := histories(entries)[name]
-	if h == nil {
-		return fmt.Errorf("%w: the ledger holds no run of a monitor %s", errRefused, name)
-	}
-
-	k, err := r.store.read()
-	if err != nil {
-		return err
-	}
-
-	s := h.standing(monitor{Name: name}, k.find(name))
 	// The body starts with kiln:, so a monitor named 4 can't read as OSC 9;4, a progress bar Ghostty draws.
 	fmt.Fprintf(out, "\x1b]9;kiln: %s %s\a", name, s.result)
 	fmt.Fprintf(out, "%s: %s, at %s\n", name, s.result, shownTime(s.last.Local()))
@@ -242,7 +229,7 @@ func (r *Repo) MonitorShow(ctx context.Context, name Spec, in io.Reader, out io.
 		}
 	}
 
-	if next := s.step(name, k.find(name), r.tree(name)); next != "" {
+	if next != "" {
 		fmt.Fprintln(out, indent("next: "+next))
 	}
 
@@ -251,55 +238,25 @@ func (r *Repo) MonitorShow(ctx context.Context, name Spec, in io.Reader, out io.
 	return nil
 }
 
-// openVar names the command kiln runs in place of osascript, to open a tab.
-const openVar = "KILN_OPEN"
-
-// newTab is the AppleScript that opens a Ghostty tab in the front window, or a window when Ghostty shows none. Its
-// arguments are the tab's command and working directory. Handing Ghostty a script file instead makes it ask each time.
-// Ghostty selects a new tab, so the script selects the developer's tab again. Ghostty may also come forward, so the
-// script brings back the app that was in front. It uses open, since telling that app to activate needs a permission.
-const newTab = `on run argv
-	set prior to POSIX path of (path to frontmost application)
-	tell application "Ghostty"
-		set cfg to new surface configuration
-		set command of cfg to item 1 of argv
-		set initial working directory of cfg to item 2 of argv
-		if (count of windows) > 0 then
-			set was to selected tab of front window
-			new tab in front window with configuration cfg
-			select tab was
-		else
-			new window with configuration cfg
-		end if
-	end tell
-	if prior does not end with "/Ghostty.app/" then
-		delay 0.3
-		do shell script "open -a " & quoted form of prior
-	end if
-end run`
-
-// open opens a Ghostty tab, which runs kiln monitor show for the monitor name. The tab's environment is Ghostty's,
-// not kiln's, so kiln names its own path and the repository's.
-func (r *Repo) open(ctx context.Context, name Spec) error {
-	args := []string{shellQuote(r.exe) + " monitor show " + string(name), r.top}
-	cmd := exec.CommandContext(ctx, "osascript", append([]string{"-e", newTab}, args...)...)
-	if opener := envValue(r.env, openVar); opener != "" {
-		cmd = opening(ctx, opener, args)
+// lastStanding is where the monitor name stands after its last run, and the command the developer runs next, or "".
+// It refuses a monitor the ledger holds no run of.
+func (r *Repo) lastStanding(name Spec) (standing, string, error) {
+	entries, err := r.store.entries()
+	if err != nil {
+		return standing{}, "", err
 	}
 
-	cmd.Env = proc.Shell.Env(r.env)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("%s: %w: %s", cmd.Path, err, strings.TrimSpace(string(out)))
+	h := histories(entries)[name]
+	if h == nil {
+		return standing{}, "", fmt.Errorf("%w: the ledger holds no run of a monitor %s", errRefused, name)
 	}
 
-	return nil
-}
-
-// opening is the command that runs opener with args. An opener that is no file is a shell command line.
-func opening(ctx context.Context, opener string, args []string) *exec.Cmd {
-	if _, err := os.Stat(opener); err == nil || !strings.ContainsAny(opener, " \t") {
-		return exec.CommandContext(ctx, opener, args...)
+	k, err := r.store.read()
+	if err != nil {
+		return standing{}, "", err
 	}
 
-	return exec.CommandContext(ctx, "/bin/sh", append([]string{"-c", opener + ` "$@"`, "sh"}, args...)...)
+	rec := k.find(name)
+	s := h.standing(monitor{Name: name}, rec)
+	return s, s.step(name, rec, r.tree(name)), nil
 }

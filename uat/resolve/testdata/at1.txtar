@@ -1,7 +1,5 @@
 # 1. An accepted fix that conflicts with main lands.
 
-env KILN_OPEN=true
-
 # Given: a monitor whose fixes wait for kiln accept, and a fix its agent made, waiting on its branch.
 exec sh -c 'kiln monitor run || true'
 exec kiln status

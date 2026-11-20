@@ -1,7 +1,5 @@
 # A check that stays out of the gate.
 
-env KILN_OPEN=true
-
 # Given: a monitor whose check doesn't join the gate, and asks for a fix whatever the repository holds, and whose
 # command makes a change the gate passes.
 

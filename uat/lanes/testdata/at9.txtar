@@ -1,7 +1,5 @@
 # 9. A landing waits for the other lane's landing.
 
-env KILN_OPEN=true
-
 # Given: a monitor's fix ready to land: its work passed its gate, and its audit, the first, touches .tmp/auditing,
 # then waits for .tmp/fix-go. The gate, gate.sh, logs the checkout of each run in a .gate-* checkout.
 exec sh -c 'exec kiln monitor run >.tmp/mon.out 2>&1' &mon&

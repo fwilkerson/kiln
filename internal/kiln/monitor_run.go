@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/git"
@@ -98,7 +97,7 @@ func (r *Repo) recover(ctx context.Context, out io.Writer) error {
 }
 
 // dropLost ends the build of rec, a fix a kiln cut short, dropped, and removes its branch and checkouts. A fix
-// whose landing main holds ends landed instead, opens a tab, and the gauges read it.
+// whose landing main holds ends landed instead, notifies, and the gauges read it.
 func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 	b := &build{r: r, rec: rec, tree: r.tree(rec.Name), out: out}
 	held, err := b.landedBefore(ctx)
@@ -111,7 +110,7 @@ func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 			return err
 		}
 
-		r.notify(ctx, rec.Name, out)
+		r.notifyFix(ctx, rec.Name, b.landed, out)
 		return b.readGauges(ctx)
 	}
 
@@ -219,7 +218,7 @@ func (run *monitorRunning) checkMain(ctx context.Context, m monitor) (git.Rev, c
 	return main, found, err
 }
 
-// fix runs the fix f that the monitor line started. It opens a tab when the developer should see how it ended. h
+// fix runs the fix f that the monitor line started. It notifies when the developer should see how it ended. h
 // is the monitor's history before this run. It answers whether the fix landed.
 func (run *monitorRunning) fix(ctx context.Context, f *fixing, line entry, h *history) (landed bool, err error) {
 	b, err := run.r.startFix(ctx, run.out, f, line)
@@ -228,7 +227,7 @@ func (run *monitorRunning) fix(ctx context.Context, f *fixing, line entry, h *hi
 	}
 
 	if notifies(f.outcome, h) {
-		run.r.notify(ctx, line.Monitor, run.out)
+		run.r.notifyFix(ctx, line.Monitor, b.landed, run.out)
 	}
 
 	err = errors.Join(err, b.readGauges(ctx))
@@ -280,36 +279,6 @@ func (run *monitorRunning) write(e entry) error {
 
 	fmt.Fprintf(run.out, "%s: %s\n", e.Monitor, said)
 	return nil
-}
-
-// notified are the outcomes that open a tab.
-var notified = []string{outLanded, outStopped, outWaits, outNeedsYou, outFailed}
-
-// notifies is whether a fix that ended with outcome opens a tab. h is its monitor's history before this run. A
-// session that failed as the monitor's last run did opens none. An expired sign-in then opens one tab per monitor.
-func notifies(outcome string, h *history) bool {
-	if !slices.Contains(notified, outcome) {
-		return false
-	}
-
-	return outcome != outFailed || h.lastResult() != outFailed
-}
-
-// lastResult is what the monitor's last run came to, or "" if it never ran.
-func (h *history) lastResult() string {
-	if h == nil || h.last.Kind == "" {
-		return ""
-	}
-
-	return h.result(h.last)
-}
-
-// notify opens a tab that shows how the last run of the monitor name ended. An opener that fails changes no result,
-// and kiln says so on out.
-func (r *Repo) notify(ctx context.Context, name Spec, out io.Writer) {
-	if err := r.open(ctx, name); err != nil {
-		fmt.Fprintf(out, "%s: kiln could not open a tab: %v\n", name, err)
-	}
 }
 
 // shownTime shows t as kiln status does.

@@ -1,7 +1,5 @@
 # 5. kiln status shows the session at work on a landing.
 
-env KILN_OPEN=true
-
 # Given: a fix as in test 1.
 exec sh -c 'kiln monitor run || true'
 exec kiln status

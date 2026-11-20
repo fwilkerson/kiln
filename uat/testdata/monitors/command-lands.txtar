@@ -1,7 +1,5 @@
 # A command's fix lands.
 
-env KILN_OPEN=true
-
 # Given: a monitor whose check joins the gate, and asks for a fix until a file holds a line, and whose command writes
 # that line.
 

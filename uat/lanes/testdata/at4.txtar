@@ -1,7 +1,5 @@
 # 4. A fix cut short is recovered while a spec builds.
 
-env KILN_OPEN=true
-
 # Given: a fix whose kiln monitor run was interrupted while its session worked. The fix's first session touches
 # .tmp/fixing, then waits for a file no step makes.
 ! exec kiln monitor run &mon&
