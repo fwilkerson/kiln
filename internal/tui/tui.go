@@ -16,7 +16,7 @@
 // are its fixes, which open as a spec's builds do.
 //
 // The now panel shows the run at work in each lane, a spec's build above a monitor's fix. Each takes two rows. With
-// no build at work, a paused spec takes its place. Enter, or a click, opens the run.
+// no spec's build at work, a paused spec takes its place, in one row. Enter, or a click, opens the run.
 //
 // It reads its [Source] again once a second, so a running run grows as its session writes. A run lists its calls
 // newest first, below its answer. A session idle for over a minute, with no call open, shows its idle time in the

@@ -191,8 +191,7 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 - A monitor names a `command`, an `agent` or both, and a `check` or a `gauge`, never both.
 - The rest of a check's stdout goes to the agent. A check that exits non-zero, or prints no such last line, couldn't
   run, and starts no fix. So does a gauge kiln could not read.
-- A monitor is due when it never ran, when its check or gauge couldn't run, when a usage limit ended its fix, or
-  when its fix was cut short. Otherwise it is due once its last run started its interval, less half an hour, ago.
+- The package doc of `internal/kiln` says when a monitor is due, under Monitors: `go doc ./internal/kiln`.
 - A fix is a build with no spec. The gate holds it, with the check added unless `"gates": false`. That setting is
   for a check that reads something a fix cannot change until it is deployed. A gauge always joins the gate.
 - A fix never writes under `.kiln/`. Without `"tests": true`, it never writes under an `acceptance` path's part
@@ -206,9 +205,9 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 - `"drain": true` is for a queue that each fix takes one item from, such as a folder of bug reports. After a fix
   lands, kiln runs the check again at once, due or not, and starts the next fix. The run ends when the check asks
   for no fix, when the monitor is held, or when a fix does not land. It needs a check or a gauge.
-- `kiln monitor run` refuses only while another `kiln monitor run` runs, or `kiln accept` lands a fix. So a long
-  run, such as one that drains, is never joined by the next hour's. It runs beside `kiln fire`, which builds specs
-  meanwhile. The package doc of `internal/kiln` says how the two share the gate, under Lanes: `go doc ./internal/kiln`.
+- `kiln monitor run` runs beside `kiln fire`, which builds specs meanwhile, but never beside another
+  `kiln monitor run`. So a long run, such as one that drains, is never joined by the next hour's. The package doc of
+  `internal/kiln` says when each refuses, and how the two share the gate, under Lanes: `go doc ./internal/kiln`.
 
 A monitor is held, and starts no fix, by how its last fix ended, until a change releases it. The package doc of
 `internal/kiln` lists each hold and what releases it, under Monitors: `go doc ./internal/kiln`.
