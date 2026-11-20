@@ -1293,14 +1293,21 @@ func (r *Repo) Accept(ctx context.Context, name Spec, out io.Writer) error {
 	return r.acceptLanded(ctx, b)
 }
 
-// acceptLanded retires the spec of b, whose build landed, in a commit on main as it stands.
+// acceptLanded retires the spec of b, whose build landed, in a commit on main as it stands. It says so as that
+// commit's gate starts.
 func (r *Repo) acceptLanded(ctx context.Context, b *build) error {
 	name := b.rec.Name
 	if err := b.checkoutMain(ctx); err != nil {
 		return err
 	}
 
-	landed, back, err := b.land(ctx, "", b.retire, name.file(), name.amendPath())
+	retire := func(ctx context.Context, held git.Rev) error {
+		// The gate runs next, and its commands may take minutes, so the developer learns why kiln is quiet.
+		b.say("gates the commit that retires the spec, on main as it stands")
+		return b.retire(ctx, held)
+	}
+
+	landed, back, err := b.land(ctx, "", retire, name.file(), name.amendPath())
 	if err == nil && back.report != "" {
 		err = fmt.Errorf("%w: the gate failed on main as it stands, so %s is not accepted:\n%s", errRefused, name,
 			back.report)

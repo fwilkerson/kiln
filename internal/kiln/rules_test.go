@@ -798,6 +798,25 @@ func TestRecoverLane(t *testing.T) {
 	}
 }
 
+// TestAcceptSaysItGates holds that kiln accept says so as it starts the gate on the commit that retires a spec. The
+// gate runs the project's commands, which may take minutes.
+func TestAcceptSaysItGates(t *testing.T) {
+	r, repo := scratchRepo(t)
+	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "rounds": 1}`, ".kiln/specs/x.md": "# X\n"})
+	shell(t, repo, "git add -A && git commit --quiet -m start")
+	waits := record{Name: "x", State: landed, Build: "b-x"}
+	if err := r.store.update(func(b *book) error { b.Specs = []*record{&waits}; return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	err := r.Accept(t.Context(), "x", &out)
+	const want = "x: gates the commit that retires the spec, on main as it stands\nx: accepted, and main is at "
+	if err != nil || !strings.HasPrefix(out.String(), want) {
+		t.Errorf("kiln accept x: %v, and said:\n%s\nwant it to start %q", err, out.String(), want)
+	}
+}
+
 // TestAcceptDuringReinstall holds that an accept the reinstall refuses changes nothing.
 func TestAcceptDuringReinstall(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
