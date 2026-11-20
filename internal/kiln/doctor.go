@@ -21,16 +21,16 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// Doctor prints each problem kiln's commands would refuse or fail on, in the project as its working tree holds it.
-// Each names its fix. Doctor reads kiln.json, and refuses it as every kiln command would. It reads the build,
-// verify and audit agents as kiln queue reads them. It reads the reviewers as kiln init does, and each file kiln init
-// recorded, for a conflict it left there. It reads each monitor under .kiln/monitors/ as kiln monitor run reads it at
-// main's tip. It reads the files git would commit there, and agent.md as the fix's session reads it. Where a command
-// of kiln.json starts with a path, such as notify's, Doctor reads the script there. It needs the branch main, a
-// claude on the PATH, and a pre-commit hook that runs kiln precommit. With a monitor, it needs a launchd job in a
-// checkout of the repository. With a name, it reads that spec as kiln queue would, but not its Status. It notes each
-// key of kiln.json that differs from main's, which kiln acts on. Doctor writes nothing, and calls no model and no
-// network. It fails when it found a problem.
+// Doctor prints each problem kiln's commands would refuse or fail on, in the project as its working tree holds it. Each
+// names its fix. Doctor reads kiln.json, and refuses it as every kiln command would. It reads the build, verify and
+// audit agents as kiln queue reads them. It reads the reviewers as kiln init does, and each file kiln init recorded,
+// for a conflict it left there. It reads each monitor under .kiln/monitors/ as kiln monitor run reads it at main's tip.
+// It reads the files git would commit there, and agent.md as the fix's session reads it. Where a command of kiln.json
+// starts with a path, such as notify's, Doctor reads the script there. It needs the branch main, a claude on the PATH,
+// and a pre-commit hook that runs kiln precommit. With a monitor, it notes when no launchd job runs in a checkout of
+// the repository. With a name, it reads that spec as kiln queue would, but not its Status. It notes each key of
+// kiln.json that differs from main's, which kiln acts on. Doctor writes nothing, and calls no model and no network. It
+// fails when it found a problem.
 func (r *Repo) Doctor(ctx context.Context, name Spec, out io.Writer) error {
 	d, err := r.diagnose(ctx, name)
 	if err != nil {
@@ -309,8 +309,8 @@ func drift(a, b []byte) []string {
 	return differ
 }
 
-// diagnoseTools adds to d each program kiln runs that is missing. That is claude, the pre-commit hook, and the
-// launchd job when monitored, so the working tree holds a monitor.
+// diagnoseTools adds to d each program kiln runs that is missing: claude, and the pre-commit hook. When monitored, so
+// the working tree holds a monitor, it notes a missing launchd job. The developer may run the monitors by hand.
 func (r *Repo) diagnoseTools(ctx context.Context, monitored bool, d *diagnosis) error {
 	if _, err := proc.Look(r.env, claudeProgram); err != nil {
 		d.found = append(d.found, refusal{err.Error(),
@@ -332,8 +332,8 @@ func (r *Repo) diagnoseTools(ctx context.Context, monitored bool, d *diagnosis) 
 		return err
 	}
 
-	d.found = append(d.found, refusal{monitorsDir + "/ holds monitors, but no launchd job runs them in any " +
-		"checkout of this repository", "run kiln monitor install"})
+	d.notes = append(d.notes, monitorsDir+"/ holds monitors, but no launchd job runs them in any checkout of this "+
+		"repository: run kiln monitor install, or run kiln monitor run by hand")
 	return nil
 }
 
@@ -431,9 +431,14 @@ func (r *Repo) launchdServes(ctx context.Context) (bool, error) {
 	}
 
 	for _, job := range jobs {
+		dir := jobDir(job)
+		if dir == "" {
+			// git would run where kiln runs, which may be this repository, though the job names no checkout.
+			continue
+		}
+
 		// A job whose checkout is gone, or is no git checkout, names no directory, and so no repository.
-		other, _ := plainGit(ctx, jobDir(job), proc.Git.Env(r.env), "rev-parse", "--path-format=absolute",
-			"--git-common-dir")
+		other, _ := plainGit(ctx, dir, proc.Git.Env(r.env), "rev-parse", "--path-format=absolute", "--git-common-dir")
 		if sameFile(other, r.common) {
 			return true, nil
 		}

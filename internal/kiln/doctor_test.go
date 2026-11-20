@@ -13,8 +13,8 @@ import (
 func TestDoctor(t *testing.T) {
 	project := doctorProject(t)
 	const monitor = "mkdir -p .kiln/monitors/deps && cd .kiln/monitors/deps && "
-	const launchd = ".kiln/monitors/ holds monitors, but no launchd job runs them in any checkout of this " +
-		"repository: run kiln monitor install"
+	const launchd = "note: .kiln/monitors/ holds monitors, but no launchd job runs them in any checkout of this " +
+		"repository: run kiln monitor install, or run kiln monitor run by hand"
 	for name, tc := range map[string]doctorCase{
 		"kiln init's files": {want: []string{"found no problem"}},
 		"each refusal of kiln.json at once": {
@@ -83,6 +83,20 @@ func TestDoctor(t *testing.T) {
 	} {
 		t.Run(name, tc.check(project))
 	}
+}
+
+// TestDoctorJobWithoutDir holds that a launchd job whose file names no working directory runs in no checkout. kiln
+// doctor, run in the repository, still notes that no job runs its monitors.
+func TestDoctorJobWithoutDir(t *testing.T) {
+	project := doctorProject(t)
+	job := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", launchdPrefix+"nodir.plist")
+	t.Cleanup(func() { _ = os.Remove(job) })
+	shell(t, project, "mkdir -p .kiln/monitors/deps "+filepath.Dir(job)+" && printf 'true\\n' "+
+		">.kiln/monitors/deps/command && chmod +x .kiln/monitors/deps/command && printf '<key>Label</key>\\n' >"+job)
+	// A job that names no directory would run git where kiln runs, which is this repository.
+	t.Chdir(project)
+	doctorCase{want: []string{"note: .kiln/monitors/ holds monitors, but no launchd job runs them",
+		"found no problem"}}.doctor(t, project)
 }
 
 // TestDoctorMainAndTools holds what kiln doctor finds missing outside .kiln/: main, its kiln.json, claude and the
