@@ -23,14 +23,14 @@ commands in use.
 `kiln init` writes these from a preset, and links `/shape` and its reviewers into `.claude/`. The project owns
 them from then on. Run `kiln init` again once you upgrade kiln: it merges kiln's new defaults with your edits, in the
 working tree, for you to read and commit. `kiln status` says when `.kiln/` on main is behind. `kiln.json` stays
-yours: kiln init adds only `rounds`, when the file lacks it. `go doc ./internal/kiln` says how Init merges each
-file.
+yours: kiln init adds only `rounds`, when the file lacks it. `go doc ./internal/kiln Repo.Init` says how it merges
+each file.
 
 A preset of your own is a directory laid out as kiln's in [`internal/kiln/presets/`](../internal/kiln/presets/):
 `kiln.json`, then `build-checks.md`, `verify-tests.md` and `audit-tests.md`, the "Tailor this" sections of the
-build, verify and audit agents. Keep it in a repository of its own, and name it by a path that holds a slash, as in
-`kiln init --preset ../presets/go`. `init.json` keeps that path, from the repository's top, for the next run. A
-teammate whose copy lies elsewhere names it once with `--preset`.
+build, verify and audit agents. Keep it in a repository of its own, and name it with `--preset`, as in
+`kiln init --preset ../presets/go`. `go doc ./internal/kiln InitOptions` says how kiln reads the path, and finds
+it again on the next run.
 
 A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
 as a new agent, is yours to commit: a build names it in its last reply instead of writing it.

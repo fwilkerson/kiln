@@ -1,11 +1,11 @@
 // Command kiln builds the specs a developer approved, with headless Claude Code sessions, and lands them on main.
 //
 //	kiln init [--preset go|python|<dir>]
-//	                         write a preset of kiln's defaults into .kiln/, Go's by default, or merge a newer
-//	                         kiln's into yours; and install the pre-commit hook
+//	                         write a preset of kiln's defaults into .kiln/, or merge a newer kiln's into yours,
+//	                         from the preset .kiln/init.json records, or Go's; and install the pre-commit hook
 //	kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 //	kiln fire                build each queued spec, one at a time, until none is queued
-//	kiln status              show where each spec stands, and each gauge's latest reading
+//	kiln status              show where each spec stands, each gauge's latest reading, and whether .kiln/ is behind
 //	kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
 //	kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
 //	kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
@@ -53,11 +53,11 @@ import (
 
 const usage = `usage:
   kiln init [--preset go|python|<dir>]
-                           write a preset of kiln's defaults into .kiln/, Go's by default, or merge a newer
-                           kiln's into yours; and install the pre-commit hook
+                           write a preset of kiln's defaults into .kiln/, or merge a newer kiln's into yours,
+                           from the preset .kiln/init.json records, or Go's; and install the pre-commit hook
   kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
   kiln fire                build each queued spec, one at a time, until none is queued
-  kiln status              show where each spec stands, and each gauge's latest reading
+  kiln status              show where each spec stands, each gauge's latest reading, and whether .kiln/ is behind
   kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
   kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
   kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix

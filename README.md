@@ -47,8 +47,8 @@ installed /path/to/my-project/.git/hooks/pre-commit
 $ git add .kiln .claude && git commit -m "chore: set up kiln"
 ```
 
-Run `kiln init` again once you upgrade kiln, and whenever `kiln status` says `.kiln/` is behind. It brings each file
-up to date, and keeps your edits:
+Run `kiln init` again once you upgrade kiln, and whenever `kiln status` says `.kiln/` is behind. It merges kiln's new
+agents and `/shape` with your edits, and leaves `kiln.json` as you wrote it:
 
 ```console
 $ kiln init
@@ -192,7 +192,7 @@ unattended session runs under the sign-in `claude` has on the machine.
 kiln init [--preset <preset>]    write kiln's defaults into .kiln/, or update them, and install the pre-commit hook
 kiln queue <name>                queue a build of .kiln/specs/<name>.md, as main holds it
 kiln fire                        build each queued spec, one at a time, until none is queued
-kiln status                      show where each spec and monitor stands, and each gauge's latest reading
+kiln status                      show where specs and monitors stand, each gauge's reading, and whether .kiln/ is behind
 kiln tui [<name>]                show every build, live and past, in a full-screen view
 kiln accept <name>               take the work: retire the spec, land its amendments, or land a waiting fix
 kiln reject <name>               turn the amendments away, or drop a waiting fix

@@ -1,7 +1,7 @@
 // Package kiln builds the specs a developer approved, and lands them on main.
 //
 //	r, err := kiln.Open(ctx, ".", os.Environ())
-//	err = r.Init(ctx, os.Stdout, kiln.InitOptions{})  // .kiln/, as Go's preset, and the pre-commit hook
+//	err = r.Init(ctx, os.Stdout, kiln.InitOptions{})  // .kiln/ from Go's preset, or up to date; the pre-commit hook
 //	err = r.Queue(ctx, "x", os.Stdout)        // queues .kiln/specs/x.md, as main holds it
 //	err = r.Fire(ctx, os.Stdout)              // builds each queued spec, one at a time
 //	err = r.Status(ctx, os.Stdout)

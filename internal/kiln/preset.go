@@ -2,6 +2,7 @@ package kiln
 
 import (
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -35,6 +36,10 @@ var marker = regexp.MustCompile(`(?m)^<!-- kiln:preset ([a-z-]+) -->\n`)
 // with each marker replaced. It fails when a marker names a file p lacks.
 func presetFiles(p preset) (map[string][]byte, error) {
 	config, err := fs.ReadFile(p.files, "kiln.json")
+	if err == nil {
+		err = usableConfig(config)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("preset %s: %w", p.name, err)
 	}
@@ -55,6 +60,27 @@ func presetFiles(p preset) (map[string][]byte, error) {
 	})
 
 	return files, err
+}
+
+// usableConfig refuses raw, a preset's kiln.json, when kiln could not use it, or it lacks a key every preset shares.
+// kiln init then refuses the preset before it writes anything.
+func usableConfig(raw []byte) error {
+	if _, err := parseConfig(raw); err != nil {
+		return fmt.Errorf("kiln.json: %w", err)
+	}
+
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		return err
+	}
+
+	for _, key := range sharedKeys {
+		if _, ok := keys[key]; !ok {
+			return fmt.Errorf("kiln.json lacks %s, which every preset holds", key)
+		}
+	}
+
+	return nil
 }
 
 // fill replaces each marker in raw with p's file of the marker's name.
@@ -82,7 +108,13 @@ var ErrUsage = errors.New("usage")
 func presetNamed(name, dir string) (preset, error) {
 	switch {
 	case filepath.IsAbs(name):
-		return preset{name: name, files: os.DirFS(name)}, nil
+		// The checkout's top has its links resolved, so a path recorded from it needs them resolved too.
+		real, err := filepath.EvalSymlinks(name)
+		if err != nil {
+			return preset{}, fmt.Errorf("preset %s: %w", name, err)
+		}
+
+		return preset{name: real, files: os.DirFS(real)}, nil
 	case strings.Contains(name, "/"):
 		return presetNamed(filepath.Join(dir, name), dir)
 	case slices.Contains(builtIns, name):
@@ -90,8 +122,8 @@ func presetNamed(name, dir string) (preset, error) {
 		return preset{name: name, files: files}, err
 	}
 
-	return preset{}, fmt.Errorf("%w: no preset %q: name one of %s, or a directory by a path that holds a slash",
-		ErrUsage, name, strings.Join(builtIns, ", "))
+	return preset{}, fmt.Errorf("no preset %q: name one of %s, or a directory by a path that holds a slash", name,
+		strings.Join(builtIns, ", "))
 }
 
 // recorded is p's name as kiln init's record keeps it, where a directory's path is from top, the checkout's top.

@@ -1,10 +1,13 @@
 package kiln
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/fwilkerson/practices/claim"
 )
 
 // TestInitUpdates holds how a second kiln init brings .kiln/ up to date with a newer kiln's defaults. ship changes
@@ -33,7 +36,7 @@ func TestInitUpdates(t *testing.T) {
 			edit: "echo 'House rule.' >>" + build + " && rm .kiln/init.json",
 			said: "merged " + build + ", with conflicts", holds: []string{"<<<<<<< " + build + "\nHouse rule.\n"}},
 		{name: "a deleted default is written again, and kiln.json is the project's",
-			ship: "echo '{\"gate\": [\"make\"], \"acceptance\": \"a/{spec}/\"}' >kiln.json",
+			ship: "echo '{\"gate\": [\"make\"], \"rounds\": 2, \"acceptance\": \"a/{spec}/\"}' >kiln.json",
 			edit: "rm " + build, said: "wrote " + build, holds: []string{"go vet"}},
 	}
 
@@ -82,7 +85,13 @@ func wantHolds(t *testing.T, got string, holds, lacks []string) {
 // says when main lacks kiln init's record, and says nothing while .kiln/ is up to date. A record may name a directory.
 func TestStatusSaysInitBehind(t *testing.T) {
 	r, repo := scratchRepo(t)
-	team := teamPreset(t, filepath.Join(repo, "team"))
+	// The preset is named through a link, which the record must not keep.
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(repo, link); err != nil {
+		t.Fatal(err)
+	}
+
+	team := teamPreset(t, filepath.Join(link, "team"))
 	if err := r.Init(t.Context(), new(strings.Builder), InitOptions{Preset: team}); err != nil {
 		t.Fatal(err)
 	}
@@ -105,6 +114,44 @@ func TestStatusSaysInitBehind(t *testing.T) {
 		if got, _ := strings.CutPrefix(out.String(), "kiln holds no approved spec\n"); got != step.want {
 			t.Errorf("after %s, kiln status said:\n%s\nwant:\n%s", step.change, out.String(), step.want)
 		}
+	}
+}
+
+// TestInitRefusesPreset holds that kiln init refuses a preset it can't use before it writes anything. A usage error
+// is the developer's argument alone, never what .kiln/init.json records.
+func TestInitRefusesPreset(t *testing.T) {
+	for _, tt := range []struct {
+		name, config, record, named string
+		usage                       bool
+	}{
+		{name: "a kiln.json kiln can't read", config: "{"},
+		{name: "a kiln.json with no rounds", config: `{"gate": ["make"], "acceptance": "a/{spec}/"}`},
+		{name: "a name kiln doesn't know", named: "rust", usage: true},
+		{name: "a recorded name kiln doesn't know", record: `{"preset": "rust"}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r, repo := scratchRepo(t)
+			team := teamPreset(t, t.TempDir())
+			if tt.config != "" {
+				shell(t, team, "echo '"+tt.config+"' >kiln.json")
+			}
+
+			if tt.record != "" {
+				shell(t, repo, "mkdir .kiln && echo '"+tt.record+"' >"+initFile)
+			}
+
+			named := tt.named
+			if named == "" && tt.record == "" {
+				named = team
+			}
+
+			err := r.Init(t.Context(), new(strings.Builder), InitOptions{Preset: named})
+			_, stat := os.Stat(filepath.Join(repo, agentFile(buildRole)))
+			if !claim.Holds(err != nil, stat != nil, errors.Is(err, ErrUsage) == tt.usage) {
+				t.Errorf("kiln init: %v, and wrote build.md: %v; want refused, before it writes, usage %v", err,
+					stat == nil, tt.usage)
+			}
+		})
 	}
 }
 

@@ -48,7 +48,7 @@ type InitOptions struct {
 // default that .kiln/ lacks. A file the project left as Init last wrote it takes the new default. Into a file the
 // project changed, git merge-file merges the change between the last default and the new one. It leaves each
 // conflict between the usual markers, and names the file. With no record of the last default, each difference from
-// the new one is a conflict. Init changes only the working tree. It records each default it wrote, and the preset, in
+// the new one is a conflict. Init stages and commits nothing. It records each default it wrote, and the preset, in
 // .kiln/init.json.
 //
 // kiln.json is the project's settings: its gate, and what a session reaches. A merge could change either unread, so
@@ -58,7 +58,7 @@ type InitOptions struct {
 // the repository has no branch main, which each command that reads main then refuses. It prints kiln.json's gate,
 // the commands the pre-commit hook runs on each commit to main. The hook refuses a commit to main that fails them.
 // Last, Init installs the hook, or says why it installed none, as installHook says. Init refuses a preset it does
-// not know, or cannot read, before it writes anything.
+// not know, or cannot use, before it writes anything. A preset's kiln.json must hold rounds.
 func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	last, err := r.lastInit()
 	if err != nil {
@@ -100,7 +100,13 @@ func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 // named is from the working directory, and a path recorded is from the checkout's top.
 func (r *Repo) initPreset(named, recorded string) (preset, error) {
 	if named == "" {
-		return presetNamed(cmpOr(recorded, builtIns[0]), r.top)
+		p, err := presetNamed(cmpOr(recorded, builtIns[0]), r.top)
+		if err != nil {
+			return p, fmt.Errorf("%w: %s names a preset kiln can't use: %w; name one with --preset", errRefused,
+				initFile, err)
+		}
+
+		return p, nil
 	}
 
 	wd, err := os.Getwd()
@@ -108,7 +114,12 @@ func (r *Repo) initPreset(named, recorded string) (preset, error) {
 		return preset{}, err
 	}
 
-	return presetNamed(named, wd)
+	p, err := presetNamed(named, wd)
+	if err != nil {
+		return p, fmt.Errorf("%w: %w", ErrUsage, err)
+	}
+
+	return p, nil
 }
 
 // sayGate prints the gate's commands of the checkout's kiln.json, which the pre-commit hook runs on each commit to
