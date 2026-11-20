@@ -225,12 +225,15 @@ receives each one instead:
 {"notify": ".kiln/notify"}
 ```
 
-- kiln runs it with `sh -c` at the top of the checkout kiln runs in, outside the sandbox, with your environment.
-  `$KILN_NOTICE` holds the notice, as JSON. What the program prints goes to kiln's output.
+- kiln reads the key at main's tip, and runs it with `sh -c` at the top of the checkout kiln runs in, outside the
+  sandbox, with your environment. A script it names is that checkout's copy. `$KILN_NOTICE` holds the notice, as
+  JSON. What the program prints goes to kiln's output.
 - The package doc of `internal/kiln` lists the notice's fields, when a build or a fix notifies, and how long kiln
   waits, under Notifications: `go doc ./internal/kiln`.
-- A program that fails, hangs or is missing changes no build's or fix's result. kiln says why in its output, which
-  `kiln monitor install`'s job writes to `.git/kiln/monitor.log`.
+- A program that fails, hangs or is missing changes no build's or fix's result. kiln says why in its output, then
+  prints the notification as OSC 9.
+- `kiln monitor install`'s job writes kiln's output to `.git/kiln/monitor.log`, where no terminal shows OSC 9. To
+  hear of a fix that job makes, name a `notify` program.
 - That job passes on only your `PATH` and `TMPDIR`, beside launchd's own `HOME`. Keep a secret, such as a
   webhook's URL, in a file under your home directory, never in the repository.
 
@@ -299,7 +302,7 @@ x: stopped: the gate still failed after its last round:
 - kiln signs each commit it makes when your git config sets `commit.gpgSign`. A key that would ask for its passphrase
   stops the landing, never waits: load the key with `ssh-add`, then queue or accept again.
 - `kiln tui` shows each build's spec as the commit it was queued at held it.
-- A monitor's fix that lands, stops, waits or asks for you notifies you too, from `kiln monitor run`.
+- A monitor's fix notifies you too, from `kiln monitor run`, as `notify` above says.
   `kiln monitor show <name>` shows how a monitor's last run ended, with its summary and the command to run next.
 
 ## Installing from source

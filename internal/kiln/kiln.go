@@ -316,15 +316,16 @@
 // stopped, waiting for UAT, or waiting on its branch, whichever kiln built it. A fix notifies once kiln monitor run
 // ends it landed, waiting on its branch, stopped, needs you, or session failed. A session that failed as the
 // monitor's last run did notifies nothing, so an expired sign-in notifies once per monitor. kiln monitor run notifies
-// each landing it takes up as it starts, or finds on main. A landing kiln accept makes notifies nothing, since the
-// developer reads its output.
+// each landing it takes up as it starts, or finds on main. A fix's landing that kiln accept makes notifies nothing,
+// since the developer reads its output.
 //
 // kiln.json's notify names the program that receives each notification. kiln reads it at main's tip:
 //
 //	{"notify": ".kiln/notify"}
 //
-// kiln runs it with sh -c in <top>, outside the sandbox, with kiln's environment, as it runs a gauge. $KILN_NOTICE
-// holds the notice, one JSON object:
+// kiln runs it with sh -c in <top>, outside the sandbox, with kiln's environment, as it runs a gauge. The program's
+// file is the one that checkout holds, so kiln notifies with no lock and no checkout. $KILN_NOTICE holds the notice,
+// one JSON object:
 //
 //	{"kind": "spec", "name": "x", "state": "waiting for UAT",
 //	 "summary": "4.2 min · $0.42 · 3 turns · 1 failed call\n0 of 1 round · …",
@@ -341,11 +342,12 @@
 //	commit   the full hash of the commit that landed the build or the fix on main; absent when none did
 //
 // What the program prints goes to kiln's output. kiln waits 30 s for it, then kills it and what it started. A program
-// that fails, runs past that, or is missing changes no build's or fix's result. kiln says why in its output. The job
-// of kiln monitor install writes that output to monitor.log.
+// that fails, runs past that, or is missing changes no build's or fix's result. kiln says why in its output.
 //
 // Without notify, kiln prints each notification in its output as OSC 9, which a terminal such as Ghostty shows. Its
-// body is "kiln: <name> <state>". kiln prints it whether or not the output is a terminal.
+// body is "kiln: <name> <state>". kiln prints it whether or not the output is a terminal. It prints it too when kiln
+// cannot read kiln.json at main's tip, or the program fails. So no notification is lost. The job of kiln monitor
+// install writes kiln's output to monitor.log, where no terminal shows OSC 9.
 //
 // A spec's build prints its summary after it notifies, from kiln's record, its ledger and git:
 //

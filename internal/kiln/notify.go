@@ -36,22 +36,23 @@ const (
 // notifyWait is how long kiln waits for the notify program before it kills the program, and what it started.
 const notifyWait = 30 * time.Second
 
-// notify hands n to the program kiln.json's notify names at main's tip. Without one, it prints n as OSC 9 on out. A
-// program that fails, hangs or is missing changes no result: kiln says so on out.
+// notify hands n to the program kiln.json's notify names at main's tip. It prints n as OSC 9 on out when kiln.json
+// names none, or is unreadable, or the program fails. So no notification is lost, and kiln says why on out.
 func (r *Repo) notify(ctx context.Context, n notice, out io.Writer) {
 	command, err := r.notifyCommand(ctx)
-	switch {
-	case err == nil && command == "":
-		// The body starts with kiln:, so a spec named 4 can't read as OSC 9;4, a progress bar Ghostty draws.
-		fmt.Fprintf(out, "\x1b]9;kiln: %s %s\a", n.Name, n.State)
-		return
-	case err == nil:
+	if err == nil && command != "" {
 		err = r.deliver(ctx, command, n, out)
+		if err == nil {
+			return
+		}
 	}
 
 	if err != nil {
 		fmt.Fprintf(out, "%s: kiln could not notify: %v\n", n.Name, err)
 	}
+
+	// The body starts with kiln:, so a spec named 4 can't read as OSC 9;4, a progress bar Ghostty draws.
+	fmt.Fprintf(out, "\x1b]9;kiln: %s %s\a", n.Name, n.State)
 }
 
 // notifyCommand is the command kiln.json's notify names at main's tip, or "".
