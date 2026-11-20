@@ -64,7 +64,8 @@ func TestMonitorConfig(t *testing.T) {
 				raw = []byte(tc.settings)
 			}
 
-			_, got := c.readMonitor(cmpOr(tc.name, "deps"), strings.Fields(tc.files), raw)
+			name := cmpOr(tc.name, "deps")
+			_, got := c.readMonitor(name, monitor{Name: name}.path(""), strings.Fields(tc.files), raw)
 			wantRefused(t, got, tc.refused)
 		})
 	}

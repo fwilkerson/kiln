@@ -2,6 +2,7 @@ package kiln
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -32,6 +33,7 @@ func TestMonitorAdd(t *testing.T) {
 		there          bool
 		refused, usage bool
 		want           []string
+		says           string // a part of the refusal
 	}{
 		"a monitor kiln ships": {source: "bugs", want: []string{"bugs/agent.md", "bugs/check*", "bugs/monitor.json"}},
 		"one under its preset": {source: "go/docs", want: []string{"docs/agent.md", "docs/check*", "docs/monitor.json"}},
@@ -40,9 +42,10 @@ func TestMonitorAdd(t *testing.T) {
 		"a preset, which is no monitor": {source: "go", refused: true, usage: true},
 		"a name kiln ships nothing of":  {source: "deps", refused: true, usage: true},
 		"a path to no directory":        {source: "./nowhere", refused: true, usage: true},
-		"a monitor kiln could not run":  {source: team + "/broken", refused: true},
-		"an agent kiln could not read":  {source: team + "/vague", refused: true},
-		"a name already there":          {source: "bugs", there: true, refused: true, want: []string{"bugs/command*"}},
+		"a monitor kiln could not run": {source: team + "/broken", refused: true,
+			says: team + "/broken/ holds no command and no agent.md"},
+		"an agent kiln could not read": {source: team + "/vague", refused: true, says: team + "/vague/agent.md, its effort"},
+		"a name already there":         {source: "bugs", there: true, refused: true, want: []string{"bugs/command*"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := &Repo{top: t.TempDir()}
@@ -52,9 +55,10 @@ func TestMonitorAdd(t *testing.T) {
 			}
 
 			err := r.MonitorAdd(tc.source, io.Discard)
-			if (err != nil) != tc.refused || errors.Is(err, ErrUsage) != tc.usage {
-				t.Fatalf("kiln monitor add %s answers %v; want a refusal %v, as a usage error %v", tc.source, err,
-					tc.refused, tc.usage)
+			says := strings.Contains(fmt.Sprint(err), tc.says)
+			if !claim.Holds((err != nil) == tc.refused, errors.Is(err, ErrUsage) == tc.usage, says) {
+				t.Fatalf("kiln monitor add %s answers %v; want a refusal %v, as a usage error %v, that says %q",
+					tc.source, err, tc.refused, tc.usage, tc.says)
 			}
 
 			if got := filesUnder(t, filepath.Join(r.top, monitorsDir)); !slices.Equal(got, tc.want) {
@@ -86,7 +90,7 @@ func TestShippedMonitors(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if _, refused := c.readMonitor(Spec(path.Base(name)), files, settings); len(refused) > 0 {
+		if _, refused := c.readMonitor(Spec(path.Base(name)), name, files, settings); len(refused) > 0 {
 			t.Errorf("kiln ships %s, which it could not run: %v", name, refused)
 		}
 

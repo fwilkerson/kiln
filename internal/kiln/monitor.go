@@ -189,7 +189,7 @@ func (c config) readDir(ctx context.Context, f files, d monitorDir) (monitor, er
 		}
 	}
 
-	m, refused := c.readMonitor(d.name, d.files, raw)
+	m, refused := c.readMonitor(d.name, monitor{Name: d.name}.path(""), d.files, raw)
 	m.tree = d.tree
 	if d.plain != "" {
 		refused = append(refused, refusal{fmt.Sprintf("%s holds %s without the executable bit, so kiln cannot run "+
@@ -199,16 +199,16 @@ func (c config) readDir(ctx context.Context, f files, d monitorDir) (monitor, er
 	return m, refused.err()
 }
 
-// readMonitor reads the monitor name from the files its directory holds, and from raw, its monitor.json or nil. c is
-// kiln.json. It refuses each rule of the package doc that the monitor breaks, so kiln could not run it.
-func (c config) readMonitor(name Spec, files []string, raw []byte) (monitor, refusals) {
+// readMonitor reads the monitor name from the files its directory, dir, holds, and from raw, its monitor.json or nil.
+// c is kiln.json. It refuses each rule of the package doc that the monitor breaks, so kiln could not run it. Each
+// refusal names dir, which kiln monitor add gives as its source.
+func (c config) readMonitor(name Spec, dir string, files []string, raw []byte) (monitor, refusals) {
 	m := monitor{Name: name, Hours: defaultHours, command: slices.Contains(files, commandScript),
 		agent: slices.Contains(files, monitorAgent)}
-	about := m.path("") + "/"
 	if raw != nil {
 		// json/v2 matches a key's case exactly, as kiln.json is read.
 		if err := jsonv2.Unmarshal(raw, &m.settings, jsonv2.RejectUnknownMembers(true)); err != nil {
-			return m, refusals{{fmt.Sprintf("%s: %v", m.path(settingsFile), err),
+			return m, refusals{{fmt.Sprintf("%s: %v", path.Join(dir, settingsFile), err),
 				"fix its JSON, and name only the keys the package doc lists under Monitors"}}
 		}
 	}
@@ -219,7 +219,7 @@ func (c config) readMonitor(name Spec, files []string, raw []byte) (monitor, ref
 		}
 	}
 
-	return m, c.monitorRefusals(m, files).about(about)
+	return m, c.monitorRefusals(m, files).about(dir + "/")
 }
 
 // monitorRefusals say why kiln may not run m, whose directory holds files.

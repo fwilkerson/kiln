@@ -46,7 +46,7 @@ func (r *Repo) MonitorAdd(source string, out io.Writer) error {
 		return err
 	}
 
-	m, files, err := r.addable(from, Spec(filepath.Base(source)))
+	m, files, err := r.addable(from, source)
 	if err != nil {
 		return err
 	}
@@ -247,9 +247,11 @@ func shippedNames() []string {
 	return slices.Compact(names)
 }
 
-// addable reads the monitor name from the directory from, and answers it with the files the directory holds. It
-// refuses a monitor kiln could not run, by the checkout's kiln.json, and a name the checkout's .kiln/monitors/ holds.
-func (r *Repo) addable(from fs.FS, name Spec) (monitor, []string, error) {
+// addable reads the monitor source names from the directory from, and answers it with the files the directory holds.
+// It refuses a monitor kiln could not run, by the checkout's kiln.json, naming source. It refuses a name the
+// checkout's .kiln/monitors/ holds.
+func (r *Repo) addable(from fs.FS, source string) (monitor, []string, error) {
+	dir := strings.TrimSuffix(source, "/")
 	c, err := r.checkoutConfig()
 	if err != nil {
 		return monitor{}, nil, err
@@ -260,9 +262,9 @@ func (r *Repo) addable(from fs.FS, name Spec) (monitor, []string, error) {
 		return monitor{}, nil, err
 	}
 
-	m, refused := c.readMonitor(name, files, settings)
+	m, refused := c.readMonitor(Spec(path.Base(dir)), dir, files, settings)
 	if m.agent {
-		if err := refused.add(readableAgent(from, m)); err != nil {
+		if err := refused.add(readableAgent(from, dir)); err != nil {
 			return m, nil, err
 		}
 	}
@@ -277,9 +279,9 @@ func (r *Repo) addable(from fs.FS, name Spec) (monitor, []string, error) {
 	return m, files, nil
 }
 
-// readableAgent refuses the agent.md of m, in the directory from, where kiln could not read it. Each refusal names
-// the file.
-func readableAgent(from fs.FS, m monitor) error {
+// readableAgent refuses the agent.md in the directory from, where kiln could not read it. Each refusal names the file
+// in dir, the directory as kiln monitor add was given it.
+func readableAgent(from fs.FS, dir string) error {
 	raw, err := fs.ReadFile(from, monitorAgent)
 	if err != nil {
 		return err
@@ -287,7 +289,7 @@ func readableAgent(from fs.FS, m monitor) error {
 
 	_, err = parseAgent(string(raw))
 	if refused, ok := errors.AsType[refusals](err); ok {
-		return refused.about(m.path(monitorAgent) + ",")
+		return refused.about(path.Join(dir, monitorAgent) + ",")
 	}
 
 	return err
