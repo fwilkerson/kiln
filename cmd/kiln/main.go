@@ -21,16 +21,17 @@
 //	kiln doctor [<name>]     print each problem in the project's setup, with its fix; or a spec's form too
 //	kiln ledger [--kind <kind>] [--name <name>] [--last <n>]
 //	                         print what kiln's ledger holds, one JSON object a line, for a script to read
-//	kiln help                print this usage, as kiln --help and kiln -h do
+//	kiln help [<topic>]      print this usage and the topics of kiln's docs, as kiln --help and kiln -h do; or the
+//	                         part of kiln's docs a topic names, such as kiln help monitors
 //
-// Each refuses a spec in a state it does not take, as go doc ./internal/kiln shows.
+// Each refuses a spec in a state it does not take, as kiln help specs shows.
 //
-// A build that ends stopped, waiting for UAT, or waiting on its branch notifies the developer. go doc ./internal/kiln
-// says how, under Notifications. Then the kiln that built it sums the build up, and says what to run next.
+// A build that ends stopped, waiting for UAT, or waiting on its branch notifies the developer. kiln help
+// notifications says how. Then the kiln that built it sums the build up, and says what to run next.
 //
 // kiln tui draws only on a terminal. With its output elsewhere, it draws nothing, and refuses.
 //
-// kiln ledger prints each kind of line, and each field, that go doc ./internal/kiln lists under kiln ledger.
+// kiln ledger prints each kind of line, and each field, that kiln help kiln-ledger lists.
 //
 // kiln runs three commands of its own, which the developer never types:
 //
@@ -40,7 +41,8 @@
 //
 // kiln complete lists kiln's commands, one per line. With a command, it lists the names that command would not refuse.
 // For accept and reject, those include the waiting fixes. For monitor run and monitor show, they are the monitors. For
-// monitor add, they are the monitors kiln ships that fit the preset .kiln/init.json records.
+// monitor add, they are the monitors kiln ships that fit the preset .kiln/init.json records. For help, they are the
+// topics of kiln's docs.
 //
 // kiln exits 0 when the command did what it says, and 1 when it refused or failed. kiln help prints the usage to
 // stdout. A usage error exits 2, and prints the usage to stderr under a line that names the mistake. A kiln hook
@@ -83,11 +85,13 @@ const usage = `usage:
   kiln doctor [<name>]     print each problem in the project's setup, with its fix; or a spec's form too
   kiln ledger [--kind <kind>] [--name <name>] [--last <n>]
                            print what kiln's ledger holds, one JSON object a line, for a script to read
-  kiln help                print this usage, as kiln --help and kiln -h do
+  kiln help [<topic>]      print this usage and the topics of kiln's docs, as kiln --help and kiln -h do; or the
+                           part of kiln's docs a topic names, such as kiln help monitors
 `
 
 // commands are the developer's commands, as kiln complete lists them.
-var commands = []string{"init", "queue", "fire", "status", "tui", "accept", "reject", "monitor", "doctor", "ledger"}
+var commands = []string{"init", "queue", "fire", "status", "tui", "accept", "reject", "monitor", "doctor", "ledger",
+	"help"}
 
 // onRepo holds each of the developer's commands, which act on the repository in the working directory.
 var onRepo = map[string]repoCommand{
@@ -157,8 +161,7 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 	var err error
 	switch command {
 	case "help", "--help", "-h":
-		fmt.Fprint(stdout, usage)
-		return 0
+		err = help(args, stdout)
 	case "hook":
 		err = hook(args, stdin, stdout)
 	case "precommit":
@@ -303,7 +306,8 @@ func nameOrNone(args []string) (kiln.Spec, error) {
 }
 
 // complete lists kiln's commands, or with a command, the names it takes. kiln monitor takes its own commands. kiln
-// monitor run and show take the monitors' names. kiln monitor add takes the names of those kiln ships that fit.
+// monitor run and show take the monitors' names. kiln monitor add takes the names of those kiln ships that fit. kiln
+// help takes the topics of kiln's docs.
 func complete(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) > 2 {
 		return usageError("takes a command, and its subcommand")
@@ -321,13 +325,15 @@ func complete(ctx context.Context, args []string, out io.Writer) error {
 	return nil
 }
 
-// takes is kiln's commands, or with a command, the spec names it takes.
+// takes is kiln's commands, or with a command, the names it takes.
 func takes(ctx context.Context, args []string) ([]string, error) {
 	switch {
 	case len(args) == 0:
 		return commands, nil
 	case len(args) == 1 && args[0] == "monitor":
 		return []string{"add", "install", "run", "show"}, nil
+	case len(args) == 1 && args[0] == "help":
+		return kiln.Topics(), nil
 	}
 
 	r, err := kiln.Open(ctx, ".", os.Environ())
@@ -336,6 +342,19 @@ func takes(ctx context.Context, args []string) ([]string, error) {
 	}
 
 	return r.Takes(ctx, strings.Join(args, " "))
+}
+
+// help prints the usage, then the topics of kiln's docs. With a topic, it prints that part of the docs alone.
+func help(args []string, out io.Writer) error {
+	switch len(args) {
+	case 0:
+		fmt.Fprintf(out, "%s\ntopics, for kiln help <topic>:\n  %s\n", usage, strings.Join(kiln.Topics(), " "))
+		return nil
+	case 1:
+		return kiln.Help(out, args[0])
+	}
+
+	return usageError("takes one topic, or none")
 }
 
 // hook answers Claude Code's PreToolUse call, for the session its arguments name. A hook that cannot read its call

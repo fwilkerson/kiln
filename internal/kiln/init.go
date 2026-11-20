@@ -43,44 +43,14 @@ const initFile = kilnDir + "/init.json"
 
 // InitOptions are what the developer chose for kiln init.
 type InitOptions struct {
-	// Preset names the preset Init writes: go, python, typescript, or a directory laid out as one. A directory's
-	// path starts with a dot or a slash, and a relative one is from the working directory. "" means the preset
-	// .kiln/init.json names. Without one there, Init picks a built-in preset by the repository's files, as Init says.
+	// Preset names the preset Init writes, as the package doc says under Presets. "" means the preset .kiln/init.json
+	// names, or else the built-in one the repository's files match.
 	Preset string
 }
 
-// Init brings .kiln/ in the checkout up to date with kiln's defaults, as opt's preset fills them.
-//
-// With no preset named or recorded, Init picks the one built-in preset whose files the checkout's top holds, every
-// one. Each built-in preset lists those files in its file detect, such as go.mod for go. Init says which preset it
-// picked, and by which files. It refuses when no preset matches, or more than one, and names each one's files.
-//
-// Init writes each default that .kiln/ lacks, but a reviewer the project deleted from its reviewers folder. A folder
-// holding only a .gitkeep keeps no reviewer. A file the project left as Init last wrote it takes the new default. Into
-// a file the project changed, git merge-file merges the change between the last default and the new one. It leaves each
-// conflict between the usual markers, and names the file. With no record of the last default, each difference from the
-// new one is a conflict. It writes kiln.schema.json over, since kiln owns it. Init stages and commits nothing. It
-// records each default of the preset, and the preset, in .kiln/init.json.
-//
-// Init brings each monitor kiln monitor add recorded up to date with its source the same way. It writes a file the
-// source gains as kiln monitor add would. A monitor whose directory the project deleted stays deleted, and leaves the
-// record. One whose source Init cannot read stays as it is, and Init says why.
-//
-// kiln.json is the project's settings: its gate, and what a session reaches. A merge could change either unread, so
-// Init never merges kiln.json. A kiln.json that is there gains only $schema and rounds, the keys every preset
-// shares, where it lacks them.
-//
-// Init links /shape, and each reviewer's file in .kiln/reviewers/, into .claude/. It links each where .claude/ holds
-// nothing of its name, or a link that reaches nothing. It replaces a link to a reviewer's old file in
-// .kiln/agents/, and says that file is unused. It removes each link in .claude/agents/ to a reviewer's file that is
-// gone. It says so when the repository has no branch main, which each command that reads main then refuses.
-// It prints kiln.json's gate, the commands the pre-commit hook runs on each commit to main. The hook refuses a commit
-// to main that fails them. Last, Init installs the hook, or says why it installed none, as installHook says.
-//
-// Before it writes anything, Init refuses a preset it does not know or cannot use. A preset's kiln.json may lack
-// $schema and rounds, and Init then adds each as sharedDefaults holds it. Init refuses a reviewer Claude Code could not
-// run before it writes anything too. Such a reviewer's frontmatter has no description, or a name other than its file's,
-// without .md. It refuses the checkout's kiln.json then, where kiln could not use it.
+// Init brings .kiln/ in the checkout up to date with kiln's defaults, as opt's preset fills them. The package doc
+// says how, under Presets. Init adds the keys a preset's kiln.json lacks as sharedDefaults holds them. Last, it
+// installs the hook, or says why it installed none, as installHook says.
 func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	last, err := r.lastInit()
 	if err != nil {

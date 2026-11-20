@@ -3,7 +3,8 @@
 # The zsh completion of kiln. kiln answers both lists, so the rules of what each command takes live once, in Go:
 # kiln complete lists kiln's commands, and kiln complete <command> the spec names that command takes.
 # kiln complete monitor lists its commands, kiln complete monitor run the monitors, and kiln complete monitor add the
-# monitors kiln ships that fit the project's preset. kiln monitor add takes a directory too.
+# monitors kiln ships that fit the project's preset. kiln monitor add takes a directory too. kiln complete help lists
+# the topics of kiln help.
 local -a found expl
 case $CURRENT in
   2)

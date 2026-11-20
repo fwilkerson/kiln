@@ -146,7 +146,7 @@ A project makes kiln its own in five places. Each is a file or a directory, and 
 says the rest of each.
 
 **A preset** is what `kiln init` writes into `.kiln/`. A team keeps its own in a directory, laid out as kiln's
-[built-in presets](internal/kiln/presets/), as [Presets](docs/reference.md#presets) shows:
+[built-in presets](internal/kiln/presets/). `kiln help presets` says what each file holds:
 
 ```console
 $ ls ../presets/web
@@ -296,7 +296,8 @@ kiln monitor show <name> show how a monitor's last run ended, then wait for retu
 kiln doctor [<name>]     print each problem in the project's setup, with its fix; or a spec's form too
 kiln ledger [--kind <kind>] [--name <name>] [--last <n>]
                          print what kiln's ledger holds, one JSON object a line, for a script to read
-kiln help                print this usage, as kiln --help and kiln -h do
+kiln help [<topic>]      print this usage and the topics of kiln's docs, as kiln --help and kiln -h do; or the
+                         part of kiln's docs a topic names, such as kiln help monitors
 ```
 
 ## Read more
@@ -304,7 +305,7 @@ kiln help                print this usage, as kiln --help and kiln -h do
 - [kiln on one page](https://fwilkerson.github.io/kiln/): what kiln offers, and the monitors it runs on itself.
   `docs/one-page.txt` is its source, for [onepage](https://github.com/fwilkerson/onepage).
 - [docs/reference.md](docs/reference.md): each key of `kiln.json`, the agents' files, and what kiln records.
-- `go doc ./internal/kiln`: every state a spec moves through, as a diagram, and what each command refuses.
+- `kiln help`: the topics of kiln's docs. `kiln help specs` draws every state a spec moves through.
 - [PRODUCT.md](PRODUCT.md): each spec kiln was built from. kiln builds itself.
 
 ## Working on kiln

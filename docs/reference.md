@@ -19,24 +19,22 @@ commands in use.
   monitors/<name>/           a monitor: its check or gauge, its command or agent, and its monitor.json
 ```
 
-`kiln init` writes these from a preset, all but the monitors, and links `/shape` and each reviewer into
-`.claude/`. The project owns them from then on, but for `kiln.schema.json`, which `kiln init` writes over each
-time. Run `kiln init` again once you upgrade kiln: it merges kiln's new defaults with your edits, in the working
-tree, for you to read and commit. `kiln status` says when `.kiln/` on main is behind. `kiln.json` stays yours:
-kiln init adds only `$schema` and `rounds`, where the file lacks them. `go doc ./internal/kiln Repo.Init` says how
-it merges each file. `kiln monitor add` writes a monitor, as Monitors says.
+`kiln init` writes these from a preset, all but the monitors, and links `/shape` and each reviewer into `.claude/`. The
+project owns them from then on, but for `kiln.schema.json`, which `kiln init` writes over each time. Run `kiln init`
+again once you upgrade kiln: it merges kiln's new defaults with your edits, in the working tree, for you to read and
+commit. `kiln status` says when `.kiln/` on main is behind. `kiln.json` stays yours: kiln init adds only `$schema` and
+`rounds`, where the file lacks them. `kiln help presets` says how it merges each file. `kiln monitor add` writes a
+monitor, as Monitors says.
 
 A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
 as a new agent, is yours to commit: a build names it in its last reply instead of writing it.
 
 ## Presets
 
-A preset of your own is a directory laid out as kiln's in [`internal/kiln/presets/`](../internal/kiln/presets/):
-`kiln.json`, then `build-checks.md`, `verify-tests.md` and `audit-tests.md`, the "Tailor this" sections of the build,
-verify and audit agents. A built-in preset's `detect` lists the files that mark a repository as its own, by which
-`kiln init` picks it; `kiln init` picks among its own presets alone. Keep yours in a repository of its own, and name it
-with `--preset` by a path that starts with `.` or `/`, as in `kiln init --preset ../presets/go`.
-`go doc ./internal/kiln InitOptions` says how kiln reads the path, and finds it again on the next run.
+A preset of your own is a directory laid out as kiln's in [`internal/kiln/presets/`](../internal/kiln/presets/). Keep
+yours in a repository of its own, and name it with `--preset` by a path that starts with `.` or `/`, as in
+`kiln init --preset ../presets/go`. `kiln help presets` says what each file holds, what each Markdown file's text
+replaces, and how kiln reads the path and finds it again on the next run.
 
 ## kiln.json
 
@@ -106,7 +104,7 @@ session ──▶ gate ──passes──▶ audit ──no findings──▶ la
 - They may listen on a local port, so a test that starts a server runs in a session.
 - An MCP server runs outside the sandbox. So does each script kiln runs: the gate's commands, a gauge's, a monitor's
   scripts and the `notify` program, each with the developer's environment. `$KILN` holds the kiln that runs it, as
-  `go doc ./internal/kiln` says under Files. The gate runs the code a session wrote.
+  `kiln help files` says. The gate runs the code a session wrote.
 - A session's file tools are held by kiln's hook, not by the sandbox.
 
 ### acceptance
@@ -208,8 +206,7 @@ receives each one instead:
 - kiln reads the key at main's tip, and runs it with `sh -c` at the top of the checkout kiln runs in, outside the
   sandbox, with your environment. A script it names is that checkout's copy. `$KILN_NOTICE` holds the notice, as
   JSON. What the program prints goes to kiln's output.
-- The package doc of `internal/kiln` lists the notice's fields, when a build or a fix notifies, and how long kiln
-  waits, under Notifications: `go doc ./internal/kiln`.
+- `kiln help notifications` lists the notice's fields, when a build or a fix notifies, and how long kiln waits.
 - A program that fails, hangs or is missing changes no build's or fix's result. kiln says why in its output, then
   prints the notification as OSC 9.
 - `kiln monitor install`'s job writes kiln's output to `.git/kiln/monitor.log`, where no terminal shows OSC 9. To
@@ -245,9 +242,9 @@ the output says why.
 - It bounds each command kiln runs for you: the gate's, a monitor's check and command, a gauge, and a `writable`
   command. It bounds how long a session may print nothing, too. The `notify` program has a wait of its own, as `notify`
   above says.
-- Past it, kiln kills a command with its process group, and a session with each process it started. The build or
-  fix stops, or the check couldn't run, with words that name what ran past, the limit and this key. The package doc
-  of `internal/kiln` gives the default, and what each ends in, under Hangs: `go doc ./internal/kiln`.
+- Past it, kiln kills a command with its process group, and a session with each process it started. The build or fix
+  stops, or the check couldn't run, with words that name what ran past, the limit and this key. `kiln help hangs` gives
+  the default, and what each ends in.
 - It bounds a hang, not a slow run, so set it well above your gate's slowest run on a loaded machine. A suite that
   took 2 minutes alone took up to 27 with eight sessions beside it.
 
@@ -262,7 +259,7 @@ monitor in the working tree, before you commit it, and prints each refusal `kiln
 `kiln monitor add bugs` writes the `bugs` monitor kiln ships into `.kiln/monitors/bugs/`, and
 `kiln monitor add ../monitors/deps` the one in that directory, named as `--preset` names one. Commit what it writes on
 main, where kiln reads it. The project owns it from then on. `kiln monitor add` with neither lists the monitors kiln
-ships, and the preset each fits. `go doc ./internal/kiln` says what `kiln monitor add` refuses, under `MonitorAdd`.
+ships, and the preset each fits. `kiln help monitors` says what `kiln monitor add` refuses.
 
 `kiln monitor add` records what it wrote in `.kiln/init.json`, with where it came from. When kiln ships a newer
 `bugs`, or your team changes `../monitors/deps`, `kiln status` says the monitor is behind. `kiln init` then merges
@@ -279,7 +276,7 @@ the new version with your edits, as it merges the defaults. A monitor you delete
 
 | Key      | What it holds                                                                                       |
 |----------|-----------------------------------------------------------------------------------------------------|
-| `hours`  | How often it runs, in whole hours. Its range and default: `go doc ./internal/kiln`, under Monitors. |
+| `hours`  | How often it runs, in whole hours. Its range and default: `kiln help monitors`.                     |
 | `gates`  | `false` keeps the check or gauge out of the fix's gate.                                             |
 | `accept` | `true` keeps each fix on its branch until `kiln accept <name>`.                                     |
 | `tests`  | `true` lets a fix write under each `acceptance` path's part before `{spec}`.                        |
@@ -302,8 +299,8 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
   run, and starts no fix. So does a gauge kiln could not read.
 - The agent's first message holds what the check or gauge printed, and what the gate printed after `command`. Then
   it says to fix what the monitor found, as the agent's instructions say: the body of `agent.md`.
-- The package doc of `internal/kiln` says when a monitor is due, under Monitors, and when a check or gauge that ran
-  past `timeout` holds it, under Hangs: `go doc ./internal/kiln`.
+- `kiln help monitors` says when a monitor is due, and `kiln help hangs` when a check or gauge that ran past `timeout`
+  holds it.
 - A fix is a build with no spec. The gate holds it, with the check or gauge added unless `"gates": false`. That
   setting is for a check that reads something a fix cannot change until it is deployed.
 - A fix never writes under `.kiln/`. Without `"tests": true`, it never writes under an `acceptance` path's part
@@ -312,17 +309,17 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
   changed, but in the landing of a fix you accepted, where kiln keeps the fix, and `kiln status` shows the report.
 - An agent titles the commit that lands its fix with the last line of its reply: `{"title": "fix(tui): ..."}`, a
   Conventional Commit of at most 72 characters. Without one, the title is `fix(<monitor>): land the monitor's fix`.
-- When main moved past a fix that waits for `kiln accept`, the accept may send the fix back to its session. The
-  package doc of `internal/kiln` says how that landing goes, under Monitors: `go doc ./internal/kiln`.
+- When main moved past a fix that waits for `kiln accept`, the accept may send the fix back to its session.
+  `kiln help monitors` says how that landing goes.
 - A check's verdict that adds `"drain": true` drains a queue that each fix takes one item from, such as a folder of
   bug reports. After the fix lands, kiln runs the check again at once, due or not, and starts the next fix. The run
   ends when the check asks for no fix, when the monitor is held, or when a fix does not land.
-- `kiln monitor run` runs beside `kiln fire`, which builds specs meanwhile, but never beside another
-  `kiln monitor run`. So a long run, such as one that drains, is never joined by the next hour's. The package doc of
-  `internal/kiln` says when each refuses, and how the two share the gate, under Lanes: `go doc ./internal/kiln`.
+- `kiln monitor run` runs beside `kiln fire`, which builds specs meanwhile, but never beside another `kiln monitor run`.
+  So a long run, such as one that drains, is never joined by the next hour's. `kiln help lanes` says when each refuses,
+  and how the two share the gate.
 
-A monitor is held, and starts no fix, by how its last fix ended, until a change releases it. The package doc of
-`internal/kiln` lists each hold and what releases it, under Monitors: `go doc ./internal/kiln`.
+A monitor is held, and starts no fix, by how its last fix ended, until a change releases it. `kiln help monitors` lists
+each hold and what releases it.
 
 ## Agents
 
@@ -374,9 +371,8 @@ each record already written that the new code would refuse or read wrong, with t
 End with one line: `read N files, found M`.
 ```
 
-- `name` is the file's name without `.md`, and `description` says when to run it. Claude Code runs a subagent only
-  with both. `go doc ./internal/kiln Repo.Init` says which reviewers `kiln init` refuses, and when it writes the
-  three.
+- `name` is the file's name without `.md`, and `description` says when to run it. Claude Code runs a subagent only with
+  both. `kiln help presets` says which reviewers `kiln init` refuses, and when it writes the three.
 - `/shape` reads two keys of its own, `uncontested` and `rerun`. Claude Code ignores both. Step 4 of
   `.kiln/skills/shape/SKILL.md` says what each does.
 - To remove a reviewer, delete its file and run `kiln init`, which removes its link. To keep none, leave a
@@ -425,7 +421,7 @@ and for the spec names each command would not refuse.
 ```
 
 `ledger.jsonl` is kiln's own, and changes with kiln. A script reads it through `kiln ledger`, whose lines are a
-contract. `go doc ./internal/kiln` lists each kind of line, each field, and what each option keeps, under kiln ledger.
+contract. `kiln help kiln-ledger` lists each kind of line, each field, and what each option keeps.
 
 ```console
 $ kiln ledger --kind build --last 1 | jq .

@@ -14,7 +14,8 @@ import (
 	"testing"
 )
 
-var writeSchema = flag.Bool("write", false, "write defaults/kiln.schema.json from config's fields and their docs")
+// writeFiles is -write, which writes each file a test holds equal to the code, in place of the test.
+var writeFiles = flag.Bool("write", false, "write defaults/kiln.schema.json and help.txt")
 
 // TestSchema fails while defaults/kiln.schema.json differs from the JSON Schema of config, built from its fields and
 // their docs. An editor reads it to complete and check kiln.json.
@@ -32,7 +33,7 @@ func TestSchema(t *testing.T) {
 	}
 
 	got.WriteByte('\n')
-	if *writeSchema {
+	if *writeFiles {
 		if err := os.WriteFile(schemaDefault, got.Bytes(), 0o644); err != nil {
 			t.Fatal(err)
 		}

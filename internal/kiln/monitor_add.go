@@ -22,14 +22,8 @@ var shipped embed.FS
 // shippedDir is the directory of shipped that holds the monitors.
 const shippedDir = "monitors"
 
-// MonitorAdd copies a monitor into .kiln/monitors/<name>/ in the checkout, for the developer to commit on main. source
-// names a monitor kiln ships, such as bugs. One that needs a language's tools sits under its preset's name, such as
-// go/docs. A source that starts with a dot or a slash is a directory. The monitor's name is source's last element.
-// It answers ErrUsage for a name kiln ships no monitor of, and for a path to no directory. Before it writes, it
-// refuses a checkout with no kiln.json, and a monitor kiln could not run by that kiln.json. It refuses an agent.md
-// kiln could not read, and a name already there. It refuses a record of kiln init it cannot read. It writes each
-// script kiln runs with the executable bit. It records the monitor in .kiln/init.json, with its source, where kiln
-// init brings it up to date. A directory's path is recorded from the checkout's top.
+// MonitorAdd copies the monitor source names into .kiln/monitors/<name>/ in the checkout, as the package doc says
+// under Monitors. It answers ErrUsage for a name kiln ships no monitor of, and for a path to no directory.
 func (r *Repo) MonitorAdd(source string, out io.Writer) error {
 	from, err := monitorSource(source)
 	if err != nil {

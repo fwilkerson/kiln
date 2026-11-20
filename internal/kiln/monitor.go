@@ -257,7 +257,7 @@ func (c config) readMonitor(name Spec, dir string, files []string, raw []byte) (
 		// json/v2 matches a key's case exactly, as kiln.json is read.
 		if err := jsonv2.Unmarshal(raw, &m.settings, jsonv2.RejectUnknownMembers(true)); err != nil {
 			return m, refusals{{fmt.Sprintf("%s: %v", path.Join(dir, settingsFile), err),
-				"fix its JSON, and name only the keys the package doc lists under Monitors"}}
+				"fix its JSON, and name only the keys kiln help monitors lists"}}
 		}
 	}
 

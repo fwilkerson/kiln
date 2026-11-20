@@ -14,6 +14,8 @@
 //	names, err := r.Takes(ctx, "queue")       // the specs kiln queue would not refuse
 //	err = r.Ledger(os.Stdout, kiln.LedgerOptions{Kind: "gate"}) // each gate, one JSON object a line
 //
+// # Specs
+//
 // Where each command moves a spec:
 //
 //	(no record) ─queue─▶ queued ─fire─▶ building
@@ -52,10 +54,8 @@
 //
 // # Files
 //
-// A project tells kiln how its builds run in .kiln/, on main. kiln init starts it from a preset: go, python,
-// typescript, or a directory laid out as one. It picks a built-in preset by the repository's files, unless the
-// developer names one. A preset is kiln.json and the "Tailor this" sections of the build, verify and audit agents.
-// Run again, kiln init brings .kiln/ up to date with the kiln that runs it, as Init says:
+// A project tells kiln how its builds run in .kiln/, on main. kiln init writes it from a preset, and brings it up to
+// date, as Presets says:
 //
 //	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
 //	                            the MCP servers a session calls, the gauges, the workflow, where the acceptance
@@ -106,6 +106,47 @@
 // A script is a command kiln runs from the project's files. That is each command of the gate, writable and a gauge,
 // each script of a monitor, and the notify program. $KILN holds the path of the kiln that runs each. A script runs
 // "$KILN", since the PATH of a launchd job or a terminal may name another kiln, or none.
+//
+// # Presets
+//
+// kiln init writes .kiln/ from a preset, the part of it that differs by language. kiln ships go, python and
+// typescript. A preset of your own is a directory laid out as one, named by a path that starts with . or /. A relative
+// path is from the working directory. Any other name is one kiln ships. kiln init records the preset in
+// .kiln/init.json, and takes it again when the developer names none. It records a directory by its path from the
+// checkout's top. With none named or recorded, it picks the one built-in preset whose detect files the checkout's top
+// holds. It says which it picked, and by which files. It refuses when none matches, or more than one, and names each
+// one's files. A preset's directory holds:
+//
+//	kiln.json         the project's kiln.json, which kiln init writes where the checkout has none
+//	build-checks.md   the text under "How this project checks its work" in .kiln/agents/build.md
+//	verify-tests.md   the text under "Acceptance tests" in .kiln/agents/verify.md
+//	audit-tests.md    the text under "Acceptance tests" in .kiln/agents/audit.md
+//	detect            a built-in preset's alone: the files that mark a repository as its own, split by white space
+//
+// Each Markdown file replaces the marker line of its name, without .md, in the default agent's file. The marker for
+// build-checks.md is <!-- kiln:preset build-checks -->, below its section's "Tailor this" comment. A preset's kiln.json
+// may lack $schema and rounds. kiln init then adds "$schema": "./kiln.schema.json" and "rounds": 3, as for a built-in
+// preset. Before it writes anything, kiln init refuses a preset it does not know or cannot use. It refuses a reviewer
+// Claude Code could not run then too. Such a reviewer's frontmatter has no description, or a name other than its
+// file's, without .md. It refuses the checkout's kiln.json then, where kiln could not use it.
+//
+// Run again, kiln init brings .kiln/ up to date with the kiln that runs it. It writes each default .kiln/ lacks, but a
+// reviewer the project deleted from .kiln/reviewers/. A reviewers folder holding only a .gitkeep keeps no reviewer. A
+// file the project left as kiln init last wrote it takes the new default. Into a file the project changed, git
+// merge-file merges the change between the last default and the new one. It leaves each conflict between the usual
+// markers, and names the file. With no record of the last default, each difference from the new one is a conflict.
+// kiln init writes kiln.schema.json over, since kiln owns it. It records each default of the preset, and the preset, in
+// .kiln/init.json. It stages and commits nothing. kiln.json is the project's settings: its gate, and what a session
+// reaches. A merge could change either unread, so kiln init never merges kiln.json. A kiln.json that is there gains
+// only $schema and rounds, where it lacks them. kiln init brings each monitor kiln monitor add recorded up to date the
+// same way, as Monitors says.
+//
+// kiln init links /shape, and each reviewer's file in .kiln/reviewers/, into .claude/. It links each where .claude/
+// holds nothing of its name, or a link that reaches nothing. It replaces a link to a reviewer's old file in
+// .kiln/agents/, and says that file is unused. It removes each link in .claude/agents/ to a reviewer's file that is
+// gone. It says so when the repository has no branch main, which each command that reads main then refuses. It prints
+// kiln.json's gate, the commands the pre-commit hook runs on each commit to main. The hook refuses a commit to main
+// that fails them. Last, kiln init installs the hook, or says why it installed none.
 //
 // # Agents
 //
@@ -215,6 +256,17 @@
 // monitor's name a gauge in kiln.json has. A refusal holds back its one monitor: kiln monitor run runs the rest, and
 // says why. It notifies once for each state of that monitor's directory. kiln status and kiln tui show it refused,
 // with why. kiln monitor run with its name refuses, and says why.
+//
+// kiln monitor add copies a monitor into .kiln/monitors/<name>/, for the developer to commit on main. It takes the
+// name of one kiln ships, such as bugs. One that needs a language's tools sits under its preset's name, such as
+// go/docs. It takes a directory too, by a path that starts with . or /. The monitor's name is the last element of
+// either. Before it writes, it refuses a checkout with no kiln.json, and a monitor kiln could not run by that
+// kiln.json. It refuses an agent.md kiln could not read, a name already there, and an unreadable record of kiln
+// init. It writes each script kiln runs with the executable bit. It records the monitor in .kiln/init.json, with its
+// source. It records a directory by its path from the checkout's top. kiln init brings the monitor up to date from
+// that source. It writes a file the source gains as kiln monitor add would. A monitor whose directory the project
+// deleted stays deleted, and leaves the record. One whose source kiln init cannot read stays as it is, and kiln init
+// says why.
 //
 // One kiln monitor run:
 //
