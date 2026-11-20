@@ -32,11 +32,11 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 ## Presets
 
 A preset of your own is a directory laid out as kiln's in [`internal/kiln/presets/`](../internal/kiln/presets/):
-`kiln.json`, then `build-checks.md`, `verify-tests.md` and `audit-tests.md`, the "Tailor this" sections of the
-build, verify and audit agents. A built-in preset's `detect` lists the files that mark a repository as its own, by
-which `kiln init` picks it; `kiln init` picks among its own presets alone. Keep yours in a repository of its own,
-and name it with `--preset`, as in `kiln init --preset ../presets/go`. `go doc ./internal/kiln InitOptions` says
-how kiln reads the path, and finds it again on the next run.
+`kiln.json`, then `build-checks.md`, `verify-tests.md` and `audit-tests.md`, the "Tailor this" sections of the build,
+verify and audit agents. A built-in preset's `detect` lists the files that mark a repository as its own, by which
+`kiln init` picks it; `kiln init` picks among its own presets alone. Keep yours in a repository of its own, and name it
+with `--preset` by a path that starts with `.` or `/`, as in `kiln init --preset ../presets/go`.
+`go doc ./internal/kiln InitOptions` says how kiln reads the path, and finds it again on the next run.
 
 ## kiln.json
 
@@ -260,9 +260,9 @@ kiln refuses a script git holds without the executable bit: `chmod +x` it, and c
 monitor in the working tree, before you commit it, and prints each refusal `kiln monitor run` would make of it.
 
 `kiln monitor add bugs` writes the `bugs` monitor kiln ships into `.kiln/monitors/bugs/`, and
-`kiln monitor add ../monitors/deps` the one in that directory. Commit what it writes on main, where kiln reads it. The
-project owns it from then on. `kiln monitor add` with neither lists the monitors kiln ships, and the preset each fits.
-`go doc ./internal/kiln` says what `kiln monitor add` refuses, under `MonitorAdd`.
+`kiln monitor add ../monitors/deps` the one in that directory, named as `--preset` names one. Commit what it writes on
+main, where kiln reads it. The project owns it from then on. `kiln monitor add` with neither lists the monitors kiln
+ships, and the preset each fits. `go doc ./internal/kiln` says what `kiln monitor add` refuses, under `MonitorAdd`.
 
 `kiln monitor add` records what it wrote in `.kiln/init.json`, with where it came from. When kiln ships a newer
 `bugs`, or your team changes `../monitors/deps`, `kiln status` says the monitor is behind. `kiln init` then merges

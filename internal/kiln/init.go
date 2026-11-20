@@ -44,8 +44,8 @@ const initFile = kilnDir + "/init.json"
 // InitOptions are what the developer chose for kiln init.
 type InitOptions struct {
 	// Preset names the preset Init writes: go, python, typescript, or a directory laid out as one. A directory's
-	// path holds a slash, and a relative one is from the working directory. "" means the preset .kiln/init.json
-	// names. Without one there, Init picks a built-in preset by the repository's files, as Init says.
+	// path starts with a dot or a slash, and a relative one is from the working directory. "" means the preset
+	// .kiln/init.json names. Without one there, Init picks a built-in preset by the repository's files, as Init says.
 	Preset string
 }
 

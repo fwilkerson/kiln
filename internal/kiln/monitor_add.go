@@ -135,9 +135,15 @@ func (r *Repo) sourceFiles(source string) (fs.FS, map[string][]byte, error) {
 	return from, files, err
 }
 
-// isDir is whether source, as kiln monitor add takes it, names a directory. Such a path starts with a dot or a slash.
-func isDir(source string) bool {
-	return strings.HasPrefix(source, ".") || filepath.IsAbs(source)
+// isDir is whether name, as kiln init --preset and kiln monitor add take one, is a directory's path. Such a path
+// starts with a dot or a slash. Any other name is one kiln ships, such as go or go/docs.
+func isDir(name string) bool {
+	return strings.HasPrefix(name, ".") || filepath.IsAbs(name)
+}
+
+// dirByPath says how to name a directory, by name's example, for a refusal of a name kiln ships nothing of.
+func dirByPath(name string) string {
+	return "by a path that starts with . or /, such as ./" + name
 }
 
 // ShippedMonitors prints each monitor kiln ships, one a line, with the preset it fits. One that sits under a preset's
@@ -225,8 +231,8 @@ func monitorSource(source string) (fs.FS, error) {
 
 	names := shippedNames()
 	if !slices.Contains(names, source) {
-		return nil, fmt.Errorf("%w: kiln ships no monitor %q: name one of %s, or a directory that starts with . or /",
-			ErrUsage, source, strings.Join(names, ", "))
+		return nil, fmt.Errorf("%w: kiln ships no monitor %q: name one of %s, or a directory, %s", ErrUsage, source,
+			strings.Join(names, ", "), dirByPath(source))
 	}
 
 	return fs.Sub(shipped, path.Join(shippedDir, source))

@@ -2,6 +2,7 @@ package kiln
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"maps"
 	"os"
@@ -186,10 +187,14 @@ func TestInitRefusesPreset(t *testing.T) {
 	for _, tt := range []struct {
 		name, config, record, named string
 		usage                       bool
+		said                        string // a part of the refusal
 	}{
 		{name: "a kiln.json kiln can't read", config: "{"},
 		{name: "a kiln.json with no rounds", config: `{"gate": ["make"], "acceptance": "a/{spec}/"}`},
 		{name: "a name kiln doesn't know", named: "rust", usage: true},
+		// The test runs in internal/kiln, which holds presets/go, a directory laid out as a preset.
+		{name: "a path that starts with neither . nor /", named: "presets/go", usage: true,
+			said: "or a directory, by a path that starts with . or /, such as ./presets/go"},
 		{name: "a recorded name kiln doesn't know", record: `{"preset": "rust"}`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -210,9 +215,10 @@ func TestInitRefusesPreset(t *testing.T) {
 
 			err := r.Init(t.Context(), new(strings.Builder), InitOptions{Preset: named})
 			_, stat := os.Stat(filepath.Join(repo, agentFile(buildRole)))
-			if !claim.Holds(err != nil, stat != nil, errors.Is(err, ErrUsage) == tt.usage) {
-				t.Errorf("kiln init: %v, and wrote build.md: %v; want refused, before it writes, usage %v", err,
-					stat == nil, tt.usage)
+			said := strings.Contains(fmt.Sprint(err), tt.said)
+			if !claim.Holds(err != nil, stat != nil, errors.Is(err, ErrUsage) == tt.usage, said) {
+				t.Errorf("kiln init: %v, and wrote build.md: %v; want refused, before it writes, usage %v, saying %q",
+					err, stat == nil, tt.usage, tt.said)
 			}
 		})
 	}

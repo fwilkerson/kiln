@@ -127,8 +127,8 @@ func (p preset) fill(raw []byte) ([]byte, error) {
 // Hook returns it for arguments kiln never writes. MonitorAdd returns it for a monitor kiln does not ship.
 var ErrUsage = errors.New("usage")
 
-// presetNamed is the preset name names: a built-in one's name, or a directory laid out as one. A directory's path
-// holds a slash, and a relative one is from dir. presetNamed refuses any other name, and names each built-in.
+// presetNamed is the preset name names: a built-in one's name, or a directory laid out as one. isDir says which paths
+// name a directory, and a relative one is from dir. presetNamed refuses any other name, and gives its two readings.
 func presetNamed(name, dir string) (preset, error) {
 	switch {
 	case filepath.IsAbs(name):
@@ -139,15 +139,15 @@ func presetNamed(name, dir string) (preset, error) {
 		}
 
 		return preset{name: real, files: os.DirFS(real)}, nil
-	case strings.Contains(name, "/"):
+	case isDir(name):
 		return presetNamed(filepath.Join(dir, name), dir)
 	case slices.Contains(builtIns, name):
 		files, err := fs.Sub(presetFS, path.Join("presets", name))
 		return preset{name: name, files: files}, err
 	}
 
-	return preset{}, fmt.Errorf("no preset %q: name one of %s, or a directory by a path that holds a slash", name,
-		strings.Join(builtIns, ", "))
+	return preset{}, fmt.Errorf("no preset %q: name one of %s, or a directory, %s", name, strings.Join(builtIns, ", "),
+		dirByPath(name))
 }
 
 // recorded is p's name as kiln init's record keeps it, where a directory's path is from top, the checkout's top.
@@ -156,8 +156,8 @@ func (p preset) recorded(top string) string {
 	switch {
 	case !filepath.IsAbs(p.name), err != nil:
 		return p.name
-	case !strings.Contains(rel, "/"):
-		// A name with no slash would read back as a built-in preset's.
+	case !isDir(rel):
+		// Any other path would read back as a built-in preset's name.
 		return "./" + rel
 	}
 
