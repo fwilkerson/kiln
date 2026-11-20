@@ -181,6 +181,14 @@ func fitsWhat(name, preset string) string {
 	return "for the preset " + lang
 }
 
+// unadded drops each of names, monitors kiln ships, whose directory the checkout's .kiln/monitors/ holds already.
+func (r *Repo) unadded(names []string) []string {
+	return slices.DeleteFunc(names, func(name string) bool {
+		_, err := os.Lstat(filepath.Join(r.top, monitor{Name: Spec(path.Base(name))}.path("")))
+		return !errors.Is(err, fs.ErrNotExist)
+	})
+}
+
 // fitting are the monitors kiln ships that fit a project whose record of kiln init names preset. Where it names a
 // directory, or no preset, kiln cannot tell, and each fits.
 func fitting(preset string) []string {

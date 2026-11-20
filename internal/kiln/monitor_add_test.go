@@ -163,6 +163,25 @@ func TestShippedFit(t *testing.T) {
 	}
 }
 
+// TestCompleteSkipsAdded holds that the shell completes no monitor kiln ships whose directory the checkout holds.
+// kiln monitor add would refuse it.
+func TestCompleteSkipsAdded(t *testing.T) {
+	r, _ := scratchRepo(t)
+	err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"})
+	if err == nil {
+		err = r.MonitorAdd("go/docs", io.Discard)
+	}
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fits, err := r.Takes(t.Context(), "monitor add")
+	if want := []string{"bugs", "go/gate-time"}; err != nil || !slices.Equal(fits, want) {
+		t.Errorf("the shell completes %v, %v; want %v", fits, err, want)
+	}
+}
+
 // TestMonitorUpdates holds how kiln init brings a monitor up to date with the directory kiln monitor add wrote it
 // from. ship changes the directory, as a team's repository would, and edit changes the project's copy. Until kiln
 // init runs, kiln status says the monitor is behind.
