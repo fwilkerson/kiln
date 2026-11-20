@@ -312,8 +312,8 @@ func (g *Git) CommonDir(ctx context.Context) (string, error) {
 	return dir, err
 }
 
-// Checkout puts branch, made from the commit at, in a new worktree at path. If that fails part way, it removes what
-// it made.
+// Checkout puts branch, made from the commit at, in a new worktree at path. It first removes whatever worktree and
+// branch are there, as [Git.Remove] does. If the checkout fails part way, it removes what it made.
 func (g *Git) Checkout(ctx context.Context, path Worktree, branch Branch, at Rev) error {
 	unlock, err := g.lockWorktrees(ctx)
 	if err != nil {
@@ -322,7 +322,8 @@ func (g *Git) Checkout(ctx context.Context, path Worktree, branch Branch, at Rev
 
 	defer unlock()
 	path = g.at(path)
-	if _, err := g.in(ctx, g.repo, "worktree", "prune"); err != nil {
+	// The removal leaves git listing no worktree at path, which a prune would clear.
+	if err := g.remove(ctx, []Worktree{path}, branch); err != nil {
 		return err
 	}
 

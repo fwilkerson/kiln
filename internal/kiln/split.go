@@ -372,10 +372,6 @@ func (b *build) stack(ctx context.Context) (setback, error) {
 		tips[role] = tip
 	}
 
-	if err := b.r.git.Remove(ctx, []git.Worktree{b.tree}, name.branch()); err != nil {
-		return setback{}, err
-	}
-
 	if err := b.r.git.Checkout(ctx, b.tree, name.branch(), tips[buildRole]); err != nil {
 		return setback{}, err
 	}

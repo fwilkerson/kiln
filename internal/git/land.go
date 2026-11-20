@@ -329,7 +329,13 @@ func (g *Git) Remove(ctx context.Context, paths []Worktree, branches ...Branch) 
 	}
 
 	defer unlock()
+	return g.remove(ctx, paths, branches...)
+}
+
+// remove is Remove, for a caller that holds the worktrees lock.
+func (g *Git) remove(ctx context.Context, paths []Worktree, branches ...Branch) error {
 	r := &removal{g: g}
+	var err error
 	for _, path := range paths {
 		err = errors.Join(err, r.tree(ctx, g.at(path)))
 	}
