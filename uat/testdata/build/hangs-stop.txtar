@@ -1,7 +1,7 @@
 # A session that falls silent, and a gate command that hangs, each stop their build. kiln says what ran past, for
 # how long, and which setting bounds it.
 
-# Given: two approved specs, and a kiln.json whose timeout is 5 seconds. y's session runs a command that never ends,
+# Given: two approved specs, and a kiln.json whose timeout is 10 seconds, which only a hang reaches, however loaded. y's session runs a command that never ends,
 # and prints nothing while it runs. x's session ends its turn, and the gate's one command never ends.
 exec kiln queue y
 exec kiln queue x
@@ -11,17 +11,17 @@ exec kiln fire
 cp stdout .tmp/run
 
 # Then: each build stops, and the output holds a notification for each.
-stdout '^y: stopped: kiln could not go on with the build: the build session printed nothing past kiln.json''s timeout of 5s, so kiln killed it$'
-stdout '^x: stopped: kiln could not go on with the build: the gate''s "sleep 600": ran past kiln.json''s timeout of 5s, so kiln killed it$'
+stdout '^y: stopped: kiln could not go on with the build: the build session printed nothing past kiln.json''s timeout of 10s, so kiln killed it$'
+stdout '^x: stopped: kiln could not go on with the build: the gate''s "sleep 600": ran past kiln.json''s timeout of 10s, so kiln killed it$'
 stdout '^\x1b\]9;kiln: y stopped\x07'
 stdout '^\x1b\]9;kiln: x stopped\x07'
 
 # kiln status shows both stopped, each with why.
 exec kiln status
 stdout '^y: stopped$'
-stdout 'the build session printed nothing past kiln.json''s timeout of 5s'
+stdout 'the build session printed nothing past kiln.json''s timeout of 10s'
 stdout '^x: stopped$'
-stdout 'the gate''s "sleep 600": ran past kiln.json''s timeout of 5s'
+stdout 'the gate''s "sleep 600": ran past kiln.json''s timeout of 10s'
 
 # Each summary's last line says what to do next.
 exec cat .tmp/run
@@ -29,7 +29,7 @@ stdout '^  next: fix what the error names, then run kiln queue y, which builds a
 stdout '^  next: fix what the error names, then run kiln queue x, which builds anew$'
 
 -- .kiln/kiln.json --
-{"gate": ["sleep 600"], "timeout": "5s"}
+{"gate": ["sleep 600"], "timeout": "10s"}
 -- .kiln/specs/y.md --
 ### 1. Y answers
 

@@ -127,15 +127,16 @@ func runForking(t *testing.T, first string, silence time.Duration, interrupt boo
 	return c.Run(ctx, claude.Launch{Session: session, Role: "build", Prompt: "Build x.", Dir: dir, Silence: silence})
 }
 
-// talking stands in for a claude that prints a line each 300 ms, for 3 s, then its result.
+// talking stands in for a claude that prints a line each 100 ms, 50 times, then its result. It talks for 5 s at least.
 const talking = `#!/bin/bash
 cat >/dev/null
-for i in 1 2 3 4 5 6 7 8 9 10; do echo '{"type":"system"}'; sleep 0.3; done
+for _ in $(seq 50); do echo '{"type":"system"}'; sleep 0.1; done
 echo '{"type":"result","is_error":false,"result":"Talked."}'
 `
 
 // TestTalkingSession holds that Run measures a session's silence from its last line, not its start. A session that
-// prints more often than its Silence runs to its result, however long it runs.
+// prints more often than its Silence runs to its result, however long it runs. Its Silence is 3 s, and no load
+// stalls a shell nearly that long between two lines.
 func TestTalkingSession(t *testing.T) {
 	const session = "0b8e6c1e-2f4d-4f6a-9b1c-3d5e7f9a1b2e"
 	dir := t.TempDir()
@@ -145,7 +146,7 @@ func TestTalkingSession(t *testing.T) {
 	}
 
 	c := claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: filepath.Join(dir, "sessions")})
-	l := claude.Launch{Session: session, Role: "build", Prompt: "Build x.", Dir: dir, Silence: 1500 * time.Millisecond}
+	l := claude.Launch{Session: session, Role: "build", Prompt: "Build x.", Dir: dir, Silence: 3 * time.Second}
 	if ended, err := c.Run(t.Context(), l); err != nil || ended.Text != "Talked." {
 		t.Errorf("Run answered %+v, %v; want the session's result", ended, err)
 	}

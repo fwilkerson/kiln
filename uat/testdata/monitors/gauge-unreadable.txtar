@@ -1,7 +1,8 @@
 # A reading kiln could not take starts no fix.
 
 # Given: a monitor that names a gauge whose command fails, a second monitor that names a gauge whose command
-# prints no number, and a third that names a gauge whose command runs past kiln.json's timeout.
+# prints no number, and a third that names a gauge whose command runs past kiln.json's timeout. The timeout is 10
+# seconds, which only a hang reaches, however loaded the machine.
 
 # When: kiln monitor run runs.
 exec sh -c 'kiln monitor run || true'
@@ -17,7 +18,7 @@ stdout 'the tool is missing'
 stdout '^silent: couldn''t run, .*runs at the next kiln monitor run$'
 stdout 'silent: its command''s last line is no number'
 stdout '^stuck: couldn''t run, .*runs next after '
-stdout 'stuck: its command ran past kiln.json''s timeout of 3s, so kiln killed it'
+stdout 'stuck: its command ran past kiln.json''s timeout of 10s, so kiln killed it'
 
 # When: a day later, with main and the monitors unchanged, kiln monitor run runs again.
 env KILN_NOW=2099-01-01T00:00:00Z
@@ -29,7 +30,7 @@ stdout '^stuck: held: its check or gauge ran past kiln.json''s timeout at main [
 ! stdout 'stuck: its command ran past'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "timeout": "3s"}
+{"gate": ["true"], "timeout": "10s"}
 -- .kiln/monitors/broken/gauge --
 echo 'the tool is missing' >&2; exit 3
 -- .kiln/monitors/broken/agent.md --

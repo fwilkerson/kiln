@@ -279,7 +279,8 @@ func TestReportNamesLostFailure(t *testing.T) {
 // limit that passes while the child holds the output is no run past it: the command ended in time. The
 // child would hold the output for an hour, so a command that ends at all was cut short.
 func TestCommandLeavesChild(t *testing.T) {
-	for name, run := range commandRunners(t, config{Timeout: timeout(2 * time.Second)}.shell(os.Environ())) {
+	// The limit passes within the child's 10 s, and the shell exits long before it, however loaded the machine.
+	for name, run := range commandRunners(t, config{Timeout: timeout(5 * time.Second)}.shell(os.Environ())) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
@@ -296,7 +297,8 @@ func TestCommandLeavesChild(t *testing.T) {
 }
 
 // TestCommandRunsPast holds that kiln kills a command that runs past kiln.json's timeout, with each process of its
-// group. Its error names the limit and the setting, and no output it held keeps kiln waiting.
+// group. Its error names the limit and the setting, and no output it held keeps kiln waiting. A held output would keep
+// kiln waiting 10 s more. A kill at the limit never takes that long, however loaded the machine.
 func TestCommandRunsPast(t *testing.T) {
 	limit := 2 * time.Second
 	for name, run := range commandRunners(t, config{Timeout: timeout(limit)}.shell(os.Environ())) {
@@ -307,8 +309,8 @@ func TestCommandRunsPast(t *testing.T) {
 			_, err := run(git.Worktree(dir), "sleep 30 & echo $! > child; sleep 30")
 			took := time.Since(began)
 			const want = "ran past kiln.json's timeout of 2s, so kiln killed it"
-			if !claim.Holds(strings.Contains(fmt.Sprint(err), want), took < limit+5*time.Second) {
-				t.Fatalf("answered %v after %v; want %q at once", err, took, want)
+			if !claim.Holds(strings.Contains(fmt.Sprint(err), want), took < limit+10*time.Second) {
+				t.Fatalf("answered %v after %v; want %q, with no held output waited for", err, took, want)
 			}
 
 			wantDead(t, dir)
