@@ -182,16 +182,9 @@ printf '%s\n' "$builds" | jq -s 'map(select(.outcome != null and .cost_usd != nu
   | if length > 0 then (.[(length - 1) / 2 | floor] + .[length / 2 | floor]) / 2 else empty end'
 ```
 
-The slowest of the last twenty gates that passed on a build's work, in seconds, as `{"max": 300}` would watch it:
-
-```sh
-#!/bin/sh
-set -eu
-gates=$("$KILN" ledger --kind gate)
-printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seconds) | .[-20:] | max // empty'
-```
-
-Each takes its output whole first, so a failed `kiln ledger` fails the gauge, rather than reading no number.
+The README's [`gate-seconds`](../README.md#making-kiln-your-own) gauge reads the slowest of the last twenty gates that
+passed on a build's work, in seconds. Each takes its output whole first, so a failed `kiln ledger` fails the gauge,
+rather than reading no number.
 
 ### notify
 
@@ -421,7 +414,9 @@ and for the spec names each command would not refuse.
 ```
 
 `ledger.jsonl` is kiln's own, and changes with kiln. A script reads it through `kiln ledger`, whose lines are a
-contract. `kiln help kiln-ledger` lists each kind of line, each field, and what each option keeps.
+contract. `kiln help kiln-ledger` lists each kind of line, each field, and what each option keeps. A gate's `landing`
+is whether it judged a landing, the work rebased onto main. Its `ran_main` is whether it ran the gate's commands at
+main too, rather than read the checks kept there.
 
 ```console
 $ kiln ledger --kind build --last 1 | jq .

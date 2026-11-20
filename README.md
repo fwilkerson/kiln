@@ -188,15 +188,16 @@ osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title 
 ```
 
 **A gauge** can read kiln's own numbers from `kiln ledger`. This one reads the slowest of the last twenty gates
-that passed. `{"gauges": [{"name": "gate-seconds", "command": ".kiln/gauges/gate-seconds", "max": 300}]}` in
-`kiln.json` names it, as [gauges](docs/reference.md#gauges) shows:
+that passed on a build's work, leaving out each landing's.
+`{"gauges": [{"name": "gate-seconds", "command": ".kiln/gauges/gate-seconds", "max": 300}]}` in `kiln.json` names
+it, as [gauges](docs/reference.md#gauges) shows:
 
 ```sh
 #!/bin/sh
 # .kiln/gauges/gate-seconds
 set -eu
 gates=$("$KILN" ledger --kind gate)
-printf '%s\n' "$gates" | jq -s 'map(select(.passed) | .seconds) | .[-20:] | max // empty'
+printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seconds) | .[-20:] | max // empty'
 ```
 
 ## What kiln holds a build to
