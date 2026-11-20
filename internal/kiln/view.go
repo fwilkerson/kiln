@@ -153,15 +153,15 @@ func fixText(b *tui.Build) string {
 }
 
 // Monitors answers each monitor main's tip holds, where it stands, and its fixes, oldest first. A monitor with a
-// gauge holds its readings of the whole repository, oldest first.
+// gauge holds its readings of the whole repository, oldest first. One kiln refuses there stands refused, with why.
 func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
 	main, err := v.r.mainTip(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// A main with no kiln.json or monitor kiln can read shows no monitor, and the specs still show.
-	_, monitors, _ := v.r.monitors(ctx, main)
+	// A main with no kiln.json kiln can read shows no monitor, and the specs still show.
+	_, reads, _ := v.r.monitors(ctx, main)
 	entries, err := v.r.store.entries()
 	if err != nil {
 		return nil, err
@@ -180,13 +180,16 @@ func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
 	}
 
 	all, now := histories(entries), v.r.now()
-	shown := make([]tui.Spec, len(monitors))
-	for i, m := range monitors {
-		h := all[m.Name]
-		s := h.standing(m, k.find(m.Name))
-		shown[i] = tui.Spec{Name: string(m.Name), State: s.state(), Builds: fixes[m.Name],
-			Monitor: &tui.Monitor{Result: s.result, Summary: s.summary, Last: s.last, Next: s.next, Due: h.due(m, now),
-				Readings: repositoryReadings(entries, m)}}
+	shown := make([]tui.Spec, len(reads))
+	for i, d := range reads {
+		h, s, m := all[d.name], refusedStanding(d), &tui.Monitor{}
+		if d.refused == nil {
+			s = h.standing(d.monitor, k.find(d.name))
+			m = &tui.Monitor{Next: s.next, Due: h.due(d.monitor, now), Readings: repositoryReadings(entries, d.monitor)}
+		}
+
+		m.Result, m.Summary, m.Last = s.result, s.summary, s.last
+		shown[i] = tui.Spec{Name: string(d.name), State: s.state(), Builds: fixes[d.name], Monitor: m}
 	}
 
 	return shown, nil

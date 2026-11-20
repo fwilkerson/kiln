@@ -84,6 +84,7 @@ const (
 	foundCouldNot = "couldn't run"
 	foundHeld     = "held"
 	foundFix      = "fix"
+	foundRefused  = "refused"
 )
 
 // entry is one line of the ledger. Its kind says which of its fields it holds.

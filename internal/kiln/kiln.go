@@ -212,7 +212,9 @@
 // with no line, and a line with no gauge. It refuses a check, gauge or command git holds without the executable bit. It
 // refuses a monitor with no command and no agent.md. It refuses a monitor that may not write the tests while kiln
 // cannot guard them. acceptance then names no path, or one with no part before {spec}. It refuses a gauge whose
-// monitor's name a gauge in kiln.json has.
+// monitor's name a gauge in kiln.json has. A refusal holds back its one monitor: kiln monitor run runs the rest, and
+// says why. It notifies once for each state of that monitor's directory. kiln status and kiln tui show it refused,
+// with why. kiln monitor run with its name refuses, and says why.
 //
 // One kiln monitor run:
 //
@@ -233,9 +235,9 @@
 //	  again    when the check asked to drain, after a fix that landed: from check, due or not, until no fix lands
 //
 // A monitor is due when it never ran, or its check or gauge couldn't run but did not hang. It is due when a usage
-// limit ended its fix, or its fix was cut short. Otherwise it is due once its last run started its interval, less 30
-// minutes, ago. $KILN_NOW, as RFC 3339, stands for the clock. A monitor with neither check nor gauge starts a fix each
-// run it is due.
+// limit ended its fix, its fix was cut short, or kiln refused it. Otherwise it is due once its last run started its
+// interval, less 30 minutes, ago. $KILN_NOW, as RFC 3339, stands for the clock. A monitor with neither check nor gauge
+// starts a fix each run it is due.
 //
 // A check that exits non-zero, or prints no verdict last, couldn't run. kiln then keeps its last line of stdout and
 // stderr, but for a check past the timeout, as Hangs says. A verdict that adds "drain": true asks kiln to check again
@@ -405,9 +407,9 @@
 //	  name          string         the monitor's name
 //	  at            time           when kiln wrote it, once its check or gauge ended
 //	  main          string         main's tip as it started
-//	  found         string         what it found: healthy, couldn't run, held or fix
+//	  found         string         what it found: healthy, couldn't run, held, fix or refused
 //	  build         string|null    the ID of the fix it started
-//	  summary       string         its check's summary, or why it couldn't run
+//	  summary       string         its check's summary, or why it couldn't run, or why kiln refused it
 //	  gauge         string|null    the gauge it read in place of a check
 //	  value         number|null    that gauge's reading
 //	  crossed       bool           whether that reading crossed the gauge's line
@@ -1059,17 +1061,17 @@ func (r *Repo) taking(command string) ([]string, error) {
 	return names, err
 }
 
-// monitorNames answers the monitors kiln reads at main's tip. It refuses, naming none, where kiln refuses one there.
+// monitorNames answers the monitors main's tip holds, refused or not, since kiln monitor run says why it refuses one.
 func (r *Repo) monitorNames(ctx context.Context) ([]string, error) {
 	main, err := r.mainTip(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	_, monitors, err := r.monitors(ctx, main)
-	names := make([]string, len(monitors))
-	for i, m := range monitors {
-		names[i] = string(m.Name)
+	_, reads, err := r.monitors(ctx, main)
+	names := make([]string, len(reads))
+	for i, d := range reads {
+		names[i] = string(d.name)
 	}
 
 	return names, err

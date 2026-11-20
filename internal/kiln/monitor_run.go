@@ -32,13 +32,13 @@ func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {
 		return err
 	}
 
-	run, monitors, err := r.monitorRun(ctx, name, out)
+	run, reads, err := r.monitorRun(ctx, name, out)
 	if err != nil {
 		return err
 	}
 
-	for _, m := range monitors {
-		if err := run.monitor(ctx, m); err != nil {
+	for _, d := range reads {
+		if err := run.read(ctx, d); err != nil {
 			return err
 		}
 	}
@@ -46,30 +46,70 @@ func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {
 	return nil
 }
 
-// monitorRun is one kiln monitor run, as main's tip says. It answers the monitors it runs: each, or the one named
-// name.
-func (r *Repo) monitorRun(ctx context.Context, name Spec, out io.Writer) (*monitorRunning, []monitor, error) {
+// monitorRun is one kiln monitor run, as main's tip says. It answers what it runs: each monitor, or the one named
+// name. It refuses a name main's tip holds no monitor of, and one kiln refuses, with why.
+func (r *Repo) monitorRun(ctx context.Context, name Spec, out io.Writer) (*monitorRunning, []monitorRead, error) {
 	main, err := r.mainTip(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	c, monitors, err := r.monitors(ctx, main)
+	c, reads, err := r.monitors(ctx, main)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	run := &monitorRunning{r: r, out: out, c: c, named: name != ""}
 	if name == "" {
-		return run, monitors, nil
+		return run, reads, nil
 	}
 
-	m, ok := monitorNamed(monitors, name)
-	if !ok {
+	m, found, err := monitorNamed(reads, name)
+	switch {
+	case err != nil:
+		return nil, nil, err
+	case !found:
 		return nil, nil, fmt.Errorf("%w: %s at main's tip holds no monitor %s", errRefused, monitorsDir, name)
 	}
 
-	return run, []monitor{m}, nil
+	return run, []monitorRead{{name: name, monitor: m}}, nil
+}
+
+// read runs the monitor d holds, as monitor does, or says why kiln refuses it, as refused does.
+func (run *monitorRunning) read(ctx context.Context, d monitorRead) error {
+	if d.refused != nil {
+		return run.refused(ctx, d)
+	}
+
+	return run.monitor(ctx, d.monitor)
+}
+
+// refused says why kiln refuses d, which it never runs. It writes d's monitor line, and notifies, once for each state
+// of d's directory. A run that finds d's directory as the last run refused it writes nothing.
+func (run *monitorRunning) refused(ctx context.Context, d monitorRead) error {
+	main, err := run.r.mainTip(ctx)
+	if err != nil {
+		return err
+	}
+
+	entries, err := run.r.store.entries()
+	if err != nil {
+		return err
+	}
+
+	line := entry{Kind: monitorKind, Monitor: d.name, At: run.r.now(), Main: main, Entry: d.tree, Found: foundRefused,
+		Summary: d.refused.Error()}
+	if h := histories(entries)[d.name]; h.lastResult() == foundRefused && h.last.Entry == d.tree {
+		run.say(line)
+		return nil
+	}
+
+	if err := run.write(line); err != nil {
+		return err
+	}
+
+	run.r.notifyFix(ctx, d.name, "", run.out)
+	return nil
 }
 
 // recover takes the monitors' lane up where kilns left it. It ends their lost runs of fixes, and drops each fix cut
@@ -296,6 +336,12 @@ func (run *monitorRunning) write(e entry) error {
 		return err
 	}
 
+	run.say(e)
+	return nil
+}
+
+// say says what the run of the monitor line e found.
+func (run *monitorRunning) say(e entry) {
 	said := e.Found
 	if e.Found == foundFix {
 		said = "found a fix to make"
@@ -306,7 +352,6 @@ func (run *monitorRunning) write(e entry) error {
 	}
 
 	fmt.Fprintf(run.out, "%s: %s\n", e.Monitor, said)
-	return nil
 }
 
 // shownTime shows t as kiln status does.

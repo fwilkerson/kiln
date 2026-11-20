@@ -118,8 +118,8 @@ func (r *Repo) monitorStatus(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	_, monitors, err := r.monitors(ctx, main)
-	if err != nil || len(monitors) == 0 {
+	_, reads, err := r.monitors(ctx, main)
+	if err != nil || len(reads) == 0 {
 		return nil
 	}
 
@@ -136,16 +136,30 @@ func (r *Repo) monitorStatus(ctx context.Context, out io.Writer) error {
 	all := histories(entries)
 	now := r.now()
 	fmt.Fprintln(out, "monitors:")
-	for _, m := range monitors {
-		h, rec := all[m.Name], k.find(m.Name)
-		s := h.standing(m, rec)
-		fmt.Fprintf(out, "%s: %s, %s\n", m.Name, s.result, s.when(h.due(m, now)))
-		for _, line := range s.lines(m.Name, rec, r.tree(m.Name)) {
+	for _, d := range reads {
+		h, rec := all[d.name], k.find(d.name)
+		s, when := refusedStanding(d), ""
+		if d.refused == nil {
+			s = h.standing(d.monitor, rec)
+			when = ", " + s.when(h.due(d.monitor, now))
+		}
+
+		fmt.Fprintf(out, "%s: %s%s\n", d.name, s.result, when)
+		for _, line := range s.lines(d.name, rec, r.tree(d.name)) {
 			fmt.Fprintln(out, indent(line))
 		}
 	}
 
 	return nil
+}
+
+// refusedStanding is where the monitor d stands while kiln refuses it at main's tip: refused, with why.
+func refusedStanding(d monitorRead) standing {
+	if d.refused == nil {
+		return standing{}
+	}
+
+	return standing{result: foundRefused, summary: d.refused.Error()}
 }
 
 // lines are what kiln status shows below the monitor name's line. They are its summary, why its fix stopped, and the

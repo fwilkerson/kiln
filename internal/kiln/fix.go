@@ -70,13 +70,16 @@ func (f *fixing) end(outcome, summary, report string) {
 
 // fixOf reads the fix of rec: its monitor, as its directory stood when the fix started.
 func (r *Repo) fixOf(ctx context.Context, rec record) (*fixing, error) {
-	c, monitors, err := r.monitors(ctx, rec.Approved)
+	c, reads, err := r.monitors(ctx, rec.Approved)
 	if err != nil {
 		return nil, err
 	}
 
-	m, ok := monitorNamed(monitors, rec.Name)
-	if !ok {
+	m, found, err := monitorNamed(reads, rec.Name)
+	switch {
+	case err != nil:
+		return nil, err
+	case !found:
 		return nil, fmt.Errorf("%s at %s holds no monitor %s", monitorsDir, short(rec.Approved), rec.Name)
 	}
 
@@ -786,13 +789,16 @@ func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdi
 		return v, err
 	}
 
-	c, monitors, err := b.r.monitors(ctx, main)
+	c, reads, err := b.r.monitors(ctx, main)
 	if err != nil {
 		return v, err
 	}
 
-	m, found := monitorNamed(monitors, b.fix.monitor.Name)
-	if !found || m.finder != gaugeScript {
+	m, found, err := monitorNamed(reads, b.fix.monitor.Name)
+	switch {
+	case err != nil:
+		return v, err
+	case !found || m.finder != gaugeScript:
 		return v, nil
 	}
 

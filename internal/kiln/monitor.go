@@ -101,9 +101,9 @@ func hashOf(text string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// monitors reads kiln.json at the commit at, and each monitor's directory under .kiln/monitors/ there, by name. It
-// refuses each monitor kiln could not run, as the package doc lists, each refusal with its fix.
-func (r *Repo) monitors(ctx context.Context, at git.Rev) (config, []monitor, error) {
+// monitors reads kiln.json at the commit at, and each entry under .kiln/monitors/ there, by name. It reads each as a
+// monitorRead, so one monitor kiln refuses never keeps it from the rest. It refuses kiln.json as every command does.
+func (r *Repo) monitors(ctx context.Context, at git.Rev) (config, []monitorRead, error) {
 	c, err := r.config(ctx, at)
 	if err != nil {
 		return c, nil, err
@@ -111,36 +111,60 @@ func (r *Repo) monitors(ctx context.Context, at git.Rev) (config, []monitor, err
 
 	f := r.filesAt(at)
 	dirs, err := r.monitorDirs(ctx, at)
-	var refused refusals
-	if err := refused.add(err); err != nil {
+	if err != nil {
 		return c, nil, err
 	}
 
-	monitors := make([]monitor, len(dirs))
+	reads := make([]monitorRead, len(dirs))
 	for i, d := range dirs {
-		monitors[i], err = c.readDir(ctx, f, d)
-		if err := refused.add(err); err != nil {
+		if reads[i], err = c.readAt(ctx, f, d); err != nil {
 			return c, nil, err
 		}
 	}
 
-	if len(refused) > 0 {
-		return c, nil, refused
+	return c, reads, nil
+}
+
+// monitorRead is an entry under .kiln/monitors/ in a commit, by its name and git's ID of it. It holds the monitor kiln
+// runs, or refused: why kiln refuses the entry, each refusal with its fix. Read the monitor only where refused is nil.
+type monitorRead struct {
+	name    Spec
+	tree    string
+	monitor monitor
+	refused error
+}
+
+// readAt reads d, as f holds it, as a monitorRead. A file in a monitor's place is refused. It answers an error only
+// where git fails.
+func (c config) readAt(ctx context.Context, f files, d monitorDir) (monitorRead, error) {
+	read := monitorRead{name: d.name, tree: d.tree}
+	if d.file {
+		read.refused = refusals{strayMonitor(string(d.name))}
+		return read, nil
 	}
 
-	return c, monitors, nil
+	m, err := c.readDir(ctx, f, d)
+	var refused refusals
+	if err := refused.add(err); err != nil {
+		return read, err
+	}
+
+	read.monitor, read.refused = m, refused.err()
+	return read, nil
 }
 
 // monitorDir is a monitor's directory in a commit or the working tree. It holds the directory's name, its files, and
-// git's ID of it in a commit. plain is a script of roleScripts that is not executable, or "".
+// git's ID of it in a commit. plain is a script of roleScripts that is not executable, or "". file is whether a
+// commit holds a file in the directory's place.
 type monitorDir struct {
 	name        Spec
 	tree, plain string
 	files       []string
+	file        bool
 }
 
 // monitorDirs lists each monitor's directory under .kiln/monitors/ at the commit at, by name, with each file under
-// it. It refuses each file directly under .kiln/monitors/, since a monitor is a directory.
+// it. It lists each file directly under .kiln/monitors/ too, as a file, since a monitor is a directory.
 func (r *Repo) monitorDirs(ctx context.Context, at git.Rev) ([]monitorDir, error) {
 	entries, err := r.git.Tree(ctx, at, monitorsDir)
 	if err != nil {
@@ -148,15 +172,12 @@ func (r *Repo) monitorDirs(ctx context.Context, at git.Rev) ([]monitorDir, error
 	}
 
 	var dirs []monitorDir
-	var refused refusals
 	files, plain := map[string][]string{}, map[string]string{}
 	for _, e := range entries {
 		name, file, inside := strings.Cut(e.Path, "/")
 		switch {
-		case e.Dir && !inside:
-			dirs = append(dirs, monitorDir{name: Spec(name), tree: e.ID})
 		case !inside:
-			refused = append(refused, strayMonitor(name))
+			dirs = append(dirs, monitorDir{name: Spec(name), tree: e.ID, file: !e.Dir})
 		case !e.Dir:
 			files[name] = append(files[name], file)
 			if !e.Exec && slices.Contains(roleScripts, file) {
@@ -169,7 +190,7 @@ func (r *Repo) monitorDirs(ctx context.Context, at git.Rev) ([]monitorDir, error
 		dirs[i].files, dirs[i].plain = files[string(d.name)], plain[string(d.name)]
 	}
 
-	return dirs, refused.err()
+	return dirs, nil
 }
 
 // strayMonitor refuses the file name directly under .kiln/monitors/, since a monitor is a directory.
@@ -286,14 +307,27 @@ func strayFile(files []string) string {
 	return ""
 }
 
-// monitorNamed is the monitor of monitors named name.
-func monitorNamed(monitors []monitor, name Spec) (monitor, bool) {
-	i := slices.IndexFunc(monitors, func(m monitor) bool { return m.Name == name })
+// monitorNamed is the monitor of reads named name. It answers found false where reads holds none of that name, and
+// the refusal where kiln refuses it.
+func monitorNamed(reads []monitorRead, name Spec) (m monitor, found bool, refused error) {
+	i := slices.IndexFunc(reads, func(d monitorRead) bool { return d.name == name })
 	if i < 0 {
-		return monitor{}, false
+		return monitor{}, false, nil
 	}
 
-	return monitors[i], true
+	return reads[i].monitor, true, reads[i].refused
+}
+
+// runnable are the monitors of reads that kiln runs, leaving out each it refuses.
+func runnable(reads []monitorRead) []monitor {
+	var monitors []monitor
+	for _, d := range reads {
+		if d.refused == nil {
+			monitors = append(monitors, d.monitor)
+		}
+	}
+
+	return monitors
 }
 
 // nowVar names a time, as RFC 3339, that kiln monitor run takes as now.

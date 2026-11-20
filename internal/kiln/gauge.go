@@ -179,16 +179,16 @@ func removeTree(dir string) error {
 }
 
 // gauges are kiln.json at main's tip, and its gauges: each kiln.json names, then each monitor's, named for its
-// monitor.
+// monitor. A monitor kiln refuses has no gauge here.
 func (r *Repo) gauges(ctx context.Context) (config, []gauge, error) {
 	main, err := r.mainTip(ctx)
 	if err != nil {
 		return config{}, nil, err
 	}
 
-	c, monitors, err := r.monitors(ctx, main)
+	c, reads, err := r.monitors(ctx, main)
 	gauges := slices.Clone(c.Gauges)
-	for _, m := range monitors {
+	for _, m := range runnable(reads) {
 		if m.finder == gaugeScript {
 			gauges = append(gauges, m.gauge())
 		}

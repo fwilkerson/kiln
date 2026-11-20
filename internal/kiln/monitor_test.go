@@ -3,6 +3,7 @@ package kiln
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -96,9 +97,10 @@ func TestMonitorDirs(t *testing.T) {
 	writeMonitor(t, repo, "a", map[string]string{"check": "true", "agent.md": "Fix it.", "monitor.json": `{"hours": 1}`,
 		"notes/lost": "true"})
 	shell(t, repo, "git add . && git commit --quiet -m start")
-	_, monitors, err := r.monitors(t.Context(), "main")
+	_, reads, err := r.monitors(t.Context(), "main")
+	monitors := runnable(reads)
 	if err != nil || len(monitors) != 2 {
-		t.Fatalf("main holds monitors %v, %v; want a and b", monitors, err)
+		t.Fatalf("main holds monitors %v, %v; want a and b", reads, err)
 	}
 
 	a, b := monitors[0], monitors[1]
@@ -114,18 +116,21 @@ func TestMonitorDirs(t *testing.T) {
 		t.Errorf("kiln complete monitor run answers %v, %v; want a and b", names, err)
 	}
 
-	shell(t, repo, "chmod -x .kiln/monitors/b/command && git commit --quiet -am plain")
-	if _, _, err := r.monitors(t.Context(), "main"); err == nil || !strings.Contains(err.Error(), "chmod +x") {
-		t.Errorf("a command git holds without the executable bit answers %v, want it refused, naming chmod +x", err)
+	shell(t, repo, "chmod -x .kiln/monitors/b/command && echo true >.kiln/monitors/stray && git add . && "+
+		"git commit --quiet -am plain")
+	_, reads, err = r.monitors(t.Context(), "main")
+	for name, want := range map[Spec]string{"a": "", "b": "chmod +x", "stray": "is a file"} {
+		_, found, refused := monitorNamed(reads, name)
+		said := strings.Contains(fmt.Sprint(refused), want)
+		if !claim.Holds(err == nil, found, said, (refused == nil) == (want == "")) {
+			t.Errorf("%s reads as refused %v, %v; want it refused, saying %q, while the rest read", name, refused, err,
+				want)
+		}
 	}
 
-	shell(t, repo, "echo true >.kiln/monitors/stray && git add . && git commit --quiet -m stray")
-	if _, _, err := r.monitors(t.Context(), "main"); err == nil || !strings.Contains(err.Error(), "is a file") {
-		t.Errorf("a file under .kiln/monitors/ answers %v, want it refused as a file", err)
-	}
-
-	if names, _ := r.Takes(t.Context(), "monitor run"); len(names) > 0 {
-		t.Errorf("kiln complete monitor run answers %v, which kiln monitor run refuses", names)
+	if names, _ := r.Takes(t.Context(), "monitor run"); !slices.Equal(names, []string{"a", "b", "stray"}) {
+		t.Errorf("kiln complete monitor run answers %v; want each, since kiln monitor run says why it refuses one",
+			names)
 	}
 }
 
@@ -161,6 +166,61 @@ func writeMonitor(t *testing.T, repo string, name string, files map[string]strin
 	}
 }
 
+// TestMonitorRunRefused holds that kiln monitor run runs each monitor kiln can read, beside one it refuses. It says
+// why it refused that one, and notifies of the refusal once. A run by the refused one's name refuses with the refusal.
+// kiln status and kiln tui list it as refused, with why, and the gauges still read the healthy monitor's.
+func TestMonitorRunRefused(t *testing.T) {
+	r, repo := scratchRepo(t)
+	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptance": "a/{spec}/", ` +
+		`"notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}`})
+	writeMonitor(t, repo, "good", map[string]string{gaugeScript: "echo 0\n", commandScript: "true\n",
+		settingsFile: `{"max": 0}`})
+	writeMonitor(t, repo, "bad", map[string]string{checkScript: checkHealthy, commandScript: "true\n"})
+	shell(t, repo, "chmod -x .kiln/monitors/bad/check && git add -A && git commit --quiet -m start")
+	const why = "run chmod +x .kiln/monitors/bad/check, and commit it"
+	for run, good := range []string{"good: healthy", "good: not due"} {
+		var out strings.Builder
+		err := r.MonitorRun(t.Context(), "", &out)
+		notices := shell(t, repo, "cat .git/notices || true")
+		if !claim.Holds(err == nil, strings.Contains(out.String(), good), strings.Contains(out.String(),
+			"bad: refused: "), strings.Contains(out.String(), why), strings.Count(notices, `"name":"bad"`) == 1) {
+			t.Errorf("run %d: %v, and kiln said:\n%s\nnotices:\n%s\nwant %q, bad refused saying %q, and one "+
+				"notice of it", run+1, err, out.String(), notices, good, why)
+		}
+	}
+
+	if err := r.MonitorRun(t.Context(), "bad", io.Discard); !strings.Contains(fmt.Sprint(err), why) {
+		t.Errorf("kiln monitor run bad: %v; want it refused, saying %q", err, why)
+	}
+
+	var status strings.Builder
+	err := r.monitorStatus(t.Context(), &status)
+	if !claim.Holds(err == nil, strings.Contains(status.String(), "bad: refused\n"),
+		strings.Contains(status.String(), why)) {
+		t.Errorf("kiln status shows the monitors:\n%s\n%v; want bad refused, saying %q", status.String(), err, why)
+	}
+
+	shown, err := view{r}.Monitors(t.Context())
+	var bad tui.Monitor
+	if i := slices.IndexFunc(shown, func(s tui.Spec) bool { return s.Name == "bad" }); i >= 0 {
+		bad = *shown[i].Monitor
+	}
+
+	if !claim.Holds(err == nil, bad.Result == foundRefused, strings.Contains(bad.Summary, why)) {
+		t.Errorf("kiln tui shows the monitors %+v, %v; want bad refused, saying %q", shown, err, why)
+	}
+
+	_, gauges, err := r.gauges(t.Context())
+	var names []string
+	for _, g := range gauges {
+		names = append(names, g.Name)
+	}
+
+	if !claim.Holds(err == nil, slices.Equal(names, []string{"good"})) {
+		t.Errorf("the gauges read are %v, %v; want good's", names, err)
+	}
+}
+
 // TestMonitorConflict holds that kiln refuses a monitor at main's tip whose script or monitor.json holds a conflict's
 // marker. kiln init leaves one there in a merge. It is refused as an agent's file that holds one is.
 func TestMonitorConflict(t *testing.T) {
@@ -171,7 +231,11 @@ func TestMonitorConflict(t *testing.T) {
 			writeMonitor(t, repo, "deps", map[string]string{commandScript: "true\n", settingsFile: "{}\n"})
 			shell(t, repo, "printf '"+marker+"\\n' >>"+monitor{Name: "deps"}.path(file)+
 				" && git add -A && git commit --quiet -m x")
-			_, _, err := r.monitors(t.Context(), "main")
+			_, reads, err := r.monitors(t.Context(), "main")
+			if err == nil {
+				_, _, err = monitorNamed(reads, "deps")
+			}
+
 			want := fmt.Sprintf("%s holds a conflict's marker, %q: resolve the conflict, then commit the file",
 				monitor{Name: "deps"}.path(file), marker)
 			if fmt.Sprint(err) != want {

@@ -73,14 +73,15 @@ func (h *history) fixSummary(e entry) string {
 const slack = 30 * time.Minute
 
 // due is whether m is due at now. It is due when it never ran, or its last run couldn't run its check. It is due when
-// that run met a usage limit, or its fix was cut short. Otherwise, it is due once its interval less slack has passed.
+// that run met a usage limit, refused m, or cut its fix short. Otherwise, it is due once its interval less slack has
+// passed.
 func (h *history) due(m monitor, now time.Time) bool {
 	if h == nil || h.last.Kind == "" {
 		return true
 	}
 
 	switch h.result(h.last) {
-	case outLimit, outDropped:
+	case outLimit, outDropped, foundRefused:
 		return true
 	case foundCouldNot:
 		// One that ran past the timeout would hold commands.lock as long again, so it waits for its interval.
