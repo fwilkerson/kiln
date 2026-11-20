@@ -64,7 +64,7 @@ type Source interface {
 	// Text reads the spec as the build's approval held it, followed by the build's amendments, as Markdown. For a
 	// fix, it reads how the fix ended.
 	Text(ctx context.Context, b *Build) (string, error)
-	// Monitors reads each monitor kiln.json names, as a Spec whose Monitor is set and whose builds are its fixes.
+	// Monitors reads each monitor main's tip holds, as a Spec whose Monitor is set and whose builds are its fixes.
 	Monitors(ctx context.Context) ([]Spec, error)
 }
 

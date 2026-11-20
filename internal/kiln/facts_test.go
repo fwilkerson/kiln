@@ -16,5 +16,7 @@ func TestFacts(t *testing.T) {
 		"up to 3 tries":                        auditTries == 3,
 		"of at most 72":                        titleMax == 72,
 		"tries the lock again each 200 ms":     commandsRetry == 200*time.Millisecond,
+		"or 24 when unset":                     defaultHours == 24,
+		"a whole number from 0 to 65535":       ^settings{}.Hours == 65535,
 	})
 }

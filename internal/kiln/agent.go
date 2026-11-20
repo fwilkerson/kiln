@@ -11,7 +11,8 @@ import (
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// agent is an agent's file in .kiln/agents/: frontmatter between lines of ---, then the body, the session's prompt.
+// agent is an agent's file: one in .kiln/agents/, or a monitor's agent.md. It holds frontmatter between lines of ---,
+// then the body, the session's prompt.
 // kiln reads the frontmatter's tools, model, effort and advisor, and ignores every other key and each # line.
 type agent struct {
 	body string

@@ -428,7 +428,7 @@ func (m model) paneAt(at tea.Mouse) (pane, bool) {
 }
 
 // nextPane is the pane by panes on from the focused one. It skips the now line while nothing runs, and the monitors
-// panel where kiln.json names no monitor.
+// panel while there is no monitor.
 func (m model) nextPane(by int) pane {
 	p := m.focus
 	for {

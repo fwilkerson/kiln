@@ -33,7 +33,7 @@
 //
 //	(no record) ─fix─▶ building ├─ lands, is unchanged, asks, fails, couldn't run or meets a limit ──▶ (no record)
 //	                            ├─ stops ──▶ stopped, until its next fix replaces it
-//	                            └─ passes, accept in kiln.json ──▶ waiting on its branch
+//	                            └─ passes, "accept": true ───────▶ waiting on its branch
 //	                                                               ├─ reject ──▶ (no record)
 //	                                                               └─ accept ──▶ landing an accepted fix
 //	                                                                             ├─ lands ──▶ (no record)

@@ -15,13 +15,13 @@ commands in use.
   agents/critic.md
   skills/shape/SKILL.md      /shape, which writes a spec with you
   skills/shape/template.md   the form kiln queue holds a spec to
-  monitors/<name>/           a monitor: its check or gauge, its command or agent, and its monitor.json
   gauges/                    the scripts a gauge's command runs
+  monitors/<name>/           a monitor: its check or gauge, its command or agent, and its monitor.json
 ```
 
-`kiln init` writes these from a preset, each only where `.kiln/` holds no file of its name, and links `/shape` and
-its reviewers into `.claude/`. The project owns them from then on. Run again, it writes each file `.kiln/` lacks,
-and adds to `kiln.json` only `rounds`.
+`kiln init` writes all but the monitors from a preset, each only where `.kiln/` holds no file of its name. It links
+`/shape` and its reviewers into `.claude/`. The project owns them from then on. Run again, it writes each file
+`.kiln/` lacks, and adds to `kiln.json` only `rounds`. `kiln monitor add` writes a monitor, as Monitors says.
 
 A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
 as a new agent, is yours to commit: a build names it in its last reply instead of writing it.
@@ -168,14 +168,14 @@ project owns it from then on. `go doc ./internal/kiln` says what `kiln monitor a
   monitor.json   the keys below, each optional: {"hours": 1, "tests": true}
 ```
 
-| Key      | What it holds                                                                          |
-|----------|----------------------------------------------------------------------------------------|
-| `hours`  | How often it runs, in whole hours from 0 to 65535. Without it, 24. 0 runs it each run. |
-| `gates`  | `false` keeps the check or gauge out of the fix's gate.                                |
-| `accept` | `true` keeps each fix on its branch until `kiln accept <name>`.                        |
-| `tests`  | `true` lets a fix write under each `acceptance` path's part before `{spec}`.           |
-| `min`    | Beside a gauge, its line: `min` or `max`, never both, as a gauge in `kiln.json` has.   |
-| `max`    |                                                                                        |
+| Key      | What it holds                                                                                       |
+|----------|-----------------------------------------------------------------------------------------------------|
+| `hours`  | How often it runs, in whole hours. Its range and default: `go doc ./internal/kiln`, under Monitors. |
+| `gates`  | `false` keeps the check or gauge out of the fix's gate.                                             |
+| `accept` | `true` keeps each fix on its branch until `kiln accept <name>`.                                     |
+| `tests`  | `true` lets a fix write under each `acceptance` path's part before `{spec}`.                        |
+| `min`    | Beside a gauge, its line: `min` or `max`, never both, as a gauge in `kiln.json` has.                |
+| `max`    |                                                                                                     |
 
 ```text
 kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ─────────────────────────▶ healthy
