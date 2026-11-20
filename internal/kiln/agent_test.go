@@ -134,7 +134,7 @@ func TestInitKeeps(t *testing.T) {
 		`echo mine >.kiln/agents/build.md && echo mine >.claude/agents/critic.md && `+
 		`ln -s ../../.kiln/reviewers/comprehension.md .claude/agents && ln -s ../.kiln/skills .claude/skills`)
 	var out strings.Builder
-	if err := r.Init(t.Context(), &out, InitOptions{}); err != nil {
+	if err := r.Init(t.Context(), &out, InitOptions{Preset: "go"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -171,7 +171,7 @@ func TestInitReviewers(t *testing.T) {
 		`printf -- '---\nname: upgrade\n---\n' >.kiln/reviewers/upgrade.md && `+
 		`ln -s ../../.kiln/agents/upgrade.md .claude/agents && `+
 		`ln -s ../../.kiln/reviewers/critic.md .claude/agents && ln -s ../../.kiln/agents/gone.md .claude/agents`)
-	err := r.Init(t.Context(), io.Discard, InitOptions{})
+	err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"})
 	if !errors.Is(err, errRefused) || !strings.Contains(err.Error(), ".kiln/reviewers/upgrade.md") {
 		t.Errorf("kiln init with a reviewer that has no description: %v; want it refused, naming the file", err)
 	}
@@ -183,7 +183,7 @@ func TestInitReviewers(t *testing.T) {
 	shell(t, repo, "printf -- '---\nname: upgrade\ndescription: Reads a spec.\n---\nRead it.\n' "+
 		">.kiln/reviewers/upgrade.md")
 	var out strings.Builder
-	if err := r.Init(t.Context(), &out, InitOptions{}); err != nil {
+	if err := r.Init(t.Context(), &out, InitOptions{Preset: "go"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -268,7 +268,7 @@ func TestQueueNeedsInit(t *testing.T) {
 	for _, missing := range []string{configFile, agentFile(buildRole), agentFile(verifyRole), agentFile(auditRole)} {
 		t.Run(missing, func(t *testing.T) {
 			r, repo := scratchRepo(t)
-			if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
+			if err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"}); err != nil {
 				t.Fatal(err)
 			}
 
@@ -325,7 +325,7 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r, repo := scratchRepo(t)
-			if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
+			if err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"}); err != nil {
 				t.Fatal(err)
 			}
 

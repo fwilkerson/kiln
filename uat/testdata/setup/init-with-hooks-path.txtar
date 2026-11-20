@@ -47,3 +47,7 @@ stdout '\ninstalled no pre-commit hook, since .*/\.git/hooks/pre-commit is anoth
 
 -- README.md --
 # scratch
+-- go.mod --
+module example.com/scratch
+
+go 1.27

@@ -37,6 +37,10 @@ func TestReadJUnit(t *testing.T) {
 			failed: []string{"pkg.test_deep::test_a"},
 			ran:    []string{"pkg.test_deep::test_a", "pkg.test_deep::test_ok", "test_top"},
 		},
+		"node-test.xml": {
+			failed: []string{"test::fails"},
+			ran:    []string{"test::fails", "test::inner ok", "test::passes"},
+		},
 		"truncated.xml": {broken: true},
 		"missing.xml":   {},
 	} {

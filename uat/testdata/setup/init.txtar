@@ -6,7 +6,10 @@
 # When: the developer runs kiln init.
 exec kiln init
 
-# Then: .kiln/ holds kiln's settings,
+# Then: it says it picked Go's preset, by the repository's go.mod,
+stdout '\Apicked the preset go, since the repository holds go\.mod\n'
+
+# and .kiln/ holds kiln's settings,
 exists .kiln/kiln.json
 grep '"go vet \./\.\.\."' .kiln/kiln.json
 grep '"proxy\.golang\.org"' .kiln/kiln.json

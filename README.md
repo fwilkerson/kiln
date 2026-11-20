@@ -29,12 +29,14 @@ The archive holds `_kiln`, the zsh completion, too. Put it in a directory that `
 ## Quick start
 
 **1. Set the project up.** `kiln init` writes kiln's settings, agents, and the `/shape` skill with its reviewers into
-`.kiln/`, and installs a pre-commit hook that runs your gate. The preset is `go`, or `python` for uv, pytest, ruff and
-ty.
+`.kiln/`, and installs a pre-commit hook that runs your gate. It picks the preset from your files: `go` for a
+`go.mod`; `python` for uv, pytest, ruff and ty, by a `pyproject.toml` and `uv.lock`; or `typescript` for npm, tsc
+and Node's test runner, by a `tsconfig.json` and `package-lock.json`. Where it can't tell, it asks for `--preset`.
 
 ```console
 $ cd my-project                      # a git repository, on the branch main
 $ kiln init
+picked the preset go, since the repository holds go.mod
 wrote .kiln/agents/audit.md
 wrote .kiln/agents/build.md
 ...
@@ -215,9 +217,10 @@ unattended session runs under the sign-in `claude` has on the machine.
 ## Commands
 
 ```text
-kiln init [--preset go|python|<dir>]
+kiln init [--preset go|python|typescript|<dir>]
                          write a preset of kiln's defaults into .kiln/, or merge a newer kiln's into yours,
-                         from the preset .kiln/init.json records, or Go's; and install the pre-commit hook
+                         from the preset .kiln/init.json records, or else the one your files match;
+                         and install the pre-commit hook
 kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 kiln fire                build each queued spec, one at a time, until none is queued
 kiln status              show the specs, the monitors, each gauge's reading, and whether .kiln/ is behind
@@ -234,8 +237,7 @@ kiln monitor show <name> show how a monitor's last run ended, then wait for retu
 kiln doctor [<name>]     print each problem in the project's setup, with its fix; or a spec's form too
 kiln ledger [--kind <kind>] [--name <name>] [--last <n>]
                          print what kiln's ledger holds, one JSON object a line, for a script to read
-kiln help                print this usage, as kiln --help and kiln -h do
-```
+kiln help                print this usage, as kiln --help and kiln -h do```
 
 ## Read more
 

@@ -27,3 +27,7 @@ cmp .kiln/kiln.json _given/want.json
  "acceptance": "acc/{spec}/",
  "$schema": "./kiln.schema.json",
  "rounds": 3}
+-- go.mod --
+module example.com/scratch
+
+go 1.27

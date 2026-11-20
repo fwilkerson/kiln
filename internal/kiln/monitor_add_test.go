@@ -104,7 +104,7 @@ func TestShippedDocsCheck(t *testing.T) {
 	} {
 		t.Run(changed, func(t *testing.T) {
 			r, repo := scratchRepo(t)
-			if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
+			if err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"}); err != nil {
 				t.Fatal(err)
 			}
 

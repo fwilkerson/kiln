@@ -127,7 +127,7 @@ type doctorCase struct {
 // spec, form, that leaves /shape's template, which a row names to read it.
 func doctorProject(t *testing.T) string {
 	r, repo := scratchRepo(t)
-	if err := r.Init(t.Context(), &bytes.Buffer{}, InitOptions{}); err != nil {
+	if err := r.Init(t.Context(), &bytes.Buffer{}, InitOptions{Preset: "go"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -192,7 +192,7 @@ func withKeys(keys string) string {
 // TestDoctorWritesNothing holds that kiln doctor leaves the working tree, and git's directory, as they were.
 func TestDoctorWritesNothing(t *testing.T) {
 	r, repo := scratchRepo(t)
-	if err := r.Init(t.Context(), &bytes.Buffer{}, InitOptions{}); err != nil {
+	if err := r.Init(t.Context(), &bytes.Buffer{}, InitOptions{Preset: "go"}); err != nil {
 		t.Fatal(err)
 	}
 

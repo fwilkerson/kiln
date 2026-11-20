@@ -33,3 +33,8 @@ stderr '^kiln complete: refused: kiln builds on the branch main, which this repo
 exec git checkout --quiet --orphan main
 ! exec kiln queue x
 stderr '^kiln queue: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
+
+-- go.mod --
+module example.com/scratch
+
+go 1.27

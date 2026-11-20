@@ -3,12 +3,13 @@ package kiln
 import (
 	"bytes"
 	"io/fs"
+	"slices"
 	"strings"
 	"testing"
 )
 
 // TestPresetsFillMarkers holds that each built-in preset fills every marker in the defaults, and leaves none behind.
-// Each file of a built-in preset, but kiln.json, fills a marker.
+// Each file of a built-in preset, but kiln.json and detect, fills a marker.
 func TestPresetsFillMarkers(t *testing.T) {
 	for _, name := range builtIns {
 		p, err := presetNamed(name, "")
@@ -38,7 +39,7 @@ func TestPresetsFillMarkers(t *testing.T) {
 	}
 }
 
-// wantMarked holds that a marker in the defaults names each file of p but kiln.json.
+// wantMarked holds that a marker in the defaults names each file of p but kiln.json and detectFile.
 func wantMarked(t *testing.T, p preset) {
 	t.Helper()
 	entries, err := fs.ReadDir(p.files, ".")
@@ -55,7 +56,7 @@ func wantMarked(t *testing.T, p preset) {
 			return err
 		})
 
-		if e.Name() != "kiln.json" && !named {
+		if !slices.Contains([]string{"kiln.json", detectFile}, e.Name()) && !named {
 			t.Errorf("preset %s: no marker names %s", p.name, e.Name())
 		}
 	}

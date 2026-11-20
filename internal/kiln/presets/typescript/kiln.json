@@ -1,0 +1,18 @@
+{
+  "gate": [
+    "npm ci --no-audit --no-fund",
+    "npx --no -- tsc --noEmit",
+    "node --test ${KILN_JUNIT:+--test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=\"$KILN_JUNIT\"}"
+  ],
+  "rounds": 3,
+  "hosts": [
+    "registry.npmjs.org"
+  ],
+  "writable": [
+    "npm config get cache"
+  ],
+  "acceptance": "tests/acceptance/{spec}.test.ts",
+  "harness": [
+    "tests/helpers/"
+  ]
+}

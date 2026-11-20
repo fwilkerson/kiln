@@ -121,7 +121,7 @@ wrote .kiln/kiln.json
 linked .claude/skills/shape
 {q:commit .kiln/ on main: kiln reads it there}
 ```
-caption The preset is `go`, or `python` for uv, pytest, ruff and ty.
+caption The preset follows your files: `go`, `python` for uv, or `typescript` for npm.
 column
 howto 4.2 | Build a spec | `kiln queue answer` @you then `kiln fire` @you
 ```term
