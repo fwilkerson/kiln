@@ -307,7 +307,7 @@ func (h *history) lastResult() string {
 // notify opens a tab that shows how the last run of the monitor name ended. An opener that fails changes no result,
 // and kiln says so on out.
 func (r *Repo) notify(ctx context.Context, name Spec, out io.Writer) {
-	if err := r.open(ctx, name); err != nil {
+	if err := r.open(ctx, name, openLimit); err != nil {
 		fmt.Fprintf(out, "%s: kiln could not open a tab: %v\n", name, err)
 	}
 }

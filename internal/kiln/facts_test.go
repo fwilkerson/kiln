@@ -17,5 +17,6 @@ func TestFacts(t *testing.T) {
 		"of at most 72":                        titleMax == 72,
 		"tries the lock again each 200 ms":     commandsRetry == 200*time.Millisecond,
 		"It is 1 hour when unset":              defaultTimeout == time.Hour,
+		"a Ghostty tab 2 minutes":              openLimit == 2*time.Minute,
 	})
 }

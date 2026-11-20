@@ -2,7 +2,9 @@ package kiln
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -278,18 +280,28 @@ const newTab = `on run argv
 	end if
 end run`
 
+// openLimit is how long the command that opens a tab may run. macOS may hold osascript on a question no one answers.
+const openLimit = 2 * time.Minute
+
 // open opens a Ghostty tab, which runs kiln monitor show for the monitor name. The tab's environment is Ghostty's,
-// not kiln's, so kiln names its own path and the repository's.
-func (r *Repo) open(ctx context.Context, name Spec) error {
+// not kiln's, so kiln names its own path and the repository's. Once the opener has run for limit, kiln kills its group.
+func (r *Repo) open(ctx context.Context, name Spec, limit time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
 	args := []string{shellQuote(r.exe) + " monitor show " + string(name), r.top}
 	cmd := exec.CommandContext(ctx, "osascript", append([]string{"-e", newTab}, args...)...)
 	if opener := envValue(r.env, openVar); opener != "" {
 		cmd = opening(ctx, opener, args)
 	}
 
-	cmd.Env = proc.Shell.Env(r.env)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("%s: %w: %s", cmd.Path, err, strings.TrimSpace(string(out)))
+	var out bytes.Buffer
+	cmd.Env, cmd.Stdout, cmd.Stderr = proc.Shell.Env(r.env), &out, &out
+	err := proc.Run(cmd)
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return fmt.Errorf("%s ran past %s, so kiln killed it", cmd.Path, shownDuration(limit))
+	case err != nil:
+		return fmt.Errorf("%s: %w: %s", cmd.Path, err, strings.TrimSpace(out.String()))
 	}
 
 	return nil

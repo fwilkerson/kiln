@@ -305,8 +305,9 @@
 //	a gauge read after a landing                           unknown, with those words as why
 //
 // The timeout counts only the time the Mac is awake, as Go's timers do. It never sends work back as a round. A round
-// would wait out the same hang again, holding the same lock. A pause for a usage limit lasts until the limit resets.
-// A wait for commands.lock lasts as long as the bounded work that holds it.
+// would wait out the same hang again, holding the same lock. kiln gives the command that opens a Ghostty tab 2
+// minutes, then kills it, and the fix's result stands. A pause for a usage limit lasts until the limit resets. A wait
+// for commands.lock lasts as long as the bounded work that holds it.
 //
 // # The ledger
 //

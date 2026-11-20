@@ -312,6 +312,26 @@ func TestCommandRunsPast(t *testing.T) {
 	}
 }
 
+// TestOpenerRunsPast holds that kiln kills the tab's opener, with its group, once it runs past its limit. A tab macOS
+// never opens keeps no kiln monitor run waiting.
+func TestOpenerRunsPast(t *testing.T) {
+	dir := t.TempDir()
+	opener := filepath.Join(dir, "opener")
+	script := fmt.Sprintf("#!/bin/sh\nsleep 30 & echo $! > %q\nsleep 30\n", filepath.Join(dir, "child"))
+	if err := os.WriteFile(opener, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &Repo{env: append(os.Environ(), openVar+"="+opener), top: dir}
+	began := time.Now()
+	err := r.open(t.Context(), "x", 2*time.Second)
+	if took := time.Since(began); !claim.Holds(strings.Contains(fmt.Sprint(err), "ran past 2s"), took < 7*time.Second) {
+		t.Fatalf("the opener answered %v after %v; want it killed at 2s", err, took)
+	}
+
+	wantDead(t, dir)
+}
+
 // commandRunners are the ways kiln runs one of the project's commands, as s runs it. Each answers what it printed.
 func commandRunners(t *testing.T, s projectShell) map[string]func(dir git.Worktree, command string) (string, error) {
 	return map[string]func(dir git.Worktree, command string) (string, error){
