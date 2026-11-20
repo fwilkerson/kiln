@@ -433,10 +433,6 @@ func (g *Git) addWorktree(ctx context.Context, path Worktree, args ...string) er
 		return err
 	}
 
-	if _, err := g.in(ctx, g.repo, "config", "set", "extensions.worktreeConfig", "true"); err != nil {
-		return err
-	}
-
 	add := append([]string{"worktree", "add", "--quiet", "--no-checkout"}, args...)
 	if _, err := g.in(ctx, g.repo, add...); err != nil {
 		return err
@@ -451,7 +447,8 @@ func (g *Git) addWorktree(ctx context.Context, path Worktree, args ...string) er
 }
 
 // unshare moves core.bare and core.worktree to the main worktree's config.worktree, as git-worktree(1) says to before
-// extensions.worktreeConfig. Left shared, core.bare = true makes git read every linked worktree as bare.
+// extensions.worktreeConfig. Left shared, core.bare = true makes git read every linked worktree as bare. Then it
+// turns extensions.worktreeConfig on, unless the shared config holds it on, once.
 func (g *Git) unshare(ctx context.Context) error {
 	common, err := g.CommonDir(ctx)
 	if err != nil {
@@ -459,22 +456,19 @@ func (g *Git) unshare(ctx context.Context) error {
 	}
 
 	shared := filepath.Join(common, "config")
+	values, err := g.sharedConfig(ctx, shared)
+	if err != nil {
+		return err
+	}
+
 	for _, key := range []string{"core.bare", "core.worktree"} {
-		value, err := g.line(ctx, g.repo, "config", "get", "--file", shared, key)
-		if unset, ok := errors.AsType[*failed](err); ok && unset.Exit == 1 {
-			continue
-		}
-
-		if err != nil {
-			return err
-		}
-
-		if value == "false" {
+		set := values[key]
+		if len(set) == 0 || set[len(set)-1] == "false" {
 			continue
 		}
 
 		main := filepath.Join(common, "config.worktree")
-		if _, err := g.in(ctx, g.repo, "config", "set", "--file", main, key, value); err != nil {
+		if _, err := g.in(ctx, g.repo, "config", "set", "--file", main, key, set[len(set)-1]); err != nil {
 			return err
 		}
 
@@ -483,7 +477,32 @@ func (g *Git) unshare(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	// One value, true, is what the set would leave. git config set refuses to replace two.
+	if on := values["extensions.worktreeconfig"]; len(on) == 1 && on[0] == "true" {
+		return nil
+	}
+
+	_, err = g.in(ctx, g.repo, "config", "set", "extensions.worktreeConfig", "true")
+	return err
+}
+
+// sharedConfig reads each value of core.bare, core.worktree and extensions.worktreeConfig in the config file shared,
+// in one git. It answers them by lowercase name, in the file's order.
+func (g *Git) sharedConfig(ctx context.Context, shared string) (map[string][]string, error) {
+	names := `^(core\.(bare|worktree)|extensions\.worktreeconfig)$`
+	out, err := g.in(ctx, g.repo, "config", "get", "--file", shared, "--all", "--show-names", "-z", "--regexp", names)
+	if unset, ok := errors.AsType[*failed](err); ok && unset.Exit == 1 {
+		return nil, nil
+	}
+
+	values := map[string][]string{}
+	for entry := range strings.SplitSeq(out, "\x00") {
+		if name, value, _ := strings.Cut(entry, "\n"); entry != "" {
+			values[name] = append(values[name], strings.TrimSpace(value))
+		}
+	}
+
+	return values, err
 }
 
 // Head is the commit checked out at checkout.
