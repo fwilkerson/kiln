@@ -61,6 +61,56 @@ func (r *Repo) MonitorAdd(source string, out io.Writer) error {
 	return nil
 }
 
+// ShippedMonitors prints each monitor kiln ships, one a line, with the preset it fits. One that sits under a preset's
+// name, such as go/docs, fits that preset alone. Each line names the preset .kiln/init.json records, where it differs.
+func (r *Repo) ShippedMonitors(out io.Writer) error {
+	rec, err := r.lastInit()
+	if err != nil {
+		return err
+	}
+
+	for _, name := range shippedNames() {
+		fmt.Fprintf(out, "%-14s %s\n", name, fitsWhat(name, rec.Preset))
+	}
+
+	fmt.Fprintln(out, "add one with kiln monitor add <name>, or one in a directory with kiln monitor add <dir>")
+	return nil
+}
+
+// shippedFor is the preset the monitor kiln ships as name needs, or "" for one that fits any project.
+func shippedFor(name string) string {
+	lang, _, found := strings.Cut(name, "/")
+	if !found {
+		return ""
+	}
+
+	return lang
+}
+
+// fitsWhat says which preset the monitor kiln ships as name fits, beside preset, which a record of kiln init names.
+func fitsWhat(name, preset string) string {
+	lang := shippedFor(name)
+	switch {
+	case lang == "":
+		return "for any project"
+	case lang == preset:
+		return fmt.Sprintf("for the preset %s, which %s records", lang, initFile)
+	case slices.Contains(builtIns, preset):
+		return fmt.Sprintf("for the preset %s; %s records %s", lang, initFile, preset)
+	}
+
+	return "for the preset " + lang
+}
+
+// fitting are the monitors kiln ships that fit a project whose record of kiln init names preset. Where it names a
+// directory, or no preset, kiln cannot tell, and each fits.
+func fitting(preset string) []string {
+	return slices.DeleteFunc(shippedNames(), func(name string) bool {
+		lang := shippedFor(name)
+		return lang != "" && slices.Contains(builtIns, preset) && lang != preset
+	})
+}
+
 // addedMode is the mode kiln monitor add writes file with. A script kiln runs is executable, as is a file the source
 // holds so.
 func addedMode(from fs.FS, file string) fs.FileMode {

@@ -227,9 +227,10 @@ kiln status              show the specs, the monitors, each gauge's reading, and
 kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
 kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
 kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
-kiln monitor add <name>|<dir>
+kiln monitor add [<name>|<dir>]
                          copy a monitor into .kiln/monitors/: one kiln ships, such as bugs or go/docs, or the
-                         one in a directory, by a path that starts with . or /
+                         one in a directory, by a path that starts with . or /; with neither, list those kiln
+                         ships, and the preset each fits
 kiln monitor install     set up a launchd job that runs kiln monitor run in the repository each hour
 kiln monitor run [<name>]
                          run each monitor that is due; or run one now, due or not

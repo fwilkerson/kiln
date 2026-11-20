@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/fwilkerson/practices/claim"
 )
 
 // TestMonitorAdd holds what kiln monitor add copies into .kiln/monitors/, and what it refuses before it writes. A
@@ -120,6 +122,42 @@ func TestShippedDocsCheck(t *testing.T) {
 			out := shell(t, repo, "git add -A && git commit --quiet --no-verify -m change && .kiln/monitors/docs/check")
 			if last := out[strings.LastIndex(out, "\n")+1:]; !strings.Contains(last, want) {
 				t.Errorf("the check's verdict is %s; want one that holds %s", last, want)
+			}
+		})
+	}
+}
+
+// TestShippedFit holds which monitors kiln ships fit a project, by the preset .kiln/init.json records. The shell
+// completes only those. kiln monitor add with no source lists each, with the preset it fits.
+func TestShippedFit(t *testing.T) {
+	all := []string{"bugs", "go/docs", "go/gate-time"}
+	for preset, tc := range map[string]struct {
+		fits []string
+		says string
+	}{
+		"go":     {fits: all, says: "go/docs        for the preset go, which .kiln/init.json records\n"},
+		"python": {fits: []string{"bugs"}, says: "go/docs        for the preset go; .kiln/init.json records python\n"},
+		"":       {fits: all, says: "go/docs        for the preset go\n"},
+	} {
+		t.Run(cmpOr(preset, "no record"), func(t *testing.T) {
+			r, _ := scratchRepo(t)
+			if preset != "" {
+				if err := r.Init(t.Context(), io.Discard, InitOptions{Preset: preset}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			fits, err := r.Takes(t.Context(), "monitor add")
+			var out strings.Builder
+			if err == nil {
+				err = r.ShippedMonitors(&out)
+			}
+
+			listed := out.String()
+			anyProject := strings.HasPrefix(listed, "bugs           for any project\n")
+			if !claim.Holds(err == nil, slices.Equal(fits, tc.fits), anyProject, strings.Contains(listed, tc.says)) {
+				t.Errorf("the shell completes %v, %v, and kiln monitor add lists:\n%s\nwant %v, and the line %q", fits,
+					err, listed, tc.fits, tc.says)
 			}
 		})
 	}

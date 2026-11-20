@@ -24,7 +24,7 @@ stderr '\Akiln: unknown command bogus\nusage:'
 ! stdout .
 stderr '\Akiln queue: takes one spec''s name\nusage:'
 ! exec kiln monitor bogus
-stderr '\Akiln monitor: takes add <name>\|<dir>, install, run \[<name>\] or show <name>\nusage:'
+stderr '\Akiln monitor: takes add \[<name>\|<dir>\], install, run \[<name>\] or show <name>\nusage:'
 ! exec kiln ledger --kind gates
 stderr '\Akiln ledger: usage: kiln ledger prints no kind gates, only build, run, gate, reading, monitor\nusage:'
 ! exec kiln hook --spec x

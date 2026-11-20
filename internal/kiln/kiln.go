@@ -988,8 +988,9 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 // Takes answers the names command would not refuse, for the shell to complete. For queue, accept and reject, they
 // are specs, and for accept and reject, waiting fixes too. For tui, they are the specs kiln holds or its ledger holds.
 // For "monitor run" and "monitor show", they are the monitors kiln reads at main's tip. While kiln refuses one there,
-// they are none. For "monitor add", they are the monitors kiln ships. For doctor, they are the specs the working tree
-// holds, each by a name a spec may have. Other commands take none.
+// they are none. For "monitor add", they are the monitors kiln ships that fit the preset .kiln/init.json records, as
+// ShippedMonitors says. For doctor, they are the specs the working tree holds, each by a name a spec may have. Other
+// commands take none.
 func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	switch command {
 	case "tui":
@@ -1003,7 +1004,8 @@ func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	case "monitor run", "monitor show":
 		return r.monitorNames(ctx)
 	case "monitor add":
-		return shippedNames(), nil
+		rec, err := r.lastInit()
+		return fitting(rec.Preset), err
 	}
 
 	return nil, nil
