@@ -2,7 +2,9 @@ package kiln
 
 import (
 	"bytes"
+	"encoding/json"
 	"io/fs"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -58,6 +60,36 @@ func wantMarked(t *testing.T, p preset) {
 
 		if !slices.Contains([]string{"kiln.json", detectFile}, e.Name()) && !named {
 			t.Errorf("preset %s: no marker names %s", p.name, e.Name())
+		}
+	}
+}
+
+// TestPresetsShareKeys holds that each built-in preset's kiln.json names each key another names, such as $schema. A key
+// one preset lacks is a setting that project starts without.
+func TestPresetsShareKeys(t *testing.T) {
+	keys := map[string][]string{}
+	all := map[string]bool{}
+	for _, name := range builtIns {
+		raw, err := fs.ReadFile(presetFS, "presets/"+name+"/kiln.json")
+		var settings map[string]json.RawMessage
+		if err == nil {
+			err = json.Unmarshal(raw, &settings)
+		}
+
+		if err != nil {
+			t.Fatalf("preset %s: %v", name, err)
+		}
+
+		keys[name] = slices.Sorted(maps.Keys(settings))
+		for key := range settings {
+			all[key] = true
+		}
+	}
+
+	for _, name := range builtIns {
+		if want := slices.Sorted(maps.Keys(all)); !slices.Equal(keys[name], want) {
+			t.Errorf("preset %s's kiln.json names %v; want each key a built-in preset names, %v", name, keys[name],
+				want)
 		}
 	}
 }
