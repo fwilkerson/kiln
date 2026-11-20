@@ -14,7 +14,7 @@ import (
 
 // standing is where a monitor stands, as kiln status, kiln monitor show and kiln tui show it.
 type standing struct {
-	// result is what its last run came to, such as healthy, or held: stopped.
+	// result is what its last run came to, such as healthy, or held: stopped. It is "" for a monitor that never ran.
 	result string
 	// outcome is the outcome of the fix the result names, or "". fixed is whether the result names a fix.
 	outcome string
@@ -29,14 +29,14 @@ type standing struct {
 	last, next time.Time
 }
 
-// neverRun is the result of a monitor that never ran.
-const neverRun = "never run"
+// neverRun is the state of a monitor that never ran.
+const neverRun tui.State = "never run"
 
 // standing is where m stands, from its history. rec is the record of its fix, if the book holds one. An accepted
 // landing is worded from rec, since the ledger's last outcome still says the fix waits on its branch.
 func (h *history) standing(m monitor, rec *record) standing {
 	if h == nil || h.last.Kind == "" {
-		return standing{result: neverRun}
+		return standing{}
 	}
 
 	s := standing{last: h.last.At, next: h.next(m)}
@@ -139,13 +139,17 @@ func (r *Repo) monitorStatus(ctx context.Context, out io.Writer) error {
 	fmt.Fprintln(out, "monitors:")
 	for _, d := range reads {
 		h, rec := all[d.name], k.find(d.name)
-		s, when := refusedStanding(d), ""
+		s := refusedStanding(d)
+		head := s.result
 		if d.refused == nil {
 			s = h.standing(d.monitor, rec)
-			when = ", " + s.when(h.due(d.monitor, now))
+			head = s.when(h.due(d.monitor, now))
+			if s.result != "" {
+				head = s.result + ", " + head
+			}
 		}
 
-		fmt.Fprintf(out, "%s: %s%s\n", d.name, s.result, when)
+		fmt.Fprintf(out, "%s: %s\n", d.name, head)
 		for _, line := range s.lines(d.name, rec, r.tree(d.name)) {
 			fmt.Fprintln(out, indent(line))
 		}

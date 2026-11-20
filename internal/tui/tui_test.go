@@ -98,7 +98,7 @@ func TestMonitors(t *testing.T) {
 		{Name: "deps", State: Stopped, Builds: []*Build{fix}, Monitor: &Monitor{Result: "stopped",
 			Summary: "3 modules to update", Last: now.Add(-time.Hour), Next: now.Add(22 * time.Hour)}},
 		{Name: "docs", State: Waits, Monitor: &Monitor{Result: "held: waiting on the developer"}},
-		{Name: "vulns", State: "never run", Monitor: &Monitor{Result: "never run", Due: true}},
+		{Name: "vulns", State: "never run", Monitor: &Monitor{Due: true}},
 	}}
 	// At 80 columns, the specs panel is a third of the width, and each monitor's name still shows.
 	m := drive(t, src, "", sized(80, 30))
@@ -116,6 +116,9 @@ func TestMonitors(t *testing.T) {
 	m = drive(t, src, "deps", sized(140, 30))
 	last := now.Add(-time.Hour).Local().Format("Jan 02 15:04")
 	shows(t, m, `fixes of deps · stopped · ran `+last+` · next `, `│3 modules to update *│`, `#1 +✗ stopped`)
+
+	// A monitor that never ran says so once.
+	shows(t, drive(t, src, "vulns", sized(140, 30)), `fixes of vulns · never ran · due`)
 
 	m = sendAll(m, tea.KeyPressMsg{Code: tea.KeyTab}, tea.KeyPressMsg{Code: tea.KeyTab},
 		tea.KeyPressMsg{Code: tea.KeyEnter})

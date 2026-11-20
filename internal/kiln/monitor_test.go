@@ -166,6 +166,20 @@ func writeMonitor(t *testing.T, repo string, name string, files map[string]strin
 	}
 }
 
+// TestStatusNeverRan holds that kiln status says once that a monitor never ran, then when it runs.
+func TestStatusNeverRan(t *testing.T) {
+	r, repo := scratchRepo(t)
+	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptance": "a/{spec}/"}`})
+	writeMonitor(t, repo, "deps", map[string]string{checkScript: checkHealthy, commandScript: "true\n"})
+	shell(t, repo, "git add -A && git commit --quiet -m start")
+	var out strings.Builder
+	err := r.monitorStatus(t.Context(), &out)
+	const want = "monitors:\ndeps: never ran, runs at the next kiln monitor run\n"
+	if err != nil || out.String() != want {
+		t.Errorf("kiln status shows the monitors:\n%s\n%v; want:\n%s", out.String(), err, want)
+	}
+}
+
 // TestMonitorRunRefused holds that kiln monitor run runs each monitor kiln can read, beside one it refuses. It says
 // why it refused that one, and notifies of the refusal once. A run by the refused one's name refuses with the refusal.
 // kiln status and kiln tui list it as refused, with why, and the gauges still read the healthy monitor's.

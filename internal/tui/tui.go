@@ -80,7 +80,7 @@ type Spec struct {
 
 // Monitor is where a monitor stands, as kiln status shows it.
 type Monitor struct {
-	// Result is its last run's result in full, such as "held: waiting on the developer".
+	// Result is its last run's result in full, such as "held: waiting on the developer". It is "" if it never ran.
 	Result string
 	// Summary is its check's summary, the report's summary, the session's error, or why its check couldn't run.
 	Summary string

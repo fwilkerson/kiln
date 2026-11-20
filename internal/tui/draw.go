@@ -444,7 +444,12 @@ func monitorTitle(s Spec) string {
 		next = "next " + mon.Next.Local().Format("Jan 02 15:04")
 	}
 
-	return fmt.Sprintf("fixes of %s · %s · %s · %s", s.Name, mon.Result, when, next)
+	title := "fixes of " + s.Name
+	if mon.Result != "" {
+		title += " · " + mon.Result
+	}
+
+	return fmt.Sprintf("%s · %s · %s", title, when, next)
 }
 
 // recentRows lists the builds panel's builds, newest first, in an area, below its columns' names. A selected
