@@ -229,6 +229,7 @@ func TestStateOf(t *testing.T) {
 // TestMonitorReadings holds that the view reads a monitor's readings of its gauge from its monitor lines, oldest
 // first. A line from before the monitor named the gauge is no reading, nor is one of another monitor.
 func TestMonitorReadings(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	config := `{"gate": ["true"], "rounds": 1, "acceptance": "acceptance/{spec}/", "gauges": [{"name": "count", ` +
 		`"command": "true", "max": 0}], "monitors": [{"name": "m", "every": "24h", "gauge": "count", ` +
@@ -268,6 +269,7 @@ func TestMonitorReadings(t *testing.T) {
 // TestCutShortFix holds that a fix whose kiln is gone stands halted, in the view and in kiln status. Status names
 // kiln monitor run, which drops the fix and runs the monitor again, or lands an accepted fix.
 func TestCutShortFix(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		accepted bool
 		next     string
@@ -276,6 +278,7 @@ func TestCutShortFix(t *testing.T) {
 		"an accepted fix's landing": {accepted: true, next: "next: run kiln monitor run m, which lands it"},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			r := cutShortFix(t, tc.accepted)
 			monitors, err := view{r}.Monitors(t.Context())
 			if err != nil {

@@ -101,6 +101,7 @@ func TestSpecForm(t *testing.T) {
 // TestSpecBeforeKiln holds where kiln reads a spec at an old commit. It is under .kiln/specs/, or under specs/
 // where the commit holds no spec under .kiln/.
 func TestSpecBeforeKiln(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	shell(t, repo, "mkdir specs && echo old >specs/x.md && git add -A && git commit --quiet -m old")
 	old := git.Rev(shell(t, repo, "git rev-parse HEAD"))
@@ -118,6 +119,7 @@ func TestSpecBeforeKiln(t *testing.T) {
 // hosts or writable key, since those differ by preset. It writes no default over a file of its name. It links nothing
 // over one in .claude/. It names each such file, unless that path already reaches kiln's own file through a link.
 func TestInitKeeps(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	shell(t, repo, `mkdir -p .kiln/agents .claude/agents && `+
 		`echo '{"gate": ["true"], "rounds": 1}' >.kiln/kiln.json && `+
@@ -171,9 +173,6 @@ func wantConfigKept(t *testing.T, repo string) {
 
 // scratchRepo is a new repository, with no commit, opened.
 func scratchRepo(t *testing.T) (*Repo, string) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	repo := t.TempDir()
 	shell(t, repo, "git init --quiet -b main && git config user.name t && git config user.email t@t")
 	r, err := Open(t.Context(), repo, os.Environ())
@@ -186,8 +185,10 @@ func scratchRepo(t *testing.T) (*Repo, string) {
 
 // TestQueueNeedsInit holds that kiln queue refuses while main lacks a file of .kiln/ it needs, and names kiln init.
 func TestQueueNeedsInit(t *testing.T) {
+	t.Parallel()
 	for _, missing := range []string{configFile, agentFile(buildRole), agentFile(verifyRole), agentFile(auditRole)} {
 		t.Run(missing, func(t *testing.T) {
+			t.Parallel()
 			r, repo := scratchRepo(t)
 			if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
 				t.Fatal(err)
@@ -208,6 +209,7 @@ func TestQueueNeedsInit(t *testing.T) {
 // It refuses paths that two specs could share. It refuses a spec whose paths meet the harness. It refuses a build
 // agent that still says how to write the tests, as an older default did.
 func TestQueueNeedsTestsPlace(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		change, refusal string
 	}{
@@ -245,6 +247,7 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 				` && printf '\nThe wrapper is in internal/git/.\n' >>.kiln/agents/build.md`},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			r, repo := scratchRepo(t)
 			if err := r.Init(t.Context(), io.Discard, InitOptions{}); err != nil {
 				t.Fatal(err)
@@ -278,6 +281,7 @@ func harness(p string) string {
 // TestAuditedDirs holds which directories the audit reads. A file at the top, in any language, names ".". A directory
 // whose every file the work deleted names the nearest directory above it. A file under .kiln/ names none.
 func TestAuditedDirs(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct{ work, want string }{
 		"files in several directories and languages": {
 			work: "git rm --quiet deep/gone/g.go && mkdir sub && echo 'package sub' >sub/s.go && " +
@@ -288,6 +292,7 @@ func TestAuditedDirs(t *testing.T) {
 		"only a deletion": {work: "git rm --quiet deep/gone/g.go", want: "[deep]"},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			b, repo, _ := landingBuild(t)
 			shell(t, repo, "mkdir -p deep/gone && echo 'package gone' >deep/gone/g.go && echo d >deep/d.md && "+
 				"git add -A && git commit --quiet -m gone")

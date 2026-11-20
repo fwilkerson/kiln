@@ -16,6 +16,7 @@ import (
 // file. Claude Code's sandbox then lets a session's shell write where the link points. A commit there keeps it a
 // link.
 func TestCheckout(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	sh(t, repo, "git init --quiet -b main && git config user.name t && git config user.email t@t")
 	sh(t, repo, "mkdir -p .kiln/agents .claude && touch .kiln/agents/a.md")
@@ -62,6 +63,7 @@ func checkLinks(t *testing.T, repo, tree string) {
 // TestCheckoutSharedCore holds that kiln's first worktree leaves the developer's checkout usable. With
 // extensions.worktreeConfig, git reads a shared core.bare or core.worktree in each linked worktree.
 func TestCheckoutSharedCore(t *testing.T) {
+	t.Parallel()
 	commit := "git config user.name t && git config user.email t@t && echo a >a && git add a && git commit -qm first"
 	for _, c := range []struct {
 		name, setup string
@@ -72,6 +74,7 @@ func TestCheckoutSharedCore(t *testing.T) {
 			"echo 'gitdir: ../gd' >.git && " + commit},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			dir := t.TempDir()
 			sh(t, dir, c.setup)
 			work := filepath.Join(dir, "work")
@@ -100,6 +103,7 @@ func TestCheckoutSharedCore(t *testing.T) {
 // TestDetached holds that the gate's worktree holds only the commit. A nested repository lands as a pointer, without
 // its files. A file git ignores, left by an earlier use, is gone.
 func TestDetached(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	sh(t, repo, "git init --quiet -b main && git config user.name t && git config user.email t@t")
 	sh(t, repo, "echo '*.golden' >.gitignore && mkdir data && cd data && git init --quiet && echo 42 >want.golden && "+
@@ -128,6 +132,7 @@ func TestDetached(t *testing.T) {
 // the shared config, which git refuses to write while another call holds it. The test looks once the checkout blocks
 // on the lock, so a slow machine never looks too soon.
 func TestCheckoutWaits(t *testing.T) {
+	t.Parallel()
 	repo := t.TempDir()
 	sh(t, repo, "git init --quiet -b main")
 	sh(t, repo, "git -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m first")

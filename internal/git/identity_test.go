@@ -13,6 +13,7 @@ import (
 
 // TestIdentity holds that kiln's commit is by whom git commit in the developer's shell would name, and never a guess.
 func TestIdentity(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		env  []string
 		want string
@@ -27,6 +28,7 @@ func TestIdentity(t *testing.T) {
 		"no identity anywhere refuses, naming user.name": {want: "user.name"},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			if got := commitAs(t, tc.env); !strings.Contains(got, tc.want) {
 				t.Errorf("the commit got %q; want %q", got, tc.want)
 			}

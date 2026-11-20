@@ -943,6 +943,7 @@ func namedIn(t *testing.T, next string, rec *record) []string {
 // TestLandChanges holds that main moves only to work that changes it. A session that ended with no result can leave
 // its branch at main's tip. That work goes back to the session.
 func TestLandChanges(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		work   string
 		landed bool
@@ -952,6 +953,7 @@ func TestLandChanges(t *testing.T) {
 		"an empty commit changes nothing":    {work: "git commit --quiet --allow-empty -m nothing"},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			b, repo, main := landingBuild(t)
 			shell(t, string(b.tree), tc.work)
 			head := git.Rev(shell(t, string(b.tree), "git rev-parse HEAD"))
@@ -1001,6 +1003,7 @@ func gateLines(t *testing.T, r *Repo) string {
 // TestLandedBefore holds what the next kiln makes of an accepted landing that moved main before kiln died. kiln fire
 // retires the spec, and kiln monitor run ends the fix landed. Neither lands it again.
 func TestLandedBefore(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		monitor bool
 		next    func(*build, context.Context) error
@@ -1011,6 +1014,7 @@ func TestLandedBefore(t *testing.T) {
 			next: func(b *build, ctx context.Context) error { return b.r.dropLost(ctx, b.rec, b.out) }},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			next, landed := landedThenKilled(t, tc.monitor)
 			if err := tc.next(next, t.Context()); err != nil {
 				t.Fatal(err)
@@ -1031,8 +1035,8 @@ func TestLandedBefore(t *testing.T) {
 // landedThenKilled is the build of x, an accepted landing, as the next kiln takes it up. The kiln before died once its
 // landing moved main. It answers the commit main moved to. A monitor's build is the fix of the monitor x.
 func landedThenKilled(t *testing.T, monitor bool) (*build, git.Rev) {
-	t.Setenv(openVar, "true")
 	b, repo, _ := landingBuild(t)
+	b.r.env = append(b.r.env, openVar+"=true")
 	shell(t, repo, `echo '{"gate": ["true"], "monitors": [{"name": "x", "every": "1h", "command": "true", `+
 		`"tests": true}]}' >.kiln/kiln.json && git commit --quiet -am monitor`)
 	b.rec = record{Name: "x", State: building, Accepted: true, Monitor: monitor, Build: "b",
@@ -1064,11 +1068,6 @@ type landing struct {
 
 // landingBuild is a build of x in a new repository, on its branch from main. It answers the repository, and main.
 func landingBuild(t *testing.T) (*build, string, git.Rev) {
-	// kiln's git never sees GIT_CONFIG_GLOBAL, so HOME and XDG_CONFIG_HOME keep the developer's config from it.
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	repo := t.TempDir()
 	shell(t, repo, `git init --quiet -b main && git config user.name t && git config user.email t@t && `+
 		`mkdir .kiln && echo '{"gate": ["true"], "rounds": 1}' >.kiln/kiln.json && git add . && `+
@@ -1201,6 +1200,7 @@ func TestGaugeVerdict(t *testing.T) {
 // TestGaugeTree holds that a gauge which leaves a file git can't remove stops no later reading. Each landing gets a
 // reading of each gauge, and each monitor's run gets one too.
 func TestGaugeTree(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	t.Cleanup(func() { _ = removeTree(r.trees) })
 	config := `{"gate": ["true"], "rounds": 1, "gauges": [{"name": "n", "max": 5, ` +
@@ -1260,6 +1260,7 @@ echo $n
 // TestGatedGauge holds how a fix's gate reads its monitor's gauge: over the fix's change, against main's line. A
 // crossed reading or a failed command fails the gate. A reading of no number never crossed.
 func TestGatedGauge(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		fix, gauge   string
 		passed       bool
@@ -1274,6 +1275,7 @@ func TestGatedGauge(t *testing.T) {
 		"a gauge main's kiln.json no longer has": {fix: "echo still low >a.txt", gauge: "gone", passed: true},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			b := gaugedFix(t, tc.fix, monitor{Name: "m", Gauge: cmp.Or(tc.gauge, "count")})
 			v, err := b.gatedCheck(t.Context(), heldBy(t, b.r), verdict{passed: true})
 			if err != nil {
@@ -1428,6 +1430,7 @@ func TestBlindTranscripts(t *testing.T) {
 // TestChangedSince holds which files changed since kiln accept: each whose own change differs from the commit the
 // developer accepted. Main's changes never count, and a binary file counts by its content.
 func TestChangedSince(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		main, work string
 		want       []string
@@ -1443,6 +1446,7 @@ func TestChangedSince(t *testing.T) {
 			want: []string{"b.txt"}},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			b, repo, _ := landingBuild(t)
 			tree := string(b.tree)
 			shell(t, repo, "echo one >a.txt && echo bee >b.txt && printf 'p\\000\\001' >p.bin && git add . && "+

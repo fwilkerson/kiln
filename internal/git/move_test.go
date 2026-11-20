@@ -15,6 +15,7 @@ import (
 
 // TestMove holds the rule a landing rests on: main moves only from the commit the landing gated on.
 func TestMove(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		expected func(h history) git.Rev
 		want     func(h history) outcome
@@ -29,6 +30,7 @@ func TestMove(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			h := makeHistory(t)
 			way, err := h.git.Move(t.Context(), "main", h.landed, tc.expected(h))
 			if err != nil {
@@ -106,6 +108,7 @@ func sh(t *testing.T, dir, script string) string {
 // TestMoveInterrupted holds that an interrupt never cuts a fast-forward short. A killed merge would leave the
 // checkout half-updated, and index.lock behind. The interrupt comes once the fast-forward's git has started.
 func TestMoveInterrupted(t *testing.T) {
+	t.Parallel()
 	h := makeHistory(t)
 	began := filepath.Join(t.TempDir(), "began")
 	h.git = announcing(t, h.repo, "merge", began)

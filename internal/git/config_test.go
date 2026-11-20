@@ -13,6 +13,7 @@ import (
 
 // TestConfig holds the package doc's promise: the developer's git config changes no call, but for signing its commits.
 func TestConfig(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		repoConfig, globalConfig string
 		call                     func(t *testing.T, s scratch) error
@@ -67,6 +68,7 @@ func TestConfig(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			s := makeScratch(t, tc.repoConfig, tc.globalConfig)
 			if err := tc.call(t, s); err != nil {
 				t.Error(err)
@@ -208,6 +210,7 @@ func makeScratch(t *testing.T, repoConfig, globalConfig string) scratch {
 // TestCommitUnmerged holds that Commit never commits a merge whose conflicts remain, which would commit their markers.
 // It commits a merge whose conflicts were all resolved, as the merge.
 func TestCommitUnmerged(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		resolve string
 		// refused names the files the refusal names, and parents counts the parents of the commit at HEAD after.
@@ -218,6 +221,7 @@ func TestCommitUnmerged(t *testing.T) {
 		"a conflict resolved and added":  {resolve: "echo both >first && git add first", parents: 2},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			s := makeScratch(t, "", "")
 			tree := filepath.Join(t.TempDir(), "tree")
 			if err := s.git.Checkout(t.Context(), git.Worktree(tree), "kiln/x", "main"); err != nil {
