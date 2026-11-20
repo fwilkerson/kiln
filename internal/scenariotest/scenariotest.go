@@ -48,6 +48,8 @@
 //	KILN_REPO         the checkout of kiln the test runs in, for a script that works on kiln's own repository
 //	GOCACHE           the developer's, with GOMODCACHE and GOPATH; Go runs offline, as GOPROXY=off,
 //	                  GOTOOLCHAIN=local and GOFLAGS=-buildvcs=false say
+//	GOFLAGS           -trimpath too, so a gate reuses what another script's gate compiled and vetted, from
+//	                  another directory
 //	SCENARIOTEST_PID  the test process, whose end ends each await and scripted claude
 //
 // A script waits for an event with await, never with a count of tries or a sleep. Only the test's deadline bounds the
@@ -267,7 +269,7 @@ func setUp(env *testscript.Env, waits context.Context) error {
 
 	env.Setenv("GOTOOLCHAIN", "local")
 	env.Setenv("GOPROXY", "off")
-	env.Setenv("GOFLAGS", "-buildvcs=false")
+	env.Setenv("GOFLAGS", "-buildvcs=false -trimpath")
 	env.Setenv("KILN_REPO", kilnRepo)
 	env.Setenv(testPIDEnv, strconv.Itoa(os.Getpid()))
 	if err := seed(env.WorkDir); err != nil {
