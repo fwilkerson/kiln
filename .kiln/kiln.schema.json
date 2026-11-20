@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "kiln.json",
+  "description": "config is .kiln/kiln.json, read from main's tip, so a build cannot weaken the gate it is held to.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "Schema names the JSON Schema an editor checks kiln.json against, ./kiln.schema.json, which kiln init writes. kiln reads nothing from it.",
+      "type": "string"
+    },
+    "gate": {
+      "description": "Gate holds the commands the gate runs, each with sh -c, at the top of a worktree.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rounds": {
+      "description": "Rounds is how many times a failing gate goes back to the session before the build stops.",
+      "type": "integer"
+    },
+    "hosts": {
+      "description": "Hosts are the only hosts a session's commands reach.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "writable": {
+      "description": "Writable holds commands, each run with sh -c. Each field one prints is a path a session's commands may write.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mcp": {
+      "description": "MCP holds the only MCP servers a session reaches, by name, each as Claude Code's mcpServers holds one. They run outside the sandbox.",
+      "type": "object",
+      "additionalProperties": {}
+    },
+    "gauges": {
+      "description": "Gauges are read after each landing, and never block one.",
+      "type": "array",
+      "items": {
+        "description": "gauge is a command kiln.json names, which prints a number. Its line is where that number should stay.",
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Name names the gauge. No two gauges share one.",
+            "type": "string"
+          },
+          "command": {
+            "description": "Command runs with sh -c, at the top of a worktree at the commit it reads. That is a landing, main's tip, or a fix's commit. Its last line of stdout is its reading.",
+            "type": "string"
+          },
+          "min": {
+            "description": "Min is the line a reading below crosses.",
+            "type": "number"
+          },
+          "max": {
+            "description": "Max is the line a reading above crosses.",
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "workflow": {
+      "description": "Workflow is \"split\", or \"\" for build then audit. Like Acceptance and Harness, kiln reads it at the commit the build was queued at.",
+      "type": "string"
+    },
+    "acceptance": {
+      "description": "Acceptance holds each path a spec's acceptance tests live in, with {spec} for its name, such as \"acceptance/{spec}/\". A JSON string is a list of one.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "harness": {
+      "description": "Harness holds paths both sessions of a split build may write, such as the code the acceptance tests run through.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "reaudit": {
+      "description": "Reaudit holds paths the audit reads again whenever the work's own change to them differs from what it read.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "monitors": {
+      "description": "Monitors are the jobs kiln monitor run runs on their schedule, each of which may start a fix.",
+      "type": "array",
+      "items": {
+        "description": "monitor is a job kiln.json names, which kiln monitor run runs once its interval has passed. Its check or its gauge finds a problem, and its command, its agent or both fix it.",
+        "type": "object",
+        "properties": {
+          "name": {
+            "description": "Name names the monitor, by a spec's name's rule. Its fix builds on kiln/<name>.",
+            "type": "string"
+          },
+          "every": {
+            "description": "Every is how often it runs, a Go duration in whole hours, at least 1h.",
+            "type": "string"
+          },
+          "check": {
+            "description": "Check runs with sh -c. Its last line of stdout is a JSON object: fix, a boolean, and summary, a string.",
+            "type": "string"
+          },
+          "gauge": {
+            "description": "Gauge names a gauge of kiln.json's gauges, read over the whole repository in place of a check.",
+            "type": "string"
+          },
+          "command": {
+            "description": "Command is a fix that needs no model, run with sh -c, outside the sandbox.",
+            "type": "string"
+          },
+          "agent": {
+            "description": "Agent is an agent's file under .kiln/agents/, such as triage.md. It names the session's role too.",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "Prompt follows the check's or the gauge's output, and the gate's, in the agent's first message.",
+            "type": "string"
+          },
+          "gates": {
+            "description": "Gates says whether the check joins the gate. It is true when unset.",
+            "type": "boolean"
+          },
+          "accept": {
+            "description": "Accept says whether a fix waits on its branch for kiln accept.",
+            "type": "boolean"
+          },
+          "tests": {
+            "description": "Tests says whether a fix may write under the acceptance path's fixed part.",
+            "type": "boolean"
+          },
+          "drain": {
+            "description": "Drain says whether a fix that lands starts the check again at once, in the same kiln monitor run.",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

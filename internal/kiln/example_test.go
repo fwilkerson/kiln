@@ -43,6 +43,7 @@ func Example() {
 	// wrote .kiln/kiln.json
 	// wrote .kiln/skills/shape/SKILL.md
 	// wrote .kiln/skills/shape/template.md
+	// wrote .kiln/kiln.schema.json
 	// linked .claude/skills/shape to ../../.kiln/skills/shape
 	// linked .claude/agents/zoom-out.md to ../../.kiln/agents/zoom-out.md
 	// linked .claude/agents/comprehension.md to ../../.kiln/agents/comprehension.md

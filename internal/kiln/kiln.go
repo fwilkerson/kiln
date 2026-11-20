@@ -56,6 +56,7 @@
 //	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
 //	                            the MCP servers a session calls, the gauges, the workflow, where the acceptance
 //	                            tests live, the harness, the paths the audit reads again, and the monitors
+//	.kiln/kiln.schema.json      kiln.json's JSON Schema, for an editor, which kiln init writes over each time
 //	.kiln/monitors/             the scripts a monitor's check runs, out of a fix's reach
 //	.kiln/gauges/               the scripts a gauge's command runs, which a monitor may name in place of a check
 //	.kiln/agents/build.md       the build agent

@@ -51,11 +51,14 @@ Read `.kiln/kiln.json` once. Its `gate` holds the commands that must pass before
 
 ```json
 {
+  "$schema": "./kiln.schema.json",
   "gate": ["go vet ./...", "go test ./..."],
   "rounds": 3,
   "acceptance": "acceptance/{spec}/"
 }
 ```
+
+Its `$schema` names `kiln.schema.json`, which `kiln init` writes beside it, so an editor completes and checks each key.
 
 After you change anything under `.kiln/`, run `kiln doctor` before you commit. It prints each problem kiln would
 refuse or fail on later, with its fix:

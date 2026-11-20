@@ -16,6 +16,9 @@ import (
 
 // config is .kiln/kiln.json, read from main's tip, so a build cannot weaken the gate it is held to.
 type config struct {
+	// Schema names the JSON Schema an editor checks kiln.json against, ./kiln.schema.json, which kiln init writes.
+	// kiln reads nothing from it.
+	Schema string `json:"$schema,omitempty"`
 	// Gate holds the commands the gate runs, each with sh -c, at the top of a worktree.
 	Gate []string `json:"gate"`
 	// Rounds is how many times a failing gate goes back to the session before the build stops.

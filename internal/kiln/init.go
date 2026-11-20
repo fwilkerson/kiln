@@ -16,6 +16,14 @@ import (
 	"slices"
 )
 
+// schema is kiln.json's JSON Schema, which an editor reads by kiln.json's "$schema". TestSchema builds it from config.
+//
+//go:embed kiln.schema.json
+var schema []byte
+
+// schemaFile is where kiln init writes schema.
+const schemaFile = kilnDir + "/kiln.schema.json"
+
 // defaults are what kiln init writes into .kiln/ for every preset. A preset fills each marker in their prompts, and
 // adds kiln.json. The project owns them from then on.
 //
@@ -36,12 +44,12 @@ type InitOptions struct {
 }
 
 // Init writes kiln's defaults into .kiln/ in the checkout, as opt's preset fills them. It writes each where .kiln/
-// holds no file of its name. To a kiln.json that is there, it adds only rounds, the key every preset shares, if the
-// file lacks it. It links /shape and its reviewers into .claude/, each where .claude/ holds nothing of its name.
-// It says so when the repository has no branch main, which each command that reads main then refuses. It prints
-// kiln.json's gate, the commands the pre-commit hook runs on each commit to main. The hook refuses a commit to main
-// that fails them. Last, Init installs the hook, or says why it installed none, as installHook says. Init refuses a
-// preset it does not know before it writes anything.
+// holds no file of its name. It writes kiln.schema.json over, since kiln owns it. A kiln.json that is there gains
+// only $schema and rounds, the keys every preset shares, where it lacks them. It links /shape and its reviewers into
+// .claude/, each where .claude/ holds nothing of its name. It says so when the repository has no branch main, which
+// each command that reads main then refuses. It prints kiln.json's gate, the commands the pre-commit hook runs on each
+// commit to main. The hook refuses a commit to main that fails them. Last, Init installs the hook, or says why it
+// installed none, as installHook says. Init refuses a preset it does not know before it writes anything.
 func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	p, err := presetNamed(opt.Preset)
 	if err != nil {
@@ -121,7 +129,17 @@ func (r *Repo) writeDefaults(p preset, out io.Writer) (wrote bool, err error) {
 		}
 	}
 
-	return wrote, nil
+	// A file kiln cannot read is written over, as a missing one is.
+	if old, _ := os.ReadFile(filepath.Join(r.top, schemaFile)); bytes.Equal(old, schema) {
+		return wrote, nil
+	}
+
+	if err := os.WriteFile(filepath.Join(r.top, schemaFile), schema, 0o644); err != nil {
+		return wrote, err
+	}
+
+	fmt.Fprintf(out, "wrote %s\n", schemaFile)
+	return true, nil
 }
 
 // writeDefault writes raw at rel, unless the checkout holds a file there. Into kiln.json, it adds only the shared keys
@@ -150,7 +168,7 @@ func (r *Repo) writeDefault(rel string, raw []byte) (bool, error) {
 
 // sharedKeys are the keys of kiln.json whose default is the same in every preset. A re-run of kiln init adds only
 // these, so it never adds one language's commands to a project in another.
-var sharedKeys = []string{"rounds"}
+var sharedKeys = []string{"$schema", "rounds"}
 
 // addKeys adds to the JSON object old each of sharedKeys that it lacks, as from holds it. It keeps each byte of old,
 // and puts each added key after the last, indented as that key. It answers nil when old lacks none.
@@ -171,7 +189,8 @@ func addKeys(old, from []byte) ([]byte, error) {
 
 	var add bytes.Buffer
 	for _, key := range sharedKeys {
-		if _, ok := have[key]; ok {
+		_, has := have[key]
+		if _, ok := want[key]; has || !ok {
 			continue
 		}
 

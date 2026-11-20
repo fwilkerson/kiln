@@ -6,6 +6,7 @@ commands in use.
 ```text
 .kiln/
   kiln.json                  the settings below
+  kiln.schema.json           kiln.json's JSON Schema, which an editor reads by kiln.json's "$schema"
   specs/<name>.md            a spec, and <name>.amend.md, the amendments a build asks for
   agents/build.md            the build agent: frontmatter, then its prompt
   agents/verify.md           how the acceptance tests' code is written, and the verify agent of a split build
@@ -20,8 +21,9 @@ commands in use.
 ```
 
 `kiln init` writes these from a preset, each only where `.kiln/` holds no file of its name, and links `/shape` and
-its reviewers into `.claude/`. The project owns them from then on. Run again, it writes each file `.kiln/` lacks,
-and adds to `kiln.json` only `rounds`.
+its reviewers into `.claude/`. The project owns them from then on, but for `kiln.schema.json`, which `kiln init`
+writes over each time. Run again, it writes each file `.kiln/` lacks, and adds to `kiln.json` only `$schema` and
+`rounds`.
 
 A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
 as a new agent, is yours to commit: a build names it in its last reply instead of writing it.
@@ -30,6 +32,7 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 
 ```json
 {
+  "$schema": "./kiln.schema.json",
   "gate": ["go vet ./...", "go test ./..."],
   "rounds": 3,
   "hosts": ["proxy.golang.org", "sum.golang.org"],
@@ -46,6 +49,7 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 
 | Key          | What it holds                                                               | Read at           |
 |--------------|-----------------------------------------------------------------------------|-------------------|
+| `$schema`    | The JSON Schema an editor checks this file against, which kiln never reads  | never             |
 | `gate`       | Commands that must pass before work lands, each run with `sh -c`. Required. | main's tip        |
 | `rounds`     | How many times a failing gate goes back to the session before a build stops | main's tip        |
 | `hosts`      | The only hosts a session's commands reach                                   | main's tip        |
@@ -61,6 +65,10 @@ as a new agent, is yours to commit: a build names it in its last reply instead o
 kiln reads the gate from main's tip, never from the build's checkout, so a build cannot weaken its own gate. It
 refuses a `kiln.json` with a key it does not know. `kiln doctor` reads the working tree's `kiln.json`, before you
 commit it, and prints each refusal any kiln command would make of it.
+
+`"$schema": "./kiln.schema.json"` points an editor, such as GoLand or VS Code, at the schema `kiln init` writes beside
+`kiln.json`. The editor then completes each key, shows its doc, and marks a key kiln does not know or a value of the
+wrong type. The schema holds each key's type, not the rules `kiln doctor` checks, such as a host with no scheme.
 
 ### gate and rounds
 
