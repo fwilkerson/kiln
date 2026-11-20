@@ -392,7 +392,7 @@ func (b *build) stack(ctx context.Context) (setback, error) {
 	}
 
 	report, err := b.bothSides(ctx, conflict.Files, tips)
-	return setback{why: whyConflict, report: report, failing: conflict.Files}, err
+	return setback{why: whyStackConflict, report: report, failing: conflict.Files}, err
 }
 
 // putBack puts each acceptance path back on the build side of the stack, in a commit of kiln's. It puts it as it
@@ -851,11 +851,12 @@ func (b *build) harnessChanged(ctx context.Context) ([]string, error) {
 
 // Why a split build's session run started, beside the whys every build shares.
 const (
-	whyStack      = "stack"
-	whyBug        = "bug"
-	whyCannotHold = "cannot hold"
-	whyNoResult   = "no result"
-	whyBugsLine   = "bugs line"
+	whyStack         = "stack"
+	whyStackConflict = "stack conflict"
+	whyBug           = "bug"
+	whyCannotHold    = "cannot hold"
+	whyNoResult      = "no result"
+	whyBugsLine      = "bugs line"
 )
 
 const (

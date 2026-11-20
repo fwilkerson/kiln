@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/practices/claim"
 )
@@ -379,5 +380,42 @@ func TestAuditedDirs(t *testing.T) {
 				t.Errorf("the audit reads %s, %v; want %s", got, err, tc.want)
 			}
 		})
+	}
+}
+
+// TestAuditReadsLaterWork holds that only the audit's read records it. An audit with nothing to read records none, so
+// the session's later work gets the audit before it lands.
+func TestAuditReadsLaterWork(t *testing.T) {
+	b, repo, _ := landingBuild(t)
+	shell(t, repo, "mkdir .kiln/agents && echo 'Audit the work.' >.kiln/agents/audit.md && git add -A && "+
+		"git commit --quiet -m agents")
+	main := git.Rev(shell(t, repo, "git rev-parse HEAD"))
+	if err := b.r.git.Reset(t.Context(), b.tree, main); err != nil {
+		t.Fatal(err)
+	}
+
+	b.set(func(r *record) { r.Approved = main })
+	program := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(program, []byte(strings.ReplaceAll(replying, "REPLIES", "r")), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	b.r.claude = claude.New(claude.Config{Program: program, Sessions: filepath.Join(t.TempDir(), "sessions")})
+	for _, step := range []struct{ work, findings string }{
+		{work: "true"},
+		{work: "echo 'package x' >x.go && git add x.go && git commit --quiet -m x", findings: "Done."},
+	} {
+		shell(t, string(b.tree), step.work)
+		findings, _, err := b.findings(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		head := git.Rev(shell(t, string(b.tree), "git rev-parse HEAD"))
+		read := map[bool]git.Rev{true: head, false: ""}[step.findings != ""]
+		if !claim.Holds(findings == step.findings, b.now().Audited == read) {
+			t.Errorf("after %q, the audit found %q and the record says it read %q; want %q, and %q", step.work,
+				findings, b.now().Audited, step.findings, read)
+		}
 	}
 }
