@@ -69,8 +69,8 @@ func formOf(spec string) refusals {
 	for i, want := range templateSections {
 		at := slices.IndexFunc(have[from:], func(s section) bool { return s.title == want.title })
 		if at < 0 {
-			refused = append(refused, fmt.Sprintf("it lacks the section ## %s, or holds it out of the "+
-				"template's order: put it %s", want.title, placeOf(i)))
+			refused = append(refused, refusal{fmt.Sprintf("it lacks the section ## %s, or holds it out of "+
+				"the template's order", want.title), "put it " + placeOf(i)})
 			continue
 		}
 
@@ -99,14 +99,12 @@ var (
 func testsForm(lines []string) refusals {
 	tests, refused := splitTests(lines)
 	if len(tests) == 0 {
-		return append(refused, "it holds no acceptance test: write one, as ### 1. and a title, with a Given, a "+
-			"When and a Then")
+		return append(refused, refusal{"it holds no acceptance test",
+			"write one, as ### 1. and a title, with a Given, a When and a Then"})
 	}
 
 	for i, test := range tests {
-		if why := clausesOf(test); why != "" {
-			refused = append(refused, fmt.Sprintf("its acceptance test %d %s", i+1, why))
-		}
+		refused = append(refused, clausesOf(test).about(fmt.Sprintf("its acceptance test %d", i+1))...)
 	}
 
 	return refused
@@ -133,8 +131,9 @@ func splitTests(lines []string) ([][]string, refusals) {
 		}
 
 		if m := testHeading.FindStringSubmatch(line); m == nil || m[1] != strconv.Itoa(len(tests)+1) {
-			refused = append(refused, fmt.Sprintf("its acceptance test %q is not ### %d. and a title: number "+
-				"it %d, or add a test at the end in place of a renumbered one", heading, len(tests)+1, len(tests)+1))
+			refused = append(refused, refusal{fmt.Sprintf("its acceptance test %q is not ### %d. and a title",
+				heading, len(tests)+1), fmt.Sprintf("number it %d, or add a test at the end in place of a "+
+				"renumbered one", len(tests)+1)})
 		}
 
 		tests = append(tests, nil)
@@ -143,8 +142,8 @@ func splitTests(lines []string) ([][]string, refusals) {
 	return tests, refused
 }
 
-// clausesOf says how a test's lines leave the form, or "". They hold a Given, a When and a Then, in that order.
-func clausesOf(lines []string) string {
+// clausesOf refuses a test's lines unless they hold a Given, a When and a Then, in that order.
+func clausesOf(lines []string) refusals {
 	next := 0
 	for _, line := range lines {
 		if next < len(clauses) && strings.HasPrefix(line, "- **"+clauses[next]+"**:") {
@@ -153,9 +152,9 @@ func clausesOf(lines []string) string {
 	}
 
 	if next < len(clauses) {
-		return fmt.Sprintf("holds no %s, after the clauses before it: write it as - **%s**: on a line of its own",
-			clauses[next], clauses[next])
+		return refusals{{"holds no " + clauses[next] + ", after the clauses before it",
+			"write it as - **" + clauses[next] + "**: on a line of its own"}}
 	}
 
-	return ""
+	return nil
 }

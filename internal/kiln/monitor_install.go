@@ -46,6 +46,9 @@ func (r *Repo) MonitorInstall(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
+// launchdPrefix starts the label of each launchd job kiln monitor install sets up.
+const launchdPrefix = "dev.kiln.monitor."
+
 // launchdPlist names the launchd job that kiln monitor install sets up for r, and the path of its property list.
 func (r *Repo) launchdPlist() (label, plist string, err error) {
 	home, err := os.UserHomeDir()
@@ -53,7 +56,7 @@ func (r *Repo) launchdPlist() (label, plist string, err error) {
 		return "", "", err
 	}
 
-	label = "dev.kiln.monitor." + hashOf(r.top)
+	label = launchdPrefix + hashOf(r.top)
 	return label, filepath.Join(home, "Library", "LaunchAgents", label+".plist"), nil
 }
 

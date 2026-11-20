@@ -114,25 +114,28 @@ func (c config) monitorsRefusals() refusals {
 func (c config) monitorRefusals(m monitor, named map[Spec]bool) refusals {
 	_, gaugeFound := c.gaugeNamed(m.Gauge)
 	return broken(
-		rule{m.Name == "", "has no name: name it as a spec is named, such as \"deps\""},
-		rule{m.Name != "" && named[m.Name], "has the name of a monitor before it: rename one"},
-		rule{m.Name != "" && !specName.MatchString(string(m.Name)), "has a name no spec could have: name it in " +
-			"lower-case letters, digits and hyphens, such as \"deps\""},
-		rule{!wholeHours(m.Every), "runs every interval that is not whole hours, at least 1h: name one such as " +
-			"\"24h\""},
-		rule{m.Gauge != "" && !gaugeFound, "names a gauge that gauges does not hold: add it to gauges, or name " +
-			"one there"},
-		rule{m.Gauge != "" && m.Check != "", "names both a check and a gauge, where it may name one: drop one"},
-		rule{m.Gauge != "" && m.Gates != nil, "names gates beside a gauge, which always joins the gate: drop " +
-			"gates, which says whether a check joins it"},
-		rule{m.Command == "" && m.Agent == "", "names no command and no agent, so it fixes nothing: name one"},
-		rule{m.Agent != "" && m.role() == "", "names an agent that is no file directly under .kiln/agents/: " +
-			"name one such as \"triage.md\""},
-		rule{m.role() == auditRole, "names the audit as its agent, which changes nothing: name another agent"},
-		rule{m.Drain && !m.finds(), "drains with no check and no gauge, so nothing says when its queue is " +
-			"empty: name a check, or drop drain"},
-		rule{!m.Tests && c.unguarded(), "may not write the tests, while acceptance names no path before {spec} " +
-			"for kiln to guard: give each acceptance path a part before {spec}, or say \"tests\": true"},
+		rule{m.Name == "", refusal{"has no name", "name it as a spec is named, such as \"deps\""}},
+		rule{m.Name != "" && named[m.Name], refusal{"has the name of a monitor before it", "rename one"}},
+		rule{m.Name != "" && !specName.MatchString(string(m.Name)), refusal{"has a name no spec could have",
+			"name it in lower-case letters, digits and hyphens, such as \"deps\""}},
+		rule{!wholeHours(m.Every), refusal{"runs every interval that is not whole hours, at least 1h",
+			"name one such as \"24h\""}},
+		rule{m.Gauge != "" && !gaugeFound, refusal{"names a gauge that gauges does not hold",
+			"add it to gauges, or name one there"}},
+		rule{m.Gauge != "" && m.Check != "", refusal{"names both a check and a gauge, where it may name one",
+			"drop one"}},
+		rule{m.Gauge != "" && m.Gates != nil, refusal{"names gates beside a gauge, which always joins the gate",
+			"drop gates, which says whether a check joins it"}},
+		rule{m.Command == "" && m.Agent == "", refusal{"names no command and no agent, so it fixes nothing",
+			"name one"}},
+		rule{m.Agent != "" && m.role() == "", refusal{"names an agent that is no file directly under .kiln/agents/",
+			"name one such as \"triage.md\""}},
+		rule{m.role() == auditRole, refusal{"names the audit as its agent, which changes nothing",
+			"name another agent"}},
+		rule{m.Drain && !m.finds(), refusal{"drains with no check and no gauge, so nothing says when its queue " +
+			"is empty", "name a check, or drop drain"}},
+		rule{!m.Tests && c.unguarded(), refusal{"may not write the tests, while acceptance names no path before " +
+			"{spec} for kiln to guard", "give each acceptance path a part before {spec}, or say \"tests\": true"}},
 	)
 }
 

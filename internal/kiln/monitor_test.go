@@ -54,7 +54,7 @@ func TestMonitorConfig(t *testing.T) {
 			}
 
 			for i, want := range tc.refused {
-				if !strings.Contains(got[i], want) {
+				if !strings.Contains(got[i].String(), want) {
 					t.Errorf("refusal %d is %q, want one that says %q", i+1, got[i], want)
 				}
 			}

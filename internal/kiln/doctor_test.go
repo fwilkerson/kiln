@@ -13,7 +13,8 @@ import (
 func TestDoctor(t *testing.T) {
 	project := doctorProject(t)
 	const monitor = `{"name": "deps", "every": "24h", "check": ".kiln/monitors/deps", "agent": "deps.md"}`
-	const launchd = "names monitors, but no launchd job runs them: run kiln monitor install"
+	const launchd = "names monitors, but no launchd job runs them in any checkout of this repository: run kiln " +
+		"monitor install"
 	for name, tc := range map[string]doctorCase{
 		"kiln init's files": {want: []string{"found no problem"}},
 		"each refusal of kiln.json at once": {
@@ -27,7 +28,14 @@ func TestDoctor(t *testing.T) {
 		"kiln.json the working tree lacks": {change: "rm .kiln/kiln.json",
 			want: []string{"the working tree holds no .kiln/kiln.json: run kiln init"}},
 		"acceptance kiln queue refuses": {change: acceptance(`"{spec}/"`),
-			want: []string{"starts with {spec}", "note: .kiln/kiln.json differs from main's in acceptance"}},
+			want: []string{"starts with {spec}, so a spec's name would decide where it is: put a directory of its own",
+				"note: .kiln/kiln.json differs from main's in acceptance"}},
+		"a key spelled in other letters": {change: withKeys(`"Workflow": "split",`),
+			want: []string{`"Workflow"`}},
+		"scripts the shell expands or ends early": {
+			change: `sed -i '' 's|"go vet ./..."|"~/bin/vet ./...", "./x.sh;go vet ./..."|' .kiln/kiln.json && ` +
+				`printf '#!/bin/sh\n' >x.sh && chmod +x x.sh`,
+			want: []string{"note: .kiln/kiln.json differs from main's in gate", "found no problem"}},
 		"an agent the working tree lacks": {change: "rm .kiln/agents/audit.md",
 			want: []string{"the working tree holds no .kiln/agents/audit.md: run kiln init"}},
 		"each refusal of an agent's file": {
@@ -38,6 +46,12 @@ func TestDoctor(t *testing.T) {
 		"a monitor's script and agent the working tree lacks": {change: withKeys(`"monitors": [` + monitor + `],`),
 			want: []string{"the working tree holds no .kiln/agents/deps.md: write it, or name another agent",
 				"runs .kiln/monitors/deps, which the working tree lacks", launchd, "note:"}},
+		"a monitor whose launchd job runs in another checkout": {
+			change: withKeys(`"monitors": [{"name": "deps", "every": "24h", "command": "true"}],`) +
+				` && mkdir -p sub "$HOME/Library/LaunchAgents" && printf ` +
+				`'<key>WorkingDirectory</key>\n  <string>%s/sub</string>\n' "$PWD" ` +
+				`>"$HOME/Library/LaunchAgents/dev.kiln.monitor.other.plist"`,
+			want: []string{"note: .kiln/kiln.json differs from main's in monitors", "found no problem"}},
 		"a monitor's script that is not executable": {
 			change: withKeys(`"monitors": [`+monitor+`],`) + " && mkdir .kiln/monitors && touch .kiln/monitors/deps " +
 				"&& echo Fix. >.kiln/agents/deps.md",
@@ -61,6 +75,11 @@ func TestDoctor(t *testing.T) {
 func TestDoctorMainAndTools(t *testing.T) {
 	project := doctorProject(t)
 	for name, tc := range map[string]doctorCase{
+		"an object's keys reordered, and nothing else": {
+			change: withKeys(`"mcp": {"docs": {"command": "a", "args": []}},`) +
+				` && git commit --quiet --no-verify -am mcp && ` +
+				`sed -i '' 's|{"command": "a", "args": \\[\\]}|{"args": [], "command": "a"}|' .kiln/kiln.json`,
+			want: []string{"found no problem"}},
 		"kiln.json main lacks": {change: "git rm --quiet --cached .kiln/kiln.json && git commit --quiet --no-verify -m x",
 			want: []string{"main holds no .kiln/kiln.json, which kiln reads there: commit it to main"}},
 		"a key kiln.json changed, and no problem": {change: `sed -i '' 's/"rounds": 3/"rounds": 2/' .kiln/kiln.json`,
@@ -174,5 +193,19 @@ func TestDoctorWritesNothing(t *testing.T) {
 
 	if _, err := os.Stat(filepath.Join(repo, ".git", "kiln")); !os.IsNotExist(err) {
 		t.Errorf("doctor made kiln's own directory: %v", err)
+	}
+}
+
+// TestTakesDoctor holds that kiln complete doctor offers each spec the working tree holds, by a name a spec may have.
+func TestTakesDoctor(t *testing.T) {
+	repo := doctorProject(t)
+	shell(t, repo, "touch .kiln/specs/Notes.md .kiln/specs/form.amend.md")
+	r, err := Open(t.Context(), repo, os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if names, err := r.Takes(t.Context(), "doctor"); err != nil || strings.Join(names, " ") != "form" {
+		t.Errorf("kiln complete doctor offers %q, %v; want only form", names, err)
 	}
 }

@@ -64,8 +64,8 @@
 //	.kiln/agents/audit.md       the audit
 //	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
 //
-// A command that refuses one of these files names each problem it finds, one to a line, with its fix. kiln doctor
-// names each in the working tree, before a commit, as Doctor says.
+// A command that refuses kiln.json, an agent's file or a spec prints each problem on a line, with its fix. kiln
+// doctor names each in the working tree, before a commit, as Doctor says.
 //
 // kiln keeps its own files out of the working tree. Main is the branch named main:
 //
@@ -370,9 +370,12 @@ const (
 	kilnDir = ".kiln"
 )
 
-// noMain says a repository has no branch main, or no commit on it, and how to make one. kiln init prints it.
-const noMain = "kiln builds on the branch " + mainBranch + ", which this repository lacks: commit to " + mainBranch +
-	", or run git branch -m " + mainBranch
+// noMainRefusal says a repository has no branch main, or no commit on it, and how to make one.
+var noMainRefusal = refusal{"kiln builds on the branch " + mainBranch + ", which this repository lacks",
+	"commit to " + mainBranch + ", or run git branch -m " + mainBranch}
+
+// noMain is noMainRefusal on one line, as kiln init prints it.
+var noMain = noMainRefusal.String()
 
 // errNoMain refuses a command that reads main, in a repository that noMain describes.
 var errNoMain = fmt.Errorf("%w: %s", errRefused, noMain)
@@ -589,8 +592,8 @@ func (s Spec) misnamed() refusals {
 		return nil
 	}
 
-	return refusals{fmt.Sprintf("%q is not a spec's name: name it in lower-case letters, digits and hyphens, "+
-		"such as checkout-flow", s)}
+	return refusals{{fmt.Sprintf("%q is not a spec's name", s),
+		"name it in lower-case letters, digits and hyphens, such as checkout-flow"}}
 }
 
 // Queue records main's tip as the commit of .kiln/specs/<name>.md, and queues a new build of it. It refuses a name
@@ -662,8 +665,8 @@ func (r *Repo) queueable(ctx context.Context, main git.Rev, name Spec) ([]byte, 
 func (c config) specRefusals(name Spec, spec []byte) refusals {
 	refused := c.harnessRefusals(name)
 	if _, ok := c.monitorNamed(name); ok {
-		refused = append(refused, fmt.Sprintf("%s names a monitor %s, and one name is never both a spec's and a "+
-			"monitor's: rename one", configFile, name))
+		refused = append(refused, refusal{fmt.Sprintf("%s names a monitor %s, and one name is never both a "+
+			"spec's and a monitor's", configFile, name), "rename one"})
 	}
 
 	return append(refused, formOf(string(spec)).about(name.file()+" leaves /shape's template:")...)
@@ -706,8 +709,9 @@ func (c config) readiness(ctx context.Context, f files) (refusals, error) {
 	}
 
 	if line := testsText(build.body, c.fixedParts()); line != "" {
-		refused = append(refused, fmt.Sprintf("%s says how to write the acceptance tests, in %q: move that text to "+
-			"%s, which every build reads", agentFile(buildRole), line, agentFile(verifyRole)))
+		refused = append(refused, refusal{fmt.Sprintf("%s says how to write the acceptance tests, in %q",
+			agentFile(buildRole), line), fmt.Sprintf("move that text to %s, which every build reads",
+			agentFile(verifyRole))})
 	}
 
 	return refused, nil
@@ -829,7 +833,7 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 // Takes answers the names command would not refuse, for the shell to complete. For queue, accept and reject, they
 // are specs, and for accept and reject, waiting fixes too. For tui, they are the specs kiln holds or its ledger holds.
 // For "monitor run" and "monitor show", they are the monitors kiln.json names. For doctor, they are the specs the
-// working tree holds. Other commands take none.
+// working tree holds, each by a name a spec may have. Other commands take none.
 func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	switch command {
 	case "tui":
@@ -847,7 +851,14 @@ func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	return nil, nil
 }
 
-// treeSpecs answers the specs the working tree holds, but none of their amendments.
+// specFile is the spec whose file under .kiln/specs/ is named file. It answers false for an amendment's file, and a
+// file whose name no spec could have.
+func specFile(file string) (Spec, bool) {
+	name, ok := strings.CutSuffix(file, ".md")
+	return Spec(name), ok && !strings.HasSuffix(file, amendSuffix) && Spec(name).misnamed() == nil
+}
+
+// treeSpecs answers the specs the working tree holds, by a name a spec may have, but none of their amendments.
 func (r *Repo) treeSpecs() ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(r.top, specsDir))
 	if errors.Is(err, os.ErrNotExist) {
@@ -856,9 +867,8 @@ func (r *Repo) treeSpecs() ([]string, error) {
 
 	var names []string
 	for _, e := range entries {
-		name, ok := strings.CutSuffix(e.Name(), ".md")
-		if ok && !strings.HasSuffix(e.Name(), amendSuffix) {
-			names = append(names, name)
+		if name, ok := specFile(e.Name()); ok {
+			names = append(names, string(name))
 		}
 	}
 

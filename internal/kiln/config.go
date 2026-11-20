@@ -1,9 +1,9 @@
 package kiln
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"io/fs"
 	"path"
@@ -91,14 +91,14 @@ func (c config) fixedParts() []string {
 // its clean form. No path's part before {spec} starts another's, so no two specs' paths meet.
 func (c config) acceptanceRefusals() refusals {
 	if len(c.Acceptance) == 0 {
-		return refusals{fmt.Sprintf("%s names no acceptance, the paths of a spec's acceptance tests: add one, "+
-			"such as \"acceptance/%s/\"", configFile, specVar)}
+		return refusals{{configFile + " names no acceptance, the paths of a spec's acceptance tests",
+			fmt.Sprintf("add one, such as \"acceptance/%s/\"", specVar)}}
 	}
 
 	var refused refusals
 	for _, p := range c.Acceptance {
-		if why := pathRefusal(p); why != "" {
-			refused = append(refused, fmt.Sprintf("%s names the acceptance path %q, %s", configFile, p, why))
+		if why, ok := pathRefusal(p); ok {
+			refused = append(refused, why.about(fmt.Sprintf("%s names the acceptance path %q,", configFile, p))...)
 		}
 	}
 
@@ -106,9 +106,9 @@ func (c config) acceptanceRefusals() refusals {
 	for i, a := range fixed {
 		for j, b := range fixed[i+1:] {
 			if strings.HasPrefix(fold(a), fold(b)) || strings.HasPrefix(fold(b), fold(a)) {
-				refused = append(refused, fmt.Sprintf("%s names the acceptance paths %q and %q, whose parts "+
-					"before %s could make two specs' paths meet: start each with a part no other starts with",
-					configFile, c.Acceptance[i], c.Acceptance[i+1+j], specVar))
+				refused = append(refused, refusal{fmt.Sprintf("%s names the acceptance paths %q and %q, whose "+
+					"parts before %s could make two specs' paths meet", configFile, c.Acceptance[i],
+					c.Acceptance[i+1+j], specVar), "start each with a part no other starts with"})
 			}
 		}
 	}
@@ -123,8 +123,8 @@ func (c config) harnessRefusals(spec Spec) refusals {
 	for _, a := range c.acceptancePaths(spec) {
 		for _, h := range c.Harness {
 			if meets(a, h) {
-				refused = append(refused, fmt.Sprintf("%s's acceptance path %s meets the harness path %s, which "+
-					"its build would remove: rename the spec", spec, a, h))
+				refused = append(refused, refusal{fmt.Sprintf("%s's acceptance path %s meets the harness path %s, "+
+					"which its build would remove", spec, a, h), "rename the spec"})
 			}
 		}
 	}
@@ -144,31 +144,34 @@ func (c config) unguarded() bool {
 	return len(c.Acceptance) == 0 || slices.Contains(c.fixedParts(), "")
 }
 
-// pathRefusal says why kiln.json may not name p as an acceptance path, or "".
-func pathRefusal(p string) string {
+// pathRefusal says why kiln.json may not name p as an acceptance path. It answers false for a path it may name.
+func pathRefusal(p string) (refusals, bool) {
+	example := fmt.Sprintf("such as \"uat/%s/\"", specVar)
 	switch {
 	case !strings.Contains(p, specVar):
-		return "which lacks " + specVar + ", so it would hold every spec's tests"
+		return refusals{{"which lacks " + specVar + ", so it would hold every spec's tests",
+			"put " + specVar + " where each spec's name goes, " + example}}, true
 	case strings.HasPrefix(p, specVar):
-		return "which starts with " + specVar + ", so a spec's name would decide where it is"
+		return refusals{{"which starts with " + specVar + ", so a spec's name would decide where it is",
+			"put a directory of its own before " + specVar + ", " + example}}, true
 	// fs.ValidPath refuses a leading slash, an unclean form, and ".." that would climb out of the repository.
 	case !fs.ValidPath(strings.TrimSuffix(p, "/")):
-		return "which is not a clean path from the repository's top: write it as path.Clean does, such as " +
-			"\"uat/" + specVar + "/\""
+		return refusals{{"which is not a clean path from the repository's top",
+			"write it as path.Clean does, " + example}}, true
 	}
 
-	return ""
+	return nil, false
 }
 
 const configFile = kilnDir + "/kiln.json"
 
-// parseConfig reads kiln.json. A file that is no JSON object of its keys fails with a plain error. Otherwise the
-// error holds each of its refusals, and c is what the file holds.
+// parseConfig reads kiln.json. A file that is no JSON object of its keys, each as kiln.schema.json spells it, fails
+// as unreadable. Otherwise the error holds each of its refusals, and c is what the file holds.
 func parseConfig(raw []byte) (c config, err error) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&c); err != nil {
-		return c, fmt.Errorf("%s: %w: fix its JSON, and drop each key kiln does not know", configFile, err)
+	// json/v2 matches a key's case exactly, as the schema does, where v1 would take "Gate" for gate.
+	if err := jsonv2.Unmarshal(raw, &c, jsonv2.RejectUnknownMembers(true)); err != nil {
+		return c, unreadable{refusals{{fmt.Sprintf("%s: %v", configFile, err),
+			"fix its JSON, and spell each key as kiln.schema.json does"}}}
 	}
 
 	return c, c.refusals().err()
@@ -177,16 +180,15 @@ func parseConfig(raw []byte) (c config, err error) {
 // refusals say why kiln refuses c, but for its acceptance, which kiln queue alone refuses.
 func (c config) refusals() refusals {
 	refused := broken(
-		rule{len(c.Gate) == 0, fmt.Sprintf("%s names no gate command: name one, such as \"go test ./...\"",
-			configFile)},
-		rule{c.Rounds < 0, fmt.Sprintf("%s names %d rounds: name 0 or more", configFile, c.Rounds)},
-		rule{c.Workflow != "" && c.Workflow != splitWorkflow, fmt.Sprintf("%s names the workflow %q: name %q, or "+
-			"none for build then audit", configFile, c.Workflow, splitWorkflow)},
+		rule{len(c.Gate) == 0, refusal{configFile + " names no gate command", "name one, such as \"go test ./...\""}},
+		rule{c.Rounds < 0, refusal{fmt.Sprintf("%s names %d rounds", configFile, c.Rounds), "name 0 or more"}},
+		rule{c.Workflow != "" && c.Workflow != splitWorkflow, refusal{fmt.Sprintf("%s names the workflow %q",
+			configFile, c.Workflow), fmt.Sprintf("name %q, or none for build then audit", splitWorkflow)}},
 	)
 	for _, h := range c.Hosts {
 		if !bareHost(h) {
-			refused = append(refused, fmt.Sprintf("%s names the host %q: name a bare host, such as "+
-				"\"proxy.golang.org\", or \"*.example.org\"", configFile, h))
+			refused = append(refused, refusal{fmt.Sprintf("%s names the host %q", configFile, h),
+				"name a bare host, such as \"proxy.golang.org\", or \"*.example.org\""})
 		}
 	}
 
@@ -208,9 +210,10 @@ func (c config) gaugeRefusals() refusals {
 	named := map[string]bool{}
 	for _, g := range c.Gauges {
 		refused = append(refused, broken(
-			rule{g.Name == "", "has no name: name it"},
-			rule{g.Name != "" && named[g.Name], "has the name of a gauge before it: rename one"},
-			rule{(g.Min == nil) == (g.Max == nil), "names both min and max, or neither: name one line, min or max"},
+			rule{g.Name == "", refusal{"has no name", "name it"}},
+			rule{g.Name != "" && named[g.Name], refusal{"has the name of a gauge before it", "rename one"}},
+			rule{(g.Min == nil) == (g.Max == nil), refusal{"names both min and max, or neither",
+				"name one line, min or max"}},
 		).about(fmt.Sprintf("%s names a gauge %q that", configFile, g.Name))...)
 		named[g.Name] = true
 	}

@@ -58,8 +58,8 @@ func (a *agent) read(line string) refusals {
 	case !ok, strings.HasPrefix(key, "#"):
 		return nil
 	case key == "tools" && noNames:
-		return refusals{"its tools are not tool names on the line of tools, separated by commas: write them " +
-			"as tools: Read, Grep"}
+		return refusals{{"its tools are not tool names on the line of tools, separated by commas",
+			"write them as tools: Read, Grep"}}
 	}
 
 	a.set(key, value)
@@ -72,8 +72,8 @@ func (a *agent) badEffort() refusals {
 		return nil
 	}
 
-	return refusals{fmt.Sprintf("its effort, %q, is none of %s: name one, or drop effort", a.effort,
-		strings.Join(efforts, ", "))}
+	return refusals{{fmt.Sprintf("its effort, %q, is none of %s", a.effort, strings.Join(efforts, ", ")),
+		"name one, or drop effort"}}
 }
 
 // set sets the field key names to value, unless value is empty.
@@ -115,7 +115,7 @@ func frontmatter(raw string) (front, body string, err error) {
 		i += len(line) + 1
 	}
 
-	return "", "", refusals{"its frontmatter has no closing ---: end it with a line of ---"}
+	return "", "", refusals{{"its frontmatter has no closing ---", "end it with a line of ---"}}
 }
 
 const (
@@ -141,7 +141,8 @@ func (r *Repo) filesAt(at git.Rev) files {
 	}}
 }
 
-// workingTree reads the files the main checkout's working tree holds, edits and all.
+// workingTree reads the files the working tree of r's checkout holds, edits and all. That is the checkout kiln was
+// opened in, which may be a linked worktree.
 func (r *Repo) workingTree() files {
 	return files{at: "the working tree", read: func(_ context.Context, path string) ([]byte, bool, error) {
 		raw, err := os.ReadFile(filepath.Join(r.top, filepath.FromSlash(path)))
@@ -161,7 +162,7 @@ func (f files) agent(ctx context.Context, role, fix string) (agent, error) {
 	case err != nil:
 		return agent{}, err
 	case !found:
-		return agent{}, refusals{fmt.Sprintf("%s holds no %s: %s", f.at, agentFile(role), fix)}
+		return agent{}, refusals{{fmt.Sprintf("%s holds no %s", f.at, agentFile(role)), fix}}
 	}
 
 	a, err := parseAgent(string(raw))

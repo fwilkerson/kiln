@@ -5,11 +5,25 @@ import (
 	"strings"
 )
 
-// refusals say why kiln refuses a project's files, each a sentence that names the fix. A command that refuses
-// prints each on a line of its own.
-type refusals []string
+// refusal is one reason kiln refuses a project's files: the problem, and the fix that ends it. A command prints it
+// as the problem, a colon, then the fix.
+type refusal struct {
+	problem, fix string
+}
 
-func (r refusals) Error() string { return strings.Join(r, "\n") }
+func (r refusal) String() string { return r.problem + ": " + r.fix }
+
+// refusals are each reason kiln refuses a project's files. A command that refuses prints each on a line of its own.
+type refusals []refusal
+
+func (r refusals) Error() string {
+	lines := make([]string, len(r))
+	for i, why := range r {
+		lines[i] = why.String()
+	}
+
+	return strings.Join(lines, "\n")
+}
 
 // err is r as an error, or nil when r holds none.
 func (r refusals) err() error {
@@ -20,11 +34,11 @@ func (r refusals) err() error {
 	return r
 }
 
-// about puts subject before each of r, as the start of its sentence.
+// about puts subject before each problem of r, as the start of its sentence.
 func (r refusals) about(subject string) refusals {
 	about := make(refusals, len(r))
 	for i, why := range r {
-		about[i] = subject + " " + why
+		about[i] = refusal{subject + " " + why.problem, why.fix}
 	}
 
 	return about
@@ -43,7 +57,7 @@ func (r *refusals) add(err error) error {
 // rule is one rule of a project's files: whether the files break it, and the refusal that says so.
 type rule struct {
 	broken bool
-	why    string
+	refusal
 }
 
 // broken is the refusal of each of rules that the files break.
@@ -51,9 +65,15 @@ func broken(rules ...rule) refusals {
 	var refused refusals
 	for _, r := range rules {
 		if r.broken {
-			refused = append(refused, r.why)
+			refused = append(refused, r.refusal)
 		}
 	}
 
 	return refused
+}
+
+// unreadable refuses a file kiln cannot read as its kind, such as kiln.json that is no JSON object.
+// Nothing more in it can be checked.
+type unreadable struct {
+	refusals
 }

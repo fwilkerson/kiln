@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,8 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -21,9 +24,10 @@ import (
 // Each names its fix. Doctor reads kiln.json, and refuses it as every kiln command would. It reads the build,
 // verify and audit agents as kiln queue reads them, and each monitor's agent. Where a command of kiln.json starts
 // with a path, Doctor reads the script there. It needs the branch main, a claude on the PATH, and a pre-commit hook
-// that runs kiln precommit. It needs a launchd job when kiln.json names a monitor. With a name, it reads that spec as
-// kiln queue would, but not its Status. It notes each key of kiln.json that differs from main's, which kiln acts on.
-// Doctor writes nothing, and calls no model and no network. It fails when it found a problem.
+// that runs kiln precommit. When kiln.json names a monitor, it needs a launchd job in a checkout of the repository.
+// With a name, it reads that spec as kiln queue would, but not its Status. It notes each key of kiln.json that
+// differs from main's, which kiln acts on. Doctor writes nothing, and calls no model and no network. It fails when it
+// found a problem.
 func (r *Repo) Doctor(ctx context.Context, name Spec, out io.Writer) error {
 	d, err := r.diagnose(ctx, name)
 	if err != nil {
@@ -31,7 +35,7 @@ func (r *Repo) Doctor(ctx context.Context, name Spec, out io.Writer) error {
 	}
 
 	for _, why := range d.found {
-		fmt.Fprintln(out, why)
+		fmt.Fprintln(out, why.String())
 	}
 
 	for _, note := range d.notes {
@@ -66,7 +70,7 @@ func (r *Repo) diagnose(ctx context.Context, name Spec) (diagnosis, error) {
 	if found {
 		c, readable = d.config(raw)
 	} else {
-		d.found = append(d.found, fmt.Sprintf("the working tree holds no %s: %s", configFile, initHint))
+		d.found = append(d.found, refusal{"the working tree holds no " + configFile, initHint})
 	}
 
 	if readable {
@@ -86,15 +90,17 @@ func (r *Repo) diagnose(ctx context.Context, name Spec) (diagnosis, error) {
 	return d, r.diagnoseTools(ctx, c, &d)
 }
 
-// config reads raw, the working tree's kiln.json, and adds its refusals to d. It answers false for a file with no
-// keys kiln can read, which then has nothing more to check.
+// config reads raw, the working tree's kiln.json, and adds its refusals to d. It answers false for a file kiln cannot
+// read, which then has nothing more to check.
 func (d *diagnosis) config(raw []byte) (config, bool) {
 	c, err := parseConfig(raw)
-	if err := d.found.add(err); err != nil {
-		d.found = append(d.found, err.Error())
+	if u, ok := errors.AsType[unreadable](err); ok {
+		d.found = append(d.found, u.refusals...)
 		return c, false
 	}
 
+	// parseConfig's only other error is its refusals.
+	_ = d.found.add(err)
 	return c, true
 }
 
@@ -150,7 +156,7 @@ func (r *Repo) diagnoseSpec(ctx context.Context, c config, name Spec, d *diagnos
 	case err != nil:
 		return err
 	case !found:
-		d.found = append(d.found, fmt.Sprintf("the working tree holds no %s: write it with /shape", name.file()))
+		d.found = append(d.found, refusal{"the working tree holds no " + name.file(), "write it with /shape"})
 	default:
 		d.found = append(d.found, c.specRefusals(name, spec)...)
 	}
@@ -163,7 +169,7 @@ func (r *Repo) diagnoseSpec(ctx context.Context, c config, name Spec, d *diagnos
 func (r *Repo) diagnoseMain(ctx context.Context, tree []byte, readable bool, d *diagnosis) error {
 	main, err := r.mainTip(ctx)
 	if errors.Is(err, errNoMain) {
-		d.found = append(d.found, noMain)
+		d.found = append(d.found, noMainRefusal)
 		return nil
 	}
 
@@ -176,8 +182,8 @@ func (r *Repo) diagnoseMain(ctx context.Context, tree []byte, readable bool, d *
 	case err != nil:
 		return err
 	case !found:
-		d.found = append(d.found, fmt.Sprintf("main holds no %s, which kiln reads there: commit it to main",
-			configFile))
+		d.found = append(d.found, refusal{"main holds no " + configFile + ", which kiln reads there",
+			"commit it to main"})
 	case readable:
 		if keys := drift(tree, raw); len(keys) > 0 {
 			d.notes = append(d.notes, fmt.Sprintf("%s differs from main's in %s: kiln acts on main's, so commit it "+
@@ -188,17 +194,17 @@ func (r *Repo) diagnoseMain(ctx context.Context, tree []byte, readable bool, d *
 	return nil
 }
 
-// drift names, in order, each key whose value differs between kiln.json files a and b. Space and order inside a value
-// count for nothing. A file that is no JSON object reads as one with no keys.
+// drift names, in order, each key whose value differs between kiln.json files a and b. It compares values as JSON
+// reads them, so space, and the order of an object's keys, count for nothing. A file that is no JSON object reads as
+// one with no keys.
 func drift(a, b []byte) []string {
-	var x, y map[string]json.RawMessage
+	var x, y map[string]any
 	_ = json.Unmarshal(a, &x)
 	_ = json.Unmarshal(b, &y)
-	keys := slices.Sorted(maps.Keys(x))
-	keys = slices.Compact(slices.Sorted(slices.Values(append(keys, slices.Collect(maps.Keys(y))...))))
+	keys := slices.Concat(slices.Collect(maps.Keys(x)), slices.Collect(maps.Keys(y)))
 	var differ []string
-	for _, k := range keys {
-		if !bytes.Equal(compact(x[k]), compact(y[k])) {
+	for _, k := range slices.Compact(slices.Sorted(slices.Values(keys))) {
+		if !reflect.DeepEqual(x[k], y[k]) {
 			differ = append(differ, k)
 		}
 	}
@@ -206,22 +212,12 @@ func drift(a, b []byte) []string {
 	return differ
 }
 
-// compact is raw with its insignificant space removed, or nil for no value.
-func compact(raw json.RawMessage) []byte {
-	var b bytes.Buffer
-	if json.Compact(&b, raw) != nil {
-		return nil
-	}
-
-	return b.Bytes()
-}
-
 // diagnoseTools adds to d each program kiln runs that is missing. That is claude, the pre-commit hook, and the
 // launchd job when c names a monitor.
 func (r *Repo) diagnoseTools(ctx context.Context, c config, d *diagnosis) error {
 	if _, err := proc.Look(r.env, claudeProgram); err != nil {
-		d.found = append(d.found, fmt.Sprintf("%v: install Claude Code, and put the directory that holds %s on "+
-			"the PATH", err, claudeProgram))
+		d.found = append(d.found, refusal{err.Error(),
+			"install Claude Code, and put the directory that holds " + claudeProgram + " on the PATH"})
 	}
 
 	refused, err := r.hookRefusals(ctx)
@@ -234,16 +230,13 @@ func (r *Repo) diagnoseTools(ctx context.Context, c config, d *diagnosis) error 
 		return nil
 	}
 
-	_, plist, err := r.launchdPlist()
-	if err != nil {
+	served, err := r.launchdServes(ctx)
+	if err != nil || served {
 		return err
 	}
 
-	if _, err := os.Stat(plist); errors.Is(err, fs.ErrNotExist) {
-		d.found = append(d.found, fmt.Sprintf("%s names monitors, but no launchd job runs them: run kiln monitor "+
-			"install", configFile))
-	}
-
+	d.found = append(d.found, refusal{configFile + " names monitors, but no launchd job runs them in any checkout " +
+		"of this repository", "run kiln monitor install"})
 	return nil
 }
 
@@ -259,17 +252,16 @@ func (r *Repo) hookRefusals(ctx context.Context) (refusals, error) {
 	raw, err := os.ReadFile(hook)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return refusals{fmt.Sprintf("%s is missing, so no commit to main runs the gate: run kiln init, which "+
-			"installs it, or names the line to add to your own hook", hook)}, nil
+		return refusals{{hook + " is missing, so no commit to main runs the gate",
+			"run kiln init, which installs it, or names the line to add to your own hook"}}, nil
 	case err != nil:
 		return nil, err
 	}
 
 	runs := bytes.Contains(raw, []byte(hookMark)) || bytes.Contains(raw, []byte(precommitLine))
 	return broken(
-		rule{!runs, fmt.Sprintf("%s does not run the gate: add this line to it: %s", hook, precommitLine)},
-		rule{!proc.Executable(hook), fmt.Sprintf("%s is not executable, so git skips it: run chmod +x %s", hook,
-			hook)},
+		rule{!runs, refusal{hook + " does not run the gate", "add this line to it: " + precommitLine}},
+		rule{!proc.Executable(hook), refusal{hook + " is not executable, so git skips it", "run chmod +x " + hook}},
 	), nil
 }
 
@@ -292,10 +284,10 @@ func (c config) scriptRefusals(top string) refusals {
 
 		_, err := os.Stat(at)
 		refused = append(refused, broken(
-			rule{err != nil, fmt.Sprintf("%s runs %s, which the working tree lacks: write it, or change the "+
-				"command", configFile, script)},
-			rule{err == nil && !proc.Executable(at), fmt.Sprintf("%s runs %s, which is not executable: run chmod "+
-				"+x %s, and commit it", configFile, script, script)},
+			rule{err != nil, refusal{fmt.Sprintf("%s runs %s, which the working tree lacks", configFile, script),
+				"write it, or change the command"}},
+			rule{err == nil && !proc.Executable(at), refusal{fmt.Sprintf("%s runs %s, which is not executable",
+				configFile, script), fmt.Sprintf("run chmod +x %s, and commit it", script)}},
 		)...)
 	}
 
@@ -318,13 +310,61 @@ func (c config) commands() []string {
 }
 
 // scriptPath is whether word, the first of a command, names a script by its path. It holds a slash, and nothing the
-// shell would expand or unquote.
+// shell would expand, such as ~ or a glob, or unquote.
 func scriptPath(word string) bool {
-	return strings.Contains(word, "/") && !strings.ContainsAny(word, "$\"'`=\\")
+	return strings.Contains(word, "/") && !strings.ContainsAny(word, "$\"'`=\\~*?[{")
 }
 
-// firstWord is the first word of command, as the shell splits it at space, or "".
+// firstWord is the first word of command, up to the first space or other character that ends a shell word.
 func firstWord(command string) string {
-	word, _, _ := strings.Cut(strings.TrimSpace(command), " ")
-	return word
+	command = strings.TrimSpace(command)
+	if end := strings.IndexAny(command, " \t\n;&|<>()"); end >= 0 {
+		return command[:end]
+	}
+
+	return command
+}
+
+// launchdServes is whether a launchd job of kiln monitor install runs in any checkout of r's repository. It reads
+// each job's working directory, and asks git for its common directory.
+func (r *Repo) launchdServes(ctx context.Context) (bool, error) {
+	_, plist, err := r.launchdPlist()
+	if err != nil {
+		return false, err
+	}
+
+	jobs, err := filepath.Glob(filepath.Join(filepath.Dir(plist), launchdPrefix+"*.plist"))
+	if err != nil {
+		return false, err
+	}
+
+	for _, job := range jobs {
+		// A job whose checkout is gone, or is no git checkout, names no directory, and so no repository.
+		other, _ := plainGit(ctx, jobDir(job), proc.Git.Env(r.env), "rev-parse", "--path-format=absolute",
+			"--git-common-dir")
+		if sameFile(other, r.common) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// jobWorkingDir finds the working directory in the property list that launchdJob writes.
+var jobWorkingDir = regexp.MustCompile(`<key>WorkingDirectory</key>\s*<string>([^<]*)</string>`)
+
+// jobDir is the working directory the launchd job in file plist names, or "" when kiln reads none.
+func jobDir(plist string) string {
+	raw, err := os.ReadFile(plist)
+	m := jobWorkingDir.FindSubmatch(raw)
+	if err != nil || m == nil {
+		return ""
+	}
+
+	var dir string
+	if xml.Unmarshal(append(append([]byte("<s>"), m[1]...), "</s>"...), &dir) != nil {
+		return ""
+	}
+
+	return dir
 }

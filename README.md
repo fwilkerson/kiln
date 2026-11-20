@@ -38,6 +38,8 @@ wrote .kiln/agents/audit.md
 wrote .kiln/agents/build.md
 ...
 wrote .kiln/kiln.json
+...
+wrote .kiln/kiln.schema.json
 linked .claude/skills/shape to ../../.kiln/skills/shape
 commit .kiln/ on main: kiln reads it there
 the pre-commit hook runs the gate on each commit to main, so make its commands pass before you commit .kiln/:
