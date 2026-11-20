@@ -106,7 +106,7 @@ func TestCheckoutSharedCore(t *testing.T) {
 }
 
 // TestDetached holds that the gate's worktree holds only the commit. A nested repository lands as a pointer, without
-// its files. A file git ignores, left by an earlier use, is gone.
+// its files. A file git ignores, left by an earlier use, is gone. A worktree deleted by hand is made again.
 func TestDetached(t *testing.T) {
 	t.Parallel()
 	repo := t.TempDir()
@@ -130,6 +130,14 @@ func TestDetached(t *testing.T) {
 		}
 
 		sh(t, tree, "echo 42 >x.golden")
+	}
+
+	if err := os.RemoveAll(tree); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := g.Detached(t.Context(), git.Worktree(tree), "main"); err != nil {
+		t.Errorf("kiln could not make again a worktree deleted by hand: %v", err)
 	}
 }
 
