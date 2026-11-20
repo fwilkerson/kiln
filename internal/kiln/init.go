@@ -147,12 +147,7 @@ func (r *Repo) initPreset(named, recorded string) (preset, error) {
 // sayGate prints the gate's commands of the checkout's kiln.json, which the pre-commit hook runs on each commit to
 // main. When Init wrote .kiln/, it says they must pass before .kiln/ is committed.
 func (r *Repo) sayGate(out io.Writer, wrote bool) error {
-	raw, err := os.ReadFile(filepath.Join(r.top, configFile))
-	if err != nil {
-		return err
-	}
-
-	c, err := parseConfig(raw)
+	c, err := r.checkoutConfig()
 	if err != nil {
 		return err
 	}
@@ -270,6 +265,19 @@ func (r *Repo) lastInit() (initRecord, error) {
 	}
 
 	return parseInit(raw)
+}
+
+// checkoutConfig reads kiln.json in the checkout, which may differ from main's. It refuses a checkout with none.
+func (r *Repo) checkoutConfig() (config, error) {
+	raw, err := os.ReadFile(filepath.Join(r.top, configFile))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return config{}, fmt.Errorf("%w: the checkout holds no %s: %s", errRefused, configFile, initHint)
+	case err != nil:
+		return config{}, err
+	}
+
+	return parseConfig(raw)
 }
 
 // writeDefaults brings each of p's files in .kiln/ up to date, as writeDefault says, then records them in initFile.

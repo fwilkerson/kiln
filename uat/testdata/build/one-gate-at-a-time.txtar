@@ -34,10 +34,15 @@ exec git show main:x.txt
 stdout '^x$'
 
 -- .kiln/kiln.json --
-{"gate": ["sh gate.sh"], "monitors": [
- {"name": "bump", "every": "24h", "check": "sh .kiln/monitors/bump",
-  "command": "touch \"$WORK/.tmp/fixing\"; i=0; while [ ! -e \"$WORK/.tmp/fix-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; echo current >state.txt"}
-]}
+{"gate": ["sh gate.sh"]}
+-- .kiln/monitors/bump/check --
+if grep -qx current state.txt; then
+  echo '{"fix": false, "summary": "state.txt is current"}'
+else
+  echo '{"fix": true, "summary": "state.txt is stale"}'
+fi
+-- .kiln/monitors/bump/command --
+touch "$WORK/.tmp/fixing"; i=0; while [ ! -e "$WORK/.tmp/fix-go" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; echo current >state.txt
 -- gate.sh --
 d=$(basename "$PWD")
 case "$d" in .gate-*) ;; *) exit 0 ;; esac
@@ -51,12 +56,6 @@ fi
 echo "end $d" >>"$log"
 rmdir "$WORK/.tmp/in-gate" 2>/dev/null
 exit 0
--- .kiln/monitors/bump --
-if grep -qx current state.txt; then
-  echo '{"fix": false, "summary": "state.txt is current"}'
-else
-  echo '{"fix": true, "summary": "state.txt is stale"}'
-fi
 -- state.txt --
 stale
 -- .kiln/specs/x.md --

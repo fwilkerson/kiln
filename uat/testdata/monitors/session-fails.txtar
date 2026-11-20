@@ -20,14 +20,16 @@ exec sh -c 'ls .claude-calls/*/*/1/call.json | grep -cv "^.claude-calls/audit/"'
 stdout '^2$'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
- {"name": "drift", "every": "1h", "agent": ".kiln/agents/drift.md", "prompt": "Compare the docs with the code."}
-]}
--- .kiln/agents/drift.md --
+{"gate": ["true"]}
+-- .kiln/monitors/drift/agent.md --
 Keep the docs true to the code.
+
+Compare the docs with the code.
+-- .kiln/monitors/drift/monitor.json --
+{"hours": 1}
 -- claude.json --
 {
- "drift": {
+ "fix": {
   "1": {
    "1": [
     {

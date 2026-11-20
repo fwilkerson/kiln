@@ -32,17 +32,17 @@ exec touch .tmp/fix-go
 wait mon
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
- {"name": "notes", "every": "24h", "check": "sh .kiln/monitors/notes", "agent": ".kiln/agents/notes.md", "prompt": "Write the note."}
-]}
--- .kiln/monitors/notes --
+{"gate": ["true"]}
+-- .kiln/monitors/notes/check --
 if [ -e note.txt ]; then
   echo '{"fix": false, "summary": "note.txt is there"}'
 else
   echo '{"fix": true, "summary": "note.txt is missing"}'
 fi
--- .kiln/agents/notes.md --
+-- .kiln/monitors/notes/agent.md --
 Write the missing note.
+
+Write the note.
 -- .kiln/specs/x.md --
 ### 1. X is there
 
@@ -69,7 +69,7 @@ x
 x.txt holds one line.
 -- claude.json --
 {
- "notes": {"1": {"1": [
+ "fix": {"1": {"1": [
   {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/fixing\"; i=0; while [ ! -e \"$WORK/.tmp/fix-go\" ] && [ $i -lt 3000 ]; do sleep 0.1; i=$((i+1)); done; echo noted >note.txt"}}},
   {"result": {"result": "Wrote note.txt.\n{\"title\": \"fix(notes): write the missing note\"}"}}
  ]}},

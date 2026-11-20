@@ -17,5 +17,7 @@ func TestFacts(t *testing.T) {
 		"of at most 72":                        titleMax == 72,
 		"tries the lock again each 200 ms":     commandsRetry == 200*time.Millisecond,
 		"kiln waits 30 s for it":               notifyWait == 30*time.Second,
+		"or 24 when unset":                     defaultHours == 24,
+		"a whole number from 0 to 65535":       ^settings{}.Hours == 65535,
 	})
 }

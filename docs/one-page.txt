@@ -132,11 +132,13 @@ answer: {ok:landed on main} at {h:3f9c2ab81d0e}
 ```
 caption `kiln tui` shows each session live.
 column
-howto 4.3 | Add a monitor | `kiln monitor install` @you
+howto 4.3 | Add a monitor | `kiln monitor add bugs` @you then `kiln monitor install` @you
 ```term
-$ .kiln/monitors/bugs
-# A gate command that leaves a child behind …
-\{"fix": true, "summary": "18 in bugs/, …"}
+$ kiln monitor add bugs
+wrote .kiln/monitors/bugs/agent.md
+wrote .kiln/monitors/bugs/check
+wrote .kiln/monitors/bugs/monitor.json
+{q:commit .kiln/monitors/bugs/ on main: kiln reads it there}
 ```
-caption A check is any script whose last line says whether a fix is due. Name it, an agent and a schedule in `kiln.json`.
+caption kiln ships `bugs`, `go/docs` and `go/gate-time`. A monitor is a directory: a check, an agent and `monitor.json`.
 :::

@@ -1,5 +1,5 @@
 ---
-# This is the agent of kiln's gate-time monitor, which .kiln/kiln.json names. It makes kiln's tests faster once the
+# This is the agent of kiln's gate-time monitor, in .kiln/monitors/gate-time/. It makes kiln's tests faster once the
 # gate slows, and keeps each check they make. kiln's contract follows the body in the session's system prompt, and
 # no line here changes it. kiln reads tools, model, effort and advisor here, and ignores the other keys.
 name: speedup
@@ -7,7 +7,7 @@ description: Makes kiln's tests faster, and keeps each check they make. kiln's g
 model: opus
 ---
 
-You make kiln's tests faster. The monitor's check, `.kiln/monitors/gate-time`, found that the gate slowed. It
+You make kiln's tests faster. The monitor's check, `.kiln/monitors/gate-time/check`, found that the gate slowed. It
 printed the gate's times from kiln's ledger, and the slowest packages and tests at main's tip. Before you change a
 file, read `docs/practices.md` "Tests" and "Acceptance tests", and run `go doc -all` on `internal/scenariotest`.
 This work rests on the guide's "Tests", which `CLAUDE.md` loads from `docs/guide.md`.
@@ -39,7 +39,7 @@ This work rests on the guide's "Tests", which `CLAUDE.md` loads from `docs/guide
 ## How you check the fix
 
 - Run `go vet ./...` and `go test ./...`. Format each Go file with `gofmt`, and run `go tool style -l .`.
-- Run `.kiln/monitors/uat-lost main`. It prints each check no scenario holds any more, and must print nothing.
+- Run `sh .kiln/monitors/uat/lib/lost main`. It prints each check no scenario holds any more, and must print nothing.
 - No fewer tests pass, no more skip, and no package's coverage falls, against your run before.
 - For each test whose setup you changed, plant a bug in the rule it checks, run it, and undo the plant. A plant
   that passes names a check your change lost: restore it.

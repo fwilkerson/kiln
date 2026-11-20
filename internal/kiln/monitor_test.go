@@ -3,6 +3,8 @@ package kiln
 import (
 	"errors"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -10,55 +12,165 @@ import (
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/kiln/internal/tui"
+	"github.com/fwilkerson/practices/claim"
 )
 
-// TestMonitorConfig holds which monitors kiln.json may name. kiln.json is refused for each rule a monitor breaks,
-// each refusal on a line of its own.
+// TestMonitorConfig holds which monitors kiln may run, by the files a monitor's directory holds and its
+// monitor.json. A monitor is refused for each rule it breaks, each refusal on a line of its own.
 func TestMonitorConfig(t *testing.T) {
 	for name, tc := range map[string]struct {
-		monitors, acceptance string
+		name                 Spec
+		files                string
+		settings, acceptance string
 		refused              []string
 	}{
-		"a command":                    {monitors: `{"name": "deps", "every": "24h", "command": "true"}`},
-		"an agent, by its file":        {monitors: `{"name": "deps", "every": "1h", "agent": "triage.md"}`},
-		"an agent, by its path":        {monitors: `{"name": "deps", "every": "1h", "agent": ".kiln/agents/triage.md"}`},
-		"no name":                      {monitors: `{"every": "24h", "command": "true"}`, refused: []string{"has no name: name it"}},
-		"a name no spec could have":    {monitors: `{"name": "Deps", "every": "24h", "command": "true"}`, refused: []string{"a name no spec could have"}},
-		"a name another monitor has":   {monitors: `{"name": "a", "every": "1h", "command": "x"}, {"name": "a", "every": "2h", "command": "y"}`, refused: []string{"the name of a monitor before it: rename one"}},
-		"under an hour":                {monitors: `{"name": "deps", "every": "30m", "command": "true"}`, refused: []string{"not whole hours, at least 1h"}},
-		"not whole hours":              {monitors: `{"name": "deps", "every": "90m", "command": "true"}`, refused: []string{"not whole hours, at least 1h"}},
-		"no duration":                  {monitors: `{"name": "deps", "every": "daily", "command": "true"}`, refused: []string{"not whole hours, at least 1h"}},
-		"a check alone":                {monitors: `{"name": "deps", "every": "24h", "check": "true"}`, refused: []string{"no command and no agent"}},
-		"an agent outside .kiln":       {monitors: `{"name": "deps", "every": "24h", "agent": "../x.md"}`, refused: []string{"no file directly under .kiln/agents/"}},
-		"the audit as its agent":       {monitors: `{"name": "deps", "every": "24h", "agent": "audit.md"}`, refused: []string{"the audit as its agent"}},
-		"tests kiln could not guard":   {monitors: `{"name": "deps", "every": "24h", "command": "true"}`, acceptance: `"{spec}_test/"`, refused: []string{"may not write the tests"}},
-		"tests the monitor may write":  {monitors: `{"name": "deps", "every": "24h", "command": "true", "tests": true}`, acceptance: `"{spec}_test/"`},
-		"tests under no path to guard": {monitors: `{"name": "deps", "every": "24h", "command": "true"}`, acceptance: `[]`, refused: []string{"may not write the tests"}},
-		"tests under one of two paths": {monitors: `{"name": "deps", "every": "24h", "command": "true"}`, acceptance: `["uat/{spec}/", "{spec}_test/"]`, refused: []string{"may not write the tests"}},
-		"a gauge":                      {monitors: `{"name": "deps", "every": "24h", "gauge": "health", "agent": "triage.md"}`},
-		"a gauge gauges lacks":         {monitors: `{"name": "deps", "every": "24h", "gauge": "size", "agent": "triage.md"}`, refused: []string{"a gauge that gauges does not hold"}},
-		"a check and a gauge":          {monitors: `{"name": "deps", "every": "24h", "check": "true", "gauge": "health", "agent": "triage.md"}`, refused: []string{"both a check and a gauge"}},
-		"gates beside a gauge":         {monitors: `{"name": "deps", "every": "24h", "gauge": "health", "gates": true, "agent": "triage.md"}`, refused: []string{"gates beside a gauge"}},
-		"drains with nothing to read":  {monitors: `{"name": "deps", "every": "24h", "command": "true", "drain": true}`, refused: []string{"drains with no check and no gauge"}},
-		"each rule a monitor breaks":   {monitors: `{"name": "Deps", "every": "30m"}`, refused: []string{"a name no spec could have", "not whole hours", "no command and no agent"}},
-		"each monitor that breaks one": {monitors: `{"name": "a", "every": "1h"}, {"name": "b", "every": "1h", "agent": "audit.md"}`, refused: []string{"monitor \"a\" that names no command", "monitor \"b\" that names the audit"}},
+		"a command alone":              {files: "command"},
+		"an agent alone":               {files: "agent.md"},
+		"a check, a command and keys":  {files: "check command", settings: `{"hours": 1, "gates": false, "accept": true}`},
+		"a gauge and its line":         {files: "gauge agent.md", settings: `{"min": 10}`},
+		"a gauge out of the gate":      {files: "gauge agent.md", settings: `{"max": 0, "gates": false}`},
+		"a helper in a subdirectory":   {files: "check agent.md lib/lost lib/notes/why.md"},
+		"a file kiln does not read":    {files: "command README.md", refused: []string{"holds README.md, a file kiln does not read: keep only check, gauge"}},
+		"chek beside agent.md":         {files: "chek agent.md", refused: []string{"holds chek, a file kiln does not read"}},
+		"a name no spec could have":    {name: "Deps", files: "command", refused: []string{".kiln/monitors/Deps/ has a name no spec could have: name it in lower-case"}},
+		"half an hour":                 {files: "command", settings: `{"hours": 0.5}`, refused: []string{"monitor.json: "}},
+		"a negative interval":          {files: "command", settings: `{"hours": -1}`, refused: []string{"monitor.json: "}},
+		"a word for an interval":       {files: "command", settings: `{"hours": "daily"}`, refused: []string{"monitor.json: "}},
+		"over the decoder's limit":     {files: "command", settings: `{"hours": 65536}`, refused: []string{"monitor.json: "}},
+		"the old key, every":           {files: "command", settings: `{"every": "24h"}`, refused: []string{"monitor.json: "}},
+		"a key kiln does not know":     {files: "check command", settings: `{"drain": true}`, refused: []string{"monitor.json: "}},
+		"a check alone":                {files: "check", refused: []string{"holds no command and no agent.md, so it fixes nothing"}},
+		"a check and a gauge":          {files: "check gauge agent.md", settings: `{"min": 10}`, refused: []string{"holds both a check and a gauge"}},
+		"a gauge with no line":         {files: "gauge agent.md", refused: []string{"holds a gauge, but its monitor.json names both min and max, or neither"}},
+		"a gauge with both sides":      {files: "gauge agent.md", settings: `{"min": 1, "max": 2}`, refused: []string{"holds a gauge, but its monitor.json names both min and max, or neither"}},
+		"a line with no gauge":         {files: "check agent.md", settings: `{"max": 0}`, refused: []string{"names min or max, a gauge's line, but holds no gauge"}},
+		"a gauge kiln.json names too":  {name: "health", files: "gauge agent.md", settings: `{"min": 10}`, refused: []string{"holds a gauge, and .kiln/kiln.json names a gauge health too: rename one"}},
+		"tests kiln could not guard":   {files: "command", acceptance: `"{spec}_test/"`, refused: []string{"may not write the tests"}},
+		"tests the monitor may write":  {files: "command", settings: `{"tests": true}`, acceptance: `"{spec}_test/"`},
+		"tests under no path to guard": {files: "command", acceptance: `[]`, refused: []string{"may not write the tests"}},
+		"tests under one of two paths": {files: "command", acceptance: `["uat/{spec}/", "{spec}_test/"]`, refused: []string{"may not write the tests"}},
+		"each rule a monitor breaks":   {name: "Deps", files: "check README", refused: []string{"a name no spec could have", "holds README", "holds no command and no agent.md"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			acceptance := cmpOr(tc.acceptance, `"acceptance/{spec}/"`)
-			raw := `{"gate": ["true"], "rounds": 1, "acceptance": ` + acceptance + `, "gauges": [{"name": ` +
-				`"health", "command": "true", "min": 10}], "monitors": [` + tc.monitors + `]}`
-			_, err := parseConfig([]byte(raw))
-			got, _ := errors.AsType[refusals](err)
-			if len(got) != len(tc.refused) {
-				t.Fatalf("refused %q, want %d refusals: %q", got, len(tc.refused), tc.refused)
+			c, err := parseConfig([]byte(`{"gate": ["true"], "rounds": 1, "acceptance": ` + acceptance +
+				`, "gauges": [{"name": "health", "command": "true", "min": 10}]}`))
+			if err != nil {
+				t.Fatal(err)
 			}
 
-			for i, want := range tc.refused {
-				if !strings.Contains(got[i].String(), want) {
-					t.Errorf("refusal %d is %q, want one that says %q", i+1, got[i], want)
-				}
+			var raw []byte
+			if tc.settings != "" {
+				raw = []byte(tc.settings)
 			}
+
+			_, got := c.readMonitor(cmpOr(tc.name, "deps"), strings.Fields(tc.files), raw)
+			wantRefused(t, got, tc.refused)
 		})
+	}
+}
+
+// wantRefused holds that got holds a refusal for each of want, in order, which says it.
+func wantRefused(t *testing.T, got refusals, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("refused %q, want %d refusals: %q", got, len(want), want)
+	}
+
+	for i, says := range want {
+		if !strings.Contains(got[i].String(), says) {
+			t.Errorf("refusal %d is %q, want one that says %q", i+1, got[i], says)
+		}
+	}
+}
+
+// TestMonitorDirs holds that kiln reads each directory under .kiln/monitors/ at a commit as a monitor, by name. One
+// with no monitor.json runs daily. A script kiln runs that git holds without the executable bit is refused. So is a
+// file directly under .kiln/monitors/, since a monitor is a directory.
+func TestMonitorDirs(t *testing.T) {
+	r, repo := scratchRepo(t)
+	shell(t, repo, `mkdir .kiln && echo '{"gate": ["true"], "acceptance": "uat/{spec}/"}' >.kiln/kiln.json`)
+	writeMonitor(t, repo, "b", map[string]string{"command": "true"})
+	writeMonitor(t, repo, "a", map[string]string{"check": "true", "agent.md": "Fix it.", "monitor.json": `{"hours": 1}`,
+		"notes/lost": "true"})
+	shell(t, repo, "git add . && git commit --quiet -m start")
+	_, monitors, err := r.monitors(t.Context(), "main")
+	if err != nil || len(monitors) != 2 {
+		t.Fatalf("main holds monitors %v, %v; want a and b", monitors, err)
+	}
+
+	a, b := monitors[0], monitors[1]
+	if !claim.Holds(a.Name == "a", a.finder == checkScript, a.agent, a.interval() == time.Hour, a.tree != "") {
+		t.Errorf("a reads as %+v, want a check, an agent, every hour, and its directory's ID", a)
+	}
+
+	if b.interval() != 24*time.Hour {
+		t.Errorf("b, with no monitor.json, runs every %v, want every 24h", b.interval())
+	}
+
+	if names, err := r.Takes(t.Context(), "monitor run"); !slices.Equal(names, []string{"a", "b"}) {
+		t.Errorf("kiln complete monitor run answers %v, %v; want a and b", names, err)
+	}
+
+	shell(t, repo, "chmod -x .kiln/monitors/b/command && git commit --quiet -am plain")
+	if _, _, err := r.monitors(t.Context(), "main"); err == nil || !strings.Contains(err.Error(), "chmod +x") {
+		t.Errorf("a command git holds without the executable bit answers %v, want it refused, naming chmod +x", err)
+	}
+
+	shell(t, repo, "echo true >.kiln/monitors/stray && git add . && git commit --quiet -m stray")
+	if _, _, err := r.monitors(t.Context(), "main"); err == nil || !strings.Contains(err.Error(), "is a file") {
+		t.Errorf("a file under .kiln/monitors/ answers %v, want it refused as a file", err)
+	}
+
+	if names, _ := r.Takes(t.Context(), "monitor run"); len(names) > 0 {
+		t.Errorf("kiln complete monitor run answers %v, which kiln monitor run refuses", names)
+	}
+}
+
+// TestContractGauge holds that a fix's contract says the gate reads the monitor's gauge only where the gate does.
+func TestContractGauge(t *testing.T) {
+	for name, tc := range map[string]struct {
+		m    monitor
+		says bool
+	}{
+		"a gauge in the gate":     {m: monitor{finder: gaugeScript}, says: true},
+		"a gauge out of the gate": {m: monitor{finder: gaugeScript, Gates: new(false)}},
+		"a check in the gate":     {m: monitor{finder: checkScript}},
+	} {
+		f := &fixing{monitor: tc.m}
+		if says := strings.Contains(f.contract("m"), "reads the monitor's gauge"); says != tc.says {
+			t.Errorf("%s: the contract says the gate reads the gauge: %v, want %v", name, says, tc.says)
+		}
+	}
+}
+
+// writeMonitor writes the monitor name's directory under .kiln/monitors/ in repo, with each of files by its path.
+// Each script kiln runs is executable.
+func writeMonitor(t *testing.T, repo string, name string, files map[string]string) {
+	t.Helper()
+	dir := filepath.Join(repo, monitorsDir, name)
+	writeAll(t, dir, files)
+	for _, script := range roleScripts {
+		if _, there := files[script]; there {
+			if err := os.Chmod(filepath.Join(dir, script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+// writeAll writes each of files under dir, by its path from dir, with the directories it needs.
+func writeAll(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for p, content := range files {
+		target := filepath.Join(dir, p)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(target, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -66,7 +178,7 @@ func TestMonitorConfig(t *testing.T) {
 // fix. It is when its fix was cut short. Otherwise it is due once its interval, less half an hour, has passed.
 func TestDue(t *testing.T) {
 	ran := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
-	daily := monitor{Name: "deps", Every: "24h"}
+	daily := monitor{Name: "deps", Hours: defaultHours}
 	for name, tc := range map[string]struct {
 		found, outcome string
 		later          time.Duration
@@ -109,10 +221,10 @@ func TestDue(t *testing.T) {
 // TestHold holds what releases a monitor its last fix holds. That is a change to main's tip, its entry, or what its
 // check or gauge printed. The fix's outcome and the monitor's check or gauge say which.
 func TestHold(t *testing.T) {
-	gated := monitor{Name: "m", Every: "1h", Check: "c", Command: "x"}
-	outside := monitor{Name: "m", Every: "1h", Check: "c", Agent: "a.md", Gates: new(false)}
-	unchecked := monitor{Name: "m", Every: "1h", Agent: "a.md"}
-	gauged := monitor{Name: "m", Every: "1h", Gauge: "g", Agent: "a.md"}
+	gated := monitor{Name: "m", finder: checkScript, command: true}
+	outside := monitor{Name: "m", finder: checkScript, agent: true, Gates: new(false)}
+	unchecked := monitor{Name: "m", agent: true}
+	gauged := monitor{Name: "m", finder: gaugeScript, agent: true}
 	for name, tc := range map[string]struct {
 		m                    monitor
 		outcome              string
@@ -267,7 +379,7 @@ func claudeEnded(text string, failed bool) claude.Ended {
 
 // TestNamedRun holds that kiln monitor run <name> runs held or not, but never starts a second fix of a monitor.
 func TestNamedRun(t *testing.T) {
-	m := monitor{Name: "m", Every: "1h", Check: "c", Command: "x"}
+	m := monitor{Name: "m", finder: checkScript, command: true}
 	afterStop := histories([]entry{{Kind: monitorKind, Monitor: "m", Found: foundFix, Build: "b"},
 		{Kind: outcomeKind, Build: "b", Outcome: outStopped}})["m"]
 	for name, tc := range map[string]struct {

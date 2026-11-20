@@ -1,10 +1,13 @@
 # A monitor runs when it is due, or when named.
 
-# Given: a daily monitor that ran healthy a moment ago, and a second monitor that has never run.
+# Given: a daily monitor that ran healthy a moment ago, and a second monitor, added from a directory, that has never
+# run.
 exec kiln monitor run
 grep -count=1 'ran' $WORK/_given/daily.log
-cp $WORK/_given/both.json .kiln/kiln.json
-exec git commit -q -am 'name the second monitor'
+exec kiln monitor add $WORK/_given/fresh
+stdout '^wrote \.kiln/monitors/fresh/check$'
+exec git add .kiln/monitors/fresh
+exec git commit -q -m 'add the second monitor'
 
 # When: the developer runs kiln monitor run,
 exec kiln monitor run
@@ -20,19 +23,16 @@ exec kiln monitor run daily
 grep -count=2 'ran' $WORK/_given/daily.log
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
- {"name": "daily", "every": "24h", "check": "sh .kiln/monitors/daily", "command": "true"}
-]}
--- .kiln/monitors/daily --
+{"gate": ["true"]}
+-- .kiln/monitors/daily/check --
 echo ran >>"$WORK/_given/daily.log"
 echo '{"fix": false, "summary": "all is well"}'
--- .kiln/monitors/fresh --
-echo ran >>"$WORK/_given/fresh.log"
-echo '{"fix": false, "summary": "all is well"}'
+-- .kiln/monitors/daily/command --
+true
 -- _given/daily.log --
 -- _given/fresh.log --
--- _given/both.json --
-{"acceptance": "acceptance/{spec}/", "gate": ["true"], "rounds": 1, "monitors": [
- {"name": "daily", "every": "24h", "check": "sh .kiln/monitors/daily", "command": "true"},
- {"name": "fresh", "every": "24h", "check": "sh .kiln/monitors/fresh", "command": "true"}
-]}
+-- _given/fresh/check --
+echo ran >>"$WORK/_given/fresh.log"
+echo '{"fix": false, "summary": "all is well"}'
+-- _given/fresh/command --
+true

@@ -20,10 +20,15 @@ exec git show main:uat/b/note.txt
 stdout '^changed by trusted$'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "acceptance": ["uat/{spec}/", "integration/{spec}/"], "monitors": [
- {"name": "guarded", "every": "168h", "command": "echo 'changed by guarded' >>integration/a/note.txt"},
- {"name": "trusted", "every": "168h", "command": "echo 'changed by trusted' >>uat/b/note.txt", "tests": true}
-]}
+{"gate": ["true"], "acceptance": ["uat/{spec}/", "integration/{spec}/"]}
+-- .kiln/monitors/guarded/command --
+echo 'changed by guarded' >>integration/a/note.txt
+-- .kiln/monitors/guarded/monitor.json --
+{"hours": 168}
+-- .kiln/monitors/trusted/command --
+echo 'changed by trusted' >>uat/b/note.txt
+-- .kiln/monitors/trusted/monitor.json --
+{"hours": 168, "tests": true}
 -- integration/a/note.txt --
 a's tests
 -- uat/b/note.txt --

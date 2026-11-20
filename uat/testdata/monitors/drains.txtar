@@ -1,6 +1,7 @@
 # A monitor that drains a queue in one run.
 
-# Given: a monitor that drains. Its check asks for a fix while queue/ holds a file, and its command removes the first.
+# Given: a monitor that drains. Its check asks for a fix while queue/ holds a file, and to drain the queue, and its
+# command removes the first.
 
 # When: the developer runs kiln monitor run, once.
 exec kiln monitor run
@@ -17,17 +18,18 @@ stdout '^queue: healthy'
 stdout 'queue/ is empty'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
- {"name": "queue", "every": "1h", "check": "sh .kiln/monitors/queue", "gates": false, "drain": true,
-  "command": "rm \"$(ls queue/* | head -n 1)\""}
-]}
--- .kiln/monitors/queue --
+{"gate": ["true"]}
+-- .kiln/monitors/queue/check --
 n=$(ls queue 2>/dev/null | wc -l | tr -d ' ')
 if [ "$n" -eq 0 ]; then
   echo '{"fix": false, "summary": "queue/ is empty"}'
   exit 0
 fi
-echo "{\"fix\": true, \"summary\": \"$n in queue/\"}"
+echo "{\"fix\": true, \"summary\": \"$n in queue/\", \"drain\": true}"
+-- .kiln/monitors/queue/command --
+rm "$(ls queue/* | head -n 1)"
+-- .kiln/monitors/queue/monitor.json --
+{"hours": 1, "gates": false}
 -- queue/a --
 a
 -- queue/b --

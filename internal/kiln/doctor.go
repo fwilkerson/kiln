@@ -22,9 +22,11 @@ import (
 
 // Doctor prints each problem kiln's commands would refuse or fail on, in the project as its working tree holds it.
 // Each names its fix. Doctor reads kiln.json, and refuses it as every kiln command would. It reads the build,
-// verify and audit agents as kiln queue reads them, and each monitor's agent. Where a command of kiln.json starts
-// with a path, Doctor reads the script there. It needs the branch main, a claude on the PATH, and a pre-commit hook
-// that runs kiln precommit. When kiln.json names a monitor, it needs a launchd job in a checkout of the repository.
+// verify and audit agents as kiln queue reads them. It reads each monitor under .kiln/monitors/ as kiln monitor run
+// reads it at main's tip. It reads the files git would commit there, and agent.md as the fix's session reads it.
+// Where a command of kiln.json starts with a path, Doctor reads the script there. It needs the branch main, a claude
+// on the PATH, and a pre-commit hook that runs kiln precommit. With a monitor, it needs a launchd job in a checkout
+// of the repository.
 // With a name, it reads that spec as kiln queue would, but not its Status. It notes each key of kiln.json that
 // differs from main's, which kiln acts on. Doctor writes nothing, and calls no model and no network. It fails when it
 // found a problem.
@@ -65,6 +67,11 @@ func (r *Repo) diagnose(ctx context.Context, name Spec) (diagnosis, error) {
 		return d, err
 	}
 
+	monitors, err := r.workingMonitors(ctx)
+	if err := d.found.add(err); err != nil {
+		return d, err
+	}
+
 	var c config
 	readable := false
 	if found {
@@ -74,20 +81,23 @@ func (r *Repo) diagnose(ctx context.Context, name Spec) (diagnosis, error) {
 	}
 
 	if readable {
-		if err := r.diagnoseProject(ctx, c, &d); err != nil {
+		if err := r.diagnoseProject(ctx, c, monitors, &d); err != nil {
 			return d, err
 		}
 	}
 
-	if err := r.diagnoseSpec(ctx, c, name, &d); err != nil {
+	refused, err := r.diagnoseSpec(ctx, c, name, monitorNames(monitors))
+	if err != nil {
 		return d, err
 	}
+
+	d.found = append(d.found, refused...)
 
 	if err := r.diagnoseMain(ctx, raw, readable, &d); err != nil {
 		return d, err
 	}
 
-	return d, r.diagnoseTools(ctx, c, &d)
+	return d, r.diagnoseTools(ctx, len(monitors) > 0, &d)
 }
 
 // config reads raw, the working tree's kiln.json, and adds its refusals to d. It answers false for a file kiln cannot
@@ -104,9 +114,10 @@ func (d *diagnosis) config(raw []byte) (config, bool) {
 	return c, true
 }
 
-// diagnoseProject adds to d what kiln queue refuses in c and the agents' files. It adds each monitor's agent kiln
-// cannot read. It adds each script of kiln.json's commands that is missing, or not executable.
-func (r *Repo) diagnoseProject(ctx context.Context, c config, d *diagnosis) error {
+// diagnoseProject adds to d what kiln queue refuses in c and the agents' files. It adds what kiln monitor run refuses
+// in each of monitors, and each agent.md a fix's session could not read. It adds each script of kiln.json's commands
+// that is missing, or not executable.
+func (r *Repo) diagnoseProject(ctx context.Context, c config, monitors []monitorDir, d *diagnosis) error {
 	tree := r.workingTree()
 	refused, err := c.readiness(ctx, tree)
 	if err != nil {
@@ -114,10 +125,17 @@ func (r *Repo) diagnoseProject(ctx context.Context, c config, d *diagnosis) erro
 	}
 
 	d.found = append(d.found, refused...)
-	for _, role := range c.monitorRoles() {
-		_, err := tree.agent(ctx, role, "write it, or name another agent in the monitor's entry")
+	for _, dir := range monitors {
+		m, err := c.readDir(ctx, tree, dir)
 		if err := d.found.add(err); err != nil {
 			return err
+		}
+
+		if m.agent {
+			_, err := tree.agent(ctx, m.path(monitorAgent), "write it")
+			if err := d.found.add(err); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -125,43 +143,80 @@ func (r *Repo) diagnoseProject(ctx context.Context, c config, d *diagnosis) erro
 	return nil
 }
 
-// monitorRoles are the roles of c's monitors' agents, each once, but the roles kiln queue reads. A role whose file
-// kiln.json may not name is none.
-func (c config) monitorRoles() []string {
-	seen := []string{"", buildRole, verifyRole, auditRole}
-	var roles []string
-	for _, m := range c.Monitors {
-		if role := m.role(); !slices.Contains(seen, role) {
-			seen, roles = append(seen, role), append(roles, role)
+// workingMonitors lists each monitor's directory under .kiln/monitors/ in the working tree, by name, with each file
+// git would commit there. Those are the files git tracks, and those it does not ignore. It refuses each file directly
+// under .kiln/monitors/, as monitorDirs does in a commit.
+func (r *Repo) workingMonitors(ctx context.Context) ([]monitorDir, error) {
+	out, err := plainGit(ctx, r.top, proc.Git.Env(r.env), "ls-files", "-z", "--cached", "--others",
+		"--exclude-standard", "--", monitorsDir+"/")
+	if err != nil {
+		return nil, err
+	}
+
+	var dirs []monitorDir
+	var refused refusals
+	for p := range strings.SplitSeq(out, "\x00") {
+		name, file, inside := strings.Cut(strings.TrimPrefix(p, monitorsDir+"/"), "/")
+		at := filepath.Join(r.top, filepath.FromSlash(p))
+		switch _, err := os.Lstat(at); {
+		// git lists a file it tracks that the working tree deleted.
+		case p == "", err != nil:
+		case !inside:
+			refused = append(refused, strayMonitor(name))
+		default:
+			dirs = withFile(dirs, Spec(name), file, slices.Contains(roleScripts, file) && !proc.Executable(at))
 		}
 	}
 
-	return roles
+	return dirs, refused.err()
 }
 
-// diagnoseSpec adds to d what kiln queue refuses in the working tree's spec name, but its Status. c is the working
-// tree's kiln.json. It adds nothing for the name "".
-func (r *Repo) diagnoseSpec(ctx context.Context, c config, name Spec, d *diagnosis) error {
+// withFile adds file to the directory of dirs named name, which it adds when dirs lacks it. plain says file is a
+// script kiln runs that is not executable. git lists each directory's files together.
+func withFile(dirs []monitorDir, name Spec, file string, plain bool) []monitorDir {
+	if len(dirs) == 0 || dirs[len(dirs)-1].name != name {
+		dirs = append(dirs, monitorDir{name: name})
+	}
+
+	d := &dirs[len(dirs)-1]
+	d.files = append(d.files, file)
+	if plain {
+		d.plain = file
+	}
+
+	return dirs
+}
+
+// monitorNames are the names of monitors.
+func monitorNames(monitors []monitorDir) []string {
+	names := make([]string, len(monitors))
+	for i, m := range monitors {
+		names[i] = string(m.name)
+	}
+
+	return names
+}
+
+// diagnoseSpec answers what kiln queue refuses in the working tree's spec name, but its Status. c is the working
+// tree's kiln.json, and monitors the names of the working tree's monitors. It answers none for the name "".
+func (r *Repo) diagnoseSpec(ctx context.Context, c config, name Spec, monitors []string) (refusals, error) {
 	if name == "" {
-		return nil
+		return nil, nil
 	}
 
 	if refused := name.misnamed(); refused != nil {
-		d.found = append(d.found, refused...)
-		return nil
+		return refused, nil
 	}
 
 	spec, found, err := r.workingTree().read(ctx, name.file())
 	switch {
 	case err != nil:
-		return err
+		return nil, err
 	case !found:
-		d.found = append(d.found, refusal{"the working tree holds no " + name.file(), "write it with /shape"})
-	default:
-		d.found = append(d.found, c.specRefusals(name, spec)...)
+		return refusals{{"the working tree holds no " + name.file(), "write it with /shape"}}, nil
 	}
 
-	return nil
+	return c.specRefusals(name, spec, monitors), nil
 }
 
 // diagnoseMain adds to d what main lacks that kiln reads there. When readable, it notes each key of tree, the working
@@ -213,8 +268,8 @@ func drift(a, b []byte) []string {
 }
 
 // diagnoseTools adds to d each program kiln runs that is missing. That is claude, the pre-commit hook, and the
-// launchd job when c names a monitor.
-func (r *Repo) diagnoseTools(ctx context.Context, c config, d *diagnosis) error {
+// launchd job when monitored, so the working tree holds a monitor.
+func (r *Repo) diagnoseTools(ctx context.Context, monitored bool, d *diagnosis) error {
 	if _, err := proc.Look(r.env, claudeProgram); err != nil {
 		d.found = append(d.found, refusal{err.Error(),
 			"install Claude Code, and put the directory that holds " + claudeProgram + " on the PATH"})
@@ -226,7 +281,7 @@ func (r *Repo) diagnoseTools(ctx context.Context, c config, d *diagnosis) error 
 	}
 
 	d.found = append(d.found, refused...)
-	if len(c.Monitors) == 0 {
+	if !monitored {
 		return nil
 	}
 
@@ -235,8 +290,8 @@ func (r *Repo) diagnoseTools(ctx context.Context, c config, d *diagnosis) error 
 		return err
 	}
 
-	d.found = append(d.found, refusal{configFile + " names monitors, but no launchd job runs them in any checkout " +
-		"of this repository", "run kiln monitor install"})
+	d.found = append(d.found, refusal{monitorsDir + "/ holds monitors, but no launchd job runs them in any " +
+		"checkout of this repository", "run kiln monitor install"})
 	return nil
 }
 
@@ -294,16 +349,11 @@ func (c config) scriptRefusals(top string) refusals {
 	return refused
 }
 
-// commands are the commands of c that kiln runs with sh -c. They are the gate's, writable's, each gauge's, and each
-// monitor's check and command.
+// commands are the commands of c that kiln runs with sh -c: the gate's, writable's and each gauge's.
 func (c config) commands() []string {
 	commands := slices.Concat(c.Gate, c.Writable)
 	for _, g := range c.Gauges {
 		commands = append(commands, g.Command)
-	}
-
-	for _, m := range c.Monitors {
-		commands = append(commands, m.Check, m.Command)
 	}
 
 	return commands

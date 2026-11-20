@@ -12,9 +12,9 @@ import (
 // Each row names the lines Doctor prints, in order, by a part of each. A line that starts "note:" is no problem.
 func TestDoctor(t *testing.T) {
 	project := doctorProject(t)
-	const monitor = `{"name": "deps", "every": "24h", "check": ".kiln/monitors/deps", "agent": "deps.md"}`
-	const launchd = "names monitors, but no launchd job runs them in any checkout of this repository: run kiln " +
-		"monitor install"
+	const monitor = "mkdir -p .kiln/monitors/deps && cd .kiln/monitors/deps && "
+	const launchd = ".kiln/monitors/ holds monitors, but no launchd job runs them in any checkout of this " +
+		"repository: run kiln monitor install"
 	for name, tc := range map[string]doctorCase{
 		"kiln init's files": {want: []string{"found no problem"}},
 		"each refusal of kiln.json at once": {
@@ -43,20 +43,24 @@ func TestDoctor(t *testing.T) {
 			want: []string{"build.md, as the working tree holds it, its tools are not tool names",
 				`build.md, as the working tree holds it, its effort, "huge", is none of`},
 		},
-		"a monitor's script and agent the working tree lacks": {change: withKeys(`"monitors": [` + monitor + `],`),
-			want: []string{"the working tree holds no .kiln/agents/deps.md: write it, or name another agent",
-				"runs .kiln/monitors/deps, which the working tree lacks", launchd, "note:"}},
+		"each refusal of a monitor, and of its agent": {
+			change: monitor + "touch README && echo '{\"min\": 1}' >monitor.json && " +
+				"printf -- '---\neffort: huge\n---\nFix it.\n' >agent.md",
+			want: []string{".kiln/monitors/deps/ holds README, a file kiln does not read",
+				".kiln/monitors/deps/ names min or max, a gauge's line, but holds no gauge",
+				`.kiln/monitors/deps/agent.md, as the working tree holds it, its effort, "huge", is none of`, launchd}},
+		"a file directly under .kiln/monitors/": {change: "mkdir -p .kiln/monitors && touch .kiln/monitors/deps",
+			want: []string{".kiln/monitors/deps is a file, where a monitor is a directory: move it into"}},
 		"a monitor whose launchd job runs in another checkout": {
-			change: withKeys(`"monitors": [{"name": "deps", "every": "24h", "command": "true"}],`) +
-				` && mkdir -p sub "$HOME/Library/LaunchAgents" && printf ` +
+			change: monitor + "printf 'true\\n' >command && chmod +x command && cd - && " +
+				`mkdir -p sub "$HOME/Library/LaunchAgents" && printf ` +
 				`'<key>WorkingDirectory</key>\n  <string>%s/sub</string>\n' "$PWD" ` +
 				`>"$HOME/Library/LaunchAgents/dev.kiln.monitor.other.plist"`,
-			want: []string{"note: .kiln/kiln.json differs from main's in monitors", "found no problem"}},
-		"a monitor's script that is not executable": {
-			change: withKeys(`"monitors": [`+monitor+`],`) + " && mkdir .kiln/monitors && touch .kiln/monitors/deps " +
-				"&& echo Fix. >.kiln/agents/deps.md",
-			want: []string{"runs .kiln/monitors/deps, which is not executable: run chmod +x .kiln/monitors/deps",
-				launchd, "note:"},
+			want: []string{"found no problem"}},
+		"a monitor's script that is not executable, beside a file git ignores": {
+			change: monitor + "touch command .DS_Store && echo .DS_Store >../../../.gitignore",
+			want: []string{"the working tree holds .kiln/monitors/deps/command without the executable bit, so kiln " +
+				"cannot run it: run chmod +x .kiln/monitors/deps/command, and commit it", launchd},
 		},
 		"a spec that leaves the form": {spec: "form",
 			want: []string{"form.md leaves /shape's template: its acceptance test \"2. <Title>\" is not ### 1.",

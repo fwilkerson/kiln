@@ -1017,8 +1017,8 @@ func TestLandedBefore(t *testing.T) {
 // landing moved main. It answers the commit main moved to. A monitor's build is the fix of the monitor x.
 func landedThenKilled(t *testing.T, monitor bool) (*build, git.Rev) {
 	b, repo, _ := landingBuild(t)
-	shell(t, repo, `echo '{"gate": ["true"], "monitors": [{"name": "x", "every": "1h", "command": "true", `+
-		`"tests": true}]}' >.kiln/kiln.json && git commit --quiet -am monitor`)
+	writeMonitor(t, repo, "x", map[string]string{"command": "true", "monitor.json": `{"hours": 1, "tests": true}`})
+	shell(t, repo, "git add . && git commit --quiet -m monitor")
 	b.rec = record{Name: "x", State: building, Accepted: true, Monitor: monitor, Build: "b",
 		Approved: git.Rev(shell(t, repo, "git rev-parse HEAD"))}
 	err := b.r.store.update(func(k *book) error { k.Specs = []*record{new(b.rec)}; return nil })
@@ -1245,8 +1245,8 @@ func TestGaugeVerdict(t *testing.T) {
 func TestGaugeTree(t *testing.T) {
 	r, repo := scratchRepo(t)
 	t.Cleanup(func() { _ = removeTree(r.trees) })
-	config := `{"gate": ["true"], "rounds": 1, "gauges": [{"name": "n", "max": 5, ` +
-		`"command": "mkdir -p ro/sub && touch ro/sub/f && chmod 555 ro/sub; echo 1"}]}`
+	config := `{"gate": ["true"], "rounds": 1, "gauges": [{"name": "n", "max": 5, "command": "` +
+		leavesReadOnly + `"}]}`
 	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json && git add . && git commit --quiet -m start")
 	b := &build{r: r, rec: record{Name: "x", Build: "b-x"}, out: io.Discard}
 	for landing := range 2 {
@@ -1261,19 +1261,22 @@ func TestGaugeTree(t *testing.T) {
 		t.Errorf("the landings read %v, want a reading of 1 for each of 2", read)
 	}
 
-	// A monitor's run reads its gauge in the monitors' own worktree, which a check then shares.
-	c, err := r.config(t.Context(), "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	// A monitor's run reads its gauge in the monitors' own worktree, which a check then shares. u's check is awk, which
+	// runs only by its path.
+	writeMonitor(t, repo, "m", map[string]string{"gauge": leavesReadOnly, "monitor.json": `{"max": 5}`})
+	writeMonitor(t, repo, "u", map[string]string{"check": checkInAwk})
+	shell(t, repo, "git add . && git commit --quiet -m monitors")
+	gauged := monitor{Name: "m", finder: gaugeScript, Max: new(5.0)}
 	held := heldBy(t, r)
-	for _, m := range []monitor{{Name: "m", Gauge: "n"}, {Name: "m", Gauge: "n"}, {Name: "u", Check: checkHealthy}} {
-		if found, err := held.firstCheck(t.Context(), c, m, "main"); err != nil || !found.ran {
+	for _, m := range []monitor{gauged, gauged, {Name: "u", finder: checkScript}} {
+		if found, err := held.firstCheck(t.Context(), m, "main"); err != nil || !found.ran {
 			t.Errorf("%s's run answers %v, %q; want it ran", m.Name, err, found.summary)
 		}
 	}
 }
+
+// checkInAwk is a healthy check whose first line runs it with awk. sh cannot read it.
+const checkInAwk = "#!/usr/bin/awk -f\nBEGIN { print \"{\\\"fix\\\": false, \\\"summary\\\": \\\"fine\\\"}\" }\n"
 
 // heldBy takes commandsLock in r, as a gate's kiln does, until the test ends.
 func heldBy(t *testing.T, r *Repo) commands {
@@ -1285,6 +1288,9 @@ func heldBy(t *testing.T, r *Repo) commands {
 	t.Cleanup(held.release)
 	return held
 }
+
+// leavesReadOnly is a gauge that reads 1, and leaves a file in a read-only directory.
+const leavesReadOnly = "mkdir -p ro/sub && touch ro/sub/f && chmod 555 ro/sub; echo 1"
 
 // checkHealthy is a check that finds nothing to fix.
 const checkHealthy = `echo '{"fix": false, "summary": "fine"}'`
@@ -1308,15 +1314,15 @@ func TestGatedGauge(t *testing.T) {
 		holds, lacks string
 	}{
 		"a fix that brings its file on the line": {fix: "echo fine >a.txt", passed: true},
-		"a fix whose file still crosses": {fix: "echo still low >a.txt", holds: "count: 1, line ≤ 0, crossed\n\n" +
+		"a fix whose file still crosses": {fix: "echo still low >a.txt", holds: "m: 1, line ≤ 0, crossed\n\n" +
 			"a.txt is low", lacks: "b.txt"},
-		"a fix that deletes what crossed":        {fix: "git rm --quiet a.txt b.txt", passed: true},
-		"a fix of no file the gauge reads":       {fix: "echo x >notes.md", passed: true},
-		"a gauge whose command fails":            {fix: "echo x >broken.txt", holds: "cannot parse broken.txt"},
-		"a gauge main's kiln.json no longer has": {fix: "echo still low >a.txt", gauge: "gone", passed: true},
+		"a fix that deletes what crossed":      {fix: "git rm --quiet a.txt b.txt", passed: true},
+		"a fix of no file the gauge reads":     {fix: "echo x >notes.md", passed: true},
+		"a gauge whose command fails":          {fix: "echo x >broken.txt", holds: "cannot parse broken.txt"},
+		"a gauge main's monitor no longer has": {fix: "echo still low >a.txt", gauge: "check", passed: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			b := gaugedFix(t, tc.fix, monitor{Name: "m", Gauge: cmp.Or(tc.gauge, "count")})
+			b := gaugedFix(t, tc.fix, cmp.Or(tc.gauge, gaugeScript))
 			v, err := b.gatedCheck(t.Context(), heldBy(t, b.r), verdict{passed: true})
 			if err != nil {
 				t.Fatal(err)
@@ -1337,10 +1343,12 @@ func TestGatedGauge(t *testing.T) {
 	}
 }
 
-// TestGateLineAfterError holds that a fix's gate whose gated check couldn't run is written as failed. Its commands
+// TestGateLineAfterError holds that a fix's gate whose gated gauge couldn't run is written as failed. Its commands
 // passed, and ran at main, so the line still says so.
 func TestGateLineAfterError(t *testing.T) {
-	b := gaugedFix(t, "echo fine >a.txt", monitor{Name: "m", Check: "echo the network is down; exit 3"})
+	b := gaugedFix(t, "echo fine >a.txt", checkScript)
+	// The fix's monitor reads its check, where countGauge prints a number, and no verdict.
+	b.fix.monitor.finder = checkScript
 	b.rec.Build = "b-m"
 	b.record(entry{Kind: builtKind, Spec: "m", Monitor: "m"})
 	if _, err := b.gated(t.Context(), heldBy(t, b.r), nil, b.treeGuard()); !errors.As(err, new(*checkFailed)) {
@@ -1357,20 +1365,17 @@ func TestGateLineAfterError(t *testing.T) {
 	}
 }
 
-// gaugedFix is the fix of m, in a repository whose main counts a.txt and b.txt against countGauge's line. The fix
-// commits what the shell script fix changes.
-func gaugedFix(t *testing.T, fix string, m monitor) *build {
+// gaugedFix is the fix of the monitor m, whose gauge counts a.txt and b.txt against its line on main. The fix
+// commits what the shell script fix changes. Main's m holds countGauge as finder, its gauge or its check.
+func gaugedFix(t *testing.T, fix, finder string) *build {
 	t.Helper()
 	r, repo := scratchRepo(t)
 	t.Cleanup(func() { _ = removeTree(r.trees) })
-	config := `{"gate": ["true"], "rounds": 1, "gauges": [{"name": "count", "max": 0, ` +
-		`"command": "sh .kiln/gauges/count"}]}`
-	shell(t, repo, "mkdir -p .kiln/gauges && echo '"+config+"' >.kiln/kiln.json && echo low >a.txt && "+
+	shell(t, repo, `mkdir .kiln && echo '{"gate": ["true"], "rounds": 1}' >.kiln/kiln.json && echo low >a.txt && `+
 		"echo low >b.txt && echo fine >c.txt")
-	if err := os.WriteFile(filepath.Join(repo, ".kiln/gauges/count"), []byte(countGauge), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
+	settings := map[string]string{gaugeScript: `{"max": 0, "tests": true}`, checkScript: `{"tests": true}`}[finder]
+	writeMonitor(t, repo, "m", map[string]string{finder: countGauge, "monitor.json": settings, "agent.md": "Fix it."})
+	m := monitor{Name: "m", finder: gaugeScript, agent: true}
 	tree := filepath.Join(t.TempDir(), "m")
 	shell(t, repo, "git add . && git commit --quiet -m start && git worktree add --quiet -b kiln/m "+tree+" main")
 	shell(t, tree, fix+" && git add -A && git commit --quiet -m fix")

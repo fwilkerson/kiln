@@ -42,7 +42,7 @@
       "description": "Gauges are read after each landing, and never block one.",
       "type": "array",
       "items": {
-        "description": "gauge is a command kiln.json names, which prints a number. Its line is where that number should stay.",
+        "description": "gauge is a command kiln.json names, or a monitor's gauge, which prints a number. Its line is where that number should stay.",
         "type": "object",
         "properties": {
           "name": {
@@ -95,61 +95,6 @@
       "type": "array",
       "items": {
         "type": "string"
-      }
-    },
-    "monitors": {
-      "description": "Monitors are the jobs kiln monitor run runs on their schedule, each of which may start a fix.",
-      "type": "array",
-      "items": {
-        "description": "monitor is a job kiln.json names, which kiln monitor run runs once its interval has passed. Its check or its gauge finds a problem, and its command, its agent or both fix it.",
-        "type": "object",
-        "properties": {
-          "name": {
-            "description": "Name names the monitor, by a spec's name's rule. Its fix builds on kiln/<name>.",
-            "type": "string"
-          },
-          "every": {
-            "description": "Every is how often it runs, a Go duration in whole hours, at least 1h.",
-            "type": "string"
-          },
-          "check": {
-            "description": "Check runs with sh -c. Its last line of stdout is a JSON object: fix, a boolean, and summary, a string.",
-            "type": "string"
-          },
-          "gauge": {
-            "description": "Gauge names a gauge of kiln.json's gauges, read over the whole repository in place of a check.",
-            "type": "string"
-          },
-          "command": {
-            "description": "Command is a fix that needs no model, run with sh -c, outside the sandbox.",
-            "type": "string"
-          },
-          "agent": {
-            "description": "Agent is an agent's file under .kiln/agents/, such as triage.md. It names the session's role too.",
-            "type": "string"
-          },
-          "prompt": {
-            "description": "Prompt follows the check's or the gauge's output, and the gate's, in the agent's first message.",
-            "type": "string"
-          },
-          "gates": {
-            "description": "Gates says whether the check joins the gate. It is true when unset.",
-            "type": "boolean"
-          },
-          "accept": {
-            "description": "Accept says whether a fix waits on its branch for kiln accept.",
-            "type": "boolean"
-          },
-          "tests": {
-            "description": "Tests says whether a fix may write under the acceptance path's fixed part.",
-            "type": "boolean"
-          },
-          "drain": {
-            "description": "Drain says whether a fix that lands starts the check again at once, in the same kiln monitor run.",
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
       }
     },
     "notify": {

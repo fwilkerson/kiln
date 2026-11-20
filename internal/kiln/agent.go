@@ -16,7 +16,8 @@ import (
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// agent is an agent's file in .kiln/agents/: frontmatter between lines of ---, then the body, the session's prompt.
+// agent is an agent's file: one in .kiln/agents/, or a monitor's agent.md. It holds frontmatter between lines of ---,
+// then the body, the session's prompt.
 // kiln reads the frontmatter's tools, model, effort and advisor, and ignores every other key and each # line.
 type agent struct {
 	body string
@@ -171,20 +172,20 @@ func (r *Repo) workingTree() files {
 	}}
 }
 
-// agent reads the file of role's agent from f. It refuses a file f lacks, with fix saying what to do about it. It
+// agent reads the agent's file at path from f. It refuses a file f lacks, with fix saying what to do about it. It
 // refuses a file kiln cannot read, with each reason.
-func (f files) agent(ctx context.Context, role, fix string) (agent, error) {
-	raw, found, err := f.read(ctx, agentFile(role))
+func (f files) agent(ctx context.Context, path, fix string) (agent, error) {
+	raw, found, err := f.read(ctx, path)
 	switch {
 	case err != nil:
 		return agent{}, err
 	case !found:
-		return agent{}, refusals{{fmt.Sprintf("%s holds no %s", f.at, agentFile(role)), fix}}
+		return agent{}, refusals{{fmt.Sprintf("%s holds no %s", f.at, path), fix}}
 	}
 
 	a, err := parseAgent(string(raw))
 	if refused, ok := errors.AsType[refusals](err); ok {
-		return a, refused.about(fmt.Sprintf("%s, as %s holds it,", agentFile(role), f.at))
+		return a, refused.about(fmt.Sprintf("%s, as %s holds it,", path, f.at))
 	}
 
 	return a, err
@@ -262,7 +263,7 @@ func (b *build) agentLaunch(ctx context.Context, role string, l claude.Launch) (
 func (b *build) agentAt(ctx context.Context, role string) (agent, error) {
 	// A build queued by a kiln from before .kiln/ held its agents names a commit without them.
 	fix := fmt.Sprintf("the build was queued before main held it, so run kiln queue %s again", b.rec.Name)
-	return b.r.filesAt(b.rec.Approved).agent(ctx, role, fix)
+	return b.r.filesAt(b.rec.Approved).agent(ctx, agentFile(role), fix)
 }
 
 // sides is what each session of a build may write, as kiln.json at the build's approval says.

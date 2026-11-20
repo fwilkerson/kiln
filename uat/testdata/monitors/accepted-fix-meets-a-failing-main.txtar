@@ -15,9 +15,9 @@ exec sh -c 'echo b >notes/b.txt && git add notes/b.txt && git commit -qm "notes:
 exec kiln accept notes
 
 # Then: kiln resumes the session that made the fix, with the gate's report,
-! exists .claude-calls/notes/2
-grep '"resume": ?true' .claude-calls/notes/1/2/call.json
-grep 'notes wait to be done' .claude-calls/notes/1/2/prompt
+! exists .claude-calls/fix/2
+grep '"resume": ?true' .claude-calls/fix/1/2/call.json
+grep 'notes wait to be done' .claude-calls/fix/1/2/prompt
 
 # in a worktree that holds main's change. The session copied what it saw of notes/b.txt.
 exists .tmp/seen-b
@@ -29,10 +29,8 @@ exec git show main:notes/a.txt
 stdout '^done$'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "rounds": 3, "monitors": [
- {"name": "notes", "every": "24h", "check": "sh .kiln/monitors/notes", "agent": ".kiln/agents/notes.md", "prompt": "Mark each note done.", "accept": true}
-]}
--- .kiln/monitors/notes --
+{"gate": ["true"], "rounds": 3}
+-- .kiln/monitors/notes/check --
 found=$(grep -L '^done$' notes/*.txt)
 if [ -n "$found" ]; then
   echo "$found"
@@ -40,13 +38,17 @@ if [ -n "$found" ]; then
 else
   echo '{"fix": false, "summary": "each note is done"}'
 fi
--- .kiln/agents/notes.md --
+-- .kiln/monitors/notes/agent.md --
 Mark each note done.
+
+Mark each note done.
+-- .kiln/monitors/notes/monitor.json --
+{"accept": true}
 -- notes/a.txt --
 a
 -- claude.json --
 {
- "notes": {"1": {
+ "fix": {"1": {
   "1": [
    {"tool": {"name": "Bash", "input": {"command": "echo done >>notes/a.txt"}}},
    {"result": {"result": "Marked a done.\n{\"title\": \"fix(notes): mark each note done\"}"}}

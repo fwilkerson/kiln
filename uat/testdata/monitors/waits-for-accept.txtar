@@ -46,7 +46,9 @@ exec git show main:docs.txt
 stdout '^the docs, brought up to date$'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
- {"name": "docs", "every": "168h", "command": "echo 'the docs, brought up to date' >docs.txt", "accept": true}
-]}
+{"gate": ["true"]}
+-- .kiln/monitors/docs/command --
+echo 'the docs, brought up to date' >docs.txt
+-- .kiln/monitors/docs/monitor.json --
+{"hours": 168, "accept": true}
 -- _given/main-before --

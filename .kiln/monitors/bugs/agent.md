@@ -1,5 +1,5 @@
 ---
-# This is the agent of kiln's bugs monitor, which .kiln/kiln.json names. It fixes one bug from bugs/, with a test
+# This is the agent of kiln's bugs monitor, in .kiln/monitors/bugs/. It fixes one bug from bugs/, with a test
 # that fails without the fix. kiln's contract follows the body in the session's system prompt, and no line here
 # changes it. kiln reads tools, model, effort and advisor here, and ignores the other keys.
 name: bugfix

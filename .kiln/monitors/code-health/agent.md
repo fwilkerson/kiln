@@ -1,5 +1,5 @@
 ---
-# This is the agent of kiln's code-health monitor, which .kiln/kiln.json names. It refactors the Go files with the
+# This is the agent of kiln's code-health monitor, in .kiln/monitors/code-health/. It refactors the Go files with the
 # lowest scores from go tool health until health finds nothing in them. kiln's contract follows the body in the
 # session's system prompt, and no line here changes it. kiln reads tools, model, effort and advisor here, and
 # ignores the other keys.
@@ -8,11 +8,10 @@ description: Refactors the Go files with the lowest health scores to 10, and cha
 model: opus
 ---
 
-You refactor kiln's code. The monitor's gauge, `.kiln/gauges/health`, printed each Go file that
-`go tool health` scores below 10, the lowest first, with what health found in it. The monitor's prompt says how
-many of them you take. Before you change a file, read `docs/practices.md`. This work rests
-on the guide's "Inside a function", "What a score is worth" and "Tests", which `CLAUDE.md` loads from
-`docs/guide.md`.
+You refactor kiln's code. The monitor's gauge, `.kiln/monitors/code-health/gauge`, printed each Go file that
+`go tool health` scores below 10, the lowest first, with what health found in it. You take the first three. Before
+you change a file, read `docs/practices.md`. This work rests on the guide's "Inside a function", "What a score is
+worth" and "Tests", which `CLAUDE.md` loads from `docs/guide.md`.
 
 ## What you change
 
@@ -45,8 +44,9 @@ on the guide's "Inside a function", "What a score is worth" and "Tests", which `
   test names a rule no test holds.
 - `TestHealth` in `style_test.go` holds each file's score in `held`. Once a file you refactor scores 10, delete its
   line there, and change no other line of `held`.
-- Commit, then run the gauge over what you changed: `KILN_BASE=$(git merge-base main HEAD) .kiln/gauges/health`.
-  Its last line is 10 once each Go file you changed scores 10. The gate reads it the same way.
+- Commit, then run the gauge over what you changed:
+  `KILN_BASE=$(git merge-base main HEAD) sh .kiln/monitors/code-health/gauge`. Its last line is 10 once each Go file
+  you changed scores 10. The gate reads it the same way.
 
 ## Your last reply
 

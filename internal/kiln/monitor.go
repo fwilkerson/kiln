@@ -5,12 +5,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
 	"os/exec"
-	"regexp"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -20,75 +20,84 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// monitor is a job kiln.json names, which kiln monitor run runs once its interval has passed. Its check or its gauge
-// finds a problem, and its command, its agent or both fix it.
+// monitorsDir holds a directory for each monitor, named for the monitor.
+const monitorsDir = kilnDir + "/monitors"
+
+// The files of a monitor's directory. kiln runs each script by its path, at the top of a worktree. So its first line
+// picks its language, and git holds it with the executable bit.
+const (
+	// settingsFile is how often the monitor runs, its gauge's line, and what its fix may do.
+	settingsFile = "monitor.json"
+	// checkScript finds a problem. Its last line of stdout is a verdict.
+	checkScript = "check"
+	// gaugeScript finds a problem by a number, the monitor's gauge. kiln reads it after each landing too.
+	gaugeScript = "gauge"
+	// commandScript fixes the problem with no model, outside the sandbox.
+	commandScript = "command"
+	// monitorAgent is the agent that fixes the problem in a session, written as any agent's file is.
+	monitorAgent = "agent.md"
+)
+
+// roleScripts are the files of a monitor's directory that kiln runs.
+var roleScripts = []string{checkScript, gaugeScript, commandScript}
+
+// roleFiles are the files kiln reads directly in a monitor's directory. Any other file there sits in a subdirectory.
+var roleFiles = slices.Concat(roleScripts, []string{monitorAgent, settingsFile})
+
+// monitor is a directory under .kiln/monitors/, which kiln monitor run runs once its interval has passed. Its check or
+// its gauge finds a problem, and its command, its agent or both fix it.
 type monitor struct {
-	// Name names the monitor, by a spec's name's rule. Its fix builds on kiln/<name>.
-	Name Spec `json:"name"`
-	// Every is how often it runs, a Go duration in whole hours, at least 1h.
-	Every string `json:"every"`
-	// Check runs with sh -c. Its last line of stdout is a JSON object: fix, a boolean, and summary, a string.
-	Check string `json:"check,omitempty"`
-	// Gauge names a gauge of kiln.json's gauges, read over the whole repository in place of a check.
-	Gauge string `json:"gauge,omitempty"`
-	// Command is a fix that needs no model, run with sh -c, outside the sandbox.
-	Command string `json:"command,omitempty"`
-	// Agent is an agent's file under .kiln/agents/, such as triage.md. It names the session's role too.
-	Agent string `json:"agent,omitempty"`
-	// Prompt follows the check's or the gauge's output, and the gate's, in the agent's first message.
-	Prompt string `json:"prompt,omitempty"`
-	// Gates says whether the check joins the gate. It is true when unset.
-	Gates *bool `json:"gates,omitempty"`
-	// Accept says whether a fix waits on its branch for kiln accept.
-	Accept bool `json:"accept,omitempty"`
-	// Tests says whether a fix may write under the acceptance path's fixed part.
-	Tests bool `json:"tests,omitempty"`
-	// Drain says whether a fix that lands starts the check again at once, in the same kiln monitor run.
-	Drain bool `json:"drain,omitempty"`
+	// Name is the directory's name, by a spec's name's rule. Its fix builds on kiln/<name>.
+	Name Spec
+	settings
+	// finder is checkScript or gaugeScript, whichever the directory holds, or "" for neither.
+	finder string
+	// command and agent say whether the directory holds commandScript and monitorAgent.
+	command, agent bool
+	// tree is git's ID of the directory, which a change to any file in it changes. The hold compares it.
+	tree string
 }
+
+// settings are a monitor's monitor.json. Each key may be left out.
+type settings struct {
+	// Hours is how often the monitor runs, in whole hours. 0 runs it at each kiln monitor run.
+	Hours uint16 `json:"hours"`
+	// Gates says whether the check or the gauge joins the fix's gate. It is true when unset.
+	Gates *bool `json:"gates"`
+	// Accept says whether a fix waits on its branch for kiln accept.
+	Accept bool `json:"accept"`
+	// Tests says whether a fix may write under the acceptance paths' parts before {spec}.
+	Tests bool `json:"tests"`
+	// gaugeLine is the gauge's line, which a monitor with a gauge names, and no other.
+	gaugeLine
+}
+
+// defaultHours is the hours of a monitor whose monitor.json names none, or which holds no monitor.json.
+const defaultHours = 24
 
 // interval is how often m runs.
 func (m monitor) interval() time.Duration {
-	d, _ := time.ParseDuration(m.Every)
-	return d
+	return time.Duration(m.Hours) * time.Hour
 }
 
-// gated is whether m's check or gauge joins its fix's gate. A gauge always does.
+// gated is whether m's check or gauge joins its fix's gate.
 func (m monitor) gated() bool {
-	if m.Gauge != "" {
-		return true
-	}
-
-	return m.Check != "" && (m.Gates == nil || *m.Gates)
+	return m.finds() && (m.Gates == nil || *m.Gates)
 }
 
 // finds is whether m has a finding to compare: what its check or its gauge printed.
 func (m monitor) finds() bool {
-	return m.Check != "" || m.Gauge != ""
+	return m.finder != ""
 }
 
-var agentName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-
-// role is the name of m's agent's file under .kiln/agents/, less .md, which names its session's role. It is "" for
-// a monitor with no agent, or one whose agent is no file directly under .kiln/agents/.
-func (m monitor) role() string {
-	if m.Agent == "" {
-		return ""
-	}
-
-	name := strings.TrimPrefix(strings.TrimPrefix(m.Agent, "./"), kilnDir+"/agents/")
-	name = strings.TrimSuffix(name, ".md")
-	if !agentName.MatchString(name) {
-		return ""
-	}
-
-	return name
+// path is the path of file in m's directory, from the repository's top.
+func (m monitor) path(file string) string {
+	return path.Join(monitorsDir, string(m.Name), file)
 }
 
-// hash is a hash of m's entry in kiln.json, as the hold compares it.
-func (m monitor) hash() string {
-	raw, _ := json.Marshal(m)
-	return hashOf(string(raw))
+// gauge is m's gauge, named for m. It is a gauge only when m's directory holds one.
+func (m monitor) gauge() gauge {
+	return gauge{Name: string(m.Name), Command: m.path(gaugeScript), gaugeLine: m.gaugeLine}
 }
 
 // hashOf is a short hash of text.
@@ -97,72 +106,172 @@ func hashOf(text string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// monitorsRefusals refuse each monitor kiln could not run, as the package doc lists.
-func (c config) monitorsRefusals() refusals {
-	var refused refusals
-	named := map[Spec]bool{}
-	for _, m := range c.Monitors {
-		refused = append(refused, c.monitorRefusals(m, named).about(
-			fmt.Sprintf("%s names a monitor %q that", configFile, m.Name))...)
-		named[m.Name] = true
+// monitors reads kiln.json at the commit at, and each monitor's directory under .kiln/monitors/ there, by name. It
+// refuses each monitor kiln could not run, as the package doc lists, each refusal with its fix.
+func (r *Repo) monitors(ctx context.Context, at git.Rev) (config, []monitor, error) {
+	c, err := r.config(ctx, at)
+	if err != nil {
+		return c, nil, err
 	}
 
-	return refused
+	f := r.filesAt(at)
+	dirs, err := r.monitorDirs(ctx, at)
+	var refused refusals
+	if err := refused.add(err); err != nil {
+		return c, nil, err
+	}
+
+	monitors := make([]monitor, len(dirs))
+	for i, d := range dirs {
+		monitors[i], err = c.readDir(ctx, f, d)
+		if err := refused.add(err); err != nil {
+			return c, nil, err
+		}
+	}
+
+	if len(refused) > 0 {
+		return c, nil, refused
+	}
+
+	return c, monitors, nil
 }
 
-// monitorRefusals say why kiln.json may not name m. named holds the monitors named before it.
-func (c config) monitorRefusals(m monitor, named map[Spec]bool) refusals {
-	_, gaugeFound := c.gaugeNamed(m.Gauge)
+// monitorDir is a monitor's directory in a commit or the working tree. It holds the directory's name, its files, and
+// git's ID of it in a commit. plain is a script of roleScripts that is not executable, or "".
+type monitorDir struct {
+	name        Spec
+	tree, plain string
+	files       []string
+}
+
+// monitorDirs lists each monitor's directory under .kiln/monitors/ at the commit at, by name, with each file under
+// it. It refuses each file directly under .kiln/monitors/, since a monitor is a directory.
+func (r *Repo) monitorDirs(ctx context.Context, at git.Rev) ([]monitorDir, error) {
+	entries, err := r.git.Tree(ctx, at, monitorsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var dirs []monitorDir
+	var refused refusals
+	files, plain := map[string][]string{}, map[string]string{}
+	for _, e := range entries {
+		name, file, inside := strings.Cut(e.Path, "/")
+		switch {
+		case e.Dir && !inside:
+			dirs = append(dirs, monitorDir{name: Spec(name), tree: e.ID})
+		case !inside:
+			refused = append(refused, strayMonitor(name))
+		case !e.Dir:
+			files[name] = append(files[name], file)
+			if !e.Exec && slices.Contains(roleScripts, file) {
+				plain[name] = file
+			}
+		}
+	}
+
+	for i, d := range dirs {
+		dirs[i].files, dirs[i].plain = files[string(d.name)], plain[string(d.name)]
+	}
+
+	return dirs, refused.err()
+}
+
+// strayMonitor refuses the file name directly under .kiln/monitors/, since a monitor is a directory.
+func strayMonitor(name string) refusal {
+	return refusal{fmt.Sprintf("%s/%s is a file, where a monitor is a directory", monitorsDir, name),
+		fmt.Sprintf("move it into a monitor's directory, such as %s/deps/", monitorsDir)}
+}
+
+// readDir reads the monitor whose directory is d, with its monitor.json as f holds it. c is kiln.json beside it. It
+// refuses a script kiln runs that is not executable, beside each refusal of readMonitor.
+func (c config) readDir(ctx context.Context, f files, d monitorDir) (monitor, error) {
+	var raw []byte
+	if slices.Contains(d.files, settingsFile) {
+		var err error
+		if raw, _, err = f.read(ctx, path.Join(monitorsDir, string(d.name), settingsFile)); err != nil {
+			return monitor{}, err
+		}
+	}
+
+	m, refused := c.readMonitor(d.name, d.files, raw)
+	m.tree = d.tree
+	if d.plain != "" {
+		refused = append(refused, refusal{fmt.Sprintf("%s holds %s without the executable bit, so kiln cannot run "+
+			"it", f.at, m.path(d.plain)), fmt.Sprintf("run chmod +x %s, and commit it", m.path(d.plain))})
+	}
+
+	return m, refused.err()
+}
+
+// readMonitor reads the monitor name from the files its directory holds, and from raw, its monitor.json or nil. c is
+// kiln.json. It refuses each rule of the package doc that the monitor breaks, so kiln could not run it.
+func (c config) readMonitor(name Spec, files []string, raw []byte) (monitor, refusals) {
+	m := monitor{Name: name, Hours: defaultHours, command: slices.Contains(files, commandScript),
+		agent: slices.Contains(files, monitorAgent)}
+	about := m.path("") + "/"
+	if raw != nil {
+		// json/v2 matches a key's case exactly, as kiln.json is read.
+		if err := jsonv2.Unmarshal(raw, &m.settings, jsonv2.RejectUnknownMembers(true)); err != nil {
+			return m, refusals{{fmt.Sprintf("%s: %v", m.path(settingsFile), err),
+				"fix its JSON, and name only the keys the package doc lists under Monitors"}}
+		}
+	}
+
+	for _, finder := range []string{checkScript, gaugeScript} {
+		if slices.Contains(files, finder) {
+			m.finder = finder
+		}
+	}
+
+	return m, c.monitorRefusals(m, files).about(about)
+}
+
+// monitorRefusals say why kiln may not run m, whose directory holds files.
+func (c config) monitorRefusals(m monitor, files []string) refusals {
+	stray := strayFile(files)
+	_, gaugeNamed := c.gaugeNamed(string(m.Name))
+	gauged := m.finder == gaugeScript
 	return broken(
-		rule{m.Name == "", refusal{"has no name", "name it as a spec is named, such as \"deps\""}},
-		rule{m.Name != "" && named[m.Name], refusal{"has the name of a monitor before it", "rename one"}},
-		rule{m.Name != "" && !specName.MatchString(string(m.Name)), refusal{"has a name no spec could have",
-			"name it in lower-case letters, digits and hyphens, such as \"deps\""}},
-		rule{!wholeHours(m.Every), refusal{"runs every interval that is not whole hours, at least 1h",
-			"name one such as \"24h\""}},
-		rule{m.Gauge != "" && !gaugeFound, refusal{"names a gauge that gauges does not hold",
-			"add it to gauges, or name one there"}},
-		rule{m.Gauge != "" && m.Check != "", refusal{"names both a check and a gauge, where it may name one",
-			"drop one"}},
-		rule{m.Gauge != "" && m.Gates != nil, refusal{"names gates beside a gauge, which always joins the gate",
-			"drop gates, which says whether a check joins it"}},
-		rule{m.Command == "" && m.Agent == "", refusal{"names no command and no agent, so it fixes nothing",
-			"name one"}},
-		rule{m.Agent != "" && m.role() == "", refusal{"names an agent that is no file directly under .kiln/agents/",
-			"name one such as \"triage.md\""}},
-		rule{m.role() == auditRole, refusal{"names the audit as its agent, which changes nothing",
-			"name another agent"}},
-		rule{m.Drain && !m.finds(), refusal{"drains with no check and no gauge, so nothing says when its queue " +
-			"is empty", "name a check, or drop drain"}},
+		rule{!specName.MatchString(string(m.Name)), refusal{"has a name no spec could have",
+			"name it in lower-case letters, digits and hyphens, such as deps"}},
+		rule{stray != "", refusal{fmt.Sprintf("holds %s, a file kiln does not read", stray),
+			fmt.Sprintf("keep only %s there, and move a helper into a subdirectory, such as lib/",
+				strings.Join(roleFiles, ", "))}},
+		rule{slices.Contains(files, checkScript) && gauged, refusal{
+			"holds both a check and a gauge, where it may hold one", "remove one"}},
+		rule{gauged && m.sides() != 1, refusal{"holds a gauge, but its monitor.json names both min and max, or neither",
+			"name one, the gauge's line"}},
+		rule{!gauged && m.sides() > 0, refusal{"names min or max, a gauge's line, but holds no gauge",
+			"drop min and max, or add a gauge"}},
+		rule{gauged && gaugeNamed, refusal{fmt.Sprintf("holds a gauge, and %s names a gauge %s too", configFile,
+			m.Name), "rename one"}},
+		rule{!m.command && !m.agent, refusal{"holds no command and no agent.md, so it fixes nothing", "add one"}},
 		rule{!m.Tests && c.unguarded(), refusal{"may not write the tests, while acceptance names no path before " +
-			"{spec} for kiln to guard", "give each acceptance path a part before {spec}, or say \"tests\": true"}},
+			"{spec} for kiln to guard", "give each acceptance path a part before {spec}, or say \"tests\": true in " +
+			"its monitor.json"}},
 	)
 }
 
-// gaugeNamed is the gauge of c named name.
-func (c config) gaugeNamed(name string) (gauge, bool) {
-	i := slices.IndexFunc(c.Gauges, func(g gauge) bool { return g.Name == name })
-	if i < 0 {
-		return gauge{}, false
+// strayFile is the first of files that sits directly in a monitor's directory, and is none of roleFiles, or "".
+func strayFile(files []string) string {
+	for _, f := range files {
+		if !strings.Contains(f, "/") && !slices.Contains(roleFiles, f) {
+			return f
+		}
 	}
 
-	return c.Gauges[i], true
+	return ""
 }
 
-// wholeHours is whether every is a Go duration in whole hours, at least 1h.
-func wholeHours(every string) bool {
-	d, err := time.ParseDuration(every)
-	return err == nil && d >= time.Hour && d%time.Hour == 0
-}
-
-// monitorNamed is the monitor of c named name.
-func (c config) monitorNamed(name Spec) (monitor, bool) {
-	i := slices.IndexFunc(c.Monitors, func(m monitor) bool { return m.Name == name })
+// monitorNamed is the monitor of monitors named name.
+func monitorNamed(monitors []monitor, name Spec) (monitor, bool) {
+	i := slices.IndexFunc(monitors, func(m monitor) bool { return m.Name == name })
 	if i < 0 {
 		return monitor{}, false
 	}
 
-	return c.Monitors[i], true
+	return monitors[i], true
 }
 
 // nowVar names a time, as RFC 3339, that kiln monitor run takes as now.
@@ -196,6 +305,8 @@ type checked struct {
 	fix bool
 	// summary is the verdict's summary, or the last line of output of a check that couldn't run.
 	summary string
+	// drain is whether the verdict asks kiln to check again at once, once the fix it starts lands.
+	drain bool
 	// printed is the check's stdout, which the hold compares, and found what it printed above its last line.
 	printed, found string
 	// reading is a gauge's reading, as a monitor line holds it: the gauge's name, its value and its line. Its Gauge
@@ -207,6 +318,7 @@ type checked struct {
 type verdictLine struct {
 	Fix     *bool  `json:"fix"`
 	Summary string `json:"summary"`
+	Drain   bool   `json:"drain"`
 }
 
 // runMonitorCheck runs command with sh -c in dir, as a gauge's command runs, and reads what it found. It answers an
@@ -227,7 +339,7 @@ func (r *Repo) runMonitorCheck(ctx context.Context, dir git.Worktree, command st
 	case !jsonLine(last, &v) || v.Fix == nil:
 		c.summary = cmpOr(out.last(), "the check printed nothing")
 	default:
-		c.ran, c.fix, c.summary = true, *v.Fix, v.Summary
+		c.ran, c.fix, c.summary, c.drain = true, *v.Fix, v.Summary, v.Drain
 	}
 
 	return c, nil
@@ -298,23 +410,22 @@ func (l *lockedBuffer) String() string {
 // tree.
 const checkTree = ".monitor-check"
 
-// firstCheck runs m's check, or reads its gauge, in a worktree of its own at main. c is kiln.json at main. A monitor
-// with neither asks for a fix each time.
-func (held commands) firstCheck(ctx context.Context, c config, m monitor, main git.Rev) (checked, error) {
+// firstCheck runs m's check, or reads its gauge, in a worktree of its own at main. A monitor with neither asks for a
+// fix each time.
+func (held commands) firstCheck(ctx context.Context, m monitor, main git.Rev) (checked, error) {
 	r := held.r
 	if !m.finds() {
 		return checked{ran: true, fix: true}, nil
 	}
 
-	g, _ := c.gaugeNamed(m.Gauge)
 	tree, err := held.scratchTree(ctx, checkTree, main)
 	switch {
 	case errors.Is(ctx.Err(), context.Canceled):
 		return checked{}, ctx.Err()
 	case err != nil:
-		return couldNotCheck(g, fmt.Sprintf("kiln could not check out main for the check: %v", err)), nil
-	case m.Gauge == "":
-		return r.runMonitorCheck(ctx, tree, m.Check)
+		return couldNotCheck(m, fmt.Sprintf("kiln could not check out main for the check: %v", err)), nil
+	case m.finder == checkScript:
+		return r.runMonitorCheck(ctx, tree, m.path(checkScript))
 	}
 
 	empty, err := r.git.EmptyTree(ctx)
@@ -322,17 +433,17 @@ func (held commands) firstCheck(ctx context.Context, c config, m monitor, main g
 	case errors.Is(ctx.Err(), context.Canceled):
 		return checked{}, ctx.Err()
 	case err != nil:
-		return couldNotCheck(g, fmt.Sprintf("kiln could not name git's empty tree: %v", err)), nil
+		return couldNotCheck(m, fmt.Sprintf("kiln could not name git's empty tree: %v", err)), nil
 	}
 
-	return r.measured(ctx, tree, g, empty)
+	return r.measured(ctx, tree, m.gauge(), empty)
 }
 
-// couldNotCheck is a check that couldn't run, for why. g is the monitor's gauge, or the zero gauge for a check.
-func couldNotCheck(g gauge, why string) checked {
+// couldNotCheck is a check of m that couldn't run, for why. Its reading names m's gauge, where m has one.
+func couldNotCheck(m monitor, why string) checked {
 	c := checked{summary: why}
-	if g.Name != "" {
-		c.reading = entry{Gauge: g.Name, gaugeLine: g.gaugeLine}
+	if m.finder == gaugeScript {
+		c.reading = entry{Gauge: string(m.Name), gaugeLine: m.gaugeLine}
 	}
 
 	return c

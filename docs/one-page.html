@@ -794,11 +794,13 @@ answer: <span class="ok">landed on main</span> at <span class="h">3f9c2ab81d0e</
 
   <div class="col">
     <div class="item">
-      <div class="hdr"><span class="no">4.3</span><span class="to">Add a monitor</span><span class="ty"><code class="you">kiln monitor install</code></span></div>
-<pre class="term"><span class="p">$</span> <span class="c">.kiln/monitors/bugs</span>
-# A gate command that leaves a child behind …
-{"fix": true, "summary": "18 in bugs/, …"}</pre>
-      <p class="cap">A check is any script whose last line says whether a fix is due. Name it, an agent and a schedule in <code>kiln.json</code>.</p>
+      <div class="hdr"><span class="no">4.3</span><span class="to">Add a monitor</span><span class="ty"><code class="you">kiln monitor add bugs</code><em>then</em><code class="you">kiln monitor install</code></span></div>
+<pre class="term"><span class="p">$</span> <span class="c">kiln monitor add bugs</span>
+<span class="k">wrote</span> .kiln/monitors/bugs/agent.md
+<span class="k">wrote</span> .kiln/monitors/bugs/check
+<span class="k">wrote</span> .kiln/monitors/bugs/monitor.json
+<span class="q">commit .kiln/monitors/bugs/ on main: kiln reads it there</span></pre>
+      <p class="cap">kiln ships <code>bugs</code>, <code>go/docs</code> and <code>go/gate-time</code>. A monitor is a directory: a check, an agent and <code>monitor.json</code>.</p>
     </div>
   </div>
 </div>

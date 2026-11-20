@@ -99,7 +99,7 @@ func (h *history) holds(m monitor, now entry) string {
 	was := h.lastFix
 	outcome := h.result(was)
 	held := holding[outcome]
-	c := change{main: was.Main != now.Main, entry: was.Entry != now.Entry, printed: was.Printed != now.Printed}
+	c := change{main: was.Main != now.Main, dir: was.Entry != now.Entry, printed: was.Printed != now.Printed}
 	if held == nil || !held(m, c) {
 		return ""
 	}
@@ -107,14 +107,14 @@ func (h *history) holds(m monitor, now entry) string {
 	return outcome
 }
 
-// change is what changed since a monitor's last fix started: main's tip, its entry, or what it printed.
+// change is what changed since a monitor's last fix started: main's tip, its directory, or what it printed.
 type change struct {
-	main, entry, printed bool
+	main, dir, printed bool
 }
 
-// finding is whether the monitor's finding is the same: its entry, and what its check or gauge printed.
+// finding is whether the monitor's finding is the same: its directory, and what its check or gauge printed.
 func (c change) finding() bool {
-	return !c.entry && !c.printed
+	return !c.dir && !c.printed
 }
 
 // holding says, by the outcome of a monitor's last fix, whether that fix holds the monitor after c.
@@ -137,9 +137,9 @@ var holding = map[string]func(m monitor, c change) bool{
 	// So a fix that left the repository's reading as it was runs once.
 	outLanded: func(m monitor, c change) bool {
 		switch {
-		case m.Gauge != "":
+		case m.finder == gaugeScript:
 			return c.finding()
-		case m.Check == "" || m.gated():
+		case m.finder != checkScript || m.gated():
 			return false
 		}
 

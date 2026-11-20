@@ -1,5 +1,5 @@
 ---
-# This is the agent of kiln's uat monitor, which .kiln/kiln.json names. It folds an accepted spec's acceptance tests
+# This is the agent of kiln's uat monitor, in .kiln/monitors/uat/. It folds an accepted spec's acceptance tests
 # into the scenarios kept by feature. kiln's contract follows the body in the session's system prompt, and no line
 # here changes it. kiln reads tools, model, effort and advisor here, and ignores the other keys.
 name: fold
@@ -30,11 +30,11 @@ folder of a spec the developer accepted, or scenarios that bring the same fixtur
 ## How you check the fold
 
 - Run `go vet ./...` and `go test ./...`.
-- Run `.kiln/monitors/uat`. Its last line says `"fix": false` once nothing is left to fold.
-- Run `.kiln/monitors/uat-lost main`. It lists each check no scenario holds any more.
+- Run `sh .kiln/monitors/uat/check`. Its last line says `"fix": false` once nothing is left to fold.
+- Run `sh .kiln/monitors/uat/lib/lost main`. It lists each check no scenario holds any more.
 
 ## Your last reply
 
 The developer reads it before `kiln accept uat`. Give a table of each scenario you moved, merged or dropped: where
-it was, and where its checks are now. Then list each check `uat-lost` printed, with the check that took its place,
+it was, and where its checks are now. Then list each check `lost` printed, with the check that took its place,
 or the unit table's row that holds its rule.

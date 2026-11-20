@@ -98,7 +98,7 @@ func (p preset) fill(raw []byte) ([]byte, error) {
 }
 
 // ErrUsage is the kind of a command kiln refuses for its arguments. Init returns it for a preset it does not know.
-// Hook returns it for arguments kiln never writes.
+// Hook returns it for arguments kiln never writes. MonitorAdd returns it for a monitor kiln does not ship.
 var ErrUsage = errors.New("usage")
 
 // presetNamed is the preset name names: a built-in one's name, or a directory laid out as one. A directory's path

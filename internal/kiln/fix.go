@@ -69,16 +69,16 @@ func (f *fixing) end(outcome, summary, report string) {
 	f.outcome, f.summary, f.report = outcome, summary, report
 }
 
-// fixOf reads the fix of rec: its monitor, as kiln.json held it when the fix started.
+// fixOf reads the fix of rec: its monitor, as its directory stood when the fix started.
 func (r *Repo) fixOf(ctx context.Context, rec record) (*fixing, error) {
-	c, err := r.config(ctx, rec.Approved)
+	c, monitors, err := r.monitors(ctx, rec.Approved)
 	if err != nil {
 		return nil, err
 	}
 
-	m, ok := c.monitorNamed(rec.Name)
+	m, ok := monitorNamed(monitors, rec.Name)
 	if !ok {
-		return nil, fmt.Errorf("%s at %s names no monitor %s", configFile, short(rec.Approved), rec.Name)
+		return nil, fmt.Errorf("%s at %s holds no monitor %s", monitorsDir, short(rec.Approved), rec.Name)
 	}
 
 	return newFixing(c, m, checked{}), nil
@@ -128,7 +128,7 @@ func (b *build) fixWork(ctx context.Context) error {
 
 	b.say("fixing on %s, in %s", name.branch(), b.tree)
 	m := b.fix.monitor
-	if m.Command == "" {
+	if !m.command {
 		return b.fixAgent(ctx, "")
 	}
 
@@ -139,7 +139,7 @@ func (b *build) fixWork(ctx context.Context) error {
 	case v.passed:
 		_, _, err := b.fixAfter(ctx)
 		return err
-	case m.role() == "":
+	case !m.agent:
 		return &outOfRounds{why: "the gate failed after the monitor's command:\n" + v.report, failing: v.failing}
 	}
 
@@ -148,7 +148,7 @@ func (b *build) fixWork(ctx context.Context) error {
 
 // commandGate runs the monitor's command in the fix's worktree, outside the sandbox, then commits and gates its work.
 func (b *build) commandGate(ctx context.Context) (verdict, error) {
-	command := b.fix.monitor.Command
+	command := b.fix.monitor.path(commandScript)
 	out, err := runShell(ctx, b.tree, command, proc.Shell.Env(b.r.env))
 	if ctx.Err() != nil {
 		return verdict{}, ctx.Err()
@@ -221,24 +221,27 @@ func (b *build) fixTalk(ctx context.Context, l claude.Launch, why reason) (claud
 }
 
 // prompt is the agent's first message. It holds what the check or the gauge printed, and what the gate printed after
-// the command. The monitor's prompt follows.
+// the command. A line that sends the agent to its instructions follows.
 func (f *fixing) prompt(gateReport string) string {
 	m := f.monitor
 	var parts []string
-	found := cmpOr(f.checked.found, "(nothing)")
-	switch {
-	case m.Gauge != "":
-		parts = append(parts, fmt.Sprintf(gaugeFound, m.Gauge, f.checked.summary, found))
-	case m.Check != "":
-		parts = append(parts, fmt.Sprintf(checkFound, m.Check, f.checked.summary, found))
+	if m.finds() {
+		found := cmpOr(f.checked.found, "(nothing)")
+		parts = append(parts, fmt.Sprintf(foundBy[m.finder], m.path(m.finder), f.checked.summary, found))
 	}
 
 	if gateReport != "" {
-		parts = append(parts, fmt.Sprintf(commandFailed, m.Command, gateReport))
+		parts = append(parts, fmt.Sprintf(commandFailed, m.path(commandScript), gateReport))
 	}
 
-	parts = append(parts, cmpOr(m.Prompt, fmt.Sprintf(noPrompt, m.Name)))
+	parts = append(parts, fmt.Sprintf(fixWhat, m.Name))
 	return strings.Join(parts, "\n\n")
+}
+
+// foundBy is how the agent's first message says what the monitor's check or gauge found.
+var foundBy = map[string]string{
+	checkScript: "The monitor's check, `%s`, asks for a fix: %s\n\nIt printed:\n\n%s",
+	gaugeScript: "The monitor's gauge, `%s`, crossed its line over the whole repository: %s\n\nIt printed:\n\n%s",
 }
 
 // heard reads how a turn of the agent's session ended. It answers true once that ends the fix. The session failed,
@@ -655,15 +658,14 @@ func (b *build) fixEnded(ctx context.Context) error {
 // the acceptance tests unless the monitor says it may write them.
 func (b *build) fixLaunch(ctx context.Context, resume bool, prompt string) (claude.Launch, error) {
 	f, name := b.fix, b.rec.Name
-	role := f.monitor.role()
-	a, err := b.r.filesAt(b.rec.Approved).agent(ctx, role,
-		"commit it to main, or name another agent in the monitor's entry")
+	a, err := b.r.filesAt(b.rec.Approved).agent(ctx, f.monitor.path(monitorAgent), "commit it to main")
 	if err != nil {
 		return claude.Launch{}, err
 	}
 
 	l := claude.Launch{Session: b.now().Session, Resume: resume, Prompt: prompt, Dir: string(b.tree),
-		Hook: b.treeGuard().hookCommand(b.r.exe), Role: role, System: strings.TrimSpace(a.body + "\n\n" + f.contract(name))}
+		Hook: b.treeGuard().hookCommand(b.r.exe), Role: fixRole,
+		System: strings.TrimSpace(a.body + "\n\n" + f.contract(name))}
 	l.Tools, l.Model, l.Effort, l.Advisor = a.tools, a.model, a.effort, a.advisor
 	return b.sandboxed(ctx, l)
 }
@@ -686,16 +688,20 @@ func (f *fixing) contract(name Spec) string {
 			quoted(f.side.acceptance))
 	}
 
-	return fmt.Sprintf(monitorContract, name, tests)
+	gauge := ""
+	if f.monitor.finder == gaugeScript && f.monitor.gated() {
+		gauge = " The gate also reads the monitor's gauge over what the fix changed, and fails while that reading " +
+			"crosses the gauge's line."
+	}
+
+	return fmt.Sprintf(monitorContract, name, tests, gauge)
 }
 
 const (
-	checkFound    = "The monitor's check, `%s`, asks for a fix: %s\n\nIt printed:\n\n%s"
-	gaugeFound    = "The monitor's gauge, %s, crossed its line over the whole repository: %s\n\nIt printed:\n\n%s"
 	gaugeCrossed  = "The monitor's gauge, %s, still crosses its line over what the fix changed: %s"
 	gaugeFailed   = "The monitor's gauge, %s, failed over what the fix changed. Its command, `%s`, wrote:\n\n%s"
 	commandFailed = "The monitor's command, `%s`, ran, and the gate failed after it:\n\n%s"
-	noPrompt      = "Fix what the monitor %s found, and end your turn."
+	fixWhat       = "Fix what the monitor %s found, as your instructions say, and end your turn."
 	auditingFix   = "Audit these directories: %s. They hold the fix of the monitor %s, which has no spec. The fix " +
 		"changed these files: %s."
 	auditingLanding = "Audit these directories: %s. They hold the fix of the monitor %s, which the developer " +
@@ -710,11 +716,11 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 	switch {
 	case b.fix == nil || !b.fix.monitor.gated():
 		return v, nil
-	case b.fix.monitor.Gauge != "":
+	case b.fix.monitor.finder == gaugeScript:
 		return b.gatedGauge(ctx, held, v)
 	}
 
-	command := b.fix.monitor.Check
+	command := b.fix.monitor.path(checkScript)
 	c, err := b.r.runMonitorCheck(ctx, b.tree, command)
 	switch {
 	case err != nil:
@@ -738,23 +744,24 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 
 // gatedGauge adds the reading of a fix's gauge, over what the fix changed, to the gate's verdict v. The gate fails
 // while the reading crosses the gauge's line, or its command fails. A reading of no number never crossed. The gauge's
-// command and line are kiln.json's at main's tip, which may no longer name the gauge.
+// line is its monitor's at main's tip, where the monitor may hold the gauge no longer.
 func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdict, error) {
 	main, err := b.r.mainTip(ctx)
 	if err != nil {
 		return v, err
 	}
 
-	c, err := b.r.config(ctx, main)
+	_, monitors, err := b.r.monitors(ctx, main)
 	if err != nil {
 		return v, err
 	}
 
-	g, found := c.gaugeNamed(b.fix.monitor.Gauge)
-	if !found {
+	m, found := monitorNamed(monitors, b.fix.monitor.Name)
+	if !found || m.finder != gaugeScript {
 		return v, nil
 	}
 
+	g := m.gauge()
 	rd, err := b.readFix(ctx, held, g)
 	if err != nil {
 		return v, err

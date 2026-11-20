@@ -21,13 +21,14 @@ stdout 'net.*couldn''t run'
 stdout 'the network is down'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "monitors": [
- {"name": "tidy", "every": "24h", "check": "sh .kiln/monitors/tidy", "command": "true"},
- {"name": "net", "every": "24h", "check": "sh .kiln/monitors/net", "command": "true"}
-]}
--- .kiln/monitors/tidy --
+{"gate": ["true"]}
+-- .kiln/monitors/tidy/check --
 echo '{"fix": false, "summary": "every module is current"}'
--- .kiln/monitors/net --
+-- .kiln/monitors/tidy/command --
+true
+-- .kiln/monitors/net/check --
 echo 'the network is down'
 exit 3
+-- .kiln/monitors/net/command --
+true
 -- _given/main-before --

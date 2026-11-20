@@ -726,6 +726,35 @@ func (g *Git) Files(ctx context.Context, at Rev, dir string) ([]string, error) {
 	return found, err
 }
 
+// Entry is a file or a directory that a commit holds.
+type Entry struct {
+	// Path is the entry's path from the directory Git.Tree lists.
+	Path string
+	// Dir is true of a directory, and Exec of a file git holds with the executable bit.
+	Dir, Exec bool
+	// ID is git's ID of the entry's content. A directory's changes with any file under it.
+	ID string
+}
+
+// Tree lists each file and directory under dir in the commit at, each directory before what it holds. A commit with
+// no dir holds none.
+func (g *Git) Tree(ctx context.Context, at Rev, dir string) ([]Entry, error) {
+	out, err := g.in(ctx, g.repo, "--literal-pathspecs", "ls-tree", "-r", "-t", "-z", "--full-tree", at.commit(), "--",
+		dir+"/")
+	var entries []Entry
+	for _, line := range paths(out) {
+		about, p, _ := strings.Cut(line, "\t")
+		fields := strings.Fields(about)
+		// -t lists the directories above dir too, which hold no path under it.
+		if rel, under := strings.CutPrefix(p, dir+"/"); under && len(fields) == 3 {
+			entries = append(entries, Entry{Path: rel, Dir: fields[1] == "tree", Exec: fields[0] == "100755",
+				ID: fields[2]})
+		}
+	}
+
+	return entries, err
+}
+
 // Show reads the file at path in the commit at, and false when the commit holds no file there.
 func (g *Git) Show(ctx context.Context, at Rev, path string) ([]byte, bool, error) {
 	listed, err := g.in(ctx, g.repo, "--literal-pathspecs", "ls-tree", "-z", "--full-tree", at.commit(), "--", path)

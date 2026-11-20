@@ -1,8 +1,8 @@
 #!/bin/sh
-# The check of kiln's gate-time monitor. It asks for a fix when the gate has slowed. Then it prints the trend, and the
+# The check of the gate-time monitor. It asks for a fix when the gate has slowed. Then it prints the trend, and the
 # slowest packages and tests at main's tip, for the monitor's agent. Its last line is the JSON object kiln reads.
 #
-#   .kiln/monitors/gate-time [rise] [window]     rise in percent, 50 by default; window in gates, 20 by default
+#   sh .kiln/monitors/gate-time/check [rise] [window]     rise in percent, 50 by default; window in gates, 20 by default
 #
 # It asks for a fix when the last window's gates took more than rise longer than those of the window before. A
 # window's time is the upper quartile of its gates' times. It never asks while the last window holds a gate from before
@@ -13,12 +13,12 @@
 # that runs the work alone. The builds' rounds mix the two kinds, so a window's median jumps between them. Its upper
 # quartile holds to the slower kind, and moves only once a quarter of the window moves.
 #
-# A fix changes the ledger only once it lands, so the monitor's entry in kiln.json keeps this check out of the gate.
-# monitor below is the entry's name.
+# A fix changes the ledger only once it lands, so the monitor's monitor.json keeps this check out of the gate. kiln runs
+# this script as sh .kiln/monitors/<name>/check, so its directory names the monitor.
 set -eu
 export LC_ALL=C
 
-monitor=gate-time
+monitor=$(basename "$(dirname "$0")")
 rise=${1:-50}
 window=${2:-20}
 

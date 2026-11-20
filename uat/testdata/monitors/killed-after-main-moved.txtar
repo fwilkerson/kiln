@@ -24,14 +24,14 @@ exec git log --format=%s main
 stdout -count=1 '^fix\(bump\): land the monitor''s fix$'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices", "monitors": [
- {"name": "bump", "every": "24h", "check": "sh .kiln/monitors/bump", "command": "echo current >>state.txt"}
-]}
--- .kiln/monitors/bump --
+{"gate": ["true"], "notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}
+-- .kiln/monitors/bump/check --
 if grep -qx current state.txt; then
   echo '{"fix": false, "summary": "state.txt is current"}'
 else
   echo '{"fix": true, "summary": "state.txt is stale"}'
 fi
+-- .kiln/monitors/bump/command --
+echo current >>state.txt
 -- state.txt --
 stale

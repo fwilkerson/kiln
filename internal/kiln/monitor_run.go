@@ -10,7 +10,7 @@ import (
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// MonitorRun runs, at main's tip, each monitor kiln.json names that is due, one at a time. With a name, it runs that
+// MonitorRun runs, at main's tip, each monitor in .kiln/monitors/ that is due, one at a time. With a name, it runs that
 // monitor alone, due or not, and held or not by its last fix. It never starts a second fix while one builds, waits or
 // lands. It works in the monitors' lane, beside a kiln fire. It refuses while another kiln monitor run, or a kiln
 // accept that lands a fix, holds that lane. It refuses while kiln is being reinstalled. First it drops each fix a kiln
@@ -46,27 +46,27 @@ func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {
 	return nil
 }
 
-// monitorRun is one kiln monitor run, as kiln.json at main's tip says. It answers the monitors it runs: each, or the
-// one named name.
+// monitorRun is one kiln monitor run, as main's tip says. It answers the monitors it runs: each, or the one named
+// name.
 func (r *Repo) monitorRun(ctx context.Context, name Spec, out io.Writer) (*monitorRunning, []monitor, error) {
 	main, err := r.mainTip(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	c, err := r.config(ctx, main)
+	c, monitors, err := r.monitors(ctx, main)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	run := &monitorRunning{r: r, out: out, c: c, named: name != ""}
 	if name == "" {
-		return run, c.Monitors, nil
+		return run, monitors, nil
 	}
 
-	m, ok := c.monitorNamed(name)
+	m, ok := monitorNamed(monitors, name)
 	if !ok {
-		return nil, nil, fmt.Errorf("%w: %s at main's tip names no monitor %s", errRefused, configFile, name)
+		return nil, nil, fmt.Errorf("%w: %s at main's tip holds no monitor %s", errRefused, monitorsDir, name)
 	}
 
 	return run, []monitor{m}, nil
@@ -133,20 +133,20 @@ type monitorRunning struct {
 	named bool
 }
 
-// monitor runs m, if it is due or named. A monitor that drains runs again, due or not, after each fix that landed.
-// So one run empties a queue that each fix takes one item from.
+// monitor runs m, if it is due or named. It runs again, due or not, after each fix that landed for a check that asked
+// to drain. So one run empties a queue that each fix takes one item from.
 func (run *monitorRunning) monitor(ctx context.Context, m monitor) error {
-	landed, err := run.pass(ctx, m, run.named)
-	for landed && m.Drain {
-		landed, err = run.pass(ctx, m, true)
+	again, err := run.pass(ctx, m, run.named)
+	for again {
+		again, err = run.pass(ctx, m, true)
 	}
 
 	return err
 }
 
 // pass runs m's check once, if m is due or dueOrNot, and records what it found. A finding starts a fix, unless the
-// monitor is held. It answers whether that fix landed, which it never did when err is not nil.
-func (run *monitorRunning) pass(ctx context.Context, m monitor, dueOrNot bool) (landed bool, err error) {
+// monitor is held. It answers whether to run m again at once, which it never does when err is not nil.
+func (run *monitorRunning) pass(ctx context.Context, m monitor, dueOrNot bool) (again bool, err error) {
 	r := run.r
 	k, err := r.store.read()
 	if err != nil {
@@ -173,15 +173,15 @@ func (run *monitorRunning) pass(ctx context.Context, m monitor, dueOrNot bool) (
 }
 
 // check runs m's check, or reads its gauge, at main's tip, and writes its monitor line. A finding starts a fix,
-// unless the monitor is held. h is m's history, and rec its fix's record, if it has one. It answers whether the
-// fix landed.
-func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec *record) (landed bool, err error) {
+// unless the monitor is held. h is m's history, and rec its fix's record, if it has one. It answers whether to run m
+// again at once: the fix landed, and the check asked to drain.
+func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec *record) (again bool, err error) {
 	main, found, err := run.checkMain(ctx, m)
 	if err != nil {
 		return false, err
 	}
 
-	line := entry{Kind: monitorKind, Monitor: m.Name, At: run.r.now(), Main: main, Entry: m.hash(),
+	line := entry{Kind: monitorKind, Monitor: m.Name, At: run.r.now(), Main: main, Entry: m.tree,
 		Printed: hashOf(found.printed), Summary: found.summary, Found: foundOf(found), Gauge: found.reading.Gauge,
 		Value: found.reading.Value, gaugeLine: found.reading.gaugeLine}
 	if line.Found == foundFix && run.held(m, h, rec, line) {
@@ -197,7 +197,8 @@ func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec
 		return false, err
 	}
 
-	return run.fix(ctx, newFixing(run.c, m, found), line, h)
+	landed, err := run.fix(ctx, newFixing(run.c, m, found), line, h)
+	return landed && found.drain, err
 }
 
 // checkMain runs m's check, or reads its gauge, at main's tip, and answers that tip and what it found. It holds
@@ -214,7 +215,7 @@ func (run *monitorRunning) checkMain(ctx context.Context, m monitor) (git.Rev, c
 		return "", checked{}, err
 	}
 
-	found, err := held.firstCheck(ctx, run.c, m, main)
+	found, err := held.firstCheck(ctx, m, main)
 	return main, found, err
 }
 

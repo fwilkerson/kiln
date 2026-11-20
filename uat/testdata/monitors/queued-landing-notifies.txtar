@@ -29,6 +29,8 @@ grep -count=2 '"kind":"monitor"' .git/notices
 grep -count=1 '"name":"docs","state":"stopped"' .git/notices
 
 -- .kiln/kiln.json --
-{"gate": ["test ! -f broken"], "notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices", "monitors": [
- {"name": "docs", "every": "168h", "command": "echo 'the docs, brought up to date' >docs.txt", "accept": true}
-]}
+{"gate": ["test ! -f broken"], "notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}
+-- .kiln/monitors/docs/command --
+echo 'the docs, brought up to date' >docs.txt
+-- .kiln/monitors/docs/monitor.json --
+{"hours": 168, "accept": true}

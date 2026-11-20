@@ -14,17 +14,21 @@ exec kiln status
 stdout '^broken: couldn''t run, .*runs at the next kiln monitor run$'
 stdout 'the tool is missing'
 stdout '^silent: couldn''t run, .*runs at the next kiln monitor run$'
-stdout 'quiet: its command''s last line is no number'
+stdout 'silent: its command''s last line is no number'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "gauges": [
- {"name": "fails", "command": "echo 'the tool is missing' >&2; exit 3", "max": 0},
- {"name": "quiet", "command": "echo 'nothing to count'", "max": 0}
-], "monitors": [
- {"name": "broken", "every": "24h", "gauge": "fails", "agent": ".kiln/agents/fixer.md"},
- {"name": "silent", "every": "24h", "gauge": "quiet", "agent": ".kiln/agents/fixer.md"}
-]}
--- .kiln/agents/fixer.md --
+{"gate": ["true"]}
+-- .kiln/monitors/broken/gauge --
+echo 'the tool is missing' >&2; exit 3
+-- .kiln/monitors/broken/agent.md --
 Fix the files the gauge names.
+-- .kiln/monitors/broken/monitor.json --
+{"max": 0}
+-- .kiln/monitors/silent/gauge --
+echo 'nothing to count'
+-- .kiln/monitors/silent/agent.md --
+Fix the files the gauge names.
+-- .kiln/monitors/silent/monitor.json --
+{"max": 0}
 -- ok.txt --
 fine

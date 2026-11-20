@@ -12,19 +12,19 @@ exec git commit -q -m 'add other.md'
 exec kiln monitor run
 
 # Then: a fix starts.
-exists .claude-calls/fixer/1/1/prompt
+exists .claude-calls/fix/1/1/prompt
 
 # The agent's first message holds what the gauge printed of each of the two files, and the reading beside the
 # gauge's line.
-grep 'low: a\.txt' .claude-calls/fixer/1/1/prompt
-grep 'low: b\.txt' .claude-calls/fixer/1/1/prompt
-grep 'count: 2, line ≤ 0, crossed' .claude-calls/fixer/1/1/prompt
+grep 'low: a\.txt' .claude-calls/fix/1/1/prompt
+grep 'low: b\.txt' .claude-calls/fix/1/1/prompt
+grep 'lows: 2, line ≤ 0, crossed' .claude-calls/fix/1/1/prompt
 
 # The gate fails after the first turn, and the agent's next message holds what the gauge printed of the file it
 # changed, and nothing of the other file.
-exists .claude-calls/fixer/1/2/prompt
-grep 'low: a\.txt' .claude-calls/fixer/1/2/prompt
-! grep 'b\.txt' .claude-calls/fixer/1/2/prompt
+exists .claude-calls/fix/1/2/prompt
+grep 'low: a\.txt' .claude-calls/fix/1/2/prompt
+! grep 'b\.txt' .claude-calls/fix/1/2/prompt
 
 # The fix lands after the second turn, though the other file still counts against the line.
 exec git show main:a.txt
@@ -35,19 +35,15 @@ exec kiln status
 stdout '^lows: landed'
 
 # kiln status shows the monitor's reading of main as crossed,
-stdout '^\s*count: 2, line ≤ 0, crossed$'
+stdout '^\s*lows: 2, line ≤ 0, crossed$'
 
 # and the gauge's reading of the landing, which did not cross.
-stdout '^gauge count: 0, line ≤ 0, at '
-! stdout '^gauge count: .*crossed'
+stdout '^gauge lows: 0, line ≤ 0, at '
+! stdout '^gauge lows: .*crossed'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "rounds": 2, "gauges": [
- {"name": "count", "command": "sh .kiln/gauges/count", "max": 0}
-], "monitors": [
- {"name": "lows", "every": "24h", "gauge": "count", "agent": ".kiln/agents/fixer.md", "prompt": "Make each file the gauge names say fine."}
-]}
--- .kiln/gauges/count --
+{"gate": ["true"], "rounds": 2}
+-- .kiln/monitors/lows/gauge --
 n=0
 read=
 for f in $(git diff --name-only --diff-filter=d "$KILN_BASE" HEAD -- '*.txt'); do
@@ -60,8 +56,12 @@ done
 if [ -n "$read" ]; then
   echo "$n"
 fi
--- .kiln/agents/fixer.md --
+-- .kiln/monitors/lows/agent.md --
 Fix the files the gauge names.
+
+Make each file the gauge names say fine.
+-- .kiln/monitors/lows/monitor.json --
+{"max": 0}
 -- ok.txt --
 fine
 -- a.txt --
@@ -72,7 +72,7 @@ low b
 other work
 -- claude.json --
 {
-  "fixer": {"1": {
+  "fix": {"1": {
     "1": [
       {"tool": {"name": "Bash", "input": {"command": "echo 'low a, edited' >a.txt"}}},
       {"result": {"result": "Edited a.txt."}}

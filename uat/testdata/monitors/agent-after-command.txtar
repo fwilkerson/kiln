@@ -7,8 +7,8 @@
 exec kiln monitor run
 
 # Then: the agent's session was told the finding and what the gate printed,
-grep 'finding: deps\.txt is missing' .claude-calls/deps/1/1/prompt
-grep 'the gate: deps\.txt needs fix\.txt' .claude-calls/deps/1/1/prompt
+grep 'finding: deps\.txt is missing' .claude-calls/fix/1/1/prompt
+grep 'the gate: deps\.txt needs fix\.txt' .claude-calls/fix/1/1/prompt
 
 # and main holds the command's work and the agent's.
 exec git show main:deps.txt
@@ -17,26 +17,28 @@ exec git show main:fix.txt
 stdout '^fixed$'
 
 -- .kiln/kiln.json --
-{"gate": ["sh .kiln/gate"], "monitors": [
- {"name": "deps", "every": "24h", "check": "sh .kiln/monitors/deps", "command": "echo bumped >deps.txt", "agent": ".kiln/agents/deps.md", "prompt": "Make the gate pass."}
-]}
--- .kiln/gate --
-if [ -e deps.txt ] && [ ! -e fix.txt ]; then
-  echo 'the gate: deps.txt needs fix.txt'
-  exit 1
-fi
--- .kiln/monitors/deps --
+{"gate": ["sh .kiln/gate"]}
+-- .kiln/monitors/deps/check --
 if [ -e deps.txt ]; then
   echo '{"fix": false, "summary": "deps.txt is there"}'
 else
   echo 'finding: deps.txt is missing'
   echo '{"fix": true, "summary": "deps.txt is missing"}'
 fi
--- .kiln/agents/deps.md --
+-- .kiln/monitors/deps/command --
+echo bumped >deps.txt
+-- .kiln/monitors/deps/agent.md --
 Fix what the bump broke.
+
+Make the gate pass.
+-- .kiln/gate --
+if [ -e deps.txt ] && [ ! -e fix.txt ]; then
+  echo 'the gate: deps.txt needs fix.txt'
+  exit 1
+fi
 -- claude.json --
 {
- "deps": {
+ "fix": {
   "1": {
    "1": [
     {

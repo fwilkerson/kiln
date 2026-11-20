@@ -17,7 +17,8 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// gauge is a command kiln.json names, which prints a number. Its line is where that number should stay.
+// gauge is a command kiln.json names, or a monitor's gauge, which prints a number. Its line is where that number
+// should stay.
 type gauge struct {
 	// Name names the gauge. No two gauges share one.
 	Name string `json:"name"`
@@ -49,6 +50,18 @@ func (l gaugeLine) crossed(value *float64) bool {
 	return false
 }
 
+// sides is how many of min and max the line names.
+func (l gaugeLine) sides() int {
+	n := 0
+	for _, side := range []*float64{l.Min, l.Max} {
+		if side != nil {
+			n++
+		}
+	}
+
+	return n
+}
+
 // text shows the line and its side, such as ≥ 80.
 func (l gaugeLine) text() string {
 	switch {
@@ -72,9 +85,9 @@ const gaugeTree = ".gauges"
 // tip before the landing. In a monitor's run, it is git's empty tree. In a fix's gate, it is where the fix left main.
 const baseVar = "KILN_BASE"
 
-// readGauges reads each gauge kiln.json names at main's tip, once the build has landed. It writes each reading to the
-// ledger, and prints it. A gauge never stops the build. It answers only the context's error, once kiln is interrupted,
-// and writes no reading for the gauge it cut short.
+// readGauges reads each gauge at main's tip, once the build has landed. It writes each reading to the ledger, and
+// prints it. A gauge never stops the build. It answers only the context's error, once kiln is interrupted, and writes
+// no reading for the gauge it cut short.
 func (b *build) readGauges(ctx context.Context) error {
 	if b.landed == "" {
 		return nil
@@ -165,15 +178,22 @@ func removeTree(dir string) error {
 	return os.RemoveAll(dir)
 }
 
-// gauges are the gauges kiln.json names at main's tip.
+// gauges are the gauges at main's tip: each kiln.json names, then each monitor's, named for its monitor.
 func (r *Repo) gauges(ctx context.Context) ([]gauge, error) {
 	main, err := r.mainTip(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	c, err := r.config(ctx, main)
-	return c.Gauges, err
+	c, monitors, err := r.monitors(ctx, main)
+	gauges := slices.Clone(c.Gauges)
+	for _, m := range monitors {
+		if m.finder == gaugeScript {
+			gauges = append(gauges, m.gauge())
+		}
+	}
+
+	return gauges, err
 }
 
 // gaugeRead is what one run of a gauge's command read.
@@ -256,7 +276,7 @@ func shownReading(e entry) string {
 	return shown
 }
 
-// gaugeStatus shows each gauge kiln.json names at main's tip, with its latest reading and the landing it measured.
+// gaugeStatus shows each gauge at main's tip, with its latest reading and the landing it measured.
 func (r *Repo) gaugeStatus(ctx context.Context, out io.Writer) error {
 	gauges, err := r.gauges(ctx)
 	if err != nil {

@@ -2,7 +2,8 @@
 
 # The zsh completion of kiln. kiln answers both lists, so the rules of what each command takes live once, in Go:
 # kiln complete lists kiln's commands, and kiln complete <command> the spec names that command takes.
-# kiln complete monitor lists its commands, and kiln complete monitor run the monitors.
+# kiln complete monitor lists its commands, kiln complete monitor run the monitors, and kiln complete monitor add the
+# monitors kiln ships. kiln monitor add takes a directory too.
 local -a found expl
 case $CURRENT in
   2)
@@ -16,5 +17,6 @@ case $CURRENT in
   4)
     found=(${(f)"$(_call_program monitors kiln complete ${(q)words[2]} ${(q)words[3]} 2>/dev/null)"})
     _wanted monitors expl 'monitor' compadd -a found
+    [[ ${words[3]} == add ]] && _path_files -/
     ;;
 esac

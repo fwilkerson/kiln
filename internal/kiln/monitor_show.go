@@ -108,16 +108,16 @@ func fixResult(outcome string) string {
 	return outcome
 }
 
-// monitorStatus shows each monitor kiln.json names at main's tip. A line holds its result, when it last ran, and
-// when it runs next. Its summary follows.
+// monitorStatus shows each monitor main's tip holds. A line holds its result, when it last ran, and when it runs
+// next. Its summary follows.
 func (r *Repo) monitorStatus(ctx context.Context, out io.Writer) error {
 	main, err := r.mainTip(ctx)
 	if err != nil {
 		return err
 	}
 
-	c, err := r.config(ctx, main)
-	if err != nil || len(c.Monitors) == 0 {
+	_, monitors, err := r.monitors(ctx, main)
+	if err != nil || len(monitors) == 0 {
 		return nil
 	}
 
@@ -134,7 +134,7 @@ func (r *Repo) monitorStatus(ctx context.Context, out io.Writer) error {
 	all := histories(entries)
 	now := r.now()
 	fmt.Fprintln(out, "monitors:")
-	for _, m := range c.Monitors {
+	for _, m := range monitors {
 		h, rec := all[m.Name], k.find(m.Name)
 		s := h.standing(m, rec)
 		fmt.Fprintf(out, "%s: %s, %s\n", m.Name, s.result, s.when(h.due(m, now)))

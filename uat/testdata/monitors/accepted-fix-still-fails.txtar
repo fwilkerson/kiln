@@ -26,32 +26,34 @@ stdout 'kiln accept stale'
 stdout 'kiln reject stale'
 
 # A second kiln accept resumes the same session.
-exec sh -c 'ls .claude-calls/stale/1 | wc -l'
+exec sh -c 'ls .claude-calls/fix/1 | wc -l'
 cp stdout .tmp/calls-before
 ! exec kiln accept stale
-! exists .claude-calls/stale/2
-exec sh -c 'ls .claude-calls/stale/1 | wc -l'
+! exists .claude-calls/fix/2
+exec sh -c 'ls .claude-calls/fix/1 | wc -l'
 ! cmp stdout .tmp/calls-before
-exec sh -c 'grep -l "\"resume\": true" .claude-calls/stale/1/$(ls .claude-calls/stale/1 | sort -n | tail -1)/call.json'
+exec sh -c 'grep -l "\"resume\": true" .claude-calls/fix/1/$(ls .claude-calls/fix/1 | sort -n | tail -1)/call.json'
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "rounds": 2, "monitors": [
- {"name": "stale", "every": "24h", "check": "sh .kiln/monitors/stale", "agent": ".kiln/agents/stale.md", "prompt": "Mark the doc fixed.", "accept": true}
-]}
--- .kiln/monitors/stale --
+{"gate": ["true"], "rounds": 2}
+-- .kiln/monitors/stale/check --
 if grep -q fixed doc.txt; then
   echo '{"fix": false, "summary": "doc.txt is fixed"}'
 else
   echo '{"fix": true, "summary": "doc.txt is stale"}'
 fi
--- .kiln/agents/stale.md --
+-- .kiln/monitors/stale/agent.md --
 Mark the doc fixed.
+
+Mark the doc fixed.
+-- .kiln/monitors/stale/monitor.json --
+{"accept": true}
 -- doc.txt --
 title
 stale
 -- claude.json --
 {
- "stale": {"1": {
+ "fix": {"1": {
   "1": [
    {"tool": {"name": "Bash", "input": {"command": "printf 'title\\nfixed\\n' >doc.txt"}}},
    {"result": {"result": "Marked the doc fixed.\n{\"title\": \"fix(doc): mark the doc fixed\"}"}}

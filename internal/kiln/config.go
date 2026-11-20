@@ -42,8 +42,6 @@ type config struct {
 	Harness []string `json:"harness,omitempty"`
 	// Reaudit holds paths the audit reads again whenever the work's own change to them differs from what it read.
 	Reaudit []string `json:"reaudit,omitempty"`
-	// Monitors are the jobs kiln monitor run runs on their schedule, each of which may start a fix.
-	Monitors []monitor `json:"monitors,omitempty"`
 	// Notify is the command that receives each notification, run with sh -c. "" prints each as OSC 9.
 	Notify string `json:"notify,omitempty"`
 }
@@ -194,8 +192,7 @@ func (c config) refusals() refusals {
 		}
 	}
 
-	refused = append(refused, c.gaugeRefusals()...)
-	return append(refused, c.monitorsRefusals()...)
+	return append(refused, c.gaugeRefusals()...)
 }
 
 // bareHost is whether h names a host as Claude Code's allowedDomains reads one. Such a host holds letters, digits,
@@ -214,13 +211,23 @@ func (c config) gaugeRefusals() refusals {
 		refused = append(refused, broken(
 			rule{g.Name == "", refusal{"has no name", "name it"}},
 			rule{g.Name != "" && named[g.Name], refusal{"has the name of a gauge before it", "rename one"}},
-			rule{(g.Min == nil) == (g.Max == nil), refusal{"names both min and max, or neither",
+			rule{g.sides() != 1, refusal{"names both min and max, or neither",
 				"name one line, min or max"}},
 		).about(fmt.Sprintf("%s names a gauge %q that", configFile, g.Name))...)
 		named[g.Name] = true
 	}
 
 	return refused
+}
+
+// gaugeNamed is the gauge of c named name.
+func (c config) gaugeNamed(name string) (gauge, bool) {
+	i := slices.IndexFunc(c.Gauges, func(g gauge) bool { return g.Name == name })
+	if i < 0 {
+		return gauge{}, false
+	}
+
+	return c.Gauges[i], true
 }
 
 func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {
