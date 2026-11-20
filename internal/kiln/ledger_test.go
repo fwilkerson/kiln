@@ -1,6 +1,7 @@
 package kiln
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,21 @@ import (
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
 )
+
+// TestSecondsPrinted holds that kiln ledger prints a duration in seconds to the millisecond, as a script reads it. A
+// float's sum of whole seconds and their fraction would print 3.929 as 3.9290000000000003.
+func TestSecondsPrinted(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		3928693 * time.Microsecond: "3.929",
+		2520 * time.Millisecond:    "2.52",
+		313 * time.Millisecond:     "0.313",
+		time.Hour:                  "3600",
+	} {
+		if got, err := json.Marshal(seconds(d)); err != nil || string(got) != want {
+			t.Errorf("%v printed %s, %v; want %s", d, got, err, want)
+		}
+	}
+}
 
 // TestRecount holds what kiln fire does with each run that has a start line but no end line. kiln leaves one when it
 // dies mid-run, in any session: an audit try's is never resumed. Before any build goes on, each lost run is totaled

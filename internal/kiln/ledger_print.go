@@ -212,7 +212,8 @@ func (s stamp) MarshalJSON() ([]byte, error) {
 
 // seconds is d in seconds, to the millisecond.
 func seconds(d time.Duration) float64 {
-	return d.Round(time.Millisecond).Seconds()
+	// Duration.Seconds adds the fraction to the whole seconds, which prints 3.929 as 3.9290000000000003.
+	return float64(d.Round(time.Millisecond).Milliseconds()) / 1000
 }
 
 // secondsOf is d in seconds, or nil when d is unknown.
