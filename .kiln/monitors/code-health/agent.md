@@ -34,7 +34,7 @@ worth" and "Tests", which `CLAUDE.md` loads from `docs/guide.md`.
 - In a test, a condition past one `||` takes `claim.Holds`, as `docs/practices.md` "Tests" says.
 - When a file can't reach 10 without such a step, ask for the developer, and say which finding stands and why.
 - A line of `held` in `style_test.go` with a comment above it keeps that file's finding, by the developer's choice.
-  Skip that file, and take the next one the gauge lists.
+  The gauge leaves that file out. Leave its finding as it stands when a refactoring reaches the file.
 
 ## How you check the fix
 

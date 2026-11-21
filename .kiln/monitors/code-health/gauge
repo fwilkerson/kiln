@@ -5,7 +5,8 @@
 #   KILN_BASE=<commit or tree> sh .kiln/monitors/code-health/gauge
 #
 # Its last line is the lowest score of those files, or 10. It prints no number where it read no Go file. It leaves
-# out uat/, which a fix never writes.
+# out uat/, which a fix never writes. It also leaves out each file whose line of held in style_test.go has a comment
+# above it: the developer keeps that file's finding, and TestHealth holds its score.
 set -eu
 export LC_ALL=C
 
@@ -27,9 +28,17 @@ if ! go tool health . >"$found" 2>"$failed" && ! grep -Eq '^ *[0-9]+  ' "$found"
   exit 1
 fi
 
-# low prints "<score> <file>" for each file read that health scored below 10, the lowest first.
+# kept prints each file whose line of held has a comment above it.
+kept=$(awk '
+  /^var held = / { on = 1; next }
+  on && /^}/ { exit }
+  on && /^\t\/\// { comment = 1; next }
+  on && /^\t"/ { if (comment) { split($0, part, "\""); print part[2] } comment = 0 }
+' style_test.go)
+
+# low prints "<score> <file>" for each file read that health scored below 10 and held does not keep, the lowest first.
 low=$(awk '/^ *[0-9]+  / { print $1, $2 }' "$found" | sort -k1,1n -k2,2 | while read -r score f; do
-  if echo "$read" | grep -qxF "$f"; then echo "$score $f"; fi
+  if echo "$read" | grep -qxF "$f" && ! echo "$kept" | grep -qxF "$f"; then echo "$score $f"; fi
 done)
 
 # Each finding drops its line number, which moves with any commit, since kiln holds a monitor while the gauge prints
