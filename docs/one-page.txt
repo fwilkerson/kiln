@@ -140,5 +140,5 @@ wrote .kiln/monitors/bugs/check
 wrote .kiln/monitors/bugs/monitor.json
 {q:commit .kiln/monitors/bugs/ on main: kiln reads it there}
 ```
-caption kiln ships `bugs`, `go/docs` and `go/gate-time`. A monitor is a directory: a check, an agent and `monitor.json`.
+caption kiln ships `bugs`, `go/deps`, `go/docs` and `go/gate-time`. A monitor is a directory: a check, an agent and `monitor.json`.
 :::

@@ -1,0 +1,81 @@
+#!/bin/sh
+# updates prints each update the deps monitor finds, one a line, by path: the module's path, the version the build
+# selects, the update, and the day the update was released.
+#
+# An update is the newest release, at least 7 days old, of a module go.mod requires, when that release is newer than the
+# selected version. A week lets a release's bugs surface. The 7 days run back from $KILN_NOW, when kiln sets it, or
+# else from the clock. A release's time is the one the module proxy reports: the time of its commit.
+#
+# It skips a module that a replace directive swaps out, and an excluded, retracted or pre-release version. It skips a
+# release in another major version, as go get -u does, and one whose go line is newer than the Go that runs it. go
+# get raises each module an update requires. That module's release predates the update, so it is 7 days old too.
+#
+# It exits non-zero, with its reason as the last line, when go cannot list a module's versions or their times.
+set -eu
+export LC_ALL=C
+
+# couldnt says why updates couldn't run, after what go printed, and exits.
+couldnt() {
+  echo "go could not list $1, so no update can be found." >&2
+  exit 1
+}
+
+# A time that kiln parses as RFC 3339, such as 2026-11-21T05:00:00.5+01:00, becomes one date parses.
+now=$(printf '%s' "${KILN_NOW:-}" | sed 's/\.[0-9]*//; s/Z$/+0000/; s/\([+-][0-9][0-9]\):\([0-9][0-9]\)$/\1\2/')
+if [ -n "$now" ]; then
+  cutoff=$(date -j -u -v-7d -f %Y-%m-%dT%H:%M:%S%z "$now" +%Y-%m-%dT%H:%M:%SZ)
+else
+  cutoff=$(date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)
+fi
+
+mod=$(go mod edit -json)
+required=$(printf '%s\n' "$mod" | jq -r '[.Replace[]?.Old.Path] as $replaced | .Require[]?.Path |
+  select(IN($replaced[]) | not)')
+[ -n "$required" ] || exit 0
+
+# -mod=readonly reads go.mod, even where the project vendors its modules, and never writes it.
+# shellcheck disable=SC2086 # each path is one argument.
+selected=$(go list -mod=readonly -m -versions -json $required) || couldnt "the versions of the modules go.mod requires"
+
+# candidates are each module's releases newer than its selected version, in its major version, newest first. A
+# pseudo-version or a pre-release sorts before the release of its numbers. Go gives v0 and v1 one path.
+candidates=$(printf '%s\n' "$selected" | jq -r --argjson mod "$mod" '
+  def numbers: sub("^v"; "") | sub("[-+].*"; "") | split(".") | map(tonumber);
+  def major: numbers[0] | if . == 0 then 1 else . end;
+  [$mod.Exclude[]? | "\(.Path)@\(.Version)"] as $excluded
+  | .Path as $path | .Version as $at | ($at | numbers) as $numbers | ($at | test("^[^+]*-")) as $early
+  | (.Versions // []) | reverse[]
+  | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+(\\+incompatible)?$") and major == ($at | major))
+  | select(numbers > $numbers or (numbers == $numbers and $early))
+  | "\($path)@\(.)" | select(IN($excluded[]) | not)')
+[ -n "$candidates" ] || exit 0
+
+# shellcheck disable=SC2086 # each candidate is one argument.
+released=$(go list -mod=readonly -m -f '{{.Path}} {{.Version}} {{.Time.UTC.Format "2006-01-02T15:04:05Z"}} {{.GoMod}}' \
+  $candidates) || couldnt "the times of the releases newer than the modules go.mod requires"
+
+# The first release of a module that is old enough, and whose go line the running Go meets, is its update.
+printf '%s\n' "$released" | at="$(printf '%s\n' "$selected" | jq -r '"\(.Path) \(.Version)"')" \
+  awk -v cutoff="$cutoff" -v running="$(go env GOVERSION)" '
+  # key is a Go version, such as go1.27.4 or 1.28rc1, as one number that sorts as the version does.
+  function key(v, parts) {
+    sub(/^go/, "", v)
+    sub(/[^0-9.].*/, "", v)
+    split(v, parts, ".")
+    return parts[1] * 1000000 + parts[2] * 1000 + parts[3]
+  }
+  BEGIN {
+    n = split(ENVIRON["at"], lines, "\n")
+    for (i = 1; i <= n; i++) { split(lines[i], f, " "); at[f[1]] = f[2] }
+  }
+  $1 == taken || $3 > cutoff { next }
+  {
+    gomod = $0
+    sub(/^[^ ]+ [^ ]+ [^ ]+ /, "", gomod)
+    needs = ""
+    while (needs == "" && (getline line < gomod) > 0) if (line ~ /^go [0-9]/) { split(line, f, " "); needs = f[2] }
+    close(gomod)
+    if (key(needs) > key(running)) next
+    taken = $1
+    print $1, at[$1], $2, substr($3, 1, 10)
+  }' | sort

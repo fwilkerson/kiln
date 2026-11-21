@@ -1,0 +1,24 @@
+#!/bin/sh
+# The check of the deps monitor, for a Go project. It asks for a fix while a module go.mod requires has an update, a
+# release at least 7 days old, as lib/updates says. It prints each update, for the monitor's agent. Its last line is the
+# JSON object kiln reads.
+#
+# In the fix's gate, it passes once go.mod requires each update. It couldn't run when go cannot reach the module
+# proxy: kiln runs it again at the next kiln monitor run.
+set -eu
+
+updates=$(sh "$(dirname "$0")/lib/updates")
+count=$(printf '%s\n' "$updates" | grep -c . || true)
+noun=updates
+[ "$count" -ne 1 ] || noun=update
+
+if [ "$count" -eq 0 ]; then
+  echo '{"fix": false, "summary": "no module go.mod requires has an update at least 7 days old"}'
+  exit 0
+fi
+
+echo "The monitor's command requires each update below, a release at least 7 days old, then tidies go.mod:"
+echo
+printf '%s\n' "$updates" | awk '{ printf "  %s %s => %s, released %s\n", $1, $2, $3, $4 }'
+echo
+echo "{\"fix\": true, \"summary\": \"$count $noun at least 7 days old\"}"

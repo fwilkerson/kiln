@@ -233,19 +233,25 @@ func monitorSource(source string) (fs.FS, error) {
 	return fs.Sub(shipped, path.Join(shippedDir, source))
 }
 
-// shippedNames are the monitors kiln ships, by their paths under shippedDir: each directory that holds a file.
+// shippedNames are the monitors kiln ships, by their paths under shippedDir, in lexical order. Each is a directory
+// that holds a file of its own. Its subdirectories hold its helpers, such as lib/, and no monitor.
 func shippedNames() []string {
 	var names []string
 	_ = fs.WalkDir(shipped, shippedDir, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
-			names = append(names, strings.TrimPrefix(path.Dir(p), shippedDir+"/"))
+		if err != nil || !d.IsDir() {
+			return err
 		}
 
-		return err
+		entries, err := fs.ReadDir(shipped, p)
+		if err != nil || !slices.ContainsFunc(entries, func(e fs.DirEntry) bool { return !e.IsDir() }) {
+			return err
+		}
+
+		names = append(names, strings.TrimPrefix(p, shippedDir+"/"))
+		return fs.SkipDir
 	})
 
-	// WalkDir walks in lexical order, so the files of one directory come together.
-	return slices.Compact(names)
+	return names
 }
 
 // addable reads the monitor source names from the directory from, and answers it with the files the directory holds.

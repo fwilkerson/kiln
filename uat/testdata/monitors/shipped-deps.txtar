@@ -1,0 +1,77 @@
+# A monitor kiln ships for Go, added with one command, requires a module's update once it is 7 days old, and not
+# before.
+
+# Given: a project that requires example.com/lib v1.0.0, a module proxy whose v1.1.0 of it was released on
+# 2026-11-01, and the deps monitor kiln ships, added and committed on main. The proxy and Go's module cache are the
+# script's own, so Go never reaches the network.
+env GOPROXY=file://$WORK/_given/proxy
+env GOMODCACHE=$WORK/_given/modcache
+env GOSUMDB=off
+env 'GOFLAGS=-buildvcs=false -trimpath -modcacherw'
+exec sh -c 'cd _given/src && zip -qr ../proxy/example.com/lib/@v/v1.1.0.zip example.com/lib@v1.1.0'
+exec kiln monitor add go/deps
+stdout '^wrote \.kiln/monitors/deps/check$'
+exec git add .kiln/monitors/deps
+exec git commit -q -m 'add the deps monitor'
+
+# When: the developer runs kiln monitor run 3 days after v1.1.0 was released,
+env KILN_NOW=2026-11-04T00:00:00Z
+exec kiln monitor run
+
+# Then: the monitor is healthy, and starts no fix.
+exec kiln status
+stdout '^deps: healthy'
+! exec git rev-parse --verify --quiet kiln/deps
+
+# When: the developer runs it again a week later, 10 days after v1.1.0 was released,
+env KILN_NOW=2026-11-11T00:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: the fix requires v1.1.0, and waits for kiln accept, while main still requires v1.0.0.
+exec git show kiln/deps:go.mod
+stdout '^require example\.com/lib v1\.1\.0$'
+exec git show main:go.mod
+stdout '^require example\.com/lib v1\.0\.0$'
+exec kiln status
+stdout 'deps.*waiting'
+
+-- .kiln/kiln.json --
+{"gate": ["true"]}
+-- go.mod --
+module example.com/scratch
+
+go 1.22
+
+require example.com/lib v1.0.0
+-- go.sum --
+example.com/lib v1.0.0 h1:zjOvpfmFTvKFB+lTbEnXmQyGXVfMJBjEoUDktHGcqp8=
+example.com/lib v1.0.0/go.mod h1:yi7AcEEn77j57pQaPuoVM9NNndGcX3LzSFfVgRARTA0=
+-- main.go --
+package main
+
+import "example.com/lib"
+
+func main() { println(lib.V) }
+-- _given/proxy/example.com/lib/@v/list --
+v1.0.0
+v1.1.0
+-- _given/proxy/example.com/lib/@v/v1.0.0.info --
+{"Version": "v1.0.0", "Time": "2026-01-01T00:00:00Z"}
+-- _given/proxy/example.com/lib/@v/v1.0.0.mod --
+module example.com/lib
+
+go 1.22
+-- _given/proxy/example.com/lib/@v/v1.1.0.info --
+{"Version": "v1.1.0", "Time": "2026-11-01T00:00:00Z"}
+-- _given/proxy/example.com/lib/@v/v1.1.0.mod --
+module example.com/lib
+
+go 1.22
+-- _given/src/example.com/lib@v1.1.0/go.mod --
+module example.com/lib
+
+go 1.22
+-- _given/src/example.com/lib@v1.1.0/lib.go --
+package lib
+
+const V = 1

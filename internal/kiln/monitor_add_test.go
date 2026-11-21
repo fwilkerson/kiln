@@ -135,7 +135,7 @@ func TestShippedDocsCheck(t *testing.T) {
 // TestShippedFit holds which monitors kiln ships fit a project, by the preset .kiln/init.json records. The shell
 // completes only those. kiln monitor add with no source lists each, with the preset it fits.
 func TestShippedFit(t *testing.T) {
-	all := []string{"bugs", "go/docs", "go/gate-time"}
+	all := []string{"bugs", "go/deps", "go/docs", "go/gate-time"}
 	for preset, tc := range map[string]struct {
 		fits []string
 		says string
@@ -182,7 +182,7 @@ func TestCompleteSkipsAdded(t *testing.T) {
 	}
 
 	fits, err := r.Takes(t.Context(), "monitor add")
-	if want := []string{"bugs", "go/gate-time"}; err != nil || !slices.Equal(fits, want) {
+	if want := []string{"bugs", "go/deps", "go/gate-time"}; err != nil || !slices.Equal(fits, want) {
 		t.Errorf("the shell completes %v, %v; want %v", fits, err, want)
 	}
 }

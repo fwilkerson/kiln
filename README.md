@@ -233,11 +233,12 @@ landing. `kiln status` shows the latest reading, and `kiln tui` each landing's. 
 ## Monitors
 
 A monitor is a job kiln runs on a schedule, with no terminal open. Its check looks for a problem. When it finds
-one, an agent fixes it, and the fix is gated, audited and landed like any build. kiln ships three:
+one, an agent fixes it, and the fix is gated, audited and landed like any build. kiln ships four:
 
 | Monitor        | What it fixes                                                                        |
 |----------------|--------------------------------------------------------------------------------------|
 | `bugs`         | each bug report filed under `bugs/`, one fix at a time, with a test that fails first |
+| `go/deps`      | each Go module behind its newest release at least 7 days old, for `kiln accept deps` |
 | `go/docs`      | each Go package doc a change made false, for `kiln accept docs`                      |
 | `go/gate-time` | a gate that slowed, by making the Go tests faster, for `kiln accept gate-time`       |
 
