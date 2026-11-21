@@ -576,26 +576,26 @@
     <span class="lab">One developer, one Mac, many agents</span>
     <div class="mark">kiln</div>
     <div class="motto">Tooling in. Commits out.</div>
-    <p>kiln runs Claude Code in the background, on your Mac. Features land from the specs you approve, and chores get done on a schedule, so one developer keeps a whole repository moving.</p>
+    <p>kiln runs Claude Code in the background, on your Mac. It builds the specs you approve, and runs chores on a schedule. So one developer can keep a whole repository moving.</p>
   </div>
   <div class="cell problem">
     <span class="lab">How agents get used</span>
     <p class="lead"><b>You take each task to an agent.</b></p>
-    <p>You bring it the work, watch it go, check what it did, and bring the next.</p>
-    <p>What if you built the system instead, and the agents got the work done inside it?</p>
+    <p>You give the agent the work, watch it run, check the result, and give it the next task.</p>
+    <p>What if you built the system instead, and the agents worked inside that system?</p>
   </div>
   <div class="cell answer">
     <span class="lab">With kiln</span>
-    <p class="big">You shape the <span class="you">specs</span> and build the tooling; kiln puts the <span class="agent">agents</span> to work within it.</p>
-    <p><b>Specs become commits.</b> One session writes the code, another the tests from the spec alone. What passes your checks and an audit lands on main.</p>
+    <p class="big">You shape the <span class="you">specs</span> and build the tooling; kiln runs the <span class="agent">agents</span> inside that tooling.</p>
+    <p><b>Specs become commits.</b> One session can write the code, and another the tests, from the spec alone. Work that passes your checks and an audit lands on main.</p>
     <p><b>Your checks decide.</b> kiln reads them from main, so no build can weaken them.</p>
-    <p><b>kiln runs on itself.</b> Its monitors fix filed bugs with a test that fails first, refactor the lowest-scoring files, correct stale docs, and speed up a slowing gate.</p>
+    <p><b>kiln runs on itself.</b> Monitors do kiln's own chores on a schedule. View 3 shows four of them.</p>
   </div>
   <div class="cell attn">
     <span class="lab">Where your time goes</span>
     <ol>
       <li><span class="disc" data-n="1"></span><span><b>Ideas</b>: what to build next, shaped into a spec with <code>/shape</code>.</span></li>
-      <li><span class="disc" data-n="2"></span><span><b>The system</b>: the gate, the monitors and the agents' instructions that every build runs within.</span></li>
+      <li><span class="disc" data-n="2"></span><span><b>The system</b>: the gate, the monitors and the agents' instructions that every build follows.</span></li>
       <li><span class="disc" data-n="3"></span><span><b>The product</b>: try what landed, and decide what comes next.</span></li>
     </ol>
   </div>
@@ -698,20 +698,20 @@
 
 <div class="details">
   <div class="view">
-    <span class="lab"><span class="tag">A</span>Detail A — when a build cannot land as it is<span class="rule-note">It keeps its checkout, so you can ask its session why.</span></span>
+    <span class="lab"><span class="tag">A</span>Detail A — when a build cannot land as it is<span class="rule-note">The build keeps its checkout, so you can ask its session why.</span></span>
     <div class="ladder">
       <svg width="34" height="145" viewBox="0 0 34 145" style="grid-row: 1 / 4">
         <path d="M6,0 V145 M28,0 V145 M6,23 H28 M6,72 H28 M6,122 H28" class="w"/>
         <path d="M17,137 V8" class="w dash" marker-end="url(#a)"/>
       </svg>
-      <div class="rung you"><b>3 · Decide<small>you <span class="disc" data-n="3"></span></small></b><span>Accept or reject the amendment, or fix the spec and queue it again.</span></div>
-      <div class="rung agent"><b>2 · Amend<small>the build</small></b><span>A spec found wrong gets an amendment, and the build waits on its branch.</span></div>
-      <div class="rung agent"><b>1 · Round<small>the build</small></b><span>A failing gate, or the audit's findings, go back to the session, up to three times.</span></div>
+      <div class="rung you"><b>3 · Decide<small>you <span class="disc" data-n="3"></span></small></b><span>Accept or reject the amendment. Or fix main or the spec, and queue the spec again.</span></div>
+      <div class="rung agent"><b>2 · Amend<small>the build</small></b><span>A build that finds the spec wrong writes an amendment, and waits on its branch.</span></div>
+      <div class="rung agent"><b>1 · Round<small>the build</small></b><span>A failing gate goes back to the session, for up to 3 rounds by default. Then the build stops.</span></div>
     </div>
   </div>
 </div>
 
-<h2 class="sh"><span class="n">3</span><span class="t">AUTOMATE<small>what monitors and gauges could do</small></span><span class="rule"></span><span class="note">four kiln runs on its own repository, as examples</span></h2>
+<h2 class="sh"><span class="n">3</span><span class="t">AUTOMATE<small>what monitors and gauges could do</small></span><span class="rule"></span><span class="note">four of the monitors kiln runs on its own repository</span></h2>
 
 <div class="system">
 <svg class="assembly" width="960" height="392" viewBox="0 0 960 392">
@@ -758,9 +758,9 @@
   <table>
     <thead><tr><th>ITEM</th><th>PART · WHAT IT IS</th><th>WHY IT EXISTS</th></tr></thead>
     <tbody>
-      <tr data-item="1"><td><span class="bal kiln">1</span></td><td><b>Bugs</b> <span>a check lists <code>bugs/</code>; its fix takes the first report</span></td><td>Fixes each bug you file, one after another, with a test that fails first.</td></tr>
-      <tr data-item="2"><td><span class="bal kiln">2</span></td><td><b>Code health</b> <span>a gauge scores changed files</span></td><td>Refactors the three lowest-scoring files, and changes no behavior.</td></tr>
-      <tr data-item="3"><td><span class="bal kiln">3</span></td><td><b>Gate time</b> <span>a check compares the gate's recent times with the times before</span></td><td>Once the gate slows by half, speeds up the slowest tests without weakening one, and waits for you.</td></tr>
+      <tr data-item="1"><td><span class="bal kiln">1</span></td><td><b>Bugs</b> <span>a check lists <code>bugs/</code>; the fix takes the first report</span></td><td>Fixes each bug you file, one after another, with a test that fails first.</td></tr>
+      <tr data-item="2"><td><span class="bal kiln">2</span></td><td><b>Code health</b> <span>a gauge scores the Go files</span></td><td>Refactors the three lowest-scoring files, and changes no behavior.</td></tr>
+      <tr data-item="3"><td><span class="bal kiln">3</span></td><td><b>Gate time</b> <span>a check compares the gate's recent times with the times before</span></td><td>Once the gate takes 50% longer, speeds up the slowest tests, keeps every check, and waits for you.</td></tr>
       <tr data-item="4"><td><span class="bal kiln">4</span></td><td><b>Docs</b> <span>a check finds packages whose code changed</span></td><td>Reads their docs against the code, fixes what is false, and waits for you.</td></tr>
       <tr data-item="5"><td><span class="bal agent">5</span></td><td><b>A fix</b> <span>a build with no spec</span></td><td>Gated, audited and landed like any build.</td></tr>
     </tbody>
@@ -768,7 +768,7 @@
 </div>
 </div>
 
-<h2 class="sh"><span class="n">4</span><span class="t">START<small>what you type</small></span><span class="rule"></span><span class="note">real output</span></h2>
+<h2 class="sh"><span class="n">4</span><span class="t">START<small>what you type</small></span><span class="rule"></span><span class="note">what kiln prints, shortened</span></h2>
 
 <div class="spec">
   <div class="col">
@@ -807,10 +807,10 @@ answer: <span class="ok">landed on main</span> at <span class="h">3f9c2ab81d0e</
 </div>
 
 <div class="mores" hidden>
-<section id="more-shape"><h3><b>shape a spec</b> <span class="disc" data-n="1"></span></h3><p><code>/shape</code> asks what it needs, and the project's reviewers read the draft before you approve it. Its acceptance tests say what done means, each a Given, a When and a Then. Once you approve, <code>/shape</code> commits the spec and queues it.</p></section>
-<section id="more-verify"><h3>VERIFY</h3><p>Two sessions, in two clones: one writes the code, the other the acceptance tests. Neither reads the other's work.</p></section>
+<section id="more-shape"><h3><b>shape a spec</b> <span class="disc" data-n="1"></span></h3><p><code>/shape</code> asks you questions, and the project's reviewers read the draft before you approve it. The spec's acceptance tests say what done means, each as a Given, a When and a Then. Once you approve, <code>/shape</code> marks the spec Approved, commits it on main and queues it.</p></section>
+<section id="more-verify"><h3>VERIFY</h3><p>With testSession on, two sessions work in two clones. One writes the code, and the other writes the acceptance tests. Neither session reads the other's work. Without testSession, one session writes both.</p></section>
 <section id="more-gate"><h3>GATE <span class="disc" data-n="2"></span></h3><p>kiln reads the gate's commands from main, never from the build's checkout, so a build cannot weaken the checks it is held to.</p></section>
-<section id="more-audit"><h3>AUDIT</h3><p>A failing gate, or the audit's findings, go back to the build as a round. Detail A says what happens when rounds run out.</p></section>
+<section id="more-audit"><h3>AUDIT</h3><p>A failing gate sends the work back to the build session, as a round. The audit's findings go back too, and spend no round. Detail A says what happens when the rounds run out.</p></section>
 </div>
 </div>
 </div>

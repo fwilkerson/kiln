@@ -20,22 +20,22 @@ mark more more
 cell id | One developer, one Mac, many agents
 wordmark kiln
 motto Tooling in. Commits out.
-para kiln runs Claude Code in the background, on your Mac. Features land from the specs you approve, and chores get done on a schedule, so one developer keeps a whole repository moving.
+para kiln runs Claude Code in the background, on your Mac. It builds the specs you approve, and runs chores on a schedule. So one developer can keep a whole repository moving.
 
 cell problem | How agents get used
 lead **You take each task to an agent.**
-para You bring it the work, watch it go, check what it did, and bring the next.
-para What if you built the system instead, and the agents got the work done inside it?
+para You give the agent the work, watch it run, check the result, and give it the next task.
+para What if you built the system instead, and the agents worked inside that system?
 
 cell answer | With kiln
-big You shape the @you{specs} and build the tooling; kiln puts the @agent{agents} to work within it.
-para **Specs become commits.** One session writes the code, another the tests from the spec alone. What passes your checks and an audit lands on main.
+big You shape the @you{specs} and build the tooling; kiln runs the @agent{agents} inside that tooling.
+para **Specs become commits.** One session can write the code, and another the tests, from the spec alone. Work that passes your checks and an audit lands on main.
 para **Your checks decide.** kiln reads them from main, so no build can weaken them.
-para **kiln runs on itself.** Its monitors fix filed bugs with a test that fails first, refactor the lowest-scoring files, correct stale docs, and speed up a slowing gate.
+para **kiln runs on itself.** Monitors do kiln's own chores on a schedule. View 3 shows four of them.
 
 cell attn | Where your time goes
 item ●1 | **Ideas**: what to build next, shaped into a spec with `/shape`.
-item ●2 | **The system**: the gate, the monitors and the agents' instructions that every build runs within.
+item ●2 | **The system**: the gate, the monitors and the agents' instructions that every build follows.
 item ●3 | **The product**: try what landed, and decide what comes next.
 :::
 
@@ -52,18 +52,18 @@ phase 2 | BUILD, IN THE BACKGROUND
 phase 3 | LAND
 
 box shape @you 1.1 | **shape a spec** ●1 | `/shape`, then approve
-more `/shape` asks what it needs, and the project's reviewers read the draft before you approve it. Its acceptance tests say what done means, each a Given, a When and a Then. Once you approve, `/shape` commits the spec and queues it.
+more `/shape` asks you questions, and the project's reviewers read the draft before you approve it. The spec's acceptance tests say what done means, each as a Given, a When and a Then. Once you approve, `/shape` marks the spec Approved, commits it on main and queues it.
 box fire @you 1.2 | `kiln fire` | builds each | queued spec
 box spec @repo 1.1-2 | 📄 SPEC | approved, on main
 arrow shape spec
 
 box build @agent 2.1 | BUILD | the code
 box verify @agent 2.1 | VERIFY | the tests, from | the spec alone
-more Two sessions, in two clones: one writes the code, the other the acceptance tests. Neither reads the other's work.
+more With testSession on, two sessions work in two clones. One writes the code, and the other writes the acceptance tests. Neither session reads the other's work. Without testSession, one session writes both.
 box gate @kiln 2.2 | GATE ●2 | your checks, | read from main
 more kiln reads the gate's commands from main, never from the build's checkout, so a build cannot weaken the checks it is held to.
 box audit @agent 2.3 | AUDIT | a second session | reads the work
-more A failing gate, or the audit's findings, go back to the build as a round. Detail A says what happens when rounds run out.
+more A failing gate sends the work back to the build session, as a round. The audit's findings go back too, and spend no round. Detail A says what happens when the rounds run out.
 arrow fire build
 arrow fire verify
 arrow build gate
@@ -80,13 +80,13 @@ arrow main try
 :::
 
 ::: details
-detail A | Detail A — when a build cannot land as it is | It keeps its checkout, so you can ask its session why.
-rung @agent | 1 · Round | the build | A failing gate, or the audit's findings, go back to the session, up to three times.
-rung @agent | 2 · Amend | the build | A spec found wrong gets an amendment, and the build waits on its branch.
-rung @you | 3 · Decide | you ●3 | Accept or reject the amendment, or fix the spec and queue it again.
+detail A | Detail A — when a build cannot land as it is | The build keeps its checkout, so you can ask its session why.
+rung @agent | 1 · Round | the build | A failing gate goes back to the session, for up to 3 rounds by default. Then the build stops.
+rung @agent | 2 · Amend | the build | A build that finds the spec wrong writes an amendment, and waits on its branch.
+rung @you | 3 · Decide | you ●3 | Accept or reject the amendment. Or fix main or the spec, and queue the spec again.
 :::
 
-view 3 AUTOMATE | what monitors and gauges could do | four kiln runs on its own repository, as examples
+view 3 AUTOMATE | what monitors and gauges could do | four of the monitors kiln runs on its own repository
 
 ::: assembly
 box launchd @kiln A2-A3 | LAUNCHD | `kiln monitor run`, | each hour
@@ -103,14 +103,14 @@ arrow monitors fix
 arrow fix main via gate
 
 parts PARTS LIST | a check or a gauge on a schedule, then an agent's fix
-part 1 @kiln | Bugs | a check lists `bugs/`; its fix takes the first report | Fixes each bug you file, one after another, with a test that fails first.
-part 2 @kiln | Code health | a gauge scores changed files | Refactors the three lowest-scoring files, and changes no behavior.
-part 3 @kiln | Gate time | a check compares the gate's recent times with the times before | Once the gate slows by half, speeds up the slowest tests without weakening one, and waits for you.
+part 1 @kiln | Bugs | a check lists `bugs/`; the fix takes the first report | Fixes each bug you file, one after another, with a test that fails first.
+part 2 @kiln | Code health | a gauge scores the Go files | Refactors the three lowest-scoring files, and changes no behavior.
+part 3 @kiln | Gate time | a check compares the gate's recent times with the times before | Once the gate takes 50% longer, speeds up the slowest tests, keeps every check, and waits for you.
 part 4 @kiln | Docs | a check finds packages whose code changed | Reads their docs against the code, fixes what is false, and waits for you.
 part 5 @agent | A fix | a build with no spec | Gated, audited and landed like any build.
 :::
 
-view 4 START | what you type | real output
+view 4 START | what you type | what kiln prints, shortened
 
 ::: spec
 column
