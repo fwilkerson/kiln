@@ -112,6 +112,7 @@ func TestShippedMonitors(t *testing.T) {
 
 // TestShippedDocsCheck holds the summary of the docs monitor kiln ships, which kiln status and each notice show.
 func TestShippedDocsCheck(t *testing.T) {
+	t.Parallel()
 	for changed, want := range map[string]string{
 		"a":   `"summary": "1 package changed since `,
 		"a b": `"summary": "2 packages changed since `,
@@ -142,6 +143,7 @@ func TestShippedDocsCheck(t *testing.T) {
 // TestShippedFit holds which monitors kiln ships fit a project, by the preset .kiln/init.json records. The shell
 // completes only those. kiln monitor add with no source lists each, with the preset it fits.
 func TestShippedFit(t *testing.T) {
+	t.Parallel()
 	all := []string{"bugs", "go/deps", "go/docs", "go/gate-time"}
 	for preset, tc := range map[string]struct {
 		fits []string
@@ -198,6 +200,7 @@ func TestCompleteSkipsAdded(t *testing.T) {
 // from. ship changes the directory, as a team's repository would, and edit changes the project's copy. Until kiln
 // init runs, kiln status says the monitor is behind.
 func TestMonitorUpdates(t *testing.T) {
+	t.Parallel()
 	const check = ".kiln/monitors/deps/check"
 	allFine := "sed -i '' 's/\"fine\"/\"all fine\"/' check"
 	tests := []struct {
@@ -285,6 +288,7 @@ func statusThenInit(t *testing.T, r *Repo) (status, said string) {
 // TestShippedMonitorUpdates holds that kiln init brings a monitor kiln ships up to date with this kiln's. An older
 // kiln's check stands in the record and in the checkout.
 func TestShippedMonitorUpdates(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	if err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"}); err != nil {
 		t.Fatal(err)

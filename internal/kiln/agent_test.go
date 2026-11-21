@@ -169,6 +169,7 @@ func TestInitKeeps(t *testing.T) {
 // links each reviewer there, in place of a link that reaches nothing. It links one in place of a link to its old file
 // in .kiln/agents/, and says that file is unused. It removes each link to a reviewer that is gone.
 func TestInitReviewers(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	shell(t, repo, `mkdir -p .kiln/reviewers .kiln/agents .claude/agents && touch .kiln/reviewers/.gitkeep && `+
 		`printf -- '---\nname: upgrade\n---\n' >.kiln/reviewers/upgrade.md && `+
@@ -399,6 +400,7 @@ func TestAuditedDirs(t *testing.T) {
 // TestAuditReadsLaterWork holds that only the audit's read records it. An audit with nothing to read records none, so
 // the session's later work gets the audit before it lands.
 func TestAuditReadsLaterWork(t *testing.T) {
+	t.Parallel()
 	b, repo, _ := landingBuild(t)
 	shell(t, repo, "mkdir .kiln/agents && echo 'Audit the work.' >.kiln/agents/audit.md && git add -A && "+
 		"git commit --quiet -m agents")

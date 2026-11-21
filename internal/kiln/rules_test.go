@@ -801,6 +801,7 @@ func TestRecoverLane(t *testing.T) {
 // TestAcceptSaysItGates holds that kiln accept says so as it starts the gate on the commit that retires a spec. The
 // gate runs the project's commands, which may take minutes.
 func TestAcceptSaysItGates(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "rounds": 1}`, ".kiln/specs/x.md": "# X\n"})
 	shell(t, repo, "git add -A && git commit --quiet -m start")
@@ -1044,6 +1045,7 @@ func TestLandChanges(t *testing.T) {
 // A conflict, or work that changes nothing on main, never reads as a failed gate. Past the last round, the stop
 // says the same.
 func TestSetbackSays(t *testing.T) {
+	t.Parallel()
 	const x = "echo %d >x.txt && git add x.txt && git commit --quiet -m x"
 	for name, tc := range map[string]struct {
 		// split stacks the sides of a split build, whose files conflict. Otherwise the build lands its work.
@@ -1251,6 +1253,7 @@ func landingBuild(t *testing.T) (*build, string, git.Rev) {
 // the build session alone. A conflict with main goes to the session whose clone conflicts, after kiln merged main into
 // both clones. An accepted build lands, and its spec retires.
 func TestSplitLanding(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		accepted bool
 		// code is what the build session wrote, and main what main gained since the build began.
@@ -1371,6 +1374,7 @@ func TestGaugeRules(t *testing.T) {
 // TestGaugeVerdict holds how a monitor's run reads its gauge: as a check's verdict, summed up as kiln status shows
 // it. A reading kiln could not take couldn't run, and says why.
 func TestGaugeVerdict(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		command, summary, found string
 		ran, fix                bool
@@ -1443,6 +1447,7 @@ func TestGaugeTree(t *testing.T) {
 // TestGaugeReadsNothing holds that a gauge whose command prints nothing read nothing in that landing. kiln says so,
 // and writes no reading, so kiln status keeps showing the last reading kiln took, with its landing.
 func TestGaugeReadsNothing(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	t.Cleanup(func() { _ = removeTree(r.trees) })
 	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"]}`})
@@ -1627,6 +1632,7 @@ func TestFixEndSums(t *testing.T) {
 // TestGateLineAfterError holds that a fix's gate whose gated gauge couldn't run is written as failed. Its commands
 // passed, and ran at main, so the line still says so.
 func TestGateLineAfterError(t *testing.T) {
+	t.Parallel()
 	b := gaugedFix(t, "echo fine >a.txt", checkScript)
 	// The fix's monitor reads its check, where countGauge prints a number, and no verdict.
 	b.fix.monitor.finder = checkScript

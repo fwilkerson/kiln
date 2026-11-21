@@ -20,6 +20,7 @@ import (
 // the preset, as a newer kiln would, and edit changes .kiln/, as the developer would. The second run names no preset,
 // so it takes the one .kiln/init.json records.
 func TestInitUpdates(t *testing.T) {
+	t.Parallel()
 	const build = ".kiln/agents/build.md"
 	newCheck := "printf -- '- Run make check.\\n' >build-checks.md"
 	tests := []struct {
@@ -91,6 +92,7 @@ func wantHolds(t *testing.T, got string, holds, lacks []string) {
 // second run writes nothing. Without a record, an edited reviewer merges, and a deleted one stays deleted. An edited
 // schema is written over, since kiln owns it.
 func TestInitAgain(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	var first, again, third strings.Builder
 	if err := r.Init(t.Context(), &first, InitOptions{Preset: "go"}); err != nil {
@@ -150,6 +152,7 @@ func TestOwnInitRecord(t *testing.T) {
 // TestStatusSaysInitBehind holds that kiln status says when .kiln/ at main's tip is behind kiln init's defaults. It
 // says when main lacks kiln init's record, and says nothing while .kiln/ is up to date. A record may name a directory.
 func TestStatusSaysInitBehind(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	// The preset is named through a link, which the record must not keep.
 	link := filepath.Join(t.TempDir(), "link")
@@ -186,6 +189,7 @@ func TestStatusSaysInitBehind(t *testing.T) {
 // TestInitRefusesPreset holds that kiln init refuses a preset it can't use before it writes anything. A usage error
 // is the developer's argument alone, never what .kiln/init.json records.
 func TestInitRefusesPreset(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []refusedInit{
 		{name: "a kiln.json kiln can't read", config: "{"},
 		{name: "a name kiln doesn't know", named: "rust", usage: true},
@@ -212,6 +216,7 @@ func TestInitRefusesPreset(t *testing.T) {
 // TestInitFillsSharedKeys holds that a preset's kiln.json may lack $schema and rounds. kiln init writes each into the
 // project's kiln.json, as a built-in preset holds it, and keeps every other key.
 func TestInitFillsSharedKeys(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	team := teamPreset(t, t.TempDir())
 	shell(t, team, `echo '{"gate": ["make"], "acceptance": "a/{spec}/"}' >kiln.json`)
@@ -279,6 +284,7 @@ func (tt refusedInit) setUp(t *testing.T) (r *Repo, repo, named string) {
 // preset whose files the repository's top holds, every one, and says so. It refuses none, or two, before it writes.
 // It never picks over a preset named or recorded.
 func TestInitPicksPreset(t *testing.T) {
+	t.Parallel()
 	rows := append([]pickRow{
 		{name: "nothing matches", said: "refused: no preset matches the repository, by the files at its top (go: go.mod; "},
 		{name: "a preset matches only when every file is there", files: "uv.lock",

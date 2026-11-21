@@ -109,6 +109,7 @@ func TestDoctorJobWithoutDir(t *testing.T) {
 // TestDoctorAddedConflict holds that kiln doctor reads each file kiln monitor add recorded, for a conflict kiln init
 // left there.
 func TestDoctorAddedConflict(t *testing.T) {
+	t.Parallel()
 	project := doctorProject(t)
 	team := filepath.Join(t.TempDir(), "deps")
 	writeAll(t, team, map[string]string{commandScript: "lib/run\n", "lib/run": "true\n"})
@@ -131,6 +132,7 @@ func TestDoctorAddedConflict(t *testing.T) {
 // TestDoctorMainAndTools holds what kiln doctor finds missing outside .kiln/: main, its kiln.json, claude and the
 // pre-commit hook. It notes where main's kiln.json differs.
 func TestDoctorMainAndTools(t *testing.T) {
+	t.Parallel()
 	project := doctorProject(t)
 	for name, tc := range map[string]doctorCase{
 		"an object's keys reordered, and nothing else": {
@@ -183,6 +185,7 @@ func doctorProject(t *testing.T) string {
 // copy of it, so the rows that change nothing share it.
 func (tc doctorCase) check(project string) func(t *testing.T) {
 	return func(t *testing.T) {
+		t.Parallel()
 		repo := project
 		if tc.change != "" {
 			repo = t.TempDir()
@@ -234,6 +237,7 @@ func withKeys(keys string) string {
 
 // TestDoctorWritesNothing holds that kiln doctor leaves the working tree, and git's directory, as they were.
 func TestDoctorWritesNothing(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	if err := r.Init(t.Context(), &bytes.Buffer{}, InitOptions{Preset: "go"}); err != nil {
 		t.Fatal(err)
@@ -256,6 +260,7 @@ func TestDoctorWritesNothing(t *testing.T) {
 
 // TestTakesDoctor holds that kiln complete doctor offers each spec the working tree holds, by a name a spec may have.
 func TestTakesDoctor(t *testing.T) {
+	t.Parallel()
 	repo := doctorProject(t)
 	shell(t, repo, "touch .kiln/specs/Notes.md .kiln/specs/form.amend.md")
 	r, err := Open(t.Context(), repo, os.Environ())

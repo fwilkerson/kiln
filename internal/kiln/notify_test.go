@@ -16,6 +16,7 @@ import (
 // kiln.json. kiln prints OSC 9 without notify, and in place of a program that fails, hangs or is missing. Neither
 // changes the build's result.
 func TestNotify(t *testing.T) {
+	t.Parallel()
 	const osc = "\x1b]9;kiln: x stopped\a"
 	for name, tc := range map[string]struct {
 		// config is main's kiln.json, or "" for one with no notify.

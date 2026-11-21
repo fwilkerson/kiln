@@ -64,6 +64,7 @@ while :; do (sleep 20 &); done
 // hold Run for the whole grace that the package doc gives a child, 10 s. A run that kills every child takes a fraction
 // of that, however loaded.
 func TestKillForks(t *testing.T) {
+	t.Parallel()
 	const grace = 10 * time.Second
 	cases := []struct {
 		name, first        string
@@ -138,6 +139,7 @@ echo '{"type":"result","is_error":false,"result":"Talked."}'
 // prints more often than its Silence runs to its result, however long it runs. Its Silence is 3 s, and no load
 // stalls a shell nearly that long between two lines.
 func TestTalkingSession(t *testing.T) {
+	t.Parallel()
 	const session = "0b8e6c1e-2f4d-4f6a-9b1c-3d5e7f9a1b2e"
 	dir := t.TempDir()
 	program := filepath.Join(dir, "claude")

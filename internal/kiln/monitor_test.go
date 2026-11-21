@@ -94,6 +94,7 @@ func wantRefused(t *testing.T, got refusals, want []string) {
 // with no monitor.json runs daily. A script kiln runs that git holds without the executable bit is refused. So is a
 // file directly under .kiln/monitors/, since a monitor is a directory.
 func TestMonitorDirs(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	shell(t, repo, `mkdir .kiln && echo '{"gate": ["true"], "acceptance": "uat/{spec}/"}' >.kiln/kiln.json`)
 	writeMonitor(t, repo, "b", map[string]string{"command": "true"})
@@ -205,6 +206,7 @@ func TestStatusNeverRan(t *testing.T) {
 // why it refused that one, and notifies of the refusal once. A run by the refused one's name refuses with the refusal.
 // kiln status and kiln tui list it as refused, with why, and the gauges still read the healthy monitor's.
 func TestMonitorRunRefused(t *testing.T) {
+	t.Parallel()
 	r, repo := scratchRepo(t)
 	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptance": "a/{spec}/", ` +
 		`"notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}`})
@@ -452,6 +454,7 @@ func TestWatchHold(t *testing.T) {
 // TestCheck holds how kiln reads a check: its last line of stdout says whether to fix. A non-zero exit, or a last
 // line that is no such object, couldn't run. kiln then keeps the last line it printed on either stream.
 func TestCheck(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct {
 		command        string
 		ran, fix       bool

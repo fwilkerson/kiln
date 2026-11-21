@@ -229,6 +229,7 @@ exit 0
 // TestVerifyReruns holds when a split build runs its verify session again. A run that ends with no result runs again
 // while the session owes a bugs line, up to auditTries runs. A session that still owes one is asked once more.
 func TestVerifyReruns(t *testing.T) {
+	t.Parallel()
 	first, owed := reason{Why: whyFirst}, reason{Why: whyBugsLine}
 	for name, tc := range map[string]struct {
 		asked bool
