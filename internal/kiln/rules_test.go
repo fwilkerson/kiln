@@ -1316,29 +1316,8 @@ func shell(t *testing.T, dir, script string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// TestGaugeRules holds what kiln.json may name as a gauge. It holds what a command's output reads as, and when a
-// reading crossed its line.
+// TestGaugeRules holds what a gauge's output reads as, and when a reading crossed its line.
 func TestGaugeRules(t *testing.T) {
-	for name, tc := range map[string]struct {
-		gauges  string
-		refused bool
-	}{
-		"a gauge with a min":            {gauges: `[{"name": "a", "command": "echo 1", "min": 0}]`},
-		"two gauges, each with a max":   {gauges: `[{"name": "a", "command": "echo 1", "max": 0}, {"name": "b", "command": "echo 1", "max": 2}]`},
-		"a gauge with neither":          {gauges: `[{"name": "a", "command": "echo 1"}]`, refused: true},
-		"a gauge with both":             {gauges: `[{"name": "a", "command": "echo 1", "min": 0, "max": 1}]`, refused: true},
-		"a gauge with no name":          {gauges: `[{"command": "echo 1", "min": 0}]`, refused: true},
-		"two gauges that share a name":  {gauges: `[{"name": "a", "command": "echo 1", "min": 0}, {"name": "a", "command": "echo 2", "min": 0}]`, refused: true},
-		"a gauge with a key kiln lacks": {gauges: `[{"name": "a", "command": "echo 1", "min": 0, "unit": "%"}]`, refused: true},
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := parseConfig([]byte(`{"gate": ["true"], "rounds": 1, "gauges": ` + tc.gauges + `}`))
-			if (err != nil) != tc.refused {
-				t.Errorf("parseConfig answers %v, want refused %v", err, tc.refused)
-			}
-		})
-	}
-
 	type reading struct {
 		value float64
 		ok    bool
@@ -1365,7 +1344,7 @@ func TestGaugeRules(t *testing.T) {
 	// An interrupt of kiln is not the command's failure, so it reads no unknown.
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, err := (config{}).shell(nil).readGauge(ctx, git.Worktree(t.TempDir()), "sleep 10", ""); err == nil {
+	if _, err := (config{}).shell(nil).readGauge(ctx, gaugeTreeOf(t, "sleep 10"), counted, ""); err == nil {
 		t.Error("an interrupted gauge answers no error")
 	}
 
@@ -1403,14 +1382,24 @@ func TestGaugeVerdict(t *testing.T) {
 		"a command that says nothing": {command: "exit 3", summary: "count: its command failed: exit status 3"},
 		"a command that runs past":    {command: "echo 1; sleep 30", limit: 500 * time.Millisecond, summary: "count: its command ran past kiln.json's timeout of 500ms, so kiln killed it"},
 	} {
-		g := gauge{Name: "count", Command: tc.command, Max: new(0.0)}
 		s := config{Timeout: timeout(tc.limit)}.shell(os.Environ())
-		c, err := s.measured(t.Context(), git.Worktree(t.TempDir()), g, "")
+		c, err := s.measured(t.Context(), gaugeTreeOf(t, tc.command), counted, "")
 		got := fmt.Sprintf("%v %v %q %q", c.ran, c.fix, c.summary, c.found)
 		if want := fmt.Sprintf("%v %v %q %q", tc.ran, tc.fix, tc.summary, tc.found); err != nil || got != want {
 			t.Errorf("%s: got %s, %v; want %s", name, got, err, want)
 		}
 	}
+}
+
+// counted is a monitor count that holds a gauge alone, whose line is a max of 0.
+var counted = monitor{Name: "count", finder: gaugeScript, Max: new(0.0)}
+
+// gaugeTreeOf is a new tree, in which counted's gauge runs command.
+func gaugeTreeOf(t *testing.T, command string) git.Worktree {
+	t.Helper()
+	tree := t.TempDir()
+	writeMonitor(t, tree, string(counted.Name), map[string]string{gaugeScript: "#!/bin/sh\n" + command + "\n"})
+	return git.Worktree(tree)
 }
 
 // TestGaugeTree holds that a gauge which leaves a file git can't remove stops no later reading. Each landing gets a
@@ -1419,9 +1408,9 @@ func TestGaugeTree(t *testing.T) {
 	t.Parallel()
 	r, repo := scratchRepo(t)
 	t.Cleanup(func() { _ = removeTree(r.trees) })
-	kilnJSON := `{"gate": ["true"], "rounds": 1, "gauges": [{"name": "n", "max": 5, "command": "` +
-		leavesReadOnly + `"}]}`
-	shell(t, repo, "mkdir .kiln && echo '"+kilnJSON+"' >.kiln/kiln.json && git add . && git commit --quiet -m start")
+	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "rounds": 1}`})
+	writeMonitor(t, repo, "n", map[string]string{"gauge": leavesReadOnly, "monitor.json": `{"max": 5}`})
+	shell(t, repo, "git add . && git commit --quiet -m start")
 	b := &build{r: r, rec: record{Name: "x", Build: "b-x"}, out: io.Discard}
 	for landing := range 2 {
 		shell(t, repo, fmt.Sprintf("git commit --quiet --allow-empty -m landing-%d", landing))
@@ -1454,9 +1443,9 @@ func TestGaugeTree(t *testing.T) {
 func TestGaugeReadsNothing(t *testing.T) {
 	r, repo := scratchRepo(t)
 	t.Cleanup(func() { _ = removeTree(r.trees) })
-	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "gauges": [{"name": "n", "max": 5, ` +
-		`"command": ".kiln/gauges/n"}]}`, ".kiln/gauges/n": countTxt})
-	shell(t, repo, "chmod +x .kiln/gauges/n && git add . && git commit --quiet -m start")
+	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"]}`})
+	writeMonitor(t, repo, "n", map[string]string{"gauge": countTxt, "monitor.json": `{"max": 5}`})
+	shell(t, repo, "git add . && git commit --quiet -m start")
 	var out strings.Builder
 	start := git.Rev(shell(t, repo, "git rev-parse HEAD"))
 	b := &build{r: r, rec: record{Name: "x", Build: "b-x"}, out: &out, landed: start}

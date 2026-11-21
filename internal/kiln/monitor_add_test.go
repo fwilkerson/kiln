@@ -23,7 +23,7 @@ func TestMonitorAdd(t *testing.T) {
 	team := t.TempDir()
 	writeAll(t, team, map[string]string{"deps/command": "go get -u ./...", "deps/monitor.json": `{"hours": 168}`,
 		"deps/notes/why.md": "Why deps.", "deps/lib/run": "go get -u ./...", "broken/check": "true",
-		"vague/command": "true", "vague/agent.md": "---\neffort: extreme\n---\nFix it.\n"})
+		"watch/gauge": "echo 1", "watch/monitor.json": `{"max": 5}`, "vague/command": "true", "vague/agent.md": "---\neffort: extreme\n---\nFix it.\n"})
 	if err := os.Chmod(filepath.Join(team, "deps/lib/run"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,8 @@ func TestMonitorAdd(t *testing.T) {
 		"a preset, which is no monitor": {source: "go", refused: true, usage: true},
 		"a name kiln ships nothing of": {source: "deps", refused: true, usage: true,
 			says: "or a directory, by a path that starts with . or /, such as ./deps"},
-		"a path to no directory": {source: "./nowhere", refused: true, usage: true},
+		"a path to no directory":  {source: "./nowhere", refused: true, usage: true},
+		"a gauge alone, to watch": {source: team + "/watch", want: []string{"watch/gauge*", "watch/monitor.json"}},
 		"a monitor kiln could not run": {source: team + "/broken", refused: true,
 			says: team + "/broken/ holds no command and no agent.md"},
 		"an agent kiln could not read": {source: team + "/vague", refused: true, says: team + "/vague/agent.md, its effort"},

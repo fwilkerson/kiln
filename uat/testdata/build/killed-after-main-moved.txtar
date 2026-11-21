@@ -44,7 +44,11 @@ exec git worktree list
 ! stdout 'kiln/x'
 
 -- .kiln/kiln.json --
-{"gauges": [{"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD | wc -l", "max": 10}]}
+{}
+-- .kiln/monitors/changed/gauge --
+git diff --name-only "$KILN_BASE" HEAD | wc -l
+-- .kiln/monitors/changed/monitor.json --
+{"max": 10}
 -- .kiln/specs/x.md --
 ### 1. X answers
 

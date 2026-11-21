@@ -235,8 +235,9 @@ func (run *monitorRunning) heldStuck(ctx context.Context, m monitor, h *history,
 }
 
 // check runs m's check, or reads its gauge, at main's tip, and writes its monitor line. A finding starts a fix,
-// unless the monitor is held. h is m's history, and rec its fix's record, if it has one. It answers whether to run m
-// again at once: the fix landed, and the check asked to drain.
+// unless the monitor is held. In a monitor that fixes nothing, it needs the developer, and notifies. h is m's history,
+// and rec its fix's record, if it has one. It answers whether to run m again at once: the fix landed, and the check
+// asked to drain.
 func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec *record) (again bool, err error) {
 	main, found, err := run.checkMain(ctx, m)
 	if err != nil {
@@ -246,12 +247,21 @@ func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec
 	line := entry{Kind: monitorKind, Monitor: m.Name, At: run.r.now(), Main: main, Entry: m.tree,
 		Printed: hashOf(found.printed), Summary: found.summary, Found: foundOf(found), Gauge: found.reading.Gauge,
 		Value: found.reading.Value, gaugeLine: found.reading.gaugeLine, Past: found.past}
-	if line.Found == foundFix && run.held(m, h, rec, line) {
+	switch {
+	case line.Found != foundFix:
+	case run.held(m, h, rec, line):
 		line.Found = foundHeld
+	case !m.fixes():
+		line.Found = outNeedsYou
 	}
 
 	if line.Found != foundFix {
-		return false, run.write(line)
+		err := run.write(line)
+		if err == nil && line.Found == outNeedsYou {
+			run.r.notifyFix(ctx, m.Name, "", run.out)
+		}
+
+		return false, err
 	}
 
 	line.Build = newBuild()

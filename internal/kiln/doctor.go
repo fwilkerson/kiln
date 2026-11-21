@@ -427,14 +427,9 @@ func (c config) scriptRefusals(top string) refusals {
 	return refused
 }
 
-// commands are the commands of c that kiln runs with sh -c: the gate's, writable's, each gauge's and notify's.
+// commands are the commands of c that kiln runs with sh -c: the gate's, writable's and notify's.
 func (c config) commands() []string {
-	commands := slices.Concat(c.Gate, c.Writable, []string{c.Notify})
-	for _, g := range c.Gauges {
-		commands = append(commands, g.Command)
-	}
-
-	return commands
+	return slices.Concat(c.Gate, c.Writable, []string{c.Notify})
 }
 
 // scriptPath is whether word, the first of a command, names a script by its path. It holds a slash, and nothing the

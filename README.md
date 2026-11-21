@@ -190,13 +190,12 @@ osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title 
 ```
 
 **A gauge** can read kiln's own numbers from `kiln ledger`. This one reads the slowest of the last twenty gates
-that passed on a build's work, leaving out each landing's.
-`{"gauges": [{"name": "gate-seconds", "command": ".kiln/gauges/gate-seconds", "max": 300}]}` in `kiln.json` names
-it, as [gauges](docs/reference.md#gauges) shows:
+that passed on a build's work, leaving out each landing's. It is the monitor `.kiln/monitors/gate-seconds/`, whose
+`monitor.json` of `{"max": 300}` is its line, as [gauges](docs/reference.md#gauges) shows:
 
 ```sh
 #!/bin/sh
-# .kiln/gauges/gate-seconds
+# .kiln/monitors/gate-seconds/gauge
 set -eu
 gates=$("$KILN" ledger --kind gate)
 printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seconds) | .[-20:] | max // empty'
@@ -224,10 +223,14 @@ printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seco
 ## Gauges
 
 A gauge is a number you watch across landings, such as test time or a mutation score. kiln reads each after every
-landing. `kiln status` shows the latest reading, and `kiln tui` each landing's. A gauge never blocks a landing.
+landing. `kiln status` shows the latest reading, and `kiln tui` each landing's. A gauge never blocks a landing. It
+lives in a monitor's directory, and a monitor that holds a gauge alone only watches it: once a reading crosses its
+line, `kiln monitor run` tells you, and fixes nothing.
 
-```json
-{"gauges": [{"name": "test-seconds", "command": ".kiln/gauges/test-seconds", "max": 60}]}
+```text
+.kiln/monitors/test-seconds/
+  gauge          prints the tests' time, in seconds, as its last line
+  monitor.json   {"max": 60}
 ```
 
 ## Monitors

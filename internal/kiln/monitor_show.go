@@ -16,7 +16,8 @@ import (
 type standing struct {
 	// result is what its last run came to, such as healthy, or held: stopped. It is "" for a monitor that never ran.
 	result string
-	// outcome is the outcome of the fix the result names, or "". fixed is whether the result names a fix.
+	// outcome is the outcome of the fix the result names, or needs you where the monitor fixes nothing, or "". fixed
+	// is whether the result names a fix.
 	outcome string
 	fixed   bool
 	// rec is the book's record of the fix while the book says where it stands, or nil. That is while its accepted
@@ -44,14 +45,11 @@ func (h *history) standing(m monitor, rec *record) standing {
 	switch {
 	case e.Past:
 		s.result, s.summary = e.Found, e.Summary
-	case e.Found == foundHeld && h.lastFix.Kind != "":
-		s.outcome, s.fixed = h.result(h.lastFix), true
-		s.result = foundHeld + ": " + fixResult(s.outcome)
-		s.summary, s.report = h.fixSummary(h.lastFix), h.outcomes[h.lastFix.Build].Report
-	case e.Found == foundFix:
-		s.outcome, s.fixed = h.result(e), true
-		s.result = fixResult(s.outcome)
-		s.summary, s.report = h.fixSummary(e), h.outcomes[e.Build].Report
+	case e.Found == foundHeld && h.lastFinding.Kind != "":
+		s.found(h, h.lastFinding)
+		s.result = foundHeld + ": " + s.result
+	case e.Found == foundFix || e.Found == outNeedsYou:
+		s.found(h, e)
 	default:
 		s.result, s.summary = e.Found, e.Summary
 	}
@@ -72,6 +70,14 @@ func (h *history) standing(m monitor, rec *record) standing {
 	}
 
 	return s
+}
+
+// found sets s to the result of the monitor line e: its fix's outcome, or needs you without a fix. h is the
+// monitor's history.
+func (s *standing) found(h *history, e entry) {
+	s.outcome, s.fixed = h.result(e), e.Found == foundFix
+	s.result = fixResult(s.outcome)
+	s.summary, s.report = h.fixSummary(e), h.outcomes[e.Build].Report
 }
 
 // fixLanding reports whether r, which may be nil, is a monitor's fix whose accepted landing is queued or building.
@@ -190,7 +196,11 @@ func (s standing) lines(name Spec, rec *record, tree git.Worktree) []string {
 // one, and tree its worktree. It says where the fix stands now, such as an accepted landing that stopped, which the
 // ledger's outcome can't.
 func (s standing) step(name Spec, rec *record, tree git.Worktree) string {
-	if rec != nil && rec.Monitor {
+	switch {
+	case s.outcome == outNeedsYou && !s.fixed:
+		// A monitor that fixes nothing has no report: its summary is its gauge's reading.
+		return fmt.Sprintf("bring the reading back to its line, then run kiln monitor run %s", name)
+	case rec != nil && rec.Monitor:
 		return fixStep(*rec, tree)
 	}
 

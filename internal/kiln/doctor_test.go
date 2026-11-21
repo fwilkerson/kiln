@@ -19,11 +19,10 @@ func TestDoctor(t *testing.T) {
 	for name, tc := range map[string]doctorCase{
 		"kiln init's files": {want: []string{"found no problem"}},
 		"each refusal of kiln.json at once": {
-			change: withKeys(`"workflow": "both", "gauges": [{"name": "g", "command": "true"}],`) +
+			change: withKeys(`"workflow": "both",`) +
 				` && sed -i '' 's|"proxy.golang.org"|"https://x.org/"|' .kiln/kiln.json`,
 			want: []string{`names the workflow "both": name "split"`, `names the host "https://x.org/": name a bare host`,
-				`names a gauge "g" that names both min and max, or neither`,
-				"note: .kiln/kiln.json differs from main's in gauges, hosts, workflow: kiln acts on main's"},
+				"note: .kiln/kiln.json differs from main's in hosts, workflow: kiln acts on main's"},
 		},
 		"kiln.json that is no JSON": {change: "echo '{' >.kiln/kiln.json", want: []string{"fix its JSON"}},
 		"kiln.json the working tree lacks": {change: "rm .kiln/kiln.json",

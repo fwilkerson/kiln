@@ -1,8 +1,8 @@
 # A landing gets a reading of each gauge.
 
-# Given: kiln.json names four gauges, and a spec is queued. One gauge's command prints a number, and one prints a
-# number on the wrong side of its line. One counts the files changed since the commit kiln gives it as the base, and
-# one fails.
+# Given: four monitors each hold a gauge, and a spec is queued. One gauge prints a number, and one prints a number
+# on the wrong side of its line. One counts the files changed since the commit kiln gives it as the base, and one
+# fails.
 # main already holds files the build leaves alone, such as old.txt, so a count of every file would be more than 2.
 exec kiln queue x
 
@@ -41,12 +41,23 @@ stdout '^gauge broken: unknown, line ≥ 0, at x''s landing'
 -- old.txt --
 already on main
 -- .kiln/kiln.json --
-{"gate": ["test -e ready"], "gauges": [
- {"name": "size", "command": "echo 3", "max": 5},
- {"name": "score", "command": "echo mutants: 10; echo 70", "min": 80},
- {"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD | wc -l", "max": 10},
- {"name": "broken", "command": "echo 0; exit 3", "min": 0}
-]}
+{"gate": ["test -e ready"]}
+-- .kiln/monitors/size/gauge --
+echo 3
+-- .kiln/monitors/size/monitor.json --
+{"max": 5}
+-- .kiln/monitors/score/gauge --
+echo mutants: 10; echo 70
+-- .kiln/monitors/score/monitor.json --
+{"min": 80}
+-- .kiln/monitors/changed/gauge --
+git diff --name-only "$KILN_BASE" HEAD | wc -l
+-- .kiln/monitors/changed/monitor.json --
+{"max": 10}
+-- .kiln/monitors/broken/gauge --
+echo 0; exit 3
+-- .kiln/monitors/broken/monitor.json --
+{"min": 0}
 -- .kiln/specs/x.md --
 ### 1. X is ready
 

@@ -10,25 +10,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// gauge is a command kiln.json names, or a monitor's gauge, which prints a number. Its line is where that number
-// should stay.
-type gauge struct {
-	// Name names the gauge. No two gauges share one.
-	Name string `json:"name"`
-	// Command runs with sh -c, at the top of a worktree at the commit it reads. That is a landing, main's tip, or a
-	// fix's commit. Its last line of stdout is its reading.
-	Command string `json:"command"`
-	gaugeLine
-}
-
-// gaugeLine is a gauge's line. A reading below Min, or above Max, crossed it. kiln.json sets exactly one of them.
+// gaugeLine is a gauge's line. A reading below Min, or above Max, crossed it. A monitor.json beside a gauge sets
+// exactly one of them.
 type gaugeLine struct {
 	// Min is the line a reading below crosses.
 	Min *float64 `json:"min,omitempty"`
@@ -125,18 +114,18 @@ func (b *build) readEach(ctx context.Context) error {
 		return ctx.Err()
 	}
 
-	for _, g := range gauges {
+	for _, m := range gauges {
 		// A landing kiln could not check out reads unknown on each gauge, never as missing.
 		rd := gaugeRead{why: fmt.Sprintf("kiln could not check out the landing: %v", treeErr)}
 		if treeErr == nil {
-			if rd, err = c.shell(b.r.env).readGauge(ctx, tree, g.Command, b.onto); err != nil {
+			if rd, err = c.shell(b.r.env).readGauge(ctx, tree, m, b.onto); err != nil {
 				return err
 			}
 		}
 
 		if rd.nothing {
 			// No reading is written, so the last one kiln took still stands, with its landing.
-			b.say("gauge %s: nothing to read in this landing, as %s", g.Name, rd.why)
+			b.say("gauge %s: nothing to read in this landing, as %s", m.Name, rd.why)
 			continue
 		}
 
@@ -145,7 +134,8 @@ func (b *build) readEach(ctx context.Context) error {
 			why = ", since " + rd.why
 		}
 
-		e := entry{Kind: gaugeKind, Gauge: g.Name, Landed: b.landed, Value: rd.value, gaugeLine: g.gaugeLine}
+		e := m.reading(rd.value)
+		e.Kind, e.Landed = gaugeKind, b.landed
 		b.record(e)
 		b.say("gauge %s%s", shownReading(e), why)
 	}
@@ -184,14 +174,14 @@ func removeTree(dir string) error {
 	return os.RemoveAll(dir)
 }
 
-// gauges are kiln.json at main's tip, and its gauges: each kiln.json names, then each monitor's, named for its
-// monitor. A monitor kiln refuses has no gauge here.
-func (r *Repo) gauges(ctx context.Context) (config, []gauge, error) {
+// gauges are kiln.json at main's tip, and the monitors there that hold a gauge, by name. A monitor kiln refuses is
+// left out.
+func (r *Repo) gauges(ctx context.Context) (config, []monitor, error) {
 	_, c, reads, err := r.mainMonitors(ctx)
-	gauges := slices.Clone(c.Gauges)
+	var gauges []monitor
 	for _, m := range runnable(reads) {
 		if m.finder == gaugeScript {
-			gauges = append(gauges, m.gauge())
+			gauges = append(gauges, m)
 		}
 	}
 
@@ -216,11 +206,10 @@ type gaugeRead struct {
 	both string
 }
 
-// readGauge runs command in tree, with base in $KILN_BASE, and answers what it read. It answers an error only once
-// kiln is interrupted. A command that ran past s's limit failed, and its reading says so.
-func (s projectShell) readGauge(ctx context.Context, tree git.Worktree, command string,
-	base git.Rev) (gaugeRead, error) {
-	out, err := s.with(baseVar+"="+string(base)).run(ctx, tree, command)
+// readGauge runs m's gauge in tree, with base in $KILN_BASE, and answers what it read. It answers an error only once
+// kiln is interrupted. A gauge that ran past s's limit failed, and its reading says so.
+func (s projectShell) readGauge(ctx context.Context, tree git.Worktree, m monitor, base git.Rev) (gaugeRead, error) {
+	out, err := s.with(baseVar+"="+string(base)).run(ctx, tree, m.path(gaugeScript))
 	if ctx.Err() != nil {
 		return gaugeRead{}, ctx.Err()
 	}
@@ -309,10 +298,10 @@ func (r *Repo) gaugeStatus(ctx context.Context, out io.Writer) error {
 		}
 	}
 
-	for _, g := range gauges {
-		rd, ok := latest[g.Name]
+	for _, m := range gauges {
+		rd, ok := latest[string(m.Name)]
 		if !ok {
-			fmt.Fprintf(out, "gauge %s: no reading yet, line %s\n", g.Name, g.text())
+			fmt.Fprintf(out, "gauge %s: no reading yet, line %s\n", m.Name, m.text())
 			continue
 		}
 

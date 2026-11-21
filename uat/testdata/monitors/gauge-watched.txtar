@@ -1,0 +1,66 @@
+# A monitor that holds a gauge alone needs the developer once its reading crosses the line, and starts no fix.
+
+# Given: a monitor that holds a gauge and its line, but no command and no agent.md, and a main on which the gauge
+# reads past its line. kiln.json names a notify program that keeps each notice.
+exec git rev-parse main
+cp stdout $WORK/_given/main-before
+
+# When: kiln monitor run runs,
+env KILN_NOW=2026-11-14T10:00:00Z
+exec kiln monitor run
+stdout '^score: needs you: score: 70, line ≥ 80, crossed$'
+
+# then no fix starts, and main is unchanged.
+! exists .claude-calls
+! exec git rev-parse --verify --quiet kiln/score
+exec git rev-parse main
+cmp stdout $WORK/_given/main-before
+
+# kiln status shows the monitor needs the developer, with its reading, and what to do next.
+exec kiln status
+stdout '^score: needs you, last ran '
+stdout '^  score: 70, line ≥ 80, crossed$'
+stdout '^  next: bring the reading back to its line, then run kiln monitor run score$'
+
+# The developer is notified once, with the reading.
+grep -count=1 '"kind":"monitor"' .git/notices
+grep '^\{"kind":"monitor","name":"score","state":"needs you","summary":"score: 70, line ≥ 80, crossed","next":"bring the reading back to its line, then run kiln monitor run score",' .git/notices
+! grep '"commit"' .git/notices
+
+# The ledger's monitor line says needs you, with the reading, and names no fix.
+exec kiln ledger --kind monitor
+stdout '"found":"needs you","build":null,"summary":"score: 70, line ≥ 80, crossed","gauge":"score","value":70,"crossed":true'
+
+# When: it runs again an hour later, and the gauge reads the same,
+env KILN_NOW=2026-11-14T11:00:00Z
+exec kiln monitor run
+
+# Then: the monitor is held, and the developer is not notified again.
+stdout '^score: held'
+exec kiln status
+stdout '^score: held: needs you, last ran '
+grep -count=1 '"kind":"monitor"' .git/notices
+
+# When: once the gauge reads another number past its line,
+cp $WORK/_given/score-2 score.txt
+exec git add score.txt
+exec git commit -q -m 'score falls'
+env KILN_NOW=2026-11-14T12:00:00Z
+exec kiln monitor run
+
+# Then: the developer is notified again, and still no fix starts.
+grep -count=2 '"kind":"monitor"' .git/notices
+grep '"summary":"score: 60, line ≥ 80, crossed"' .git/notices
+! exists .claude-calls
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}
+-- .kiln/monitors/score/gauge --
+cat score.txt
+-- .kiln/monitors/score/monitor.json --
+{"hours": 1, "min": 80}
+-- score.txt --
+70
+-- _given/score-2 --
+60
+-- _given/main-before --

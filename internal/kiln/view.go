@@ -226,14 +226,14 @@ var fixStates = map[string]tui.State{outLanded: tui.Landed, outStopped: tui.Stop
 	outUnchanged: tui.Unchanged, outRejected: tui.Rejected, outDropped: tui.CutShort, "": tui.Running}
 
 // state is where the monitor of s stands, as the view words it. It stands as its last fix ended, as its check found,
-// or as never run. A held monitor stands where the fix that holds it ended. An accepted landing, or a fix whose kiln
-// is gone, stands as the book holds it.
+// or as never run. A held monitor stands where the finding that holds it left it: its fix's outcome, or needs you. An
+// accepted landing, or a fix whose kiln is gone, stands as the book holds it.
 func (s standing) state() tui.State {
 	if s.rec != nil {
 		return stateOf(s.rec)
 	}
 
-	if s.fixed {
+	if s.fixed || s.outcome != "" {
 		return fixStates[s.outcome]
 	}
 

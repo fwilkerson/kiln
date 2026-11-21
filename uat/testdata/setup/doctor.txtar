@@ -1,24 +1,24 @@
 # kiln doctor prints each problem in the project's setup at once, each with its fix, and fails until none is left.
 
-# Given: a project on main with no pre-commit hook. kiln.json names a host with a scheme, and a gauge whose script the
-# working tree lacks. Spec x's acceptance test has no Then.
+# Given: a project on main with no pre-commit hook. kiln.json names a host with a scheme, and a monitor names a
+# gauge's line, but its gauge's script the working tree lacks. Spec x's acceptance test has no Then.
 
 # When: the developer runs kiln doctor on x,
 ! exec kiln doctor x
 
 # then it prints each problem on a line of its own, with its fix, and exits 1, naming how many it found.
 stdout '^\.kiln/kiln\.json names the host "https://proxy\.golang\.org/": name a bare host, such as "proxy\.golang\.org", or "\*\.example\.org"$'
-stdout '^\.kiln/kiln\.json runs \.kiln/gauges/size, which the working tree lacks: write it, or change the command$'
+stdout '^\.kiln/monitors/size/ names min or max, a gauge''s line, but holds no gauge: drop min and max, or add a gauge$'
+stdout '^\.kiln/monitors/size/ holds no command and no agent\.md, so it fixes nothing: add one, or keep a gauge alone, with its line in monitor\.json, for kiln to watch$'
 stdout '^\.kiln/specs/x\.md leaves /shape''s template: its acceptance test 1 holds no Then, after the clauses before it: write it as - \*\*Then\*\*: on a line of its own$'
 stdout '^/.*/\.git/hooks/pre-commit is missing, so no commit to main runs the gate: run kiln init, which installs it, or names the line to add to your own hook$'
-stderr '^kiln doctor: found 4 problems$'
+stderr '^kiln doctor: found 5 problems$'
 ! stdout 'found no problem'
 
 # When: the developer fixes each in the working tree, as its line says, and runs kiln doctor on x again,
 exec sh -c 'sed -i "" "s|https://proxy.golang.org/|proxy.golang.org|" .kiln/kiln.json'
-mkdir .kiln/gauges
-cp _given/size .kiln/gauges/size
-chmod 755 .kiln/gauges/size
+cp _given/size .kiln/monitors/size/gauge
+chmod 755 .kiln/monitors/size/gauge
 exec perl -pi -e 's/^(- \*\*When\*\*: X is called\.)$/$1\n- **Then**: it answers 42./' .kiln/specs/x.md
 exec kiln init
 # kiln init, with no record of the defaults it last wrote, leaves each agent in conflict with its new default. The
@@ -32,18 +32,21 @@ stdout '^note: \.kiln/kiln\.json differs from main''s in \$schema, hosts: kiln a
 stdout '^found no problem$'
 ! stderr .
 
-# Once the developer commits it, the note is gone.
+# Once the developer commits it, the note on kiln.json is gone. The note that no launchd job runs the monitors stays,
+# since the project now holds one.
 exec git add -A
 exec git commit --quiet --no-verify -m 'chore: fix the setup'
 exec kiln doctor
-! stdout 'note:'
+! stdout 'note: \.kiln/kiln\.json'
+stdout '^note: \.kiln/monitors/ holds monitors, but no launchd job runs them'
 stdout '^found no problem$'
 
 -- .kiln/kiln.json --
 {
-  "hosts": ["https://proxy.golang.org/"],
-  "gauges": [{"name": "size", "command": ".kiln/gauges/size", "max": 100}]
+  "hosts": ["https://proxy.golang.org/"]
 }
+-- .kiln/monitors/size/monitor.json --
+{"max": 100}
 -- .kiln/specs/x.md --
 ### 1. X answers
 

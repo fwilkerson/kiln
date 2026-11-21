@@ -16,7 +16,11 @@ screen '╭ gauges ─+╮$'
 screen '│✓ count ≤ 5  a 1 · b 2 +│$'
 
 -- .kiln/kiln.json --
-{"gate": ["test -e ready"], "gauges": [{"name": "count", "command": "cat count", "max": 5}]}
+{"gate": ["test -e ready"]}
+-- .kiln/monitors/count/gauge --
+cat count
+-- .kiln/monitors/count/monitor.json --
+{"max": 5}
 -- .kiln/specs/a.md --
 ### 1. A is ready
 

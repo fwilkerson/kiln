@@ -46,7 +46,10 @@ func TestMonitorConfig(t *testing.T) {
 		"a gauge with no line":         {files: "gauge agent.md", refused: []string{"holds a gauge, but its monitor.json names both min and max, or neither"}},
 		"a gauge with both sides":      {files: "gauge agent.md", settings: `{"min": 1, "max": 2}`, refused: []string{"holds a gauge, but its monitor.json names both min and max, or neither"}},
 		"a line with no gauge":         {files: "check agent.md", settings: `{"max": 0}`, refused: []string{"names min or max, a gauge's line, but holds no gauge"}},
-		"a gauge kiln.json names too":  {name: "health", files: "gauge agent.md", settings: `{"min": 10}`, refused: []string{"holds a gauge, and .kiln/kiln.json names a gauge health too: rename one"}},
+		"a gauge alone":                {files: "gauge monitor.json", settings: `{"hours": 1, "max": 0}`},
+		"a gauge alone, no tests":      {files: "gauge", settings: `{"max": 0}`, acceptance: `[]`},
+		"a gauge alone with fix keys":  {files: "gauge", settings: `{"max": 0, "tests": true, "gates": false, "accept": false}`, refused: []string{"names accept in its monitor.json, a key that steers a fix, but holds no command and no agent.md to fix with: drop accept, or add a command or an agent.md", "names gates", "names tests"}},
+		"a monitor.json alone":         {files: "monitor.json", settings: `{"hours": 1}`, refused: []string{"holds no command and no agent.md, so it fixes nothing: add one, or keep a gauge alone"}},
 		"tests kiln could not guard":   {files: "command", acceptance: `"{spec}_test/"`, refused: []string{"may not write the tests"}},
 		"tests the monitor may write":  {files: "command", settings: `{"tests": true}`, acceptance: `"{spec}_test/"`},
 		"tests under no path to guard": {files: "command", acceptance: `[]`, refused: []string{"may not write the tests"}},
@@ -55,8 +58,7 @@ func TestMonitorConfig(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			acceptance := cmpOr(tc.acceptance, `"acceptance/{spec}/"`)
-			c, err := parseConfig([]byte(`{"gate": ["true"], "rounds": 1, "acceptance": ` + acceptance +
-				`, "gauges": [{"name": "health", "command": "true", "min": 10}]}`))
+			c, err := parseConfig([]byte(`{"gate": ["true"], "rounds": 1, "acceptance": ` + acceptance + `}`))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -227,7 +229,7 @@ func TestMonitorRunRefused(t *testing.T) {
 	_, gauges, err := r.gauges(t.Context())
 	var names []string
 	for _, g := range gauges {
-		names = append(names, g.Name)
+		names = append(names, string(g.Name))
 	}
 
 	if !claim.Holds(err == nil, slices.Equal(names, []string{"good"})) {
@@ -346,12 +348,14 @@ func TestStuck(t *testing.T) {
 }
 
 // TestHold holds what releases a monitor its last fix holds. That is a change to main's tip, its entry, or what its
-// check or gauge printed. The fix's outcome and the monitor's check or gauge say which.
+// check or gauge printed. The fix's outcome and the monitor's check or gauge say which. A monitor that fixes nothing is
+// held by its last reading that needed the developer.
 func TestHold(t *testing.T) {
 	gated := monitor{Name: "m", finder: checkScript, command: true}
 	outside := monitor{Name: "m", finder: checkScript, agent: true, Gates: new(false)}
 	unchecked := monitor{Name: "m", agent: true}
 	gauged := monitor{Name: "m", finder: gaugeScript, agent: true}
+	watching := monitor{Name: "m", finder: gaugeScript}
 	for name, tc := range map[string]struct {
 		m                    monitor
 		outcome              string
@@ -384,10 +388,17 @@ func TestHold(t *testing.T) {
 		"landed, its gauge's entry changed":  {m: gauged, outcome: outLanded, main: true, entry: true},
 		"unchanged, its gauge the same":      {m: gauged, outcome: outUnchanged, main: true, held: true},
 		"asked, its gauge the same":          {m: gauged, outcome: outNeedsYou, main: true, held: true},
+		"watched, its gauge the same":        {m: watching, main: true, held: true},
+		"watched, its gauge printed another": {m: watching, main: true, printed: true},
+		"watched, its entry changed":         {m: watching, entry: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			was := entry{Kind: monitorKind, Monitor: "m", Found: foundFix, Build: "b", Main: "a", Entry: "e",
 				Printed: "p"}
+			if !tc.m.fixes() {
+				was.Found, was.Build = outNeedsYou, ""
+			}
+
 			now := entry{Kind: monitorKind, Monitor: "m", Main: "a", Entry: "e", Printed: "p"}
 			for _, change := range []struct {
 				changed bool

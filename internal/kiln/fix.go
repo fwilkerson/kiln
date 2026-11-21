@@ -766,9 +766,9 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 }
 
 // gatedGauge adds the reading of a fix's gauge, over what the fix changed, to the gate's verdict v. The gate fails
-// while the reading crosses the gauge's line, or its command fails. A reading of no number never crossed. The gauge's
-// line is its monitor's at main's tip, where the monitor may hold the gauge no longer. Its command runs as kiln.json
-// there says. A command that ran past kiln.json's timeout stops the fix, as the gate's own commands do.
+// while the reading crosses the gauge's line, or the gauge fails. A reading of no number never crossed. The gauge and
+// its line are its monitor's at main's tip, where the monitor may hold the gauge no longer. It runs as kiln.json there
+// says. A command that ran past kiln.json's timeout stops the fix, as the gate's own commands do.
 func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdict, error) {
 	main, c, reads, err := b.r.mainMonitors(ctx)
 	if err != nil {
@@ -794,28 +794,28 @@ func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdi
 		return v, err
 	}
 
-	g := m.gauge()
-	rd, err := c.shell(b.r.env).readGauge(ctx, tree, g.Command, base)
+	rd, err := c.shell(b.r.env).readGauge(ctx, tree, m, base)
 	switch {
 	case err != nil:
 		return v, err
 	case rd.past != nil:
-		return v, fmt.Errorf("the monitor's gauge %s: its command %w", g.Name, rd.past)
+		return v, fmt.Errorf("the monitor's gauge %s: its command %w", m.Name, rd.past)
 	}
 
-	e := entry{Gauge: g.Name, Value: rd.value, gaugeLine: g.gaugeLine}
+	command := m.path(gaugeScript)
 	var report string
 	switch {
 	case rd.failed:
-		report = fmt.Sprintf(gaugeFailed, g.Name, g.Command, lastLines(rd.both, 10))
-	case !g.crossed(rd.value):
+		report = fmt.Sprintf(gaugeFailed, m.Name, command, lastLines(rd.both, 10))
+	case !m.crossed(rd.value):
 		return v, nil
 	default:
-		report = strings.TrimSpace(fmt.Sprintf(gaugeCrossed, g.Name, shownReading(e)) + "\n\n" + rd.found)
+		report = strings.TrimSpace(fmt.Sprintf(gaugeCrossed, m.Name, shownReading(m.reading(rd.value))) + "\n\n" +
+			rd.found)
 	}
 
 	v.passed = false
 	v.report = strings.TrimSpace(v.report + "\n\n" + report)
-	v.failing = append(v.failing, "`"+g.Command+"`")
+	v.failing = append(v.failing, "`"+command+"`")
 	return v, nil
 }

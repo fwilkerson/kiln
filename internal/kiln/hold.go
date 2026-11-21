@@ -6,8 +6,9 @@ import (
 
 // history is a monitor's runs, as the ledger holds them.
 type history struct {
-	// last is its last monitor line, and lastFix the last that started a fix. Each is the zero entry while none is.
-	last, lastFix entry
+	// last is its last monitor line. lastFinding is the last that started a fix, or, where the monitor fixes nothing,
+	// needed the developer. Each is the zero entry while none is.
+	last, lastFinding entry
 	// outcomes holds the last outcome line of each of its fixes' builds.
 	outcomes map[string]entry
 	// running holds the start line of each of its fixes' session runs that has no end line yet, by build.
@@ -34,9 +35,12 @@ func histories(entries []entry) map[Spec]*history {
 			h := of(e.Monitor)
 			h.last = e
 			h.stuck = stuckAfter(h.stuck, e)
-			if e.Found == foundFix {
-				h.lastFix = e
+			switch e.Found {
+			case foundFix:
+				h.lastFinding = e
 				fixes[e.Build] = e.Monitor
+			case outNeedsYou:
+				h.lastFinding = e
 			}
 		case e.Kind == outcomeKind && fixes[e.Build] != "":
 			of(fixes[e.Build]).outcomes[e.Build] = e
@@ -54,7 +58,7 @@ func histories(entries []entry) map[Spec]*history {
 }
 
 // result is what the run of the monitor line e came to: what it found, or its fix's outcome. A fix with no outcome
-// line yet is building, or was cut short.
+// line yet is building, or was cut short. A monitor that fixes nothing found needs you where its gauge crossed.
 func (h *history) result(e entry) string {
 	if e.Found != foundFix {
 		return e.Found
@@ -118,14 +122,15 @@ func (h *history) next(m monitor) time.Time {
 	return h.last.At.Add(m.interval() - slack)
 }
 
-// holds says what keeps m from starting a fix, run as the monitor line now says. That is the outcome of its last fix.
-// It answers "" when nothing holds it. A change since that fix started releases it, as holding says.
+// holds says what keeps m from acting on a finding, run as the monitor line now says. Acting is starting a fix, or,
+// in a monitor that fixes nothing, needing the developer. What holds m is the result of its last finding. It answers
+// "" when nothing holds it. A change since that finding releases it, as holding says.
 func (h *history) holds(m monitor, now entry) string {
-	if h == nil || h.lastFix.Kind == "" {
+	if h == nil || h.lastFinding.Kind == "" {
 		return ""
 	}
 
-	was := h.lastFix
+	was := h.lastFinding
 	outcome := h.result(was)
 	held := holding[outcome]
 	c := change{main: was.Main != now.Main, dir: was.Entry != now.Entry, printed: was.Printed != now.Printed}
@@ -136,7 +141,7 @@ func (h *history) holds(m monitor, now entry) string {
 	return outcome
 }
 
-// change is what changed since a monitor's last fix started: main's tip, its directory, or what it printed.
+// change is what changed since a monitor's last finding: main's tip, its directory, or what it printed.
 type change struct {
 	main, dir, printed bool
 }
@@ -146,11 +151,12 @@ func (c change) finding() bool {
 	return !c.dir && !c.printed
 }
 
-// holding says, by the outcome of a monitor's last fix, whether that fix holds the monitor after c.
+// holding says, by the result of a monitor's last finding, whether that finding holds the monitor after c.
 var holding = map[string]func(m monitor, c change) bool{
 	outStopped:  stillStopped,
 	outRejected: stillStopped,
-	// An hourly monitor that finds the same errors asks once. With no finding, main's tip is all that can change.
+	// An hourly monitor that finds the same errors asks once, as does one that fixes nothing and reads the same. With
+	// no finding, main's tip is all that can change.
 	outNeedsYou: func(m monitor, c change) bool {
 		if !m.finds() {
 			return c.finding() && !c.main

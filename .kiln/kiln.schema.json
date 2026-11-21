@@ -38,33 +38,6 @@
       "type": "object",
       "additionalProperties": {}
     },
-    "gauges": {
-      "description": "Gauges are read after each landing, and never block one.",
-      "type": "array",
-      "items": {
-        "description": "gauge is a command kiln.json names, or a monitor's gauge, which prints a number. Its line is where that number should stay.",
-        "type": "object",
-        "properties": {
-          "name": {
-            "description": "Name names the gauge. No two gauges share one.",
-            "type": "string"
-          },
-          "command": {
-            "description": "Command runs with sh -c, at the top of a worktree at the commit it reads. That is a landing, main's tip, or a fix's commit. Its last line of stdout is its reading.",
-            "type": "string"
-          },
-          "min": {
-            "description": "Min is the line a reading below crosses.",
-            "type": "number"
-          },
-          "max": {
-            "description": "Max is the line a reading above crosses.",
-            "type": "number"
-          }
-        },
-        "additionalProperties": false
-      }
-    },
     "workflow": {
       "description": "Workflow is \"split\", or \"\" for build then audit. Like Acceptance and Harness, kiln reads it at the commit the build was queued at.",
       "type": "string"

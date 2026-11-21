@@ -45,11 +45,13 @@ func TestConfigWords(t *testing.T) {
 			said: `.kiln/kiln.json holds "rouns", a key kiln does not read: name it "rounds"`},
 		"a key in other letters": {config: `{"Gate": ["true"]}`,
 			said: `.kiln/kiln.json holds "Gate", a key kiln does not read: name it "gate"`},
-		"a gauge's key misspelled": {config: `{"gate": ["true"], "gauges": [{"name": "g", "comand": "x", "max": 1}]}`,
-			said: `.kiln/kiln.json holds "comand" in gauges/0, a key kiln does not read: name it "command"`},
+		"a key that moved to a monitor": {config: `{"gate": ["true"], "gauges": [{"name": "g", "max": 1}]}`,
+			said: `.kiln/kiln.json holds "gauges", a key kiln no longer reads: each gauge is a monitor now, ` +
+				`.kiln/monitors/<name>/ with its gauge script, and its line in monitor.json: move each there, ` +
+				`as kiln help gauges shows`},
 		"a key near none": {config: `{"gate": ["true"], "colour": "red"}`,
 			said: `.kiln/kiln.json holds "colour", a key kiln does not read: remove it, or name one kiln reads: ` +
-				`$schema, gate, rounds, hosts, writable, mcp, gauges, workflow, acceptance, harness, reaudit, ` +
+				`$schema, gate, rounds, hosts, writable, mcp, workflow, acceptance, harness, reaudit, ` +
 				`notify, timeout`},
 		"a trailing comma": {config: "{\n  \"gate\": [\"true\"],\n}",
 			said: ".kiln/kiln.json is no JSON at line 2, column 19: a comma with nothing after it: fix its JSON there"},

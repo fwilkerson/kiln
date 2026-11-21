@@ -36,8 +36,6 @@ type config struct {
 	// MCP holds the only MCP servers a session reaches, by name, each as Claude Code's mcpServers holds one. They run
 	// outside the sandbox.
 	MCP map[string]json.RawMessage `json:"mcp,omitempty"`
-	// Gauges are read after each landing, and never block one.
-	Gauges []gauge `json:"gauges,omitempty"`
 	// Workflow is "split", or "" for build then audit. Like Acceptance and Harness, kiln reads it at the commit the
 	// build was queued at.
 	Workflow string `json:"workflow,omitempty"`
@@ -222,6 +220,8 @@ func parseConfig(raw []byte) (c config, err error) {
 var movedKeys = map[string]string{
 	"monitors": "each monitor is a directory of its own now, " + monitorsDir + "/<name>/: move each there, or add one " +
 		"with kiln monitor add",
+	"gauges": "each gauge is a monitor now, " + monitorsDir + "/<name>/ with its gauge script, and its line in " +
+		"monitor.json: move each there, as kiln help gauges shows",
 }
 
 // configRefusals word err, json/v2's error for raw, as kiln's own refusal. A key kiln does not read is named with the
@@ -272,19 +272,14 @@ func trailingComma(text []byte) bool {
 }
 
 // unknownKey refuses the key sem names, which kiln does not read. It says where a key kiln once read went. Otherwise it
-// names the key kiln reads there that is nearest in spelling.
+// names the key kiln reads that is nearest in spelling. kiln.json nests no object whose keys kiln reads.
 func unknownKey(sem *jsonv2.SemanticError) refusal {
-	key, parent := sem.JSONPointer.LastToken(), strings.TrimPrefix(string(sem.JSONPointer.Parent()), "/")
-	if went, ok := movedKeys[key]; ok && parent == "" {
+	key := sem.JSONPointer.LastToken()
+	if went, ok := movedKeys[key]; ok {
 		return refusal{fmt.Sprintf("%s holds %q, a key kiln no longer reads", configFile, key), went}
 	}
 
-	where := ""
-	if parent != "" {
-		where = " in " + parent
-	}
-
-	problem := fmt.Sprintf("%s holds %q%s, a key kiln does not read", configFile, key, where)
+	problem := fmt.Sprintf("%s holds %q, a key kiln does not read", configFile, key)
 	keys := jsonKeys(sem.GoType)
 	if near := nearest(key, keys); near != "" {
 		return refusal{problem, fmt.Sprintf("name it %q", near)}
@@ -353,18 +348,14 @@ var kindWords = map[jsontext.Kind]string{jsontext.KindNull: "null", jsontext.Kin
 
 // scalarWords name the JSON value each kind of Go value reads from, with an example.
 var scalarWords = map[reflect.Kind]string{reflect.Int: "a whole number, such as 3",
-	reflect.Float64: "a number, such as 0.5", reflect.String: `a string, such as "x"`,
-	reflect.Bool: "true or false", reflect.Struct: "an object", reflect.Map: "an object"}
+	reflect.String: `a string, such as "x"`, reflect.Bool: "true or false", reflect.Struct: "an object",
+	reflect.Map: "an object"}
 
-// typeWords name the JSON value kiln reads into a Go value of type t, with an example.
+// typeWords name the JSON value kiln reads into a Go value of type t, with an example. Each list kiln.json holds is of
+// strings.
 func typeWords(t reflect.Type) string {
-	switch {
-	case t.Kind() == reflect.Pointer:
-		return typeWords(t.Elem())
-	case t.Kind() == reflect.Slice && t.Elem().Kind() == reflect.String:
+	if t.Kind() == reflect.Slice {
 		return `a list of strings, such as ["go test ./..."]`
-	case t.Kind() == reflect.Slice:
-		return "a list of objects"
 	}
 
 	return cmpOr(scalarWords[t.Kind()], "the type the reference gives it")
@@ -385,7 +376,7 @@ func (c config) refusals() refusals {
 		}
 	}
 
-	return append(refused, c.gaugeRefusals()...)
+	return refused
 }
 
 // bareHost is whether h names a host as Claude Code's allowedDomains reads one. Such a host holds letters, digits,
@@ -394,33 +385,6 @@ func bareHost(h string) bool {
 	name := strings.TrimPrefix(h, "*.")
 	valid := func(r rune) bool { return r != '-' && r != '.' && !unicode.IsLetter(r) && !unicode.IsDigit(r) }
 	return name != "" && !strings.ContainsFunc(name, valid)
-}
-
-// gaugeRefusals refuse a gauge with no name, a name another gauge has, or not exactly one of min and max.
-func (c config) gaugeRefusals() refusals {
-	var refused refusals
-	named := map[string]bool{}
-	for _, g := range c.Gauges {
-		refused = append(refused, broken(
-			rule{g.Name == "", refusal{"has no name", "name it"}},
-			rule{g.Name != "" && named[g.Name], refusal{"has the name of a gauge before it", "rename one"}},
-			rule{g.sides() != 1, refusal{"names both min and max, or neither",
-				"name one line, min or max"}},
-		).about(fmt.Sprintf("%s names a gauge %q that", configFile, g.Name))...)
-		named[g.Name] = true
-	}
-
-	return refused
-}
-
-// gaugeNamed is the gauge of c named name.
-func (c config) gaugeNamed(name string) (gauge, bool) {
-	i := slices.IndexFunc(c.Gauges, func(g gauge) bool { return g.Name == name })
-	if i < 0 {
-		return gauge{}, false
-	}
-
-	return c.Gauges[i], true
 }
 
 func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {

@@ -1,7 +1,7 @@
 # 5. A landing by kiln accept is read.
 
-# Given: a spec waiting on its branch with amendments, whose build changed two files, and kiln.json names a gauge
-# whose command counts the files changed since the commit kiln gives it as the base, outside .kiln/ and PRODUCT.md.
+# Given: a spec waiting on its branch with amendments, whose build changed two files, and a monitor holds a gauge
+# that counts the files changed since the commit kiln gives it as the base, outside .kiln/ and PRODUCT.md.
 exec kiln queue a
 exec kiln fire
 stdout '^a: waits on kiln/a'
@@ -21,7 +21,11 @@ exec kiln status
 stdout '^gauge changed: 2, line ≤ 10, at a''s landing'
 
 -- .kiln/kiln.json --
-{"gate": ["test -e ready"], "gauges": [{"name": "changed", "command": "git diff --name-only \"$KILN_BASE\" HEAD -- . ':!.kiln' ':!PRODUCT.md' | wc -l", "max": 10}]}
+{"gate": ["test -e ready"]}
+-- .kiln/monitors/changed/gauge --
+git diff --name-only "$KILN_BASE" HEAD -- . ':!.kiln' ':!PRODUCT.md' | wc -l
+-- .kiln/monitors/changed/monitor.json --
+{"max": 10}
 -- .kiln/specs/a.md --
 ### 1. A is ready
 

@@ -15,7 +15,6 @@ commands in use.
   reviewers/<name>.md        each reviewer /shape runs on a spec before you approve it, as Reviewers below says
   skills/shape/SKILL.md      /shape, which writes a spec with you
   skills/shape/template.md   the form kiln queue holds a spec to
-  gauges/                    the scripts a gauge's command runs
   monitors/<name>/           a monitor: its check or gauge, its command or agent, and its monitor.json
 ```
 
@@ -50,7 +49,6 @@ replaces, and how kiln reads the path and finds it again on the next run.
   "workflow": "split",
   "harness": ["internal/testutil/"],
   "reaudit": ["migrations/"],
-  "gauges": [{"name": "test-seconds", "command": ".kiln/gauges/test-seconds", "max": 60}],
   "notify": ".kiln/notify",
   "timeout": "2h"
 }
@@ -68,7 +66,6 @@ replaces, and how kiln reads the path and finds it again on the next run.
 | `workflow`   | `"split"`, or absent for one session that writes code and tests             | the commit queued |
 | `harness`    | Paths both sessions of a split build may write                              | the commit queued |
 | `reaudit`    | Paths the audit reads again whenever the work changes them                  | main's tip        |
-| `gauges`     | Numbers kiln reads after each landing                                       | main's tip        |
 | `notify`     | A program that receives each notification, run with `sh -c`                 | main's tip        |
 | `timeout`    | How long a command may run, or a session be silent, before kiln kills it    | main's tip        |
 
@@ -103,8 +100,8 @@ session ──▶ gate ──passes──▶ audit ──no findings──▶ la
 - Each host is a bare host name, such as `proxy.golang.org` or `*.example.org`, with no scheme, port or path. kiln
   refuses any other. A `writable` command prints only absolute paths, or no session starts.
 - They may listen on a local port, so a test that starts a server runs in a session.
-- An MCP server runs outside the sandbox. So does each script kiln runs: the gate's commands, a gauge's, a monitor's
-  scripts and the `notify` program, each with the developer's environment. `$KILN` holds the kiln that runs it, as
+- An MCP server runs outside the sandbox. So does each script kiln runs: the gate's commands, a monitor's scripts
+  and the `notify` program, each with the developer's environment. `$KILN` holds the kiln that runs it, as
   `kiln help files` says. The gate runs the code a session wrote.
 - A session's file tools are held by kiln's hook, not by the sandbox.
 
@@ -143,48 +140,6 @@ kiln fire ─▶ main ─────┤                                        
 - The audit reads the stack, and its findings go to both.
 - `reaudit` lists paths that never land unread, such as a harness or migrations. When the work's change to one
   differs from what the audit last read, the audit reads the work again, as a round.
-
-### gauges
-
-A gauge is a number you watch across landings, such as a mutation score or the tests' time.
-
-```json
-{"name": "health", "command": ".kiln/gauges/health", "min": 10}
-```
-
-- Its `command` prints the number as its last line. It has exactly one of `min` and `max`, its line. A reading below
-  `min`, or above `max`, crossed it.
-- `kiln help gauges` says where and when kiln runs the command, what `$KILN_BASE` holds, and how it reads an
-  unknown number. So `git diff --name-only --diff-filter=d "$KILN_BASE" HEAD` names the files one build left.
-- Print nothing when the landing holds nothing to read. kiln then says the landing read nothing, and `kiln status` keeps
-  showing the last reading, with its landing.
-- A line that must hold is a gate command, since a gauge never blocks a landing.
-- Keep its script under `.kiln/gauges/`, where no build can change it.
-
-A monitor's `gauge` is a gauge too, named for the monitor, with its line in the monitor's `monitor.json`. Then:
-
-- `kiln help monitors` says what `$KILN_BASE` holds in the monitor's run and in its fix's gate, and when that gate
-  reads the gauge.
-- Read only the files the commit still holds, as `--diff-filter=d` lists them. A change that only deletes files then
-  reads no number, and no deleted file fails the command.
-- Print the same for the same finding, with no line numbers and no timestamps. kiln compares what the gauge printed
-  to decide whether anything changed.
-
-A gauge can read kiln's own numbers from `kiln ledger`, as [What kiln records](#what-kiln-records) says. It runs
-`"$KILN"`, the kiln that reads it. The median cost of the last ten
-builds that ended, in dollars:
-
-```sh
-#!/bin/sh
-set -eu
-builds=$("$KILN" ledger --kind build)
-printf '%s\n' "$builds" | jq -s 'map(select(.outcome != null and .cost_usd != null) | .cost_usd) | .[-10:] | sort
-  | if length > 0 then (.[(length - 1) / 2 | floor] + .[length / 2 | floor]) / 2 else empty end'
-```
-
-The README's [`gate-seconds`](../README.md#making-kiln-your-own) gauge reads the slowest of the last twenty gates that
-passed on a build's work, in seconds. Each takes its output whole first, so a failed `kiln ledger` fails the gauge,
-rather than reading no number.
 
 ### notify
 
@@ -240,11 +195,12 @@ the output says why.
 
 ## Monitors
 
-A monitor looks for a problem on a schedule, and fixes it. It is a directory under `.kiln/monitors/`, named for the
-monitor, and its fix builds on the branch `kiln/<name>`. kiln reads each file below at main's tip, each optional,
-and runs each script by its path. So a script's first line, such as `#!/usr/bin/env python3`, picks its language.
-kiln refuses a script git holds without the executable bit: `chmod +x` it, and commit. `kiln doctor` reads each
-monitor in the working tree, before you commit it, and prints each refusal `kiln monitor run` would make of it.
+A monitor looks for a problem on a schedule, and fixes it, or only watches a gauge, as [Gauges](#gauges) says. It is
+a directory under `.kiln/monitors/`, named for the monitor, and its fix builds on the branch `kiln/<name>`. kiln reads
+each file below at main's tip, each optional, and runs each script by its path. So a script's first line, such as
+`#!/usr/bin/env python3`, picks its language. kiln refuses a script git holds without the executable bit: `chmod +x`
+it, and commit. `kiln doctor` reads each monitor in the working tree, before you commit it, and prints each refusal
+`kiln monitor run` would make of it.
 
 `kiln monitor add bugs` writes the `bugs` monitor kiln ships into `.kiln/monitors/bugs/`, and
 `kiln monitor add ../monitors/deps` the one in that directory, named as `--preset` names one. Commit what it writes on
@@ -271,7 +227,7 @@ the new version with your edits, as it merges the defaults. A monitor you delete
 | `gates`  | `false` keeps the check or gauge out of the fix's gate.                                             |
 | `accept` | `true` keeps each fix on its branch until `kiln accept <name>`.                                     |
 | `tests`  | `true` lets a fix write under each `acceptance` path's part before `{spec}`.                        |
-| `min`    | Beside a gauge, its line: `min` or `max`, never both, as a gauge in `kiln.json` has.                |
+| `min`    | Beside a gauge, its line: `min` or `max`, never both.                                              |
 | `max`    |                                                                                                     |
 
 ```text
@@ -283,8 +239,8 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 - `kiln monitor install` gives the launchd job the `PATH` it was run with, and its `TMPDIR` if it has one. The
   gate's tests write their temporary files there. Spotlight watches macOS's own temporary directory, so a heavy
   suite runs lighter with `TMPDIR` on a volume that holds `.metadata_never_index`. Set it, then install again.
-- A monitor holds a `command`, an `agent.md` or both, and a `check` or a `gauge`, never both. A helper a script
-  runs goes in a subdirectory, such as `lib/`: kiln refuses any other file directly in the monitor's directory. A
+- A monitor holds a `command`, an `agent.md` or both, and a `check` or a `gauge`, never both. Or it holds a
+  `gauge` alone, to watch, as [Gauges](#gauges) says. A helper a script runs goes in a subdirectory, such as `lib/`: kiln refuses any other file directly in the monitor's directory. A
   script finds its own directory as `$(dirname "$0")`, and the monitor's name as that directory's.
 - The rest of a check's stdout goes to the agent. A check that exits non-zero, or prints no such last line, couldn't
   run, and starts no fix. So does a gauge kiln could not read.
@@ -312,6 +268,52 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 
 A monitor is held, and starts no fix, by how its last fix ended, until a change releases it. `kiln help monitors` lists
 each hold and what releases it.
+
+### Gauges
+
+A gauge is a number you watch across landings, such as a mutation score or the tests' time. It is a monitor's `gauge`
+script, named for the monitor, with its line in the monitor's `monitor.json`. A monitor that holds a gauge alone,
+with no `command` and no `agent.md`, watches it and fixes nothing:
+
+```text
+.kiln/monitors/health/
+  gauge          prints the number as its last line
+  monitor.json   {"min": 10}
+```
+
+- Its `monitor.json` has exactly one of `min` and `max`, its line. A reading below `min`, or above `max`, crossed it.
+- kiln reads each gauge after each landing. `kiln status` shows the latest reading, and `kiln tui` each landing's. A
+  gauge never blocks a landing, so a line that must hold is a gate command.
+- `kiln monitor run` reads it over the whole repository too, when the monitor is due. A crossed reading starts the
+  monitor's fix. In a monitor that only watches, it asks for you instead: the run ends `needs you`, with the reading,
+  and kiln notifies you once for each finding. A watching monitor's `monitor.json` names no `gates`, `accept` or
+  `tests`, which steer a fix.
+- `kiln help gauges` says where and when kiln runs the gauge, what `$KILN_BASE` holds, and how it reads an unknown
+  number. So `git diff --name-only --diff-filter=d "$KILN_BASE" HEAD` names the files one build left.
+- Print nothing when the landing holds nothing to read. kiln then says the landing read nothing, and `kiln status` keeps
+  showing the last reading, with its landing.
+- `kiln help monitors` says what `$KILN_BASE` holds in the monitor's run and in its fix's gate, and when that gate
+  reads the gauge.
+- Read only the files the commit still holds, as `--diff-filter=d` lists them. A change that only deletes files then
+  reads no number, and no deleted file fails the gauge.
+- Print the same for the same finding, with no line numbers and no timestamps. kiln compares what the gauge printed
+  to decide whether anything changed.
+
+A gauge can read kiln's own numbers from `kiln ledger`, as [What kiln records](#what-kiln-records) says. It runs
+`"$KILN"`, the kiln that reads it. This `.kiln/monitors/build-cost/gauge`, beside a `monitor.json` of
+`{"max": 5}`, reads the median cost of the last ten builds that ended, in dollars:
+
+```sh
+#!/bin/sh
+set -eu
+builds=$("$KILN" ledger --kind build)
+printf '%s\n' "$builds" | jq -s 'map(select(.outcome != null and .cost_usd != null) | .cost_usd) | .[-10:] | sort
+  | if length > 0 then (.[(length - 1) / 2 | floor] + .[length / 2 | floor]) / 2 else empty end'
+```
+
+The README's [`gate-seconds`](../README.md#making-kiln-your-own) gauge reads the slowest of the last twenty gates that
+passed on a build's work, in seconds. Each takes its output whole first, so a failed `kiln ledger` fails the gauge,
+rather than reading no number.
 
 ## Agents
 

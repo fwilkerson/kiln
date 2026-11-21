@@ -58,9 +58,9 @@ A project tells kiln how its builds run in .kiln/, on main. kiln init writes it 
 date, as Presets says:
 
 	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
-	                            the MCP servers a session calls, the gauges, the workflow, where the acceptance
-	                            tests live, the harness, the paths the audit reads again, and the program that
-	                            receives each notification
+	                            the MCP servers a session calls, the workflow, where the acceptance tests live, the
+	                            harness, the paths the audit reads again, and the program that receives each
+	                            notification
 	.kiln/kiln.schema.json      kiln.json's JSON Schema, for an editor, which kiln init writes over each time
 	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
 	.kiln/init.json             what kiln init and kiln monitor add last wrote, which kiln init merges edits against
@@ -69,7 +69,6 @@ date, as Presets says:
 	.kiln/agents/audit.md       the audit
 	.kiln/reviewers/            the agents /shape runs on a spec before it is approved, which no build runs
 	.kiln/skills/shape/         /shape, which writes a spec with the developer, and its template
-	.kiln/gauges/               the scripts a gauge's command runs
 	.kiln/monitors/<name>/      a monitor: its scripts, its agent and its settings, out of a fix's reach
 
 A command that refuses kiln.json, an agent's file or a spec prints each problem on a line, with its fix. kiln
@@ -103,8 +102,8 @@ kiln removes every checkout a build made once it lands, is accepted, rejected or
 or waits on its branch, keeps them. Only a kiln that holds commands.lock uses .main or .gauges. Only the kiln that
 holds the monitors' lane uses .monitor-check.
 
-A script is a command kiln runs from the project's files. That is each command of the gate, writable and a gauge,
-each script of a monitor, and the notify program. $KILN holds the path of the kiln that runs each. A script runs
+A script is a command kiln runs from the project's files. That is each command of the gate and writable, each
+script of a monitor, and the notify program. $KILN holds the path of the kiln that runs each. A script runs
 "$KILN", since the PATH of a launchd job or a terminal may name another kiln, or none.
 
 # Presets
@@ -252,9 +251,10 @@ or 24 when unset. 0 runs it at each kiln monitor run. kiln refuses a file direct
 monitor whose name no spec could have. It refuses a file directly in a monitor's directory that is none of the five
 above. It refuses a key it does not know, and a value of the wrong type. It refuses a check beside a gauge, a gauge
 with no line, and a line with no gauge. It refuses a check, gauge or command git holds without the executable bit. It
-refuses a monitor with no command and no agent.md. It refuses a monitor that may not write the tests while kiln
-cannot guard them. acceptance then names no path, or one with no part before {spec}. It refuses a gauge whose
-monitor's name a gauge in kiln.json has. A refusal holds back its one monitor: kiln monitor run runs the rest, and
+refuses a monitor with no command and no agent.md, unless the monitor holds a gauge alone to watch. Such a monitor
+fixes nothing, so it refuses gates, accept and tests in its monitor.json, which steer a fix. It
+refuses a monitor that may not write the tests while kiln cannot guard them. acceptance then names no path, or one
+with no part before {spec}. A refusal holds back its one monitor: kiln monitor run runs the rest, and
 says why. It notifies when it first refuses that monitor's directory, and again each time the directory changes. kiln
 status and kiln tui show it refused, with why. kiln monitor run with its name refuses, and says why.
 
@@ -279,7 +279,7 @@ One kiln monitor run:
 	  held?    held while a fix of it builds, waits or lands; held by its last fix, as below, unless named
 	  check    run in <trees>/.monitor-check at main's tip, or its gauge there; no finding: healthy; it holds
 	           commands.lock from before it reads main's tip, so it runs at the main its fix starts from
-	  fix      a build with no spec on kiln/<name>, from main's tip
+	  fix      a build with no spec on kiln/<name>, from main's tip; a monitor that fixes nothing needs you instead
 	           command   first, outside the sandbox, then the gate; fails with no agent: stopped
 	           agent     while the gate fails, or with no command; kiln.json's rounds, and the audit
 	  ends     landed, waits on its branch, unchanged, needs you, session failed, usage limit, stopped, couldn't run
@@ -310,7 +310,7 @@ audit. A landing's audit reads each file whose own change since main differs fro
 the work so differs from the commit the audit last read, outside .kiln/. It skips the session's answer to its
 findings, but for a path kiln.json's reaudit names. A landing whose turn kiln cut short resumes that turn first.
 
-A monitor's gauge is a gauge named for the monitor, which kiln reads after each landing too, as Gauges says. The
+A monitor's gauge is named for the monitor, and kiln reads it after each landing too, as Gauges says. The
 monitor's run reads it over the whole repository. It reads in the check's worktree at main's tip, with git's empty
 tree in $KILN_BASE. A reading that crossed its line starts a fix, and one on its line is healthy. A failed command,
 or no number, couldn't run. The reading is the monitor's summary, and its ledger line holds it. The agent reads what
@@ -319,6 +319,10 @@ line is the monitor's at main's tip. It reads in the check's worktree at the fix
 worktree. $KILN_BASE is then the fix's merge base with main. The gate fails while that reading crosses the line, or
 the command fails. Either goes back to the agent, but for a command that ran past kiln.json's timeout, as Hangs says.
 A reading of no number never crossed, so a fix that deletes what crossed lands.
+
+A monitor that holds a gauge, and no command or agent.md, watches the gauge and fixes nothing. A crossed reading
+starts no fix: the run ends needs you, with the reading as its summary, and notifies. The ledger's monitor line says
+needs you. One on its line is healthy, and one kiln could not take couldn't run, as in any monitor.
 
 A monitor is held, and starts no fix, by its last fix's outcome. A change since that fix started releases it:
 
@@ -331,7 +335,9 @@ A monitor is held, and starts no fix, by its last fix's outcome. A change since 
 	landed, with a check out of the gate    what its check printed
 	any other                               not held
 
-kiln monitor run with a name skips that hold, but never starts a second fix.
+A monitor that fixes nothing is held by its last needs you, until its directory or what it printed changes. So it
+notifies once for each finding. kiln monitor run with a name skips that hold, but never starts a
+second fix.
 
 # Lanes
 
@@ -461,7 +467,7 @@ second, as jq's fromdate reads it. A field whose type allows null holds null whi
 	  name          string         the monitor's name
 	  at            time           when kiln wrote it, once its check or gauge ended
 	  main          string         main's tip as it started
-	  found         string         what it found: healthy, couldn't run, held, fix or refused
+	  found         string         what it found: healthy, couldn't run, held, fix, needs you or refused
 	  build         string|null    the ID of the fix it started
 	  summary       string         its check's summary, or why it couldn't run, or why kiln refused it
 	  gauge         string|null    the gauge it read in place of a check
@@ -476,20 +482,23 @@ unchanged or rejected.
 
 # Gauges
 
-A gauge is a command kiln.json names, which prints a number, and a line: min or max, never both. A monitor's gauge
-is one too, as Monitors says.
+A gauge is a script in a monitor's directory that prints a number. Its line, in monitor.json, is min or max, never
+both. It is named for its monitor. A monitor that holds a gauge alone watches it, and fixes nothing, as Monitors
+says:
 
-	{"name": "mutation", "command": ".kiln/gauges/mutation-score \"$KILN_BASE\"", "min": 80}
+	.kiln/monitors/mutation/
+	  gauge          prints the mutation score last
+	  monitor.json   {"min": 80}
 
-After each landing of a build or a fix, kiln reads each gauge at main's tip: kiln.json's, then the monitors'. It runs
-each command in turn with sh -c, in <trees>/.gauges at the landed commit. $KILN_BASE holds main's tip before the
-landing, so a command can measure one build's work alone. In a monitor's run, $KILN_BASE is git's empty tree. There
+After each landing of a build or a fix, kiln reads each monitor's gauge at main's tip, by name. It runs
+each gauge in turn, by its path, in <trees>/.gauges at the landed commit. $KILN_BASE holds main's tip before the
+landing, so a gauge can measure one build's work alone. In a monitor's run, $KILN_BASE is git's empty tree. There
 git diff "$KILN_BASE" HEAD names every file, and git log "$KILN_BASE"..HEAD fails. The worktree holds only the
-commit's files. So a command that reads the changed files should list them with git diff --diff-filter=d. The reading
-is the last line of stdout, trimmed, as a decimal number. A command that fails, or prints no number last, reads
+commit's files. So a gauge that reads the changed files should list them with git diff --diff-filter=d. The reading
+is the last line of stdout, trimmed, as a decimal number. A gauge that fails, or prints no number last, reads
 unknown. One that exits 0 and prints nothing read nothing: kiln says so, and writes no reading. So kiln status keeps
 showing the last reading kiln took, with its landing. kiln says why, by the last line of its stderr, or of its
-stdout. Hangs says why for a command past the timeout. kiln writes each reading to its ledger with its line, and
+stdout. Hangs says why for a gauge past the timeout. kiln writes each reading to its ledger with its line, and
 judges it against that line wherever it shows. A reading below min, or above max, crossed its line. An unknown one
 never did. The kiln that landed the build prints the readings after its summary, and only then starts the next build.
 A gauge never blocks a landing, and nothing reads a landing kiln missed. The read holds commands.lock, so it waits
@@ -500,7 +509,8 @@ for a gate, and a gate waits for it.
 kiln notifies the developer when a spec's build or a monitor's fix needs them. A spec's build notifies once it ends
 stopped, waiting for UAT, or waiting on its branch, whichever kiln built it. A fix notifies once kiln monitor run
 ends it landed, waiting on its branch, stopped, needs you, or session failed. A session that failed as the
-monitor's last run did notifies nothing, so an expired sign-in notifies once per monitor. kiln monitor run notifies
+monitor's last run did notifies nothing, so an expired sign-in notifies once per monitor. A monitor that fixes
+nothing notifies when its run ends needs you, as Monitors says. kiln monitor run notifies
 each landing it takes up as it starts, or finds on main. A fix's landing that kiln accept makes notifies nothing,
 since the developer reads its output.
 
