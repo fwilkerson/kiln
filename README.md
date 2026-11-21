@@ -272,9 +272,9 @@ echo '{"fix": true, "summary": "a bug waits in bugs/"}'
 
 kiln runs its own repository this way. Its [`bugs`](.kiln/monitors/bugs/) monitor fixes what is filed under
 `bugs/`, each with a test that fails first. `code-health` refactors the files a gauge scores lowest, `uat` tidies
-the acceptance tests of accepted specs, `docs` reads the docs of changed packages against their code, and
-`gate-time` makes the tests faster once the gate's times in kiln's ledger rise. An
-unattended session runs under the sign-in `claude` has on the machine.
+the acceptance tests of accepted specs, `docs` reads the docs of changed packages against their code, `gate-time`
+makes the tests faster once the gate's times in kiln's ledger rise, and `deps` requires each module's newest release
+at least 7 days old. An unattended session runs under the sign-in `claude` has on the machine.
 
 ## Commands
 
