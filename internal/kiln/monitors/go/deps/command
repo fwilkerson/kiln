@@ -2,19 +2,40 @@
 # The command of the deps monitor, for a Go project. It requires each update the check finds, as lib/updates says,
 # then tidies go.mod and go.sum. It vendors the modules again where the project vendors them.
 #
-# An update can add a module that has an update of its own, so it searches again until it finds none. It stops when a
-# search finds what the last one did, since go get then could not require it, and the gate's check says which.
+# An update can add a module that has an update of its own, so it searches again until it finds none. When go get
+# refuses the updates together, such as two that conflict, it tries the first alone. It skips each update go get
+# refuses alone, or that a pass left unrequired, and exits non-zero once done, naming each it skipped.
 set -eu
 
 dir=$(dirname "$0")
+skipped=
 last=
 updates=$(sh "$dir/lib/updates")
-while [ -n "$updates" ] && [ "$updates" != "$last" ]; do
-  # shellcheck disable=SC2046 # each update is one argument.
-  go get $(printf '%s\n' "$updates" | awk '{ print $1 "@" $3 }')
+while :; do
+  todo=$(printf '%s\n' "$updates" | awk -v skipped="$skipped" '
+    BEGIN { split(skipped, s, " "); for (i in s) skip[s[i]] = 1 }
+    NF && !skip[$1 "@" $3] { print $1 "@" $3 }')
+  [ -n "$todo" ] || break
+
+  # A pass that changed nothing would repeat forever.
+  if [ "$updates|$skipped" = "$last" ]; then
+    skipped="$skipped $(printf '%s\n' "$todo" | tr '\n' ' ')"
+    break
+  fi
+
+  last="$updates|$skipped"
+  # shellcheck disable=SC2086 # each update is one argument.
+  if ! go get $todo; then
+    first=$(printf '%s\n' "$todo" | head -n 1)
+    go get "$first" || skipped="$skipped $first"
+  fi
+
   go mod tidy
-  last=$updates
   updates=$(sh "$dir/lib/updates")
 done
 
 [ ! -d vendor ] || go mod vendor
+if [ -n "$skipped" ]; then
+  echo "go.mod still lacks these updates, which go get refused:$skipped"
+  exit 1
+fi

@@ -3,8 +3,8 @@
 # release at least 7 days old, as lib/updates says. It prints each update, for the monitor's agent. Its last line is the
 # JSON object kiln reads.
 #
-# In the fix's gate, it passes once go.mod requires each update. It couldn't run when go cannot reach the module
-# proxy: kiln runs it again at the next kiln monitor run.
+# monitor.json keeps it out of the fix's gate. A release that came of age while the fix waited for kiln accept would
+# fail the fix's landing. It couldn't run when go cannot reach the module proxy, so kiln runs it again next time.
 set -eu
 
 updates=$(sh "$(dirname "$0")/lib/updates")
@@ -19,6 +19,7 @@ fi
 
 echo "The monitor's command requires each update below, a release at least 7 days old, then tidies go.mod:"
 echo
-printf '%s\n' "$updates" | awk '{ printf "  %s %s => %s, released %s\n", $1, $2, $3, $4 }'
+printf '%s\n' "$updates" |
+  awk '{ printf "  %s %s => %s, released %s%s\n", $1, $2, $3, $4, ($5 == "-" ? "" : ", raises go to " $5) }'
 echo
 echo "{\"fix\": true, \"summary\": \"$count $noun at least 7 days old\"}"

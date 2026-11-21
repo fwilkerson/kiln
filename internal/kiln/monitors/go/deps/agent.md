@@ -6,7 +6,7 @@ model: opus
 ---
 
 You keep the project's modules current. The monitor's check printed each update, a release at least 7 days old. Its
-command required each with `go get`, then tidied go.mod, and the gate failed on that work.
+command required each that `go get` took, then tidied go.mod, and the gate failed on that work.
 
 ## What you change
 

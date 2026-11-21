@@ -1,12 +1,14 @@
 #!/bin/sh
 # updates prints each update the deps monitor finds, one a line, by path: the module's path, the version the build
-# selects, the update, and the day the update was released.
+# selects, the update, the day the update was released, and the go line the update raises go.mod's to, or "-".
 #
 # An update is the newest release, at least 7 days old, of a module go.mod requires, when that release is newer than the
 # selected version. A week lets a release's bugs surface. The 7 days run back from $KILN_NOW, when kiln sets it, or
-# else from the clock. A release's time is the one the module proxy reports: the time of its commit.
+# else from the clock. A release's time is the one the module proxy reports: the time of its commit. So a version
+# tagged today on a commit 7 days old counts as 7 days old, and one with no time never counts.
 #
-# It skips a module that a replace directive swaps out, and an excluded, retracted or pre-release version. It skips a
+# It skips a module that a replace directive swaps out at the required version, and an excluded, retracted or
+# pre-release version. It skips a
 # release in another major version, as go get -u does, and one whose go line is newer than the Go that runs it. go
 # get raises each module an update requires. That module's release predates the update, so it is 7 days old too.
 #
@@ -29,8 +31,8 @@ else
 fi
 
 mod=$(go mod edit -json)
-required=$(printf '%s\n' "$mod" | jq -r '[.Replace[]?.Old.Path] as $replaced | .Require[]?.Path |
-  select(IN($replaced[]) | not)')
+required=$(printf '%s\n' "$mod" | jq -r '[.Replace[]?.Old] as $replaced | .Require[]? |
+  select(. as $r | $replaced | any(.Path == $r.Path and (.Version // $r.Version) == $r.Version) | not) | .Path')
 [ -n "$required" ] || exit 0
 
 # -mod=readonly reads go.mod, even where the project vendors its modules, and never writes it.
@@ -56,19 +58,22 @@ released=$(go list -mod=readonly -m -f '{{.Path}} {{.Version}} {{.Time.UTC.Forma
 
 # The first release of a module that is old enough, and whose go line the running Go meets, is its update.
 printf '%s\n' "$released" | at="$(printf '%s\n' "$selected" | jq -r '"\(.Path) \(.Version)"')" \
-  awk -v cutoff="$cutoff" -v running="$(go env GOVERSION)" '
-  # key is a Go version, such as go1.27.4 or 1.28rc1, as one number that sorts as the version does.
-  function key(v, parts) {
-    sub(/^go/, "", v)
-    sub(/[^0-9.].*/, "", v)
+  awk -v cutoff="$cutoff" -v running="$(go env GOVERSION)" -v project="$(printf '%s\n' "$mod" | jq -r '.Go // ""')" '
+  # key is a Go version, such as go1.27.4, 1.28rc1 or devel go1.28-abc, as a number that sorts as the version does.
+  # A release candidate sorts before the release of its numbers.
+  function key(v, parts, early) {
+    if (!match(v, /[0-9]+\.[0-9]+[.0-9a-z]*/)) return 0
+    v = substr(v, RSTART, RLENGTH)
+    early = v ~ /[a-z]/
+    sub(/[a-z].*/, "", v)
     split(v, parts, ".")
-    return parts[1] * 1000000 + parts[2] * 1000 + parts[3]
+    return parts[1] * 1000000 + parts[2] * 1000 + parts[3] - early
   }
   BEGIN {
     n = split(ENVIRON["at"], lines, "\n")
     for (i = 1; i <= n; i++) { split(lines[i], f, " "); at[f[1]] = f[2] }
   }
-  $1 == taken || $3 > cutoff { next }
+  $1 == taken || $3 > cutoff || $3 ~ /^0001-/ { next }
   {
     gomod = $0
     sub(/^[^ ]+ [^ ]+ [^ ]+ /, "", gomod)
@@ -77,5 +82,5 @@ printf '%s\n' "$released" | at="$(printf '%s\n' "$selected" | jq -r '"\(.Path) \
     close(gomod)
     if (key(needs) > key(running)) next
     taken = $1
-    print $1, at[$1], $2, substr($3, 1, 10)
+    print $1, at[$1], $2, substr($3, 1, 10), (key(needs) > key(project) ? needs : "-")
   }' | sort
