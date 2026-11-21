@@ -13,7 +13,8 @@ for macOS.
   its `monitor.json`. A build names a new one in its last reply, for the developer to commit. `uat` folds an
   accepted spec's tests. `docs` reads the docs of changed packages against their code. `code-health` refactors the
   files `go tool health` scores lowest, as its `gauge` lists them. `gate-time` makes the tests faster once the
-  gate's times in kiln's ledger rise.
+  gate's times in kiln's ledger rise. `deps` requires each module's newest release at least 7 days old, and writes
+  `docs/guide.md` again when the practices module moves.
 - `bugs/<name>.md`: a bug the developer filed, with what happened and what should happen. `bugs`, a monitor, takes
   the first by name each hour, as `.kiln/monitors/bugs/agent.md` says. A build never fixes one.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.
