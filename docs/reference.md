@@ -15,7 +15,7 @@ commands in use.
   reviewers/<name>.md        each reviewer /shape runs on a spec before you approve it, as Reviewers below says
   skills/shape/SKILL.md      /shape, which writes a spec with you
   skills/shape/template.md   the form kiln queue holds a spec to
-  monitors/<name>/           a monitor: its check or gauge, its command or agent, and its monitor.json
+  monitors/<name>/           a monitor: its check or gauge, its command or agent if it fixes, and its monitor.json
 ```
 
 `kiln init` writes these from a preset, all but the monitors, and links `/shape` and each reviewer into `.claude/`. The
@@ -215,7 +215,8 @@ the new version with your edits, as it merges the defaults. A monitor you delete
 ```text
 .kiln/monitors/bugs/
   check          finds a problem: its last line of stdout is {"fix": true, "summary": "..."}, or false
-  gauge          in place of check: a gauge named for the monitor, whose reading past its line asks for a fix
+  gauge          in place of check: a gauge named for the monitor, whose reading past its line asks for a fix,
+                 or for you in a monitor with no command and no agent.md
   command        a fix that needs no model, run outside the sandbox
   agent.md       an agent's file, run when command left the gate failing, or is absent
   monitor.json   the keys below, each optional: {"hours": 1, "tests": true}
@@ -227,21 +228,23 @@ the new version with your edits, as it merges the defaults. A monitor you delete
 | `gates`  | `false` keeps the check or gauge out of the fix's gate.                                             |
 | `accept` | `true` keeps each fix on its branch until `kiln accept <name>`.                                     |
 | `tests`  | `true` lets a fix write under each `acceptance` path's part before `{spec}`.                        |
-| `min`    | Beside a gauge, its line: `min` or `max`, never both.                                              |
+| `min`    | Beside a gauge, its line: `min` or `max`, never both.                                             |
 | `max`    |                                                                                                     |
 
 ```text
 kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ─────────────────────────▶ healthy
-                                            └▶ fix: true ─▶ command ─▶ agent ─▶ gate ─▶ lands, or waits for accept
-                                                                                 └────▶ stops, or asks for you
+                                            ├▶ fix: true ─▶ command ─▶ agent ─▶ gate ─▶ lands, or waits for accept
+                                            │                                    └────▶ stops, or asks for you
+                                            └▶ crossed, with no command or agent ─────▶ asks for you
 ```
 
 - `kiln monitor install` gives the launchd job the `PATH` it was run with, and its `TMPDIR` if it has one. The
   gate's tests write their temporary files there. Spotlight watches macOS's own temporary directory, so a heavy
   suite runs lighter with `TMPDIR` on a volume that holds `.metadata_never_index`. Set it, then install again.
 - A monitor holds a `command`, an `agent.md` or both, and a `check` or a `gauge`, never both. Or it holds a
-  `gauge` alone, to watch, as [Gauges](#gauges) says. A helper a script runs goes in a subdirectory, such as `lib/`: kiln refuses any other file directly in the monitor's directory. A
-  script finds its own directory as `$(dirname "$0")`, and the monitor's name as that directory's.
+  `gauge` alone, to watch, as [Gauges](#gauges) says. A helper a script runs goes in a subdirectory, such as
+  `lib/`: kiln refuses any other file directly in the monitor's directory. A script finds its own directory as
+  `$(dirname "$0")`, and the monitor's name as that directory's.
 - The rest of a check's stdout goes to the agent. A check that exits non-zero, or prints no such last line, couldn't
   run, and starts no fix. So does a gauge kiln could not read.
 - The agent's first message holds what the check or gauge printed, and what the gate printed after `command`. Then
@@ -266,8 +269,8 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
   So a long run, such as one that drains, is never joined by the next hour's. `kiln help lanes` says when each refuses,
   and how the two share the gate.
 
-A monitor is held, and starts no fix, by how its last fix ended, until a change releases it. `kiln help monitors` lists
-each hold and what releases it.
+A monitor is held, and starts no fix, by how its last fix ended, or by its last `needs you` where it only watches,
+until a change releases it. `kiln help monitors` lists each hold and what releases it.
 
 ### Gauges
 
@@ -284,12 +287,12 @@ with no `command` and no `agent.md`, watches it and fixes nothing:
 - Its `monitor.json` has exactly one of `min` and `max`, its line. A reading below `min`, or above `max`, crossed it.
 - kiln reads each gauge after each landing. `kiln status` shows the latest reading, and `kiln tui` each landing's. A
   gauge never blocks a landing, so a line that must hold is a gate command.
-- `kiln monitor run` reads it over the whole repository too, when the monitor is due. A crossed reading starts the
-  monitor's fix. In a monitor that only watches, it asks for you instead: the run ends `needs you`, with the reading,
-  and kiln notifies you once for each finding. A watching monitor's `monitor.json` names no `gates`, `accept` or
-  `tests`, which steer a fix.
+- `kiln monitor run` reads it over the whole repository too, when the monitor is due. In a monitor that only
+  watches, a crossed reading asks for you rather than for a fix. `kiln help monitors` says when that notifies, and
+  which keys of `monitor.json` such a monitor may not name.
 - `kiln help gauges` says where and when kiln runs the gauge, what `$KILN_BASE` holds, and how it reads an unknown
-  number. So `git diff --name-only --diff-filter=d "$KILN_BASE" HEAD` names the files one build left.
+  number. So `git diff --name-only --diff-filter=d "$KILN_BASE" HEAD` names the files one build left after a landing,
+  and every file in the monitor's run. Give a gauge a line that holds for both.
 - Print nothing when the landing holds nothing to read. kiln then says the landing read nothing, and `kiln status` keeps
   showing the last reading, with its landing.
 - `kiln help monitors` says what `$KILN_BASE` holds in the monitor's run and in its fix's gate, and when that gate

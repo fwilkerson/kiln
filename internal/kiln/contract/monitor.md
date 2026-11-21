@@ -8,7 +8,7 @@ answered. The fix has no spec: its goal is that the gate passes, and that what t
 
 ### What you never change
 
-Nothing under `.kiln/` is yours to change: it holds the specs, the agents, the monitors, the gauges' scripts
+Nothing under `.kiln/` is yours to change: it holds the specs, the agents, the monitors and their scripts,
 and the gate's commands. %[2]s A hook refuses your edits there, and the gate fails on any change there however
 it was made.
 

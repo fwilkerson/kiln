@@ -13,8 +13,8 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// notice is one notification: a spec's build or a monitor's fix that needs the developer. The notify program reads
-// it as JSON in $KILN_NOTICE, as the package doc's Notifications says.
+// notice is one notification: a spec's build, a monitor's fix, or a watching monitor's run, that needs the developer.
+// The notify program reads it as JSON in $KILN_NOTICE, as the package doc's Notifications says.
 type notice struct {
 	Kind    string  `json:"kind"`
 	Name    Spec    `json:"name"`

@@ -70,7 +70,7 @@ func number(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
 // a dot, so it is no build's tree.
 const gaugeTree = ".gauges"
 
-// baseVar names the commit a reading starts at, which kiln gives each gauge's command. After a landing, it is main's
+// baseVar names the commit a reading starts at, which kiln gives each gauge. After a landing, it is main's
 // tip before the landing. In a monitor's run, it is git's empty tree. In a fix's gate, it is where the fix left main.
 const baseVar = "KILN_BASE"
 
@@ -188,7 +188,7 @@ func (r *Repo) gauges(ctx context.Context) (config, []monitor, error) {
 	return c, gauges, err
 }
 
-// gaugeRead is what one run of a gauge's command read.
+// gaugeRead is what one run of a gauge read.
 type gaugeRead struct {
 	// value is the reading, or nil when kiln could not take it. why then says why. nothing is whether the command
 	// exited 0 and printed nothing, as a gauge does that read no file.

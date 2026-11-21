@@ -82,7 +82,7 @@ func shownDuration(d time.Duration) string {
 	return shown
 }
 
-// output is what a check's or a gauge's command printed: each stream, and both as they arrived.
+// output is what a check or a gauge printed: each stream, and both as they arrived.
 type output struct {
 	stdout, stderr, both string
 }

@@ -276,7 +276,7 @@
 //	           holds its landing; then land each fix's accepted landing that is queued, but no spec's
 //	each monitor main's tip holds, by name, or the one named:
 //	  due?     skipped unless due, or named
-//	  held?    held while a fix of it builds, waits or lands; held by its last fix, as below, unless named
+//	  held?    held while a fix of it builds, waits or lands; held by its last finding, as below, unless named
 //	  check    run in <trees>/.monitor-check at main's tip, or its gauge there; no finding: healthy; it holds
 //	           commands.lock from before it reads main's tip, so it runs at the main its fix starts from
 //	  fix      a build with no spec on kiln/<name>, from main's tip; a monitor that fixes nothing needs you instead
@@ -312,12 +312,12 @@
 //
 // A monitor's gauge is named for the monitor, and kiln reads it after each landing too, as Gauges says. The
 // monitor's run reads it over the whole repository. It reads in the check's worktree at main's tip, with git's empty
-// tree in $KILN_BASE. A reading that crossed its line starts a fix, and one on its line is healthy. A failed command,
-// or no number, couldn't run. The reading is the monitor's summary, and its ledger line holds it. The agent reads what
+// tree in $KILN_BASE. A reading that crossed its line starts a fix, and one on its line is healthy. A failed gauge, or
+// no number, couldn't run. The reading is the monitor's summary, and its ledger line holds it. The agent reads what
 // the gauge printed above its number. At each gate of the fix, unless gates is false, kiln reads the gauge again. Its
 // line is the monitor's at main's tip. It reads in the check's worktree at the fix's commit, never the fix's own
 // worktree. $KILN_BASE is then the fix's merge base with main. The gate fails while that reading crosses the line, or
-// the command fails. Either goes back to the agent, but for a command that ran past kiln.json's timeout, as Hangs says.
+// the gauge fails. Either goes back to the agent, but for a gauge that ran past kiln.json's timeout, as Hangs says.
 // A reading of no number never crossed, so a fix that deletes what crossed lands.
 //
 // A monitor that holds a gauge, and no command or agent.md, watches the gauge and fixes nothing. A crossed reading
@@ -335,9 +335,9 @@
 //	landed, with a check out of the gate    what its check printed
 //	any other                               not held
 //
-// A monitor that fixes nothing is held by its last needs you, until its directory or what it printed changes. So it
-// notifies once for each finding. kiln monitor run with a name skips that hold, but never starts a
-// second fix.
+// A monitor that fixes nothing is held by its last needs you, until its directory or what it printed changes. A
+// healthy run releases it too. So it notifies once for each finding. kiln monitor run with a name skips that hold,
+// but never starts a second fix.
 //
 // # Lanes
 //
@@ -504,6 +504,9 @@
 // A gauge never blocks a landing, and nothing reads a landing kiln missed. The read holds commands.lock, so it waits
 // for a gate, and a gate waits for it.
 //
+// kiln monitor run reads each gauge too, over the whole repository, as Monitors says. A gauge that counts one landing's
+// change, such as its changed files, counts every file there. Its line should hold for both.
+//
 // # Notifications
 //
 // kiln notifies the developer when a spec's build or a monitor's fix needs them. A spec's build notifies once it ends
@@ -518,7 +521,7 @@
 //
 //	{"notify": ".kiln/notify"}
 //
-// kiln runs it with sh -c in <top>, outside the sandbox, with kiln's environment, as it runs a gauge. The program's
+// kiln runs it with sh -c in <top>, outside the sandbox, with kiln's environment. The program's
 // file is the one that checkout holds, so kiln notifies with no lock and no checkout. $KILN_NOTICE holds the notice,
 // one JSON object:
 //
@@ -527,7 +530,7 @@
 //	 "next": "read it with git show 3f9c2ab81d0e, then run kiln accept x, or …",
 //	 "top": "/Users/me/scratch", "commit": "3f9c2ab81d0e…"}
 //
-//	kind     spec, for a spec's build, or monitor, for a monitor's fix
+//	kind     spec, for a spec's build, or monitor, for a monitor's fix or a watching monitor's needs you
 //	name     the spec's name, or the monitor's
 //	state    where it stands, as kiln status words it, such as stopped, or waiting on the developer
 //	summary  the lines kiln prints below that, but the next step; a stopped spec's starts with why it stopped

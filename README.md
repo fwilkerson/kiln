@@ -224,8 +224,8 @@ printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seco
 
 A gauge is a number you watch across landings, such as test time or a mutation score. kiln reads each after every
 landing. `kiln status` shows the latest reading, and `kiln tui` each landing's. A gauge never blocks a landing. It
-lives in a monitor's directory, and a monitor that holds a gauge alone only watches it: once a reading crosses its
-line, `kiln monitor run` tells you, and fixes nothing.
+lives in a monitor's directory. With no `command` and no `agent.md` beside it, the monitor only watches it, as
+[Gauges](docs/reference.md#gauges) says.
 
 ```text
 .kiln/monitors/test-seconds/

@@ -199,7 +199,7 @@ func (s standing) step(name Spec, rec *record, tree git.Worktree) string {
 	switch {
 	case s.outcome == outNeedsYou && !s.fixed:
 		// A monitor that fixes nothing has no report: its summary is its gauge's reading.
-		return fmt.Sprintf("bring the reading back to its line, then run kiln monitor run %s", name)
+		return "bring the reading back to its line; kiln monitor run reads it again when it is due"
 	case rec != nil && rec.Monitor:
 		return fixStep(*rec, tree)
 	}

@@ -41,6 +41,11 @@ func histories(entries []entry) map[Spec]*history {
 				fixes[e.Build] = e.Monitor
 			case outNeedsYou:
 				h.lastFinding = e
+			case foundHealthy:
+				// A watching monitor's reading back on its line ends its finding, so the next crossing notifies.
+				if h.lastFinding.Found == outNeedsYou {
+					h.lastFinding = entry{}
+				}
 			}
 		case e.Kind == outcomeKind && fixes[e.Build] != "":
 			of(fixes[e.Build]).outcomes[e.Build] = e

@@ -422,7 +422,7 @@ type verdictLine struct {
 	Drain   bool   `json:"drain"`
 }
 
-// runMonitorCheck runs command in dir, as a gauge's command runs, and reads what it found. It answers an error only
+// runMonitorCheck runs command in dir, as a gauge runs, and reads what it found. It answers an error only
 // once kiln is interrupted. A check that ran past s's limit couldn't run.
 func (s projectShell) runMonitorCheck(ctx context.Context, dir git.Worktree, command string) (checked, error) {
 	out, err := s.run(ctx, dir, command)

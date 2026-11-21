@@ -220,7 +220,8 @@ func (e entry) tuiReading() tui.Reading {
 	return tui.Reading{Gauge: e.Gauge, At: e.At, Value: e.Value, Line: e.text(), Crossed: e.crossed(e.Value)}
 }
 
-// fixStates are a monitor's states in the view, by its last fix's outcome. A fix with no outcome yet is running.
+// fixStates are a monitor's states in the view, by its last fix's outcome. A monitor that fixes nothing may stand
+// needs you too. A fix with no outcome yet is running.
 var fixStates = map[string]tui.State{outLanded: tui.Landed, outStopped: tui.Stopped, outWaits: tui.Waits,
 	outNeedsYou: tui.NeedsYou, outFailed: tui.Failed, outLimit: tui.Limited, outCouldNot: tui.CouldNotRun,
 	outUnchanged: tui.Unchanged, outRejected: tui.Rejected, outDropped: tui.CutShort, "": tui.Running}

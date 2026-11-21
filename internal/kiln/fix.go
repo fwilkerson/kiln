@@ -766,9 +766,10 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 }
 
 // gatedGauge adds the reading of a fix's gauge, over what the fix changed, to the gate's verdict v. The gate fails
-// while the reading crosses the gauge's line, or the gauge fails. A reading of no number never crossed. The gauge and
-// its line are its monitor's at main's tip, where the monitor may hold the gauge no longer. It runs as kiln.json there
-// says. A command that ran past kiln.json's timeout stops the fix, as the gate's own commands do.
+// while the reading crosses the gauge's line, or the gauge fails. A reading of no number never crossed. The gauge's
+// line is its monitor's at main's tip, where the monitor may hold the gauge no longer. The gauge is the fix commit's,
+// and runs as kiln.json at main's tip says. A gauge that ran past kiln.json's timeout stops the fix, as the gate's own
+// commands do.
 func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdict, error) {
 	main, c, reads, err := b.r.mainMonitors(ctx)
 	if err != nil {

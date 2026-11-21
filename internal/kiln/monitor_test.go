@@ -348,14 +348,12 @@ func TestStuck(t *testing.T) {
 }
 
 // TestHold holds what releases a monitor its last fix holds. That is a change to main's tip, its entry, or what its
-// check or gauge printed. The fix's outcome and the monitor's check or gauge say which. A monitor that fixes nothing is
-// held by its last reading that needed the developer.
+// check or gauge printed. The fix's outcome and the monitor's check or gauge say which.
 func TestHold(t *testing.T) {
 	gated := monitor{Name: "m", finder: checkScript, command: true}
 	outside := monitor{Name: "m", finder: checkScript, agent: true, Gates: new(false)}
 	unchecked := monitor{Name: "m", agent: true}
 	gauged := monitor{Name: "m", finder: gaugeScript, agent: true}
-	watching := monitor{Name: "m", finder: gaugeScript}
 	for name, tc := range map[string]struct {
 		m                    monitor
 		outcome              string
@@ -388,17 +386,10 @@ func TestHold(t *testing.T) {
 		"landed, its gauge's entry changed":  {m: gauged, outcome: outLanded, main: true, entry: true},
 		"unchanged, its gauge the same":      {m: gauged, outcome: outUnchanged, main: true, held: true},
 		"asked, its gauge the same":          {m: gauged, outcome: outNeedsYou, main: true, held: true},
-		"watched, its gauge the same":        {m: watching, main: true, held: true},
-		"watched, its gauge printed another": {m: watching, main: true, printed: true},
-		"watched, its entry changed":         {m: watching, entry: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			was := entry{Kind: monitorKind, Monitor: "m", Found: foundFix, Build: "b", Main: "a", Entry: "e",
 				Printed: "p"}
-			if !tc.m.fixes() {
-				was.Found, was.Build = outNeedsYou, ""
-			}
-
 			now := entry{Kind: monitorKind, Monitor: "m", Main: "a", Entry: "e", Printed: "p"}
 			for _, change := range []struct {
 				changed bool
@@ -414,6 +405,28 @@ func TestHold(t *testing.T) {
 				t.Errorf("held %v, want %v", held, tc.held)
 			}
 		})
+	}
+}
+
+// TestWatchHold holds what releases a monitor that fixes nothing from its last needs you. That is a change to its entry
+// or to what its gauge printed, or a healthy run since. A move of main's tip alone releases none.
+func TestWatchHold(t *testing.T) {
+	watching := monitor{Name: "m", finder: gaugeScript}
+	needed := entry{Kind: monitorKind, Monitor: "m", Found: outNeedsYou, Main: "a", Entry: "e", Printed: "p"}
+	healthy := entry{Kind: monitorKind, Monitor: "m", Found: foundHealthy, Main: "a", Entry: "e", Printed: "q"}
+	for name, tc := range map[string]struct {
+		lines []entry
+		now   entry
+		held  bool
+	}{
+		"the same reading, main moved":  {lines: []entry{needed}, now: entry{Main: "b", Entry: "e", Printed: "p"}, held: true},
+		"another reading":               {lines: []entry{needed}, now: entry{Main: "a", Entry: "e", Printed: "r"}},
+		"its entry changed":             {lines: []entry{needed}, now: entry{Main: "a", Entry: "f", Printed: "p"}},
+		"the same, after a healthy run": {lines: []entry{needed, healthy}, now: entry{Main: "a", Entry: "e", Printed: "p"}},
+	} {
+		if held := histories(tc.lines)["m"].holds(watching, tc.now) != ""; held != tc.held {
+			t.Errorf("%s: held %v, want %v", name, held, tc.held)
+		}
 	}
 }
 
@@ -595,9 +608,8 @@ func TestMonitorStatusLines(t *testing.T) {
 			rec: &record{Name: "m", State: stopped, Accepted: true, Monitor: true}, want: "kiln accept m"},
 		"a waiting fix is accepted or rejected": {s: standing{outcome: outWaits},
 			rec: &record{Name: "m", State: waiting, Monitor: true}, want: "kiln reject m"},
-		"an agent's report stays out of status": {s: standing{outcome: outNeedsYou, summary: "look",
-			report: "the long report"}, want: "kiln monitor run m"},
-	} {
+		"an agent's report stays out of status": {s: standing{outcome: outNeedsYou, fixed: true, summary: "look",
+			report: "the long report"}, want: "kiln monitor run m"}} {
 		t.Run(name, func(t *testing.T) {
 			lines := strings.Join(tc.s.lines("m", tc.rec, "/trees/m"), "\n")
 			if !strings.Contains(lines, tc.want) {
