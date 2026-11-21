@@ -45,8 +45,10 @@
 // .kiln/init.json records. For help, they are the topics of kiln's docs.
 //
 // kiln exits 0 when the command did what it says, and 1 when it refused or failed. kiln help prints the usage to
-// stdout. A usage error exits 2, and prints the usage to stderr under a line that names the mistake. A kiln hook
-// that cannot read its call exits 2 too, which Claude Code reads as a refusal. SIGINT and SIGTERM cancel the command.
+// stdout. A usage error exits 2, and prints to stderr a line that names the mistake. Under it come the command's own
+// lines of the usage, and a pointer to kiln help. A command kiln lacks gets the names of kiln's commands instead. kiln
+// hook and kiln complete, which the usage does not list, print the first line alone. A kiln hook that cannot read its
+// call exits 2 too, which Claude Code reads as a refusal. SIGINT and SIGTERM cancel the command.
 package main
 
 import (
@@ -57,6 +59,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -89,9 +92,46 @@ const usage = `usage:
                            part of kiln's docs a topic names, such as kiln help monitors
 `
 
-// commands are the developer's commands, as kiln complete lists them.
-var commands = []string{"init", "queue", "fire", "status", "tui", "accept", "reject", "monitor", "doctor", "ledger",
-	"help"}
+// commands are the developer's commands, in the order usage lists them, as kiln complete lists them.
+var commands = func() []string {
+	var names []string
+	for line := range strings.Lines(usage) {
+		if name := opens(line); name != "" && !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+
+	return names
+}()
+
+// opens is the command a line of usage opens, such as "queue" for "  kiln queue <name>". It is "" for the line
+// "usage:", and for a line that continues the one above it.
+func opens(line string) string {
+	rest, ok := strings.CutPrefix(line, "  kiln ")
+	if !ok {
+		return ""
+	}
+
+	return strings.Fields(rest)[0]
+}
+
+// usageOf is the lines of usage that command opens, each with the lines that continue it. It is "" for a command
+// that usage does not list, such as hook.
+func usageOf(command string) string {
+	var lines strings.Builder
+	shown := false
+	for line := range strings.Lines(usage) {
+		if name := opens(line); name != "" {
+			shown = name == command
+		}
+
+		if shown {
+			lines.WriteString(line)
+		}
+	}
+
+	return lines.String()
+}
 
 // onRepo holds each of the developer's commands, which act on the repository in the working directory.
 var onRepo = map[string]repoCommand{
@@ -154,13 +194,15 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if len(args) == 0 {
-		return exit("kiln", usageError("names no command"), stderr)
+		return exit("kiln", "", usageError("names no command"), stderr)
 	}
 
 	command, args := args[0], args[1:]
+	listed := command
 	var err error
 	switch command {
 	case "help", "--help", "-h":
+		listed = "help"
 		err = help(args, stdout)
 	case "hook":
 		err = hook(args, stdin, stdout)
@@ -171,21 +213,21 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 	default:
 		do, ok := onRepo[command]
 		if !ok {
-			return exit("kiln", usageError("unknown command "+command), stderr)
+			return exit("kiln", "", usageError("unknown command "+command), stderr)
 		}
 
 		err = repo(ctx, do, args, stdout)
 	}
 
-	return exit("kiln "+command, err, stderr)
+	return exit("kiln "+command, listed, err, stderr)
 }
 
-// exit reports err on stderr, after who, and returns the status kiln exits with.
-func exit(who string, err error, stderr io.Writer) int {
+// exit reports err on stderr, after who, and returns the status kiln exits with. A usage error prints its hint, for
+// command, under err.
+func exit(who, command string, err error, stderr io.Writer) int {
 	switch {
 	case errors.Is(err, errUsage):
-		fmt.Fprintf(stderr, "%s: %v\n", who, err)
-		fmt.Fprint(stderr, usage)
+		fmt.Fprintf(stderr, "%s: %v\n%s", who, err, hint(command))
 		return 2
 	case err != nil:
 		fmt.Fprintf(stderr, "%s: %v\n", who, err)
@@ -193,6 +235,21 @@ func exit(who string, err error, stderr io.Writer) int {
 	}
 
 	return 0
+}
+
+// hint is what a usage error of command prints under the line that names the mistake. It is the lines of usage
+// that command opens, then a pointer to kiln help. With command "", it is the names of kiln's commands. It is "" for
+// a command that usage does not list.
+func hint(command string) string {
+	lines := usageOf(command)
+	switch {
+	case command == "":
+		return "commands: " + strings.Join(commands, " ") + "\nrun kiln help for what each does\n"
+	case lines == "":
+		return ""
+	}
+
+	return "usage:\n" + lines + "run kiln help for every command\n"
 }
 
 // errUsage is a usage error. kiln's own refusal of an argument has the same kind.

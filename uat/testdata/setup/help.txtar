@@ -16,19 +16,25 @@ stdout '^usage:'
 ! stderr .
 
 # When: the developer types a command kiln lacks, or a command with the wrong arguments.
-# Then: each exits 2, and prints to stderr a first line that names the mistake, then the usage.
+# Then: each exits 2, and prints to stderr a first line that names the mistake, then that command's lines of the
+# usage and a pointer to kiln help. A command kiln lacks gets the names of kiln's commands instead. kiln hook, which
+# the usage does not list, prints the first line alone.
 ! exec kiln bogus
 ! stdout .
-stderr '\Akiln: unknown command bogus\nusage:'
+stderr '\Akiln: unknown command bogus\ncommands: init queue fire status tui accept reject monitor doctor ledger help\nrun kiln help for what each does\n\z'
 ! exec kiln queue
 ! stdout .
-stderr '\Akiln queue: takes one spec''s name\nusage:'
+stderr '\Akiln queue: takes one spec''s name\nusage:\n  kiln queue <name> +queue a build of .*\nrun kiln help for every command\n\z'
 ! exec kiln monitor bogus
-stderr '\Akiln monitor: takes add \[<name>\|<dir>\], install, run \[<name>\] or show <name>\nusage:'
+stderr '\Akiln monitor: takes add \[<name>\|<dir>\], install, run \[<name>\] or show <name>\nusage:\n(  kiln monitor .*\n|   +\S.*\n)+run kiln help for every command\n\z'
+stderr '^  kiln monitor add \[<name>\|<dir>\]\n +copy a monitor into'
+stderr '^  kiln monitor install +set up a launchd job'
+stderr '^  kiln monitor run \[<name>\]\n +run each monitor that is due'
+stderr '^  kiln monitor show <name> show how'
 ! exec kiln ledger --kind gates
-stderr '\Akiln ledger: usage: kiln ledger prints no kind gates, only build, run, gate, reading, monitor\nusage:'
+stderr '\Akiln ledger: usage: kiln ledger prints no kind gates, only build, run, gate, reading, monitor\nusage:\n  kiln ledger \[--kind <kind>\].*\n +print what kiln''s ledger holds.*\nrun kiln help for every command\n\z'
 ! exec kiln hook --spec x
-stderr '\Akiln hook: usage: kiln never writes the arguments \["--spec" "x"\]\nusage:'
+stderr '\Akiln hook: usage: kiln never writes the arguments \["--spec" "x"\]\n\z'
 exec sh -c 'for c in bogus queue "monitor bogus" "ledger --kind gates" "ledger --last 0" "hook --spec x"; do kiln $c 2>/dev/null </dev/null; test $? -eq 2 || exit 1; done'
 
 -- .kiln/specs/x.md --
