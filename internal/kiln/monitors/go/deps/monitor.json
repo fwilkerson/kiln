@@ -1,1 +1,1 @@
-{"hours": 168, "gates": false, "accept": true}
+{"$schema": "../../monitor.schema.json", "hours": 168, "recheck": false, "mustAccept": true}
