@@ -43,7 +43,7 @@ Mark each note done.
 
 Mark each note done.
 -- .kiln/monitors/notes/monitor.json --
-{"accept": true}
+{"mustAccept": true}
 -- notes/a.txt --
 a
 -- claude.json --

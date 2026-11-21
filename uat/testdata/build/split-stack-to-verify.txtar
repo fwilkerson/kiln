@@ -24,7 +24,7 @@ grep -count=1 '"role":"audit"' .git/kiln/ledger.jsonl
 grep '"kind":"gate"[^\n]*\n(?:[^\n]*\n)*?[^\n]*"kind":"gate"[^\n]*"passed":true[^\n]*\n[^\n]*"role":"audit"' .git/kiln/ledger.jsonl
 
 -- .kiln/kiln.json --
-{"workflow": "split", "rounds": 3}
+{"testSession": true, "rounds": 3}
 -- claude.json --
 {
  "build": {

@@ -28,7 +28,7 @@ echo 'changed by guarded' >>integration/a/note.txt
 -- .kiln/monitors/trusted/command --
 echo 'changed by trusted' >>uat/b/note.txt
 -- .kiln/monitors/trusted/monitor.json --
-{"hours": 168, "tests": true}
+{"hours": 168, "writesTests": true}
 -- integration/a/note.txt --
 a's tests
 -- uat/b/note.txt --

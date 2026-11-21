@@ -23,7 +23,7 @@ func TestMonitorAdd(t *testing.T) {
 	team := t.TempDir()
 	writeAll(t, team, map[string]string{"deps/command": "go get -u ./...", "deps/monitor.json": `{"hours": 168}`,
 		"deps/notes/why.md": "Why deps.", "deps/lib/run": "go get -u ./...", "broken/check": "true",
-		"watch/gauge": "echo 1", "watch/monitor.json": `{"max": 5}`, "vague/command": "true", "vague/agent.md": "---\neffort: extreme\n---\nFix it.\n"})
+		"watch/gauge": "echo 1", "watch/monitor.json": `{"atMost": 5}`, "vague/command": "true", "vague/agent.md": "---\neffort: extreme\n---\nFix it.\n"})
 	if err := os.Chmod(filepath.Join(team, "deps/lib/run"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -34,10 +34,11 @@ func TestMonitorAdd(t *testing.T) {
 		refused, usage bool
 		want           []string
 		says           string // a part of the refusal
+		schema         string // the monitor.json it writes, from one that names no "$schema"
 	}{
 		"a monitor kiln ships": {source: "bugs", want: []string{"bugs/agent.md", "bugs/check*", "bugs/monitor.json"}},
 		"one under its preset": {source: "go/docs", want: []string{"docs/agent.md", "docs/check*", "docs/monitor.json"}},
-		"a team's directory": {source: team + "/deps",
+		"a team's directory": {source: team + "/deps", schema: `{"$schema": "../../monitor.schema.json", "hours": 168}`,
 			want: []string{"deps/command*", "deps/lib/run*", "deps/monitor.json", "deps/notes/why.md"}},
 		"a preset, which is no monitor": {source: "go", refused: true, usage: true},
 		"a name kiln ships nothing of": {source: "deps", refused: true, usage: true,
@@ -65,6 +66,11 @@ func TestMonitorAdd(t *testing.T) {
 
 			if got := filesUnder(t, filepath.Join(r.top, monitorsDir)); !slices.Equal(got, tc.want) {
 				t.Errorf(".kiln/monitors/ holds %v; want %v", got, tc.want)
+			}
+
+			raw, _ := os.ReadFile(filepath.Join(r.top, monitorsDir, "deps", settingsFile))
+			if string(raw) != tc.schema {
+				t.Errorf("it wrote the monitor.json %q; want %q", raw, tc.schema)
 			}
 		})
 	}

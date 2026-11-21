@@ -5,9 +5,9 @@
     "go test -timeout 30m ./..."
   ],
   "rounds": 3,
-  "workflow": "split",
+  "testSession": true,
   "acceptance": "uat/{spec}/",
-  "harness": [
+  "shared": [
     "internal/hometest/",
     "internal/scenariotest/",
     "internal/termtest/"

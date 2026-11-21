@@ -19,7 +19,7 @@ grep 'undefined: nothing' .claude-calls/build/1/2/prompt
 stdout '^  1 of 3 rounds'
 
 -- .kiln/kiln.json --
-{"workflow": "split", "rounds": 3}
+{"testSession": true, "rounds": 3}
 -- claude.json --
 {
  "build": {

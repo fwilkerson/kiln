@@ -42,7 +42,7 @@ Mark the doc fixed.
 
 Mark the doc fixed.
 -- .kiln/monitors/stale/monitor.json --
-{"accept": true}
+{"mustAccept": true}
 -- doc.txt --
 title
 stale

@@ -58,7 +58,7 @@ type fixing struct {
 // newFixing is the fix of m, as c, kiln.json at main's tip when it started, says. found is what its check found.
 func newFixing(c config, m monitor, found checked) *fixing {
 	fixes := side{role: fixRole}
-	if !m.Tests {
+	if !m.WritesTests {
 		fixes.acceptance = c.fixedParts()
 	}
 
@@ -362,7 +362,7 @@ func (b *build) fixAfter(ctx context.Context) (string, reason, error) {
 		}
 	}
 
-	if b.fix.monitor.Accept && !b.rec.Accepted {
+	if b.fix.monitor.MustAccept && !b.rec.Accepted {
 		b.fix.end(outWaits, "", "")
 		return "", reason{}, nil
 	}
@@ -808,7 +808,7 @@ func (b *build) gatedGauge(ctx context.Context, held commands, v verdict) (verdi
 	switch {
 	case rd.failed:
 		report = fmt.Sprintf(gaugeFailed, m.Name, command, lastLines(rd.both, 10))
-	case !m.crossed(rd.value):
+	case !m.line().crossed(rd.value):
 		return v, nil
 	default:
 		report = strings.TrimSpace(fmt.Sprintf(gaugeCrossed, m.Name, shownReading(m.reading(rd.value))) + "\n\n" +

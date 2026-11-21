@@ -23,6 +23,6 @@ if [ -f fixed ]; then sleep 600; fi; echo 1
 -- .kiln/monitors/tidy/command --
 touch fixed
 -- .kiln/monitors/tidy/monitor.json --
-{"max": 0}
+{"atMost": 0}
 -- ok.txt --
 fine

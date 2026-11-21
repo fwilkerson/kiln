@@ -33,7 +33,7 @@ grep '"denyRead": \[\s*"[^"]*/Library/Caches/kiln/[^"/]*"' .claude-calls/build/1
 grep '"allowRead": \[\s*"[^"]*/\.build-x"\s*\]' .claude-calls/build/1/1/settings.json
 
 -- .kiln/kiln.json --
-{"workflow": "split"}
+{"testSession": true}
 -- claude.json --
 {
   "build": {"1": {

@@ -36,6 +36,6 @@ stdout '^changed: not due until '
 [ "$KILN_BASE" = "$(git hash-object -t tree /dev/null)" ] && exit 0
 git diff --name-only "$KILN_BASE" HEAD | wc -l
 -- .kiln/monitors/changed/monitor.json --
-{"max": 0}
+{"atMost": 0}
 -- a.txt --
 a

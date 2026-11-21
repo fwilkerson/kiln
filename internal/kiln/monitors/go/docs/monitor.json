@@ -1,1 +1,1 @@
-{"gates": false, "accept": true}
+{"$schema": "../../monitor.schema.json", "recheck": false, "mustAccept": true}

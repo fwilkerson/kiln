@@ -1,49 +1,49 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "kiln.json",
-  "description": "config is .kiln/kiln.json, read from main's tip, so a build cannot weaken the gate it is held to.",
+  "description": "kiln.json is kiln's settings for a project, in .kiln/kiln.json. kiln reads them from main's tip, so a build cannot weaken the gate it is held to.",
   "type": "object",
   "properties": {
     "$schema": {
-      "description": "Schema names the JSON Schema an editor checks kiln.json against, ./kiln.schema.json, which kiln init writes. kiln reads nothing from it.",
+      "description": "$schema names the JSON Schema an editor checks this file against: \"./kiln.schema.json\", which kiln init writes beside it. kiln reads nothing from it.",
       "type": "string"
     },
     "gate": {
-      "description": "Gate holds the commands the gate runs, each with sh -c, at the top of a worktree.",
+      "description": "gate holds the commands that must pass before work lands on main, such as [\"go vet ./...\", \"go test ./...\"]. Each runs with sh -c, at the top of a checkout of the work. kiln refuses a kiln.json without one.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "rounds": {
-      "description": "Rounds is how many times a failing gate goes back to the session before the build stops.",
+      "description": "rounds caps how often a failing gate goes back to the session before the build stops, such as 3. The audit's findings spend no round. Absent, or 0, the first failing gate stops the build.",
       "type": "integer"
     },
     "hosts": {
-      "description": "Hosts are the only hosts a session's commands reach.",
+      "description": "hosts are the only hosts a session's shell commands may reach, such as [\"proxy.golang.org\", \"*.example.org\"]. Each is a bare host name, with no scheme, port or path. Absent, those commands reach no host.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "writable": {
-      "description": "Writable holds commands, each run with sh -c. Each field one prints is a path a session's commands may write.",
+      "description": "writable holds shell commands, not paths, such as [\"go env GOCACHE GOMODCACHE\"]. Each runs with sh -c. Each word it prints is an absolute path a session's commands may write. Absent, they write only in the checkout.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "mcp": {
-      "description": "MCP holds the only MCP servers a session reaches, by name, each as Claude Code's mcpServers holds one. They run outside the sandbox.",
+      "description": "mcp names the only MCP servers a session may call, such as {\"docs\": {\"command\": \"docs-mcp\"}}. Each is written as Claude Code's mcpServers holds one. They run outside the sandbox. Absent, a session calls none.",
       "type": "object",
       "additionalProperties": {}
     },
-    "workflow": {
-      "description": "Workflow is \"split\", or \"\" for build then audit. Like Acceptance and Harness, kiln reads it at the commit the build was queued at.",
-      "type": "string"
+    "testSession": {
+      "description": "testSession, when true, has a second session write the acceptance tests from the spec alone. The first writes the code, and neither reads the other's checkout. Without it, one session writes the code and the tests. kiln reads it at the commit the build was queued at.",
+      "type": "boolean"
     },
     "acceptance": {
-      "description": "Acceptance holds each path a spec's acceptance tests live in, with {spec} for its name, such as \"acceptance/{spec}/\". A JSON string is a list of one.",
+      "description": "acceptance holds each path a spec's acceptance tests live in, with {spec} where the spec's name goes, such as \"uat/{spec}/\". One path may be a plain string. kiln queue refuses a spec while it is absent. kiln reads it at the commit the build was queued at.",
       "anyOf": [
         {
           "type": "string"
@@ -56,26 +56,26 @@
         }
       ]
     },
-    "harness": {
-      "description": "Harness holds paths both sessions of a split build may write, such as the code the acceptance tests run through.",
+    "shared": {
+      "description": "shared holds paths both sessions may write when testSession is true, such as [\"internal/testutil/\"], the code the tests run through. Without testSession, kiln reads none. kiln reads it at the commit the build was queued at.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "reaudit": {
-      "description": "Reaudit holds paths the audit reads again whenever the work's own change to them differs from what it read.",
+      "description": "reaudit holds paths that never land unread, such as [\"migrations/\"]. When a session's answer to the audit's findings changes one, the audit reads the work again. Absent, the audit never reads such an answer.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "notify": {
-      "description": "Notify is the command that receives each notification, run with sh -c. \"\" prints each as OSC 9.",
+      "description": "notify is a command that receives each notification, such as \".kiln/notify\", run with sh -c. The notice is JSON in $KILN_NOTICE. Absent, kiln prints each notification in its output as OSC 9, which a terminal shows.",
       "type": "string"
     },
     "timeout": {
-      "description": "Timeout is how long a project's command may run, or a session print nothing, before kiln kills it. It is a Go duration above zero, such as \"2h\", or unset for kiln's default.",
+      "description": "timeout bounds each command kiln runs for the project, such as one gate command, and each session's silence. It never bounds a whole build. Past it, kiln kills that command or session. It is a Go duration above zero, such as \"2h\". Absent, it is 1 hour.",
       "type": "string"
     }
   },

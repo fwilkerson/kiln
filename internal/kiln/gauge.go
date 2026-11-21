@@ -16,13 +16,13 @@ import (
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// gaugeLine is a gauge's line. A reading below Min, or above Max, crossed it. A monitor.json beside a gauge sets
-// exactly one of them.
+// gaugeLine is a gauge's line. A reading below AtLeast, or above AtMost, crossed it. A monitor.json beside a gauge
+// sets exactly one of them. The ledger keeps them by the names its lines have always had, min and max.
 type gaugeLine struct {
-	// Min is the line a reading below crosses.
-	Min *float64 `json:"min,omitempty"`
-	// Max is the line a reading above crosses.
-	Max *float64 `json:"max,omitempty"`
+	// AtLeast is the line a reading below crosses.
+	AtLeast *float64 `json:"min,omitempty"`
+	// AtMost is the line a reading above crosses.
+	AtMost *float64 `json:"max,omitempty"`
 }
 
 // crossed reports whether value is on the wrong side of the line. An unknown value, nil, never is.
@@ -30,19 +30,19 @@ func (l gaugeLine) crossed(value *float64) bool {
 	switch {
 	case value == nil:
 		return false
-	case l.Min != nil:
-		return *value < *l.Min
-	case l.Max != nil:
-		return *value > *l.Max
+	case l.AtLeast != nil:
+		return *value < *l.AtLeast
+	case l.AtMost != nil:
+		return *value > *l.AtMost
 	}
 
 	return false
 }
 
-// sides is how many of min and max the line names.
+// sides is how many of AtLeast and AtMost the line names.
 func (l gaugeLine) sides() int {
 	n := 0
-	for _, side := range []*float64{l.Min, l.Max} {
+	for _, side := range []*float64{l.AtLeast, l.AtMost} {
 		if side != nil {
 			n++
 		}
@@ -54,10 +54,10 @@ func (l gaugeLine) sides() int {
 // text shows the line and its side, such as ≥ 80.
 func (l gaugeLine) text() string {
 	switch {
-	case l.Min != nil:
-		return "≥ " + number(*l.Min)
-	case l.Max != nil:
-		return "≤ " + number(*l.Max)
+	case l.AtLeast != nil:
+		return "≥ " + number(*l.AtLeast)
+	case l.AtMost != nil:
+		return "≤ " + number(*l.AtMost)
 	}
 
 	return "unset"
@@ -301,7 +301,7 @@ func (r *Repo) gaugeStatus(ctx context.Context, out io.Writer) error {
 	for _, m := range gauges {
 		rd, ok := latest[string(m.Name)]
 		if !ok {
-			fmt.Fprintf(out, "gauge %s: no reading yet, line %s\n", m.Name, m.text())
+			fmt.Fprintf(out, "gauge %s: no reading yet, line %s\n", m.Name, m.line().text())
 			continue
 		}
 

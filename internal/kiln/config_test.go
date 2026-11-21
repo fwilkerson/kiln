@@ -45,13 +45,13 @@ func TestConfigWords(t *testing.T) {
 			said: `.kiln/kiln.json holds "rouns", a key kiln does not read: name it "rounds"`},
 		"a key in other letters": {config: `{"Gate": ["true"]}`,
 			said: `.kiln/kiln.json holds "Gate", a key kiln does not read: name it "gate"`},
-		"a key that moved to a monitor": {config: `{"gate": ["true"], "gauges": [{"name": "g", "max": 1}]}`,
+		"a key that moved to a monitor": {config: `{"gate": ["true"], "gauges": [{"name": "g", "atMost": 1}]}`,
 			said: `.kiln/kiln.json holds "gauges", a key kiln no longer reads: each gauge is a monitor now, ` +
 				`.kiln/monitors/<name>/ with its gauge script, and its line in monitor.json: move each there, ` +
 				`as kiln help gauges shows`},
 		"a key near none": {config: `{"gate": ["true"], "colour": "red"}`,
 			said: `.kiln/kiln.json holds "colour", a key kiln does not read: remove it, or name one kiln reads: ` +
-				`$schema, gate, rounds, hosts, writable, mcp, workflow, acceptance, harness, reaudit, ` +
+				`$schema, gate, rounds, hosts, writable, mcp, testSession, acceptance, shared, reaudit, ` +
 				`notify, timeout`},
 		"a trailing comma": {config: "{\n  \"gate\": [\"true\"],\n}",
 			said: ".kiln/kiln.json is no JSON at line 2, column 19: a comma with nothing after it: fix its JSON there"},
@@ -147,5 +147,36 @@ func TestAddKeys(t *testing.T) {
 				t.Errorf("addKeys(%q) = %q, %v; want %q", tc.old, got, err, tc.want)
 			}
 		})
+	}
+}
+
+// TestRenamedKeys holds that kiln refuses each key it once read, in kiln.json and monitor.json, naming its new key.
+func TestRenamedKeys(t *testing.T) {
+	const moved = "a key kiln no longer reads: "
+	for key, tc := range map[string]struct{ file, raw, said string }{
+		"workflow": {configFile, `{"gate": ["true"], "workflow": "split"}`, `.kiln/kiln.json holds "workflow", ` + moved +
+			`say "testSession": true in its place for a second session that writes the acceptance tests, or drop it ` +
+			`for one session that writes the code and the tests`},
+		"workflow, any value": {configFile, `{"gate": ["true"], "workflow": "both"}`, `holds "workflow", ` + moved},
+		"harness": {configFile, `{"gate": ["true"], "harness": ["h/"]}`, `.kiln/kiln.json holds "harness", ` + moved +
+			`name it "shared", the paths both sessions may write when testSession is true`},
+		"gates":  {settingsFile, `{"gates": false}`, `.kiln/monitors/deps/monitor.json holds "gates", ` + moved + `name it "recheck"`},
+		"accept": {settingsFile, `{"accept": true}`, `monitor.json holds "accept", ` + moved + `name it "mustAccept"`},
+		"tests":  {settingsFile, `{"tests": true}`, `monitor.json holds "tests", ` + moved + `name it "writesTests"`},
+		"min":    {settingsFile, `{"min": 80}`, `monitor.json holds "min", ` + moved + `name it "atLeast"`},
+		"max":    {settingsFile, `{"max": 0}`, `monitor.json holds "max", ` + moved + `name it "atMost"`},
+	} {
+		var err error
+		if tc.file == configFile {
+			_, err = parseConfig([]byte(tc.raw))
+		} else {
+			m := monitor{Name: "deps"}
+			_, refused := (config{}).readMonitor(m.Name, m.path(""), []string{"command", settingsFile}, []byte(tc.raw))
+			err = refused.err()
+		}
+
+		if !strings.Contains(fmt.Sprint(err), tc.said) {
+			t.Errorf("%s: refused %v; want a refusal that says %q", key, err, tc.said)
+		}
 	}
 }

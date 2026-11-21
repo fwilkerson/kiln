@@ -37,7 +37,7 @@
 //
 //	(no record) ─fix─▶ building ├─ lands, is unchanged, asks, fails, couldn't run or meets a limit ──▶ (no record)
 //	                            ├─ stops ──▶ stopped, until its next fix replaces it
-//	                            └─ passes, "accept": true ───────▶ waiting on its branch
+//	                            └─ passes, "mustAccept": true ───▶ waiting on its branch
 //	                                                               ├─ reject ──▶ (no record)
 //	                                                               └─ accept ──▶ landing an accepted fix
 //	                                                                             ├─ lands ──▶ (no record)
@@ -58,9 +58,9 @@
 // date, as Presets says:
 //
 //	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
-//	                            the MCP servers a session calls, the workflow, where the acceptance tests live, the
-//	                            harness, the paths the audit reads again, and the program that receives each
-//	                            notification
+//	                            the MCP servers a session calls, whether a test session writes the tests, where the
+//	                            acceptance tests live, the shared paths, the paths the audit reads again, and the
+//	                            program that receives each notification
 //	.kiln/kiln.schema.json      kiln.json's JSON Schema, for an editor, which kiln init writes over each time
 //	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
 //	.kiln/init.json             what kiln init and kiln monitor add last wrote, which kiln init merges edits against
@@ -163,7 +163,7 @@
 // kiln queue refuses a kiln.json whose acceptance names no path, a path without {spec}, or one that starts with it.
 // It refuses a path that path.Clean changes, but for its last slash, or one that starts with a slash. It refuses a
 // list in which one path's part before {spec} starts another's, or equals it, with case folded. It refuses a spec
-// when a harness path is one of its paths, or holds one, or lies under one. It refuses a build agent that says how
+// when a shared path is one of its paths, or holds one, or lies under one. It refuses a build agent that says how
 // to write the tests. Such a line is an older default's heading for them, or its line on what the build writes. Or
 // it names a path's part before {spec}, where the part starts a path.
 //
@@ -197,7 +197,7 @@
 // A usage limit pauses the build until the limit resets, and then resumes the same session. A limit with no reset
 // pauses it for 5 minutes.
 //
-// A split build, which kiln.json's "workflow": "split" names at the commit queued, runs two sessions at once:
+// A split build, which kiln.json's "testSession": true asks for at the commit queued, runs two sessions at once:
 //
 //	build session    in <trees>/.build-<name>, a clone of main on kiln/<name>.build: writes the code
 //	verify session   in <trees>/.verify-<name>, a clone of main on kiln/<name>.verify: writes the acceptance tests,
@@ -230,9 +230,9 @@
 //	                          a monitor's fix writes nothing there
 //	a .claude directory       the developer's Claude Code settings, agents and skills, whose hooks run unsandboxed
 //	the other side            in a split build, the build session writes neither the acceptance tests nor the
-//	                          amendments; the verify session writes only those, and the harness
+//	                          amendments; the verify session writes only those, and the shared paths
 //	the acceptance tests      to a monitor's fix, each path starting with an acceptance path's part before {spec},
-//	                          unless its monitor says "tests": true
+//	                          unless its monitor says "writesTests": true
 //
 // # Monitors
 //
@@ -241,18 +241,19 @@
 //
 //	.kiln/monitors/deps/
 //	  check          finds a problem: its last line of stdout is {"fix": true|false, "summary": "..."}
-//	  gauge          finds a problem by a number in place of a check: the monitor's gauge, with min or max its line
+//	  gauge          finds a problem by a number in place of a check: the monitor's gauge, its line atLeast or atMost
 //	  command        fixes it with no model, outside the sandbox
 //	  agent.md       fixes it in a session, from an agent's file, as Agents says
-//	  monitor.json   {"hours": 1, "gates": false, "accept": true, "tests": true, "min": 80}
+//	  monitor.json   {"hours": 1, "recheck": false, "mustAccept": true, "writesTests": true, "atLeast": 80}
 //
 // A helper a script runs goes in a subdirectory, such as lib/. Its interval is hours, a whole number from 0 to 65535,
 // or 24 when unset. 0 runs it at each kiln monitor run. kiln refuses a file directly under .kiln/monitors/, and a
 // monitor whose name no spec could have. It refuses a file directly in a monitor's directory that is none of the five
-// above. It refuses a key it does not know, and a value of the wrong type. It refuses a check beside a gauge, a gauge
+// above. It refuses a key it does not know, and a value of the wrong type. It refuses a key it once read, and names
+// the key in its place. It refuses a check beside a gauge, a gauge
 // with no line, and a line with no gauge. It refuses a check, gauge or command git holds without the executable bit. It
 // refuses a monitor with no command and no agent.md, unless the monitor holds a gauge alone to watch. Such a monitor
-// fixes nothing, so it refuses gates, accept and tests in its monitor.json, which steer a fix. It
+// fixes nothing, so it refuses recheck, mustAccept and writesTests in its monitor.json, which steer a fix. It
 // refuses a monitor that may not write the tests while kiln cannot guard them. acceptance then names no path, or one
 // with no part before {spec}. A refusal holds back its one monitor: kiln monitor run runs the rest, and
 // says why. It notifies when it first refuses that monitor's directory, and again each time the directory changes. kiln
@@ -297,25 +298,26 @@
 // stderr, but for a check past the timeout, as Hangs says. A verdict that adds "drain": true asks kiln to check again
 // at once, once the fix lands. The agent's session has the role fix. It reads what the check printed above its last
 // line, and what the gate printed. Then it reads "Fix what the monitor <name> found, as your instructions say, and end
-// your turn." The gate adds the check, unless gates is false, and fails while it asks for a fix. A fix that passes
-// lands, or waits for kiln accept when accept is true. In an accepted fix's landing, a conflict with main or a failed
-// gate goes back to the fix's session. Each spends a round. Before a failed gate goes back, kiln merges main into the
-// branch. A fix with no session stops instead. Work that changes nothing ends unchanged. An agent's reply whose last
-// line is {"ask": true, "summary": "..."} ends the fix needs you, with its report. One whose last line is {"title":
-// "type(scope): summary"}, of at most 72 characters, titles the commit that lands the fix. A landing keeps the title of
-// the fix the developer accepted. kiln status shows a landed fix's title as its summary, but for a gauge's. A failed
-// session ends it session failed. A usage limit ends it at once, never waiting for the reset. In a landing, each of
-// these stops it and keeps the fix. So does work that changes nothing on main. Only a fix whose agent ran gets the
-// audit. A landing's audit reads each file whose own change since main differs from the accepted commit's. It runs when
-// the work so differs from the commit the audit last read, outside .kiln/. It skips the session's answer to its
-// findings, but for a path kiln.json's reaudit names. A landing whose turn kiln cut short resumes that turn first.
+// your turn." The gate adds the check, unless recheck is false, and fails while it asks for a fix. A fix that passes
+// lands, or waits for kiln accept when mustAccept is true. In an accepted fix's landing, a conflict with main or a
+// failed gate goes back to the fix's session. Each spends a round. Before a failed gate goes back, kiln merges main
+// into the branch. A fix with no session stops instead. Work that changes nothing ends unchanged. An agent's reply
+// whose last line is {"ask": true, "summary": "..."} ends the fix needs you, with its report. One whose last line is
+// {"title": "type(scope): summary"}, of at most 72 characters, titles the commit that lands the fix. A landing keeps
+// the title of the fix the developer accepted. kiln status shows a landed fix's title as its summary, but for a
+// gauge's. A failed session ends it session failed. A usage limit ends it at once, never waiting for the reset. In a
+// landing, each of these stops it and keeps the fix. So does work that changes nothing on main. Only a fix whose agent
+// ran gets the audit. A landing's audit reads each file whose own change since main differs from the accepted commit's.
+// It runs when the work so differs from the commit the audit last read, outside .kiln/. It skips the session's answer
+// to its findings, but for a path kiln.json's reaudit names. A landing whose turn kiln cut short resumes that turn
+// first.
 //
 // A monitor's gauge is named for the monitor, and kiln reads it after each landing too, as Gauges says. The
 // monitor's run reads it over the whole repository. It reads in the check's worktree at main's tip, with git's empty
 // tree in $KILN_BASE. A reading that crossed its line starts a fix, and one on its line is healthy. A gauge that read
 // nothing is healthy too, with no reading, as Gauges says. A failed gauge, or a last line that is no number, couldn't
 // run. The reading is the monitor's summary, and its ledger line holds it. The agent reads what
-// the gauge printed above its number. At each gate of the fix, unless gates is false, kiln reads the gauge again. Its
+// the gauge printed above its number. At each gate of the fix, unless recheck is false, kiln reads the gauge again. Its
 // line is the monitor's at main's tip. It reads in the check's worktree at the fix's commit, never the fix's own
 // worktree. $KILN_BASE is then the fix's merge base with main. The gate fails while that reading crosses the line, or
 // the gauge fails. Either goes back to the agent, but for a gauge that ran past kiln.json's timeout, as Hangs says.
@@ -483,27 +485,27 @@
 //
 // # Gauges
 //
-// A gauge is a script in a monitor's directory that prints a number. Its line, in monitor.json, is min or max, never
-// both. It is named for its monitor. A monitor that holds a gauge alone watches it, and fixes nothing, as Monitors
-// says:
+// A gauge is a script in a monitor's directory that prints a number. Its line, in monitor.json, is atLeast or atMost,
+// never both. It is named for its monitor. A monitor that holds a gauge alone watches it, and fixes nothing, as
+// Monitors says:
 //
 //	.kiln/monitors/mutation/
 //	  gauge          prints the mutation score last
-//	  monitor.json   {"min": 80}
+//	  monitor.json   {"atLeast": 80}
 //
-// After each landing of a build or a fix, kiln reads each monitor's gauge at main's tip, by name. It runs
-// each gauge in turn, by its path, in <trees>/.gauges at the landed commit. $KILN_BASE holds main's tip before the
-// landing, so a gauge can measure one build's work alone. In a monitor's run, $KILN_BASE is git's empty tree. There
-// git diff "$KILN_BASE" HEAD names every file, and git log "$KILN_BASE"..HEAD fails. The worktree holds only the
-// commit's files. So a gauge that reads the changed files should list them with git diff --diff-filter=d. The reading
-// is the last line of stdout, trimmed, as a decimal number. A gauge that fails, or prints no number last, reads
-// unknown. One that exits 0 and prints nothing read nothing: kiln says so, and writes no reading. So kiln status keeps
-// showing the last reading kiln took, with its landing. kiln says why, by the last line of its stderr, or of its
-// stdout. Hangs says why for a gauge past the timeout. kiln writes each reading to its ledger with its line, and
-// judges it against that line wherever it shows. A reading below min, or above max, crossed its line. An unknown one
-// never did. The kiln that landed the build prints the readings after its summary, and only then starts the next build.
-// A gauge never blocks a landing, and nothing reads a landing kiln missed. The read holds commands.lock, so it waits
-// for a gate, and a gate waits for it.
+// After each landing of a build or a fix, kiln reads each monitor's gauge at main's tip, by name. It runs each gauge in
+// turn, by its path, in <trees>/.gauges at the landed commit. $KILN_BASE holds main's tip before the landing, so a
+// gauge can measure one build's work alone. In a monitor's run, $KILN_BASE is git's empty tree. There git diff
+// "$KILN_BASE" HEAD names every file, and git log "$KILN_BASE"..HEAD fails. The worktree holds only the commit's files.
+// So a gauge that reads the changed files should list them with git diff --diff-filter=d. The reading is the last line
+// of stdout, trimmed, as a decimal number. A gauge that fails, or prints no number last, reads unknown. One that exits
+// 0 and prints nothing read nothing: kiln says so, and writes no reading. So kiln status keeps showing the last reading
+// kiln took, with its landing. kiln says why, by the last line of its stderr, or of its stdout. Hangs says why for a
+// gauge past the timeout. kiln writes each reading to its ledger with its line, and judges it against that line
+// wherever it shows. A reading below atLeast, or above atMost, crossed its line. An unknown one never did. The kiln
+// that landed the build prints the readings after its summary, and only then starts the next build. A gauge never
+// blocks a landing, and nothing reads a landing kiln missed. The read holds commands.lock, so it waits for a gate, and
+// a gate waits for it.
 //
 // kiln monitor run reads each gauge too, over the whole repository, as Monitors says. A gauge that read nothing there
 // is healthy, with no reading, and kiln says so as after a landing. It starts no fix, and notifies nothing. So a gauge
@@ -912,9 +914,10 @@ func (r *Repo) queueable(ctx context.Context, main git.Rev, held map[string][]by
 }
 
 // specRefusals say why kiln queue refuses the spec name, whose text is spec, but for its Status. They are its form,
-// its acceptance paths against the harness, and a monitor of its name. monitors are the names under .kiln/monitors/.
+// its acceptance paths against the shared paths, and a monitor of its name. monitors are the names under
+// .kiln/monitors/.
 func (c config) specRefusals(name Spec, spec []byte, monitors []string) refusals {
-	refused := c.harnessRefusals(name)
+	refused := c.sharedRefusals(name)
 	if slices.Contains(monitors, string(name)) {
 		refused = append(refused, refusal{fmt.Sprintf("%s holds a monitor %s, and one name is never both a "+
 			"spec's and a monitor's", monitorsDir, name), "rename one"})

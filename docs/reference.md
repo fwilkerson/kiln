@@ -7,6 +7,7 @@ commands in use.
 .kiln/
   kiln.json                  the settings below
   kiln.schema.json           kiln.json's JSON Schema, which an editor reads by kiln.json's "$schema"
+  monitor.schema.json        monitor.json's JSON Schema, which an editor reads by each monitor.json's "$schema"
   specs/<name>.md            a spec, and <name>.amend.md, the amendments a build asks for
   init.json                  what kiln init and kiln monitor add last wrote, which kiln init merges your edits against
   agents/build.md            the build agent: frontmatter, then its prompt
@@ -46,28 +47,28 @@ replaces, and how kiln reads the path and finds it again on the next run.
   "writable": ["go env GOCACHE GOMODCACHE"],
   "mcp": {"docs": {"command": "docs-mcp"}},
   "acceptance": "acceptance/{spec}/",
-  "workflow": "split",
-  "harness": ["internal/testutil/"],
+  "testSession": true,
+  "shared": ["internal/testutil/"],
   "reaudit": ["migrations/"],
   "notify": ".kiln/notify",
   "timeout": "2h"
 }
 ```
 
-| Key          | What it holds                                                               | Read at           |
-|--------------|-----------------------------------------------------------------------------|-------------------|
-| `$schema`    | The JSON Schema an editor checks this file against, which kiln never reads  | never             |
-| `gate`       | Commands that must pass before work lands, each run with `sh -c`. Required. | main's tip        |
-| `rounds`     | How many times a failing gate goes back to the session before a build stops | main's tip        |
-| `hosts`      | The only hosts a session's commands reach                                   | main's tip        |
-| `writable`   | Commands that print the paths, beside its checkout, a session may write     | main's tip        |
-| `mcp`        | The only MCP servers a session calls, as Claude Code's settings hold one    | main's tip        |
-| `acceptance` | Where a spec's acceptance tests live, with `{spec}` for its name. Required. | the commit queued |
-| `workflow`   | `"split"`, or absent for one session that writes code and tests             | the commit queued |
-| `harness`    | Paths both sessions of a split build may write                              | the commit queued |
-| `reaudit`    | Paths the audit reads again whenever the work changes them                  | main's tip        |
-| `notify`     | A program that receives each notification, run with `sh -c`                 | main's tip        |
-| `timeout`    | How long a command may run, or a session be silent, before kiln kills it    | main's tip        |
+| Key             | What it holds                                                                | Read at           |
+|-----------------|------------------------------------------------------------------------------|-------------------|
+| `$schema`       | The JSON Schema an editor checks this file against, which kiln never reads   | never             |
+| `gate`          | Commands that must pass before work lands, each run with `sh -c`. Required.  | main's tip        |
+| `rounds`        | How many times a failing gate goes back to the session before a build stops  | main's tip        |
+| `hosts`         | The only hosts a session's commands reach                                    | main's tip        |
+| `writable`      | Commands that print the paths, beside its checkout, a session may write      | main's tip        |
+| `mcp`           | The only MCP servers a session calls, as Claude Code's settings hold one     | main's tip        |
+| `acceptance`    | Where a spec's acceptance tests live, with `{spec}` for its name. Required.  | the commit queued |
+| `"testSession"` | `true`: a second session writes the tests; absent: one writes code and tests | the commit queued |
+| `shared`        | Paths both sessions may write when `"testSession"` is true                   | the commit queued |
+| `reaudit`       | Paths the audit reads again whenever the work changes them                   | main's tip        |
+| `notify`        | A program that receives each notification, run with `sh -c`                  | main's tip        |
+| `timeout`       | How long a command may run, or a session be silent, before kiln kills it     | main's tip        |
 
 kiln reads the gate from main's tip, never from the build's checkout, so a build cannot weaken its own gate. It
 refuses a `kiln.json` with a key it does not know. `kiln doctor` reads the working tree's `kiln.json`, before you
@@ -117,12 +118,12 @@ One path may be a plain string. `kiln queue` refuses:
 - a path without `{spec}`, or one that starts with it,
 - a path not in its clean form, as `path.Clean` writes it,
 - a list in which one path's part before `{spec}` starts another's, since two specs' paths could then meet,
-- a spec whose name puts one of its paths on a `harness` path, or around or inside one.
+- a spec whose name puts one of its paths on a `shared` path, or around or inside one.
 
 A project with more than one path says which test goes where in its verify agent, and in the "Acceptance tests"
 section of its audit agent.
 
-### workflow, harness and reaudit
+### testSession, shared and reaudit
 
 ```text
                        ┌─ build session, in its own clone:  the code       ─┐
@@ -131,14 +132,14 @@ kiln fire ─▶ main ─────┤                                        
                           written from the spec alone, never seeing the code
 ```
 
-- With `"workflow": "split"`, the build session writes nothing under the `acceptance` paths or in the amendment
-  file. The verify session writes only there, and under `harness`.
+- With `"testSession": true`, kiln runs a split build: the build session writes nothing under the `acceptance` paths
+  or in the amendment file. The verify session writes only there, and under `shared`.
 - Each session's settings deny it reads of the other's clone.
 - kiln gates the build session's work alone first, and its failures go to the build session.
 - Then kiln stacks both sides and gates the stack. Its failures go to the verify session. That session fixes its
   tests, or names the tests the code fails, which go to the build session.
 - The audit reads the stack, and its findings go to both.
-- `reaudit` lists paths that never land unread, such as a harness or migrations. When the work's change to one
+- `reaudit` lists paths that never land unread, such as shared test code or migrations. When the work's change to one
   differs from what the audit last read, the audit reads the work again, as a round.
 
 ### notify
@@ -219,17 +220,21 @@ the new version with your edits, as it merges the defaults. A monitor you delete
                  or for you in a monitor with no command and no agent.md
   command        a fix that needs no model, run outside the sandbox
   agent.md       an agent's file, run when command left the gate failing, or is absent
-  monitor.json   the keys below, each optional: {"hours": 1, "tests": true}
+  monitor.json   the keys below, each optional: {"$schema": "../../monitor.schema.json", "hours": 1}
 ```
 
-| Key      | What it holds                                                                                       |
-|----------|-----------------------------------------------------------------------------------------------------|
-| `hours`  | How often it runs, in whole hours. Its range and default: `kiln help monitors`.                     |
-| `gates`  | `false` keeps the check or gauge out of the fix's gate.                                             |
-| `accept` | `true` keeps each fix on its branch until `kiln accept <name>`.                                     |
-| `tests`  | `true` lets a fix write under each `acceptance` path's part before `{spec}`.                        |
-| `min`    | Beside a gauge, its line: `min` or `max`, never both.                                             |
-| `max`    |                                                                                                     |
+| Key             | What it holds                                                                                     |
+|-----------------|---------------------------------------------------------------------------------------------------|
+| `$schema`       | `"../../monitor.schema.json"`, the schema an editor reads, which kiln never reads                 |
+| `hours`         | How often it runs, in whole hours. Its range and default: `kiln help monitors`.                   |
+| `recheck`       | `false` keeps the check or gauge out of the fix's gate. Absent, the gate runs it again.           |
+| `"mustAccept"`  | `true` keeps each fix on its branch until `kiln accept <name>`. Absent, a passing fix lands.      |
+| `"writesTests"` | `true` lets a fix write under each `acceptance` path's part before `{spec}`.                      |
+| `"atLeast"`     | Beside a gauge, its line: a reading below it crossed. Name `"atLeast"` or `"atMost"`, never both. |
+| `"atMost"`      | Beside a gauge, its line: a reading above it crossed.                                             |
+
+`kiln monitor add` gives a monitor.json it writes the `$schema` key when it lacks one, and `kiln init` writes the
+schema. kiln refuses a key it once read, `gates`, `accept`, `tests`, `min` or `max`, and names the key in its place.
 
 ```text
 kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ─────────────────────────▶ healthy
@@ -252,9 +257,9 @@ kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ───�
 - A monitor is due half an hour before its interval has passed, so the hourly job never misses it by a few seconds.
   `kiln help monitors` holds that rule, and `kiln help hangs` says when a check or gauge that ran past `timeout` holds
   it.
-- A fix is a build with no spec. The gate holds it, with the check or gauge added unless `"gates": false`. That
+- A fix is a build with no spec. The gate holds it, with the check or gauge added unless `"recheck": false`. That
   setting is for a check that reads something a fix cannot change until it is deployed.
-- A fix never writes under `.kiln/`. Without `"tests": true`, it never writes under an `acceptance` path's part
+- A fix never writes under `.kiln/`. Without `"writesTests": true`, it never writes under an `acceptance` path's part
   before `{spec}` either, so it cannot change a lasting suite.
 - An agent asks for you with the last line of its reply: `{"ask": true, "summary": "..."}`. kiln then drops what it
   changed, but in the landing of a fix you accepted, where kiln keeps the fix, and `kiln status` shows the report.
@@ -281,10 +286,11 @@ with no `command` and no `agent.md`, watches it and fixes nothing:
 ```text
 .kiln/monitors/health/
   gauge          prints the number as its last line
-  monitor.json   {"min": 10}
+  monitor.json   {"$schema": "../../monitor.schema.json", "atLeast": 10}
 ```
 
-- Its `monitor.json` has exactly one of `min` and `max`, its line. A reading below `min`, or above `max`, crossed it.
+- Its `monitor.json` has exactly one of `"atLeast"` and `"atMost"`, its line. A reading below `"atLeast"`, or above `"atMost"`,
+  crossed it.
 - kiln reads each gauge after each landing. `kiln status` shows the latest reading, and `kiln tui` each landing's. A
   gauge never blocks a landing, so a line that must hold is a gate command.
 - `kiln monitor run` reads it over the whole repository too, when the monitor is due. In a monitor that only
@@ -305,7 +311,7 @@ with no `command` and no `agent.md`, watches it and fixes nothing:
 
 A gauge can read kiln's own numbers from `kiln ledger`, as [What kiln records](#what-kiln-records) says. It runs
 `"$KILN"`, the kiln that reads it. This `.kiln/monitors/build-cost/gauge`, beside a `monitor.json` of
-`{"max": 5}`, reads the median cost of the last ten builds that ended, in dollars:
+`{"atMost": 5}`, reads the median cost of the last ten builds that ended, in dollars:
 
 ```sh
 #!/bin/sh
@@ -338,7 +344,7 @@ You audit a build's work. ...
   No file changes the contract, the denied commands, or the guard on `.kiln/`.
 - `kiln queue` reads the build, verify and audit agents at the commit it queues. Each session of that build runs
   with them.
-- Without the split workflow, the build session writes the tests too, so the verify agent's body follows the build
+- Without `"testSession"`, the build session writes the tests too, so the verify agent's body follows the build
   agent's.
 
 ## Reviewers

@@ -17,4 +17,4 @@ echo '{"fix": true, "summary": "the service logged an error"}'
 -- .kiln/monitors/errors/command --
 echo changed >change.txt
 -- .kiln/monitors/errors/monitor.json --
-{"hours": 1, "gates": false}
+{"hours": 1, "recheck": false}

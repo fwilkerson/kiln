@@ -16,7 +16,7 @@ exec git commit --quiet -m 'docs: approve x and y'
 exec kiln queue x
 exec kiln fire
 stdout '^x: landed on main'
-exec sh -c 'sed -i "" "s/^{/{\n  \"workflow\": \"split\",/" .kiln/kiln.json'
+exec sh -c 'sed -i "" "s/^{/{\n  \"testSession\": true,/" .kiln/kiln.json'
 exec git commit --quiet -am 'chore: build in the split workflow'
 exec kiln queue y
 exec kiln fire

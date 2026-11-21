@@ -28,9 +28,9 @@ func TestMonitorConfig(t *testing.T) {
 	}{
 		"a command alone":              {files: "command"},
 		"an agent alone":               {files: "agent.md"},
-		"a check, a command and keys":  {files: "check command", settings: `{"hours": 1, "gates": false, "accept": true}`},
-		"a gauge and its line":         {files: "gauge agent.md", settings: `{"min": 10}`},
-		"a gauge out of the gate":      {files: "gauge agent.md", settings: `{"max": 0, "gates": false}`},
+		"a check, a command and keys":  {files: "check command", settings: `{"hours": 1, "recheck": false, "mustAccept": true}`},
+		"a gauge and its line":         {files: "gauge agent.md", settings: `{"atLeast": 10}`},
+		"a gauge out of the gate":      {files: "gauge agent.md", settings: `{"atMost": 0, "recheck": false}`},
 		"a helper in a subdirectory":   {files: "check agent.md lib/lost lib/notes/why.md"},
 		"a file kiln does not read":    {files: "command README.md", refused: []string{"holds README.md, a file kiln does not read: keep only check, gauge"}},
 		"chek beside agent.md":         {files: "chek agent.md", refused: []string{"holds chek, a file kiln does not read"}},
@@ -42,17 +42,17 @@ func TestMonitorConfig(t *testing.T) {
 		"the old key, every":           {files: "command", settings: `{"every": "24h"}`, refused: []string{"monitor.json: "}},
 		"a key kiln does not know":     {files: "check command", settings: `{"drain": true}`, refused: []string{"monitor.json: "}},
 		"a check alone":                {files: "check", refused: []string{"holds no command and no agent.md, so it fixes nothing"}},
-		"a check and a gauge":          {files: "check gauge agent.md", settings: `{"min": 10}`, refused: []string{"holds both a check and a gauge"}},
-		"a gauge with no line":         {files: "gauge agent.md", refused: []string{"holds a gauge, but its monitor.json names both min and max, or neither"}},
-		"a gauge with both sides":      {files: "gauge agent.md", settings: `{"min": 1, "max": 2}`, refused: []string{"holds a gauge, but its monitor.json names both min and max, or neither"}},
-		"a line with no gauge":         {files: "check agent.md", settings: `{"max": 0}`, refused: []string{"names min or max, a gauge's line, but holds no gauge"}},
-		"a gauge alone":                {files: "gauge monitor.json", settings: `{"hours": 1, "max": 0}`},
-		"a gauge alone, no tests":      {files: "gauge", settings: `{"max": 0}`, acceptance: `[]`},
-		"a gauge alone with fix keys":  {files: "gauge", settings: `{"max": 0, "tests": true, "gates": false, "accept": false}`, refused: []string{"names accept in its monitor.json, a key that steers a fix, but holds no command and no agent.md to fix with: drop accept, or add a command or an agent.md", "names gates", "names tests"}},
-		"a line alone":                 {files: "monitor.json", settings: `{"max": 0}`, refused: []string{"names min or max, a gauge's line, but holds no gauge: drop min and max, or add a gauge"}},
+		"a check and a gauge":          {files: "check gauge agent.md", settings: `{"atLeast": 10}`, refused: []string{"holds both a check and a gauge"}},
+		"a gauge with no line":         {files: "gauge agent.md", refused: []string{"holds a gauge, but its monitor.json names both atLeast and atMost, or neither"}},
+		"a gauge with both sides":      {files: "gauge agent.md", settings: `{"atLeast": 1, "atMost": 2}`, refused: []string{"holds a gauge, but its monitor.json names both atLeast and atMost, or neither"}},
+		"a line with no gauge":         {files: "check agent.md", settings: `{"atMost": 0}`, refused: []string{"names atLeast or atMost, a gauge's line, but holds no gauge"}},
+		"a gauge alone":                {files: "gauge monitor.json", settings: `{"hours": 1, "atMost": 0}`},
+		"a gauge alone, no tests":      {files: "gauge", settings: `{"atMost": 0}`, acceptance: `[]`},
+		"a gauge alone with fix keys":  {files: "gauge", settings: `{"atMost": 0, "writesTests": true, "recheck": false, "mustAccept": false}`, refused: []string{"names mustAccept in its monitor.json, a key that steers a fix, but holds no command and no agent.md to fix with: drop mustAccept, or add a command or an agent.md", "names recheck", "names writesTests"}},
+		"a line alone":                 {files: "monitor.json", settings: `{"atMost": 0}`, refused: []string{"names atLeast or atMost, a gauge's line, but holds no gauge: drop atLeast and atMost, or add a gauge"}},
 		"a monitor.json alone":         {files: "monitor.json", settings: `{"hours": 1}`, refused: []string{"holds no command and no agent.md, so it fixes nothing: add one, or keep a gauge alone"}},
 		"tests kiln could not guard":   {files: "command", acceptance: `"{spec}_test/"`, refused: []string{"may not write the tests"}},
-		"tests the monitor may write":  {files: "command", settings: `{"tests": true}`, acceptance: `"{spec}_test/"`},
+		"tests the monitor may write":  {files: "command", settings: `{"writesTests": true}`, acceptance: `"{spec}_test/"`},
 		"tests under no path to guard": {files: "command", acceptance: `[]`, refused: []string{"may not write the tests"}},
 		"tests under one of two paths": {files: "command", acceptance: `["uat/{spec}/", "{spec}_test/"]`, refused: []string{"may not write the tests"}},
 		"each rule a monitor breaks":   {name: "Deps", files: "check README", refused: []string{"a name no spec could have", "holds README", "holds no command and no agent.md"}},
@@ -144,7 +144,7 @@ func TestContractGauge(t *testing.T) {
 		says bool
 	}{
 		"a gauge in the gate":     {m: monitor{finder: gaugeScript}, says: true},
-		"a gauge out of the gate": {m: monitor{finder: gaugeScript, Gates: new(false)}},
+		"a gauge out of the gate": {m: monitor{finder: gaugeScript, Recheck: new(false)}},
 		"a check in the gate":     {m: monitor{finder: checkScript}},
 	} {
 		f := &fixing{monitor: tc.m}
@@ -191,7 +191,7 @@ func TestMonitorRunRefused(t *testing.T) {
 	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptance": "a/{spec}/", ` +
 		`"notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}`})
 	writeMonitor(t, repo, "good", map[string]string{gaugeScript: "echo 0\n", commandScript: "true\n",
-		settingsFile: `{"max": 0}`})
+		settingsFile: `{"atMost": 0}`})
 	writeMonitor(t, repo, "bad", map[string]string{checkScript: checkHealthy, commandScript: "true\n"})
 	shell(t, repo, "chmod -x .kiln/monitors/bad/check && git add -A && git commit --quiet -m start")
 	const why = "run chmod +x .kiln/monitors/bad/check, and commit it"
@@ -352,7 +352,7 @@ func TestStuck(t *testing.T) {
 // check or gauge printed. The fix's outcome and the monitor's check or gauge say which.
 func TestHold(t *testing.T) {
 	gated := monitor{Name: "m", finder: checkScript, command: true}
-	outside := monitor{Name: "m", finder: checkScript, agent: true, Gates: new(false)}
+	outside := monitor{Name: "m", finder: checkScript, agent: true, Recheck: new(false)}
 	unchecked := monitor{Name: "m", agent: true}
 	gauged := monitor{Name: "m", finder: gaugeScript, agent: true}
 	for name, tc := range map[string]struct {

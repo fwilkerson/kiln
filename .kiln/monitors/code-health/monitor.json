@@ -1,1 +1,1 @@
-{"min": 10}
+{"$schema": "../../monitor.schema.json", "atLeast": 10}

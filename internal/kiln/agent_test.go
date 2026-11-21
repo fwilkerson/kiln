@@ -293,7 +293,7 @@ func TestQueueNeedsInit(t *testing.T) {
 }
 
 // TestQueueNeedsTestsPlace holds that kiln queue refuses a kiln.json that names no place for the acceptance tests.
-// It refuses paths that two specs could share. It refuses a spec whose paths meet the harness. It refuses a build
+// It refuses paths that two specs could share. It refuses a spec whose paths meet a shared path. It refuses a build
 // agent that still says how to write the tests, as an older default did.
 func TestQueueNeedsTestsPlace(t *testing.T) {
 	t.Parallel()
@@ -313,10 +313,10 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 		"a fixed part that starts another's":         {change: acceptance(`["uat/{spec}/", "uat/integration/{spec}/"]`), refusal: "could make two"},
 		"one fixed part twice, in other letters":     {change: acceptance(`["test_{spec}.py", "Test_{spec}-it.py"]`), refusal: "could make two"},
 		"a fixed part that only shares a prefix":     {change: acceptance(`["uat/{spec}/", "uat-it/{spec}/"]`)},
-		"the spec's path is a harness path":          {change: harness(`acceptance/x/`), refusal: "meets the harness path"},
-		"a harness path is under the spec's path":    {change: harness(`acceptance/x/h/`), refusal: "meets the harness path"},
-		"the spec's path is under a harness path":    {change: harness(`acceptance/`), refusal: "meets the harness path"},
-		"a harness path beside the spec's":           {change: harness(`acceptance/xh/`)},
+		"the spec's path is a shared path":           {change: shared(`acceptance/x/`), refusal: "meets the shared path"},
+		"a shared path is under the spec's path":     {change: shared(`acceptance/x/h/`), refusal: "meets the shared path"},
+		"the spec's path is under a shared path":     {change: shared(`acceptance/`), refusal: "meets the shared path"},
+		"a shared path beside the spec's":            {change: shared(`acceptance/xh/`)},
 		"the build agent keeps the old heading": {change: `printf '\n## Acceptance tests\n' >>.kiln/agents/build.md`,
 			refusal: "move that text to .kiln/agents/verify.md"},
 		"the build agent keeps the old line": {
@@ -360,9 +360,9 @@ func acceptance(raw string) string {
 	return `sed -i '' 's|"acceptance": .*|"acceptance": ` + raw + `|' .kiln/kiln.json`
 }
 
-// harness is a shell command that gives kiln.json one harness path, p.
-func harness(p string) string {
-	return `sed -i '' 's|"acceptance": |"harness": ["` + p + `"], "acceptance": |' .kiln/kiln.json`
+// shared is a shell command that gives kiln.json one shared path, p.
+func shared(p string) string {
+	return `sed -i '' 's|"acceptance": |"shared": ["` + p + `"], "acceptance": |' .kiln/kiln.json`
 }
 
 // TestAuditedDirs holds which directories the audit reads. A file at the top, in any language, names ".". A directory

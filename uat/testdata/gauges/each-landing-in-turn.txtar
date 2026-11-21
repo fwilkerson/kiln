@@ -17,11 +17,11 @@ stdout '(?s)a: landed on main.*\na: gauge one: 1, line ≥ 0\na: gauge two: 2, l
 -- .kiln/monitors/one/gauge --
 echo 1
 -- .kiln/monitors/one/monitor.json --
-{"min": 0}
+{"atLeast": 0}
 -- .kiln/monitors/two/gauge --
 echo 2
 -- .kiln/monitors/two/monitor.json --
-{"max": 5}
+{"atMost": 5}
 -- .kiln/specs/a.md --
 ### 1. A is ready
 

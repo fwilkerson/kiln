@@ -33,4 +33,4 @@ grep -count=1 '"name":"docs","state":"stopped"' .git/notices
 -- .kiln/monitors/docs/command --
 echo 'the docs, brought up to date' >docs.txt
 -- .kiln/monitors/docs/monitor.json --
-{"hours": 168, "accept": true}
+{"hours": 168, "mustAccept": true}

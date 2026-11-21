@@ -20,7 +20,7 @@ screen '│✓ count ≤ 5  a 1 · b 2 +│$'
 -- .kiln/monitors/count/gauge --
 cat count
 -- .kiln/monitors/count/monitor.json --
-{"max": 5}
+{"atMost": 5}
 -- .kiln/specs/a.md --
 ### 1. A is ready
 

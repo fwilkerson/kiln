@@ -63,8 +63,8 @@ func TestView(t *testing.T) {
 
 	line("b-done", entry{Kind: outcomeKind, Outcome: outAccepted})
 	seven, five := 7.0, 5.0
-	line("b-done", entry{Kind: gaugeKind, Gauge: "files", Value: &seven, Max: &five})
-	line("b-done", entry{Kind: gaugeKind, Gauge: "score", Min: &five})
+	line("b-done", entry{Kind: gaugeKind, Gauge: "files", Value: &seven, AtMost: &five})
+	line("b-done", entry{Kind: gaugeKind, Gauge: "score", AtLeast: &five})
 	line("b-turned", entry{Kind: builtKind, Spec: "turned"})
 	line("b-turned", entry{Kind: outcomeKind, Outcome: outWaits})
 	line("b-turned", entry{Kind: outcomeKind, Outcome: outDropped})
@@ -239,7 +239,7 @@ func TestMonitorReadings(t *testing.T) {
 	r, repo := scratchRepo(t)
 	config := `{"gate": ["true"], "rounds": 1, "acceptance": "acceptance/{spec}/"}`
 	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json")
-	writeMonitor(t, repo, "m", map[string]string{"gauge": "echo 0", "monitor.json": `{"max": 0}`, "command": "true"})
+	writeMonitor(t, repo, "m", map[string]string{"gauge": "echo 0", "monitor.json": `{"atMost": 0}`, "command": "true"})
 	writeMonitor(t, repo, "other", map[string]string{"command": "true"})
 	shell(t, repo, "git add . && git commit --quiet -m start")
 	at, zero, two := time.Now().Add(-time.Hour), 0.0, 2.0
@@ -250,7 +250,7 @@ func TestMonitorReadings(t *testing.T) {
 		{Monitor: "m", Found: foundCouldNot, Gauge: "m"},
 		{Monitor: "m", Found: foundHealthy, Gauge: "m", Value: &zero},
 	} {
-		e.Kind, e.At, e.Max = monitorKind, at.Add(time.Duration(i)*time.Minute), &zero
+		e.Kind, e.At, e.AtMost = monitorKind, at.Add(time.Duration(i)*time.Minute), &zero
 		if err := r.store.write(e); err != nil {
 			t.Fatal(err)
 		}

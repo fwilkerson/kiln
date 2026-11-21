@@ -1,7 +1,10 @@
 package kiln
 
 import (
+	"bytes"
 	"embed"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -66,7 +69,7 @@ func (r *Repo) MonitorAdd(source string, out io.Writer) error {
 
 // writeAdded copies file, from the monitor's directory from, into m's directory, and answers what it copied.
 func (r *Repo) writeAdded(from fs.FS, m monitor, file string) ([]byte, error) {
-	raw, err := fs.ReadFile(from, file)
+	raw, err := sourceFile(from, file)
 	if err != nil {
 		return nil, err
 	}
@@ -122,11 +125,37 @@ func (r *Repo) sourceFiles(source string) (fs.FS, map[string][]byte, error) {
 	files := map[string][]byte{}
 	for _, name := range names {
 		if err == nil {
-			files[name], err = fs.ReadFile(from, name)
+			files[name], err = sourceFile(from, name)
 		}
 	}
 
 	return from, files, err
+}
+
+// monitorSchemaRef is the "$schema" of a monitor.json: monitorSchemaFile, from .kiln/monitors/<name>/.
+const monitorSchemaRef = "../../monitor.schema.json"
+
+// sourceFile reads name from the monitor's directory from, as kiln monitor add writes it. A monitor.json that names no
+// "$schema" gains monitorSchemaRef as its first key, so an editor finds its schema. kiln init reads a source the same
+// way, so its merge keeps the key.
+func sourceFile(from fs.FS, name string) ([]byte, error) {
+	raw, err := fs.ReadFile(from, name)
+	if err != nil || name != settingsFile {
+		return raw, err
+	}
+
+	var keys map[string]jsontext.Value
+	if jsonv2.Unmarshal(raw, &keys) != nil || keys["$schema"] != nil {
+		return raw, nil
+	}
+
+	head, rest, _ := bytes.Cut(raw, []byte("{"))
+	ref := `"$schema": "` + monitorSchemaRef + `"`
+	if len(keys) > 0 {
+		ref += ", "
+	}
+
+	return slices.Concat(head, []byte("{"+ref), rest), nil
 }
 
 // isDir is whether name, as kiln init --preset and kiln monitor add take one, is a directory's path. Such a path

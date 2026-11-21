@@ -10,7 +10,7 @@
 # then it prints each problem on a line of its own, with its fix, and exits 1, naming how many it found.
 stdout '^\.kiln/kiln\.json names the host "https://proxy\.golang\.org/": name a bare host, such as "proxy\.golang\.org", or "\*\.example\.org"$'
 stdout '^\.kiln/kiln\.json runs \.kiln/notify, which the working tree lacks: write it, or change the command$'
-stdout '^\.kiln/monitors/size/ names min or max, a gauge''s line, but holds no gauge: drop min and max, or add a gauge$'
+stdout '^\.kiln/monitors/size/ names atLeast or atMost, a gauge''s line, but holds no gauge: drop atLeast and atMost, or add a gauge$'
 stdout '^\.kiln/specs/x\.md leaves /shape''s template: its acceptance test 1 holds no Then, after the clauses before it: write it as - \*\*Then\*\*: on a line of its own$'
 stdout '^/.*/\.git/hooks/pre-commit is missing, so no commit to main runs the gate: run kiln init, which installs it, or names the line to add to your own hook$'
 stderr '^kiln doctor: found 5 problems$'
@@ -50,7 +50,7 @@ stdout '^found no problem$'
   "notify": ".kiln/notify"
 }
 -- .kiln/monitors/size/monitor.json --
-{"max": 100}
+{"atMost": 100}
 -- .kiln/specs/x.md --
 ### 1. X answers
 

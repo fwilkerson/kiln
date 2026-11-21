@@ -37,7 +37,7 @@ exec git show main:x.go
 stdout 'return 43'
 
 -- .kiln/kiln.json --
-{"workflow": "split", "rounds": 0, "acceptance": ["uat/{spec}/", "integration/{spec}/"]}
+{"testSession": true, "rounds": 0, "acceptance": ["uat/{spec}/", "integration/{spec}/"]}
 -- claude.json --
 {
  "build": {

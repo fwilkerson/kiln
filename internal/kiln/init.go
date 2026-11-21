@@ -25,6 +25,13 @@ import (
 // defaults, where TestSchema builds it from config.
 const schemaFile = kilnDir + "/kiln.schema.json"
 
+// monitorSchemaFile is monitor.json's JSON Schema, which an editor reads by a monitor.json's "$schema". kiln init
+// writes it from the defaults too, where TestSchema builds it from settings.
+const monitorSchemaFile = kilnDir + "/monitor.schema.json"
+
+// schemaFiles are the schemas kiln init writes, which kiln owns, so it writes over a project's edits.
+var schemaFiles = []string{schemaFile, monitorSchemaFile}
+
 // defaults are what kiln init writes into .kiln/ for every preset. A preset fills each marker in their prompts, and
 // adds kiln.json. The project owns them from then on.
 //
@@ -475,7 +482,7 @@ func (r *Repo) deletedReviewers(files map[string][]byte) map[string]bool {
 }
 
 // writeDefault brings the file at name, under .kiln/, to want, the default kiln init writes now. It keeps the
-// project's edits since base, the default kiln init last wrote there. It writes over the schema, which kiln owns. It
+// project's edits since base, the default kiln init last wrote there. It writes over each schema, which kiln owns. It
 // answers the line kiln init prints, or "" when it changed nothing.
 func (r *Repo) writeDefault(ctx context.Context, name string, base, want []byte) (string, error) {
 	rel := path.Join(kilnDir, name)
@@ -488,7 +495,7 @@ func (r *Repo) writeDefault(ctx context.Context, name string, base, want []byte)
 		return "", err
 	case rel == configFile:
 		return keepConfig(target, have, want)
-	case rel == schemaFile && !bytes.Equal(have, want):
+	case slices.Contains(schemaFiles, rel) && !bytes.Equal(have, want):
 		return "updated " + rel, os.WriteFile(target, want, 0o644)
 	case bytes.Equal(have, want), bytes.Equal(base, want):
 		return "", nil

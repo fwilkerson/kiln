@@ -56,19 +56,40 @@ type monitor struct {
 	tree string
 }
 
-// settings are a monitor's monitor.json. Each key may be left out.
+// settings is how a monitor runs, and what its fix may do, from the monitor's .kiln/monitors/<name>/monitor.json.
+// Each key may be left out. The keys recheck, mustAccept and writesTests steer a fix. A monitor with no command and no
+// agent.md names none of them.
 type settings struct {
-	// Hours is how often the monitor runs, in whole hours. 0 runs it at each kiln monitor run.
+	// Each field's doc is the hover an editor shows for its key, as TestSchema builds it. So each stands alone.
+
+	// Schema names the JSON Schema an editor checks this file against: "../../monitor.schema.json", which kiln
+	// init writes to .kiln/. kiln reads nothing from it.
+	Schema string `json:"$schema,omitempty"`
+	// Hours is how often kiln monitor run runs the monitor, in whole hours from 0 to 65535, such as 1. 0 runs it at
+	// every kiln monitor run. Absent, it is 24.
 	Hours uint16 `json:"hours"`
-	// Gates says whether the check or the gauge joins the fix's gate. It is true when unset. Like Accept and Tests,
-	// it steers a fix, so a monitor that fixes nothing names none of the three.
-	Gates *bool `json:"gates"`
-	// Accept says whether a fix waits on its branch for kiln accept.
-	Accept bool `json:"accept"`
-	// Tests says whether a fix may write under the acceptance paths' parts before {spec}.
-	Tests bool `json:"tests"`
-	// gaugeLine is the gauge's line, which a monitor with a gauge names, and no other.
-	gaugeLine
+	// Recheck, when false, leaves the monitor's check or gauge out of its fix's gate. Use it for a problem no fix
+	// clears until it is deployed. Absent or true, the gate runs it again, and fails while it still finds the
+	// problem. A monitor with no command and no agent.md may not name it.
+	Recheck *bool `json:"recheck"`
+	// MustAccept, when true, keeps each fix that passes on its branch, until the developer runs kiln accept on it.
+	// Without it, a fix that passes lands on main. A monitor with no command and no agent.md may not name it.
+	MustAccept bool `json:"mustAccept"`
+	// WritesTests, when true, lets a fix write under each acceptance path's part before {spec}, such as uat/.
+	// Without it, a fix may not change the acceptance tests. A monitor with no command and no agent.md may not name
+	// it.
+	WritesTests bool `json:"writesTests"`
+	// AtLeast is the line of the monitor's gauge, such as 80: a reading below it crossed the line. Name it or atMost
+	// beside a gauge, never both, and neither without a gauge.
+	AtLeast *float64 `json:"atLeast"`
+	// AtMost is the line of the monitor's gauge, such as 0: a reading above it crossed the line. Name it or atLeast
+	// beside a gauge, never both, and neither without a gauge.
+	AtMost *float64 `json:"atMost"`
+}
+
+// line is the gauge's line that s names.
+func (s settings) line() gaugeLine {
+	return gaugeLine{AtLeast: s.AtLeast, AtMost: s.AtMost}
 }
 
 // defaultHours is the hours of a monitor whose monitor.json names none, or which holds no monitor.json.
@@ -81,7 +102,7 @@ func (m monitor) interval() time.Duration {
 
 // gated is whether m's check or gauge joins its fix's gate.
 func (m monitor) gated() bool {
-	return m.finds() && (m.Gates == nil || *m.Gates)
+	return m.finds() && (m.Recheck == nil || *m.Recheck)
 }
 
 // finds is whether m has a finding to compare: what its check or its gauge printed.
@@ -102,7 +123,7 @@ func (m monitor) path(file string) string {
 // reading is value, a reading of m's gauge, as a ledger's line holds it: named for m, beside m's line. A nil value is
 // unknown.
 func (m monitor) reading(value *float64) entry {
-	return entry{Gauge: string(m.Name), Value: value, gaugeLine: m.gaugeLine}
+	return entry{Gauge: string(m.Name), Value: value, gaugeLine: m.line()}
 }
 
 // hashOf is a short hash of text.
@@ -284,14 +305,18 @@ func (c config) readMonitor(name Spec, dir string, files []string, raw []byte) (
 		agent: slices.Contains(files, monitorAgent)}
 	var keys map[string]jsontext.Value
 	if raw != nil {
-		// json/v2 matches a key's case exactly, as kiln.json is read.
-		if err := jsonv2.Unmarshal(raw, &m.settings, jsonv2.RejectUnknownMembers(true)); err != nil {
-			return m, refusals{{fmt.Sprintf("%s: %v", path.Join(dir, settingsFile), err),
-				"fix its JSON, and name only the keys kiln help monitors lists"}}
+		// A monitor.json that is no object fails the strict read below, which words why.
+		_ = jsonv2.Unmarshal(raw, &keys)
+		file := path.Join(dir, settingsFile)
+		if renamed := renamedRefusals(file, keys); len(renamed) > 0 {
+			return m, renamed
 		}
 
-		// The settings read, so raw is an object, and its keys read too.
-		_ = jsonv2.Unmarshal(raw, &keys)
+		// json/v2 matches a key's case exactly, as kiln.json is read.
+		if err := jsonv2.Unmarshal(raw, &m.settings, jsonv2.RejectUnknownMembers(true)); err != nil {
+			return m, refusals{{fmt.Sprintf("%s: %v", file, err),
+				"fix its JSON, and name only the keys kiln help monitors lists"}}
+		}
 	}
 
 	for _, finder := range []string{checkScript, gaugeScript} {
@@ -303,15 +328,32 @@ func (c config) readMonitor(name Spec, dir string, files []string, raw []byte) (
 	return m, c.monitorRefusals(m, files, slices.Sorted(maps.Keys(keys))).about(dir + "/")
 }
 
+// renamedSettings are the keys of monitor.json that kiln once read, each with the key that took its place.
+var renamedSettings = map[string]string{"gates": "recheck", "accept": "mustAccept", "tests": "writesTests",
+	"min": "atLeast", "max": "atMost"}
+
+// renamedRefusals refuse each of keys that kiln once read in file, a monitor.json, and name the key in its place.
+func renamedRefusals(file string, keys map[string]jsontext.Value) refusals {
+	var refused refusals
+	for _, key := range slices.Sorted(maps.Keys(keys)) {
+		if now, ok := renamedSettings[key]; ok {
+			refused = append(refused, refusal{fmt.Sprintf("%s holds %q, a key kiln no longer reads", file, key),
+				fmt.Sprintf("name it %q", now)})
+		}
+	}
+
+	return refused
+}
+
 // fixKeys are the keys of monitor.json that steer a fix, which a monitor that fixes nothing may not name.
-var fixKeys = []string{"gates", "accept", "tests"}
+var fixKeys = []string{"recheck", "mustAccept", "writesTests"}
 
 // monitorRefusals say why kiln may not run m, whose directory holds files, and whose monitor.json names keys.
 func (c config) monitorRefusals(m monitor, files, keys []string) refusals {
 	stray := strayFile(files)
 	gauged := m.finder == gaugeScript
 	// A line with neither a check nor a gauge means a gauge, whose own refusal says it is missing.
-	meantGauge := gauged || m.finder == "" && m.sides() > 0
+	meantGauge := gauged || m.finder == "" && m.line().sides() > 0
 	refused := broken(
 		rule{!specName.MatchString(string(m.Name)), refusal{"has a name no spec could have",
 			"name it in lower-case letters, digits and hyphens, such as deps"}},
@@ -320,15 +362,15 @@ func (c config) monitorRefusals(m monitor, files, keys []string) refusals {
 				strings.Join(roleFiles, ", "))}},
 		rule{slices.Contains(files, checkScript) && gauged, refusal{
 			"holds both a check and a gauge, where it may hold one", "remove one"}},
-		rule{gauged && m.sides() != 1, refusal{"holds a gauge, but its monitor.json names both min and max, or neither",
-			"name one, the gauge's line"}},
-		rule{!gauged && m.sides() > 0, refusal{"names min or max, a gauge's line, but holds no gauge",
-			"drop min and max, or add a gauge"}},
+		rule{gauged && m.line().sides() != 1, refusal{"holds a gauge, but its monitor.json names both atLeast and atMost, " +
+			"or neither", "name one, the gauge's line"}},
+		rule{!gauged && m.line().sides() > 0, refusal{"names atLeast or atMost, a gauge's line, but holds no gauge",
+			"drop atLeast and atMost, or add a gauge"}},
 		rule{!m.fixes() && !meantGauge, refusal{"holds no command and no agent.md, so it fixes nothing",
 			"add one, or keep a gauge alone, with its line in monitor.json, for kiln to watch"}},
-		rule{m.fixes() && !m.Tests && c.unguarded(), refusal{"may not write the tests, while acceptance names no " +
+		rule{m.fixes() && !m.WritesTests && c.unguarded(), refusal{"may not write the tests, while acceptance names no " +
 			"path before {spec} for kiln to guard", "give each acceptance path a part before {spec}, or say " +
-			"\"tests\": true in its monitor.json"}},
+			"\"writesTests\": true in its monitor.json"}},
 	)
 	for _, key := range keys {
 		if !m.fixes() && slices.Contains(fixKeys, key) {
@@ -523,6 +565,6 @@ func (s projectShell) measured(ctx context.Context, tree git.Worktree, m monitor
 	}
 
 	e := m.reading(rd.value)
-	return checked{ran: rd.value != nil, fix: m.crossed(rd.value), summary: rd.summary(e), printed: rd.printed,
+	return checked{ran: rd.value != nil, fix: m.line().crossed(rd.value), summary: rd.summary(e), printed: rd.printed,
 		found: rd.found, reading: e, past: rd.past != nil}, nil
 }

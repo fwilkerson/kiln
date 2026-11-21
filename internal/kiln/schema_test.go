@@ -15,40 +15,58 @@ import (
 )
 
 // writeFiles is -write, which writes each file a test holds equal to the code, in place of the test.
-var writeFiles = flag.Bool("write", false, "write defaults/kiln.schema.json and help.txt")
+var writeFiles = flag.Bool("write", false, "write the defaults' schemas and help.txt")
 
-// TestSchema fails while defaults/kiln.schema.json differs from the JSON Schema of config, built from its fields and
-// their docs. An editor reads it to complete and check kiln.json.
+// TestSchema fails while a schema among the defaults differs from the JSON Schema of its type. It builds each from
+// the type's fields and their docs. An editor reads kiln.schema.json for kiln.json, and monitor.schema.json for each
+// monitor.json. Each doc becomes the description an editor shows on hover, with its key in place of its Go name.
 func TestSchema(t *testing.T) {
-	root := schemaOf(t, reflect.TypeFor[config](), typeDocs(t))
-	root.Schema, root.Title = "http://json-schema.org/draft-07/schema#", "kiln.json"
-	raw, err := plainJSON(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var got bytes.Buffer
-	if err := json.Indent(&got, raw, "", "  "); err != nil {
-		t.Fatal(err)
-	}
-
-	got.WriteByte('\n')
-	if *writeFiles {
-		if err := os.WriteFile(schemaDefault, got.Bytes(), 0o644); err != nil {
+	docs := typeDocs(t)
+	for _, s := range []struct {
+		file, title string
+		typ         reflect.Type
+	}{
+		{"defaults/kiln.schema.json", "kiln.json", reflect.TypeFor[config]()},
+		{"defaults/monitor.schema.json", "monitor.json", reflect.TypeFor[settings]()},
+	} {
+		root := schemaOf(t, s.typ, docs)
+		root.Schema, root.Title = "http://json-schema.org/draft-07/schema#", s.title
+		root.Description = hover(root.Description, s.typ.Name(), s.title)
+		raw, err := plainJSON(root)
+		if err != nil {
 			t.Fatal(err)
 		}
 
-		return
-	}
+		var got bytes.Buffer
+		if err := json.Indent(&got, raw, "", "  "); err != nil {
+			t.Fatal(err)
+		}
 
-	if want, err := defaults.ReadFile(schemaDefault); err != nil || !bytes.Equal(got.Bytes(), want) {
-		t.Errorf("%s differs from config, %v: run go test ./internal/kiln -run TestSchema -write, then cp "+
-			"internal/kiln/%[1]s .kiln/", schemaDefault, err)
+		got.WriteByte('\n')
+		if *writeFiles {
+			if err := os.WriteFile(s.file, got.Bytes(), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			continue
+		}
+
+		if want, err := defaults.ReadFile(s.file); err != nil || !bytes.Equal(got.Bytes(), want) {
+			t.Errorf("%s differs from %s, %v: run go test ./internal/kiln -run TestSchema -write, then cp "+
+				"internal/kiln/%[1]s .kiln/", s.file, s.typ, err)
+		}
 	}
 }
 
-// schemaDefault is the schema among the defaults, from this package's directory.
-const schemaDefault = "defaults/kiln.schema.json"
+// hover is doc, which starts with the Go name goName, as an editor shows it for key: starting with key.
+func hover(doc, goName, key string) string {
+	rest, ok := strings.CutPrefix(doc, goName)
+	if !ok || strings.IndexAny(rest, " ,") != 0 {
+		return doc
+	}
+
+	return key + rest
+}
 
 // schemaNode is a JSON Schema, of the keywords config needs.
 type schemaNode struct {
@@ -121,7 +139,7 @@ func schemaOf(t *testing.T, typ reflect.Type, docs map[string]string) *schemaNod
 		return &schemaNode{Type: "string"}
 	case reflect.Bool:
 		return &schemaNode{Type: "boolean"}
-	case reflect.Int:
+	case reflect.Int, reflect.Uint16:
 		return &schemaNode{Type: "integer"}
 	case reflect.Float64:
 		return &schemaNode{Type: "number"}
@@ -149,7 +167,7 @@ func fieldsOf(t *testing.T, typ reflect.Type, docs map[string]string) properties
 		}
 
 		s := schemaOf(t, f.Type, docs)
-		s.Description = docs[typ.Name()+"."+f.Name]
+		s.Description = hover(docs[typ.Name()+"."+f.Name], f.Name, name)
 		props = append(props, property{name: name, schema: s})
 	}
 

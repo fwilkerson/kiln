@@ -52,7 +52,7 @@ Fix the files the gauge names.
 
 Make each file the gauge names say fine.
 -- .kiln/monitors/lows/monitor.json --
-{"max": 0}
+{"atMost": 0}
 -- ok.txt --
 fine
 -- a.txt --

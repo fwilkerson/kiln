@@ -37,7 +37,7 @@ exec git branch --list 'kiln/*'
 ! stdout .
 
 -- .kiln/kiln.json --
-{"workflow": "split"}
+{"testSession": true}
 -- claude.json --
 {
   "build": {"1": {"1": [

@@ -39,7 +39,7 @@ Write the missing note.
 
 Write the note.
 -- .kiln/monitors/notes/monitor.json --
-{"accept": true}
+{"mustAccept": true}
 -- .kiln/specs/x.md --
 ### 1. X is there
 

@@ -27,8 +27,8 @@ import (
 
 func TestGuard(t *testing.T) {
 	const place = "/Users/dev/Library/Caches/kiln/repo/x"
-	builds := side{role: buildRole, acceptance: []string{"acceptance/x/"}, harness: []string{"harness/"}}
-	verifies := side{role: verifyRole, acceptance: []string{"acceptance/x/"}, harness: []string{"harness/"}}
+	builds := side{role: buildRole, acceptance: []string{"acceptance/x/"}, shared: []string{"harness/"}}
+	verifies := side{role: verifyRole, acceptance: []string{"acceptance/x/"}, shared: []string{"harness/"}}
 	twoPaths := []string{"uat/x/", "integration/x/"}
 	buildsTwo := side{role: buildRole, acceptance: twoPaths}
 	verifiesTwo := side{role: verifyRole, acceptance: twoPaths}
@@ -155,7 +155,7 @@ func TestHookArguments(t *testing.T) {
 		"a word after the flags":          {"--spec", "x", "--place", "/w", "y"},
 		"an acceptance path with no role": {"--spec", "x", "--place", "/w", "--acceptance", "a/"},
 		"two acceptance paths, no role":   {"--spec", "x", "--place", "/w", "--acceptance", "a/", "--acceptance", "b/"},
-		"a harness in a fix":              {"--spec", "x", "--place", "/w", "--role", fixRole, "--harness", "h/"},
+		"shared paths in a fix":           {"--spec", "x", "--place", "/w", "--role", fixRole, "--shared", "h/"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := Hook(args, strings.NewReader("{}"), io.Discard); !errors.Is(err, ErrUsage) {
@@ -1192,7 +1192,8 @@ func TestOpenInWorktree(t *testing.T) {
 // landing moved main. It answers the commit main moved to. A monitor's build is the fix of the monitor x.
 func landedThenKilled(t *testing.T, monitor bool) (*build, git.Rev) {
 	b, repo, _ := landingBuild(t)
-	writeMonitor(t, repo, "x", map[string]string{"command": "true", "monitor.json": `{"hours": 1, "tests": true}`})
+	writeMonitor(t, repo, "x", map[string]string{"command": "true",
+		"monitor.json": `{"hours": 1, "writesTests": true}`})
 	shell(t, repo, "git add . && git commit --quiet -m monitor")
 	b.rec = record{Name: "x", State: building, Accepted: true, Monitor: monitor, Build: "b",
 		Approved: git.Rev(shell(t, repo, "git rev-parse HEAD"))}
@@ -1354,12 +1355,12 @@ func TestGaugeRules(t *testing.T) {
 		value   *float64
 		crossed bool
 	}{
-		"below a min crossed":       {gaugeLine{Min: at(80)}, at(79.9), true},
-		"on a min did not":          {gaugeLine{Min: at(80)}, at(80), false},
-		"above a max crossed":       {gaugeLine{Max: at(0)}, at(1), true},
-		"on a max did not":          {gaugeLine{Max: at(0)}, at(0), false},
-		"an unknown reading never":  {gaugeLine{Min: at(80)}, nil, false},
-		"nor against a max of zero": {gaugeLine{Max: at(0)}, nil, false},
+		"below a min crossed":       {gaugeLine{AtLeast: at(80)}, at(79.9), true},
+		"on a min did not":          {gaugeLine{AtLeast: at(80)}, at(80), false},
+		"above a max crossed":       {gaugeLine{AtMost: at(0)}, at(1), true},
+		"on a max did not":          {gaugeLine{AtMost: at(0)}, at(0), false},
+		"an unknown reading never":  {gaugeLine{AtLeast: at(80)}, nil, false},
+		"nor against a max of zero": {gaugeLine{AtMost: at(0)}, nil, false},
 	} {
 		if got := tc.line.crossed(tc.value); got != tc.crossed {
 			t.Errorf("%s: crossed is %v", name, got)
@@ -1393,7 +1394,7 @@ func TestGaugeVerdict(t *testing.T) {
 }
 
 // counted is a monitor count that holds a gauge alone, whose line is a max of 0.
-var counted = monitor{Name: "count", finder: gaugeScript, Max: new(0.0)}
+var counted = monitor{Name: "count", finder: gaugeScript, AtMost: new(0.0)}
 
 // gaugeTreeOf is a new tree, in which counted's gauge runs command.
 func gaugeTreeOf(t *testing.T, command string) git.Worktree {
@@ -1410,7 +1411,7 @@ func TestGaugeTree(t *testing.T) {
 	r, repo := scratchRepo(t)
 	t.Cleanup(func() { _ = removeTree(r.trees) })
 	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "rounds": 1}`})
-	writeMonitor(t, repo, "n", map[string]string{"gauge": leavesReadOnly, "monitor.json": `{"max": 5}`})
+	writeMonitor(t, repo, "n", map[string]string{"gauge": leavesReadOnly, "monitor.json": `{"atMost": 5}`})
 	shell(t, repo, "git add . && git commit --quiet -m start")
 	b := &build{r: r, rec: record{Name: "x", Build: "b-x"}, out: io.Discard}
 	for landing := range 2 {
@@ -1427,10 +1428,10 @@ func TestGaugeTree(t *testing.T) {
 
 	// A monitor's run reads its gauge in the monitors' own worktree, which a check then shares. u's check is awk, which
 	// runs only by its path.
-	writeMonitor(t, repo, "m", map[string]string{"gauge": leavesReadOnly, "monitor.json": `{"max": 5}`})
+	writeMonitor(t, repo, "m", map[string]string{"gauge": leavesReadOnly, "monitor.json": `{"atMost": 5}`})
 	writeMonitor(t, repo, "u", map[string]string{"check": checkInAwk})
 	shell(t, repo, "git add . && git commit --quiet -m monitors")
-	gauged := monitor{Name: "m", finder: gaugeScript, Max: new(5.0)}
+	gauged := monitor{Name: "m", finder: gaugeScript, AtMost: new(5.0)}
 	held := heldBy(t, r)
 	for _, m := range []monitor{gauged, gauged, {Name: "u", finder: checkScript}} {
 		if found, err := held.firstCheck(t.Context(), config{}, m, "main"); err != nil || !found.ran {
@@ -1445,7 +1446,7 @@ func TestGaugeReadsNothing(t *testing.T) {
 	r, repo := scratchRepo(t)
 	t.Cleanup(func() { _ = removeTree(r.trees) })
 	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"]}`})
-	writeMonitor(t, repo, "n", map[string]string{"gauge": countTxt, "monitor.json": `{"max": 5}`})
+	writeMonitor(t, repo, "n", map[string]string{"gauge": countTxt, "monitor.json": `{"atMost": 5}`})
 	shell(t, repo, "git add . && git commit --quiet -m start")
 	var out strings.Builder
 	start := git.Rev(shell(t, repo, "git rev-parse HEAD"))
@@ -1653,7 +1654,8 @@ func gaugedFix(t *testing.T, fix, finder string) *build {
 	t.Cleanup(func() { _ = removeTree(r.trees) })
 	shell(t, repo, `mkdir .kiln && echo '{"gate": ["true"], "rounds": 1}' >.kiln/kiln.json && echo low >a.txt && `+
 		"echo low >b.txt && echo fine >c.txt")
-	settings := map[string]string{gaugeScript: `{"max": 0, "tests": true}`, checkScript: `{"tests": true}`}[finder]
+	settings := map[string]string{gaugeScript: `{"atMost": 0, "writesTests": true}`,
+		checkScript: `{"writesTests": true}`}[finder]
 	writeMonitor(t, repo, "m", map[string]string{finder: countGauge, "monitor.json": settings, "agent.md": "Fix it."})
 	m := monitor{Name: "m", finder: gaugeScript, agent: true}
 	tree := filepath.Join(t.TempDir(), "m")

@@ -59,7 +59,7 @@ grep '"summary":"score: 60, line ≥ 80, crossed"' .git/notices
 -- .kiln/monitors/score/gauge --
 cat score.txt
 -- .kiln/monitors/score/monitor.json --
-{"hours": 1, "min": 80}
+{"hours": 1, "atLeast": 80}
 -- score.txt --
 70
 -- _given/score-2 --

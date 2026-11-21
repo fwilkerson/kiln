@@ -36,18 +36,18 @@ echo 'the tool is missing' >&2; exit 3
 -- .kiln/monitors/broken/agent.md --
 Fix the files the gauge names.
 -- .kiln/monitors/broken/monitor.json --
-{"max": 0}
+{"atMost": 0}
 -- .kiln/monitors/silent/gauge --
 echo 'nothing to count'
 -- .kiln/monitors/silent/agent.md --
 Fix the files the gauge names.
 -- .kiln/monitors/silent/monitor.json --
-{"max": 0}
+{"atMost": 0}
 -- .kiln/monitors/stuck/gauge --
 echo 1; sleep 600
 -- .kiln/monitors/stuck/agent.md --
 Fix the files the gauge names.
 -- .kiln/monitors/stuck/monitor.json --
-{"max": 0}
+{"atMost": 0}
 -- ok.txt --
 fine

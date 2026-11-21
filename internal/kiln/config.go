@@ -20,36 +20,49 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// config is .kiln/kiln.json, read from main's tip, so a build cannot weaken the gate it is held to.
+// config is kiln's settings for a project, in .kiln/kiln.json. kiln reads them from main's tip, so a build cannot
+// weaken the gate it is held to.
 type config struct {
-	// Schema names the JSON Schema an editor checks kiln.json against, ./kiln.schema.json, which kiln init writes.
-	// kiln reads nothing from it.
+	// Each field's doc is the hover an editor shows for its key, as TestSchema builds it. So each stands alone.
+
+	// Schema names the JSON Schema an editor checks this file against: "./kiln.schema.json", which kiln init writes
+	// beside it. kiln reads nothing from it.
 	Schema string `json:"$schema,omitempty"`
-	// Gate holds the commands the gate runs, each with sh -c, at the top of a worktree.
+	// Gate holds the commands that must pass before work lands on main, such as ["go vet ./...", "go test ./..."].
+	// Each runs with sh -c, at the top of a checkout of the work. kiln refuses a kiln.json without one.
 	Gate []string `json:"gate"`
-	// Rounds is how many times a failing gate goes back to the session before the build stops.
+	// Rounds caps how often a failing gate goes back to the session before the build stops, such as 3. The audit's
+	// findings spend no round. Absent, or 0, the first failing gate stops the build.
 	Rounds int `json:"rounds"`
-	// Hosts are the only hosts a session's commands reach.
+	// Hosts are the only hosts a session's shell commands may reach, such as ["proxy.golang.org", "*.example.org"].
+	// Each is a bare host name, with no scheme, port or path. Absent, those commands reach no host.
 	Hosts []string `json:"hosts,omitempty"`
-	// Writable holds commands, each run with sh -c. Each field one prints is a path a session's commands may write.
+	// Writable holds shell commands, not paths, such as ["go env GOCACHE GOMODCACHE"]. Each runs with sh -c. Each
+	// word it prints is an absolute path a session's commands may write. Absent, they write only in the checkout.
 	Writable []string `json:"writable,omitempty"`
-	// MCP holds the only MCP servers a session reaches, by name, each as Claude Code's mcpServers holds one. They run
-	// outside the sandbox.
+	// MCP names the only MCP servers a session may call, such as {"docs": {"command": "docs-mcp"}}. Each is written as
+	// Claude Code's mcpServers holds one. They run outside the sandbox. Absent, a session calls none.
 	MCP map[string]json.RawMessage `json:"mcp,omitempty"`
-	// Workflow is "split", or "" for build then audit. Like Acceptance and Harness, kiln reads it at the commit the
-	// build was queued at.
-	Workflow string `json:"workflow,omitempty"`
-	// Acceptance holds each path a spec's acceptance tests live in, with {spec} for its name, such as
-	// "acceptance/{spec}/". A JSON string is a list of one.
+	// TestSession, when true, has a second session write the acceptance tests from the spec alone. The first writes
+	// the code, and neither reads the other's checkout. Without it, one session writes the code and the tests. kiln
+	// reads it at the commit the build was queued at.
+	TestSession bool `json:"testSession,omitempty"`
+	// Acceptance holds each path a spec's acceptance tests live in, with {spec} where the spec's name goes, such as
+	// "uat/{spec}/". One path may be a plain string. kiln queue refuses a spec while it is absent. kiln reads it at
+	// the commit the build was queued at.
 	Acceptance paths `json:"acceptance,omitempty"`
-	// Harness holds paths both sessions of a split build may write, such as the code the acceptance tests run through.
-	Harness []string `json:"harness,omitempty"`
-	// Reaudit holds paths the audit reads again whenever the work's own change to them differs from what it read.
+	// Shared holds paths both sessions may write when testSession is true, such as ["internal/testutil/"], the code
+	// the tests run through. Without testSession, kiln reads none. kiln reads it at the commit the build was queued at.
+	Shared []string `json:"shared,omitempty"`
+	// Reaudit holds paths that never land unread, such as ["migrations/"]. When a session's answer to the audit's
+	// findings changes one, the audit reads the work again. Absent, the audit never reads such an answer.
 	Reaudit []string `json:"reaudit,omitempty"`
-	// Notify is the command that receives each notification, run with sh -c. "" prints each as OSC 9.
+	// Notify is a command that receives each notification, such as ".kiln/notify", run with sh -c. The notice is
+	// JSON in $KILN_NOTICE. Absent, kiln prints each notification in its output as OSC 9, which a terminal shows.
 	Notify string `json:"notify,omitempty"`
-	// Timeout is how long a project's command may run, or a session print nothing, before kiln kills it. It is a Go
-	// duration above zero, such as "2h", or unset for kiln's default.
+	// Timeout bounds each command kiln runs for the project, such as one gate command, and each session's silence.
+	// It never bounds a whole build. Past it, kiln kills that command or session. It is a Go duration above zero,
+	// such as "2h". Absent, it is 1 hour.
 	Timeout timeout `json:"timeout,omitempty"`
 }
 
@@ -85,9 +98,6 @@ func (c config) killAfter() time.Duration {
 func (c config) shell(env []string) projectShell {
 	return projectShell{env: proc.Shell.Env(env), limit: c.killAfter(), bound: timeoutKey}
 }
-
-// splitWorkflow is the workflow whose build session writes the code, and whose verify session writes the tests.
-const splitWorkflow = "split"
 
 // specVar stands for the spec's name in kiln.json's acceptance.
 const specVar = "{spec}"
@@ -156,14 +166,14 @@ func (c config) acceptanceRefusals() refusals {
 	return refused
 }
 
-// harnessRefusals say why kiln queue may not take spec. It refuses a spec whose acceptance paths meet a harness path.
+// sharedRefusals say why kiln queue may not take spec. It refuses a spec whose acceptance paths meet a shared path.
 // A split build removes what main holds under those paths from its build session's checkout.
-func (c config) harnessRefusals(spec Spec) refusals {
+func (c config) sharedRefusals(spec Spec) refusals {
 	var refused refusals
 	for _, a := range c.acceptancePaths(spec) {
-		for _, h := range c.Harness {
+		for _, h := range c.Shared {
 			if meets(a, h) {
-				refused = append(refused, refusal{fmt.Sprintf("%s's acceptance path %s meets the harness path %s, "+
+				refused = append(refused, refusal{fmt.Sprintf("%s's acceptance path %s meets the shared path %s, "+
 					"which its build would remove", spec, a, h), "rename the spec"})
 			}
 		}
@@ -220,6 +230,9 @@ func parseConfig(raw []byte) (c config, err error) {
 var movedKeys = map[string]string{
 	"monitors": "each monitor is a directory of its own now, " + monitorsDir + "/<name>/: move each there, or add one " +
 		"with kiln monitor add",
+	"workflow": "say \"testSession\": true in its place for a second session that writes the acceptance tests, or " +
+		"drop it for one session that writes the code and the tests",
+	"harness": "name it \"shared\", the paths both sessions may write when testSession is true",
 	"gauges": "each gauge is a monitor now, " + monitorsDir + "/<name>/ with its gauge script, and its line in " +
 		"monitor.json: move each there, as kiln help gauges shows",
 }
@@ -366,8 +379,6 @@ func (c config) refusals() refusals {
 	refused := broken(
 		rule{len(c.Gate) == 0, refusal{configFile + " names no gate command", "name one, such as \"go test ./...\""}},
 		rule{c.Rounds < 0, refusal{fmt.Sprintf("%s names %d rounds", configFile, c.Rounds), "name 0 or more"}},
-		rule{c.Workflow != "" && c.Workflow != splitWorkflow, refusal{fmt.Sprintf("%s names the workflow %q",
-			configFile, c.Workflow), fmt.Sprintf("name %q, or none for build then audit", splitWorkflow)}},
 	)
 	for _, h := range c.Hosts {
 		if !bareHost(h) {

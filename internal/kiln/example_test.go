@@ -41,6 +41,7 @@ func Example() {
 	// wrote .kiln/agents/verify.md
 	// wrote .kiln/kiln.json
 	// wrote .kiln/kiln.schema.json
+	// wrote .kiln/monitor.schema.json
 	// wrote .kiln/reviewers/comprehension.md
 	// wrote .kiln/reviewers/critic.md
 	// wrote .kiln/reviewers/zoom-out.md

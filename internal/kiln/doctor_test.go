@@ -19,11 +19,15 @@ func TestDoctor(t *testing.T) {
 	for name, tc := range map[string]doctorCase{
 		"kiln init's files": {want: []string{"found no problem"}},
 		"each refusal of kiln.json at once": {
-			change: withKeys(`"workflow": "both",`) +
-				` && sed -i '' 's|"proxy.golang.org"|"https://x.org/"|' .kiln/kiln.json`,
-			want: []string{`names the workflow "both": name "split"`, `names the host "https://x.org/": name a bare host`,
-				"note: .kiln/kiln.json differs from main's in hosts, workflow: kiln acts on main's"},
+			change: `sed -i '' 's|"rounds": 3|"rounds": -1|; s|"proxy.golang.org"|"https://x.org/"|' .kiln/kiln.json`,
+			want: []string{`names -1 rounds: name 0 or more`, `names the host "https://x.org/": name a bare host`,
+				"note: .kiln/kiln.json differs from main's in hosts, rounds: kiln acts on main's"},
 		},
+		"a key of kiln.json kiln renamed": {change: withKeys(`"workflow": "split",`),
+			want: []string{`holds "workflow", a key kiln no longer reads: say "testSession": true in its place`}},
+		"a key of monitor.json kiln renamed": {change: monitor + "echo Fix it. >agent.md && echo '{\"accept\": true}' >monitor.json",
+			want: []string{`.kiln/monitors/deps/monitor.json holds "accept", a key kiln no longer reads: name it "mustAccept"`,
+				launchd}},
 		"kiln.json that is no JSON": {change: "echo '{' >.kiln/kiln.json", want: []string{"fix its JSON"}},
 		"kiln.json the working tree lacks": {change: "rm .kiln/kiln.json",
 			want: []string{"the working tree holds no .kiln/kiln.json: run kiln init"}},
@@ -44,10 +48,10 @@ func TestDoctor(t *testing.T) {
 				`build.md, as the working tree holds it, its effort, "huge", is none of`},
 		},
 		"each refusal of a monitor, and of its agent": {
-			change: monitor + "touch README && echo '{\"min\": 1}' >monitor.json && " +
+			change: monitor + "touch README && echo '{\"atLeast\": 1}' >monitor.json && " +
 				"printf -- '---\neffort: huge\n---\nFix it.\n' >agent.md",
 			want: []string{".kiln/monitors/deps/ holds README, a file kiln does not read",
-				".kiln/monitors/deps/ names min or max, a gauge's line, but holds no gauge",
+				".kiln/monitors/deps/ names atLeast or atMost, a gauge's line, but holds no gauge",
 				`.kiln/monitors/deps/agent.md, as the working tree holds it, its effort, "huge", is none of`, launchd}},
 		"a file directly under .kiln/monitors/": {change: "mkdir -p .kiln/monitors && touch .kiln/monitors/deps",
 			want: []string{".kiln/monitors/deps is a file, where a monitor is a directory: move it into"}},

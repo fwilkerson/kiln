@@ -45,19 +45,19 @@ already on main
 -- .kiln/monitors/size/gauge --
 echo 3
 -- .kiln/monitors/size/monitor.json --
-{"max": 5}
+{"atMost": 5}
 -- .kiln/monitors/score/gauge --
 echo mutants: 10; echo 70
 -- .kiln/monitors/score/monitor.json --
-{"min": 80}
+{"atLeast": 80}
 -- .kiln/monitors/changed/gauge --
 git diff --name-only "$KILN_BASE" HEAD | wc -l
 -- .kiln/monitors/changed/monitor.json --
-{"max": 10}
+{"atMost": 10}
 -- .kiln/monitors/broken/gauge --
 echo 0; exit 3
 -- .kiln/monitors/broken/monitor.json --
-{"min": 0}
+{"atLeast": 0}
 -- .kiln/specs/x.md --
 ### 1. X is ready
 

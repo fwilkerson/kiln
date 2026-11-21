@@ -191,7 +191,7 @@ osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title 
 
 **A gauge** can read kiln's own numbers from `kiln ledger`. This one reads the slowest of the last twenty gates
 that passed on a build's work, leaving out each landing's. It is the monitor `.kiln/monitors/gate-seconds/`, whose
-`monitor.json` of `{"max": 300}` is its line, as [gauges](docs/reference.md#gauges) shows:
+`monitor.json` of `{"atMost": 300}` is its line, as [gauges](docs/reference.md#gauges) shows:
 
 ```sh
 #!/bin/sh
@@ -205,7 +205,7 @@ printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seco
 
 - **Your gate.** kiln reads `kiln.json` from main, never from the build's checkout, so no build weakens its own
   gate. A test that fails on main too is not counted against the build.
-- **Acceptance tests written apart from the code.** With `"workflow": "split"`, one session writes the code and
+- **Acceptance tests written apart from the code.** With `"testSession": true`, one session writes the code and
   another writes the tests, from the spec alone. Neither can read the other's checkout.
 - **An audit.** Once the gate passes, a second session reads the work and sends its findings back.
 - **A sandbox, while the session runs.** A session's shell commands write only in its own checkout and the paths
@@ -230,7 +230,7 @@ lives in a monitor's directory. With no `command` and no `agent.md` beside it, t
 ```text
 .kiln/monitors/test-seconds/
   gauge          prints the tests' time, in seconds, as its last line
-  monitor.json   {"max": 60}
+  monitor.json   {"atMost": 60}
 ```
 
 ## Monitors
