@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "monitor.json",
-  "description": "monitor.json is how a monitor runs, and what its fix may do, from the monitor's .kiln/monitors/<name>/monitor.json. Each key may be left out. The keys recheck, mustAccept and writesTests steer a fix. A monitor with no command and no agent.md names none of them.",
+  "description": "monitor.json is how a monitor runs, and what its fix may do. The monitor's directory, .kiln/monitors/<name>/, holds them as monitor.json. Each key may be left out. The keys recheck, mustAccept and writesTests steer a fix. A monitor with no command and no agent.md names none of them.",
   "type": "object",
   "properties": {
     "$schema": {
@@ -13,7 +13,7 @@
       "type": "integer"
     },
     "recheck": {
-      "description": "recheck, when false, leaves the monitor's check or gauge out of its fix's gate. Use it for a problem no fix clears until it is deployed. Absent or true, the gate runs it again, and fails while it still finds the problem. A monitor with no command and no agent.md may not name it.",
+      "description": "recheck, when false, leaves the monitor's check or gauge out of its fix's gate. Set it false for a problem no fix clears until it is deployed. Absent or true, the gate runs the check or gauge again, and fails while it still finds the problem. A monitor with no command and no agent.md may not name it.",
       "type": "boolean"
     },
     "mustAccept": {
@@ -21,15 +21,15 @@
       "type": "boolean"
     },
     "writesTests": {
-      "description": "writesTests, when true, lets a fix write under each acceptance path's part before {spec}, such as uat/. Without it, a fix may not change the acceptance tests. A monitor with no command and no agent.md may not name it.",
+      "description": "writesTests, when true, lets a fix write under each acceptance path's part before {spec}, such as all of uat/. Without it, a fix writes nothing there. kiln then refuses the monitor while acceptance, in kiln.json, names no path with a part before {spec}. A monitor with no command and no agent.md may not name it.",
       "type": "boolean"
     },
     "atLeast": {
-      "description": "atLeast is the line of the monitor's gauge, such as 80: a reading below it crossed the line. Name it or atMost beside a gauge, never both, and neither without a gauge.",
+      "description": "atLeast is the line of the monitor's gauge script, such as 80. A reading below it crossed the line. A crossed line starts a fix, or asks for the developer in a monitor that only watches. A gauge needs atLeast or atMost, never both. A monitor with no gauge names neither.",
       "type": "number"
     },
     "atMost": {
-      "description": "atMost is the line of the monitor's gauge, such as 0: a reading above it crossed the line. Name it or atLeast beside a gauge, never both, and neither without a gauge.",
+      "description": "atMost is the line of the monitor's gauge script, such as 0. A reading above it crossed the line. A crossed line starts a fix, or asks for the developer in a monitor that only watches. A gauge needs atLeast or atMost, never both. A monitor with no gauge names neither.",
       "type": "number"
     }
   },

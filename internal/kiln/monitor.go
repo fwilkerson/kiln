@@ -56,9 +56,9 @@ type monitor struct {
 	tree string
 }
 
-// settings is how a monitor runs, and what its fix may do, from the monitor's .kiln/monitors/<name>/monitor.json.
-// Each key may be left out. The keys recheck, mustAccept and writesTests steer a fix. A monitor with no command and no
-// agent.md names none of them.
+// settings is how a monitor runs, and what its fix may do. The monitor's directory, .kiln/monitors/<name>/, holds them
+// as monitor.json. Each key may be left out. The keys recheck, mustAccept and writesTests steer a fix. A monitor with
+// no command and no agent.md names none of them.
 type settings struct {
 	// Each field's doc is the hover an editor shows for its key, as TestSchema builds it. So each stands alone.
 
@@ -68,22 +68,24 @@ type settings struct {
 	// Hours is how often kiln monitor run runs the monitor, in whole hours from 0 to 65535, such as 1. 0 runs it at
 	// every kiln monitor run. Absent, it is 24.
 	Hours uint16 `json:"hours"`
-	// Recheck, when false, leaves the monitor's check or gauge out of its fix's gate. Use it for a problem no fix
-	// clears until it is deployed. Absent or true, the gate runs it again, and fails while it still finds the
-	// problem. A monitor with no command and no agent.md may not name it.
+	// Recheck, when false, leaves the monitor's check or gauge out of its fix's gate. Set it false for a problem no
+	// fix clears until it is deployed. Absent or true, the gate runs the check or gauge again, and fails while it
+	// still finds the problem. A monitor with no command and no agent.md may not name it.
 	Recheck *bool `json:"recheck"`
 	// MustAccept, when true, keeps each fix that passes on its branch, until the developer runs kiln accept on it.
 	// Without it, a fix that passes lands on main. A monitor with no command and no agent.md may not name it.
 	MustAccept bool `json:"mustAccept"`
-	// WritesTests, when true, lets a fix write under each acceptance path's part before {spec}, such as uat/.
-	// Without it, a fix may not change the acceptance tests. A monitor with no command and no agent.md may not name
-	// it.
+	// WritesTests, when true, lets a fix write under each acceptance path's part before {spec}, such as all of uat/.
+	// Without it, a fix writes nothing there. kiln then refuses the monitor while acceptance, in kiln.json, names no
+	// path with a part before {spec}. A monitor with no command and no agent.md may not name it.
 	WritesTests bool `json:"writesTests"`
-	// AtLeast is the line of the monitor's gauge, such as 80: a reading below it crossed the line. Name it or atMost
-	// beside a gauge, never both, and neither without a gauge.
+	// AtLeast is the line of the monitor's gauge script, such as 80. A reading below it crossed the line. A crossed
+	// line starts a fix, or asks for the developer in a monitor that only watches. A gauge needs atLeast or atMost,
+	// never both. A monitor with no gauge names neither.
 	AtLeast *float64 `json:"atLeast"`
-	// AtMost is the line of the monitor's gauge, such as 0: a reading above it crossed the line. Name it or atLeast
-	// beside a gauge, never both, and neither without a gauge.
+	// AtMost is the line of the monitor's gauge script, such as 0. A reading above it crossed the line. A crossed
+	// line starts a fix, or asks for the developer in a monitor that only watches. A gauge needs atLeast or atMost,
+	// never both. A monitor with no gauge names neither.
 	AtMost *float64 `json:"atMost"`
 }
 
@@ -132,15 +134,15 @@ func hashOf(text string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// monitors reads kiln.json at the commit at, and the monitors there, as monitorsIn reads them. It refuses kiln.json as
-// every command does.
+// monitors reads kiln.json at the commit at, where work was queued or started, and the monitors there. It reads each
+// file as pastFiles does, and each monitor as monitorsIn does.
 func (r *Repo) monitors(ctx context.Context, at git.Rev) (config, []monitorRead, error) {
 	c, err := r.config(ctx, at)
 	if err != nil {
 		return c, nil, err
 	}
 
-	reads, err := r.monitorsIn(ctx, c, at)
+	reads, err := r.monitorsIn(ctx, c, r.pastFiles(at), at)
 	return c, reads, err
 }
 
@@ -152,14 +154,13 @@ func (r *Repo) mainMonitors(ctx context.Context) (git.Rev, config, []monitorRead
 		return main, c, nil, err
 	}
 
-	reads, err := r.monitorsIn(ctx, c, main)
+	reads, err := r.monitorsIn(ctx, c, r.filesAt(main), main)
 	return main, c, reads, err
 }
 
-// monitorsIn reads each entry under .kiln/monitors/ at the commit at, by name, with c, kiln.json there. It reads each
-// as a monitorRead, so one monitor kiln refuses never keeps it from the rest.
-func (r *Repo) monitorsIn(ctx context.Context, c config, at git.Rev) ([]monitorRead, error) {
-	f := r.filesAt(at)
+// monitorsIn reads each entry under .kiln/monitors/ at the commit at, by name. c is kiln.json there, and f reads the
+// files there. It reads each as a monitorRead, so one monitor kiln refuses never keeps it from the rest.
+func (r *Repo) monitorsIn(ctx context.Context, c config, f files, at git.Rev) ([]monitorRead, error) {
 	dirs, err := r.monitorDirs(ctx, at)
 	if err != nil {
 		return nil, err
@@ -308,7 +309,7 @@ func (c config) readMonitor(name Spec, dir string, files []string, raw []byte) (
 		// A monitor.json that is no object fails the strict read below, which words why.
 		_ = jsonv2.Unmarshal(raw, &keys)
 		file := path.Join(dir, settingsFile)
-		if renamed := renamedRefusals(file, keys); len(renamed) > 0 {
+		if renamed := oldKeys(file, keys, renamedSetting); len(renamed) > 0 {
 			return m, renamed
 		}
 
@@ -332,17 +333,26 @@ func (c config) readMonitor(name Spec, dir string, files []string, raw []byte) (
 var renamedSettings = map[string]string{"gates": "recheck", "accept": "mustAccept", "tests": "writesTests",
 	"min": "atLeast", "max": "atMost"}
 
-// renamedRefusals refuse each of keys that kiln once read in file, a monitor.json, and name the key in its place.
-func renamedRefusals(file string, keys map[string]jsontext.Value) refusals {
+// oldKeys refuse each of keys, those of file, that kiln once read there. went answers the fix for such a key, and ""
+// for any other.
+func oldKeys(file string, keys map[string]jsontext.Value, went func(key string) string) refusals {
 	var refused refusals
 	for _, key := range slices.Sorted(maps.Keys(keys)) {
-		if now, ok := renamedSettings[key]; ok {
-			refused = append(refused, refusal{fmt.Sprintf("%s holds %q, a key kiln no longer reads", file, key),
-				fmt.Sprintf("name it %q", now)})
+		if fix := went(key); fix != "" {
+			refused = append(refused, refusal{fmt.Sprintf("%s holds %q, a key kiln no longer reads", file, key), fix})
 		}
 	}
 
 	return refused
+}
+
+// renamedSetting is the fix for key of a monitor.json, where kiln renamed it, or "".
+func renamedSetting(key string) string {
+	if now, ok := renamedSettings[key]; ok {
+		return fmt.Sprintf("name it %q", now)
+	}
+
+	return ""
 }
 
 // fixKeys are the keys of monitor.json that steer a fix, which a monitor that fixes nothing may not name.

@@ -42,6 +42,7 @@ wrote .kiln/agents/build.md
 ...
 wrote .kiln/kiln.json
 wrote .kiln/kiln.schema.json
+wrote .kiln/monitor.schema.json
 wrote .kiln/reviewers/comprehension.md
 ...
 wrote .kiln/init.json

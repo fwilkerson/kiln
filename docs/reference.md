@@ -20,11 +20,11 @@ commands in use.
 ```
 
 `kiln init` writes these from a preset, all but the monitors, and links `/shape` and each reviewer into `.claude/`. The
-project owns them from then on, but for `kiln.schema.json`, which `kiln init` writes over each time. Run `kiln init`
-again once you upgrade kiln: it merges kiln's new defaults with your edits, in the working tree, for you to read and
-commit. `kiln status` says when `.kiln/` on main is behind. `kiln.json` stays yours: kiln init adds only `$schema` and
-`rounds`, where the file lacks them. `kiln help presets` says how it merges each file. `kiln monitor add` writes a
-monitor, as Monitors says.
+project owns them from then on, but for `kiln.schema.json` and `monitor.schema.json`, which `kiln init` writes over each
+time. Run `kiln init` again once you upgrade kiln: it merges kiln's new defaults with your edits, in the working tree,
+for you to read and commit. `kiln status` says when `.kiln/` on main is behind. `kiln.json` stays yours: kiln init adds
+only `$schema` and `rounds`, where the file lacks them. `kiln help presets` says how it merges each file. `kiln monitor
+add` writes a monitor, as Monitors says.
 
 A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
 as a new agent, is yours to commit: a build names it in its last reply instead of writing it.
@@ -57,18 +57,18 @@ replaces, and how kiln reads the path and finds it again on the next run.
 
 | Key             | What it holds                                                                | Read at           |
 |-----------------|------------------------------------------------------------------------------|-------------------|
-| `$schema`       | The JSON Schema an editor checks this file against, which kiln never reads   | never             |
-| `gate`          | Commands that must pass before work lands, each run with `sh -c`. Required.  | main's tip        |
-| `rounds`        | How many times a failing gate goes back to the session before a build stops  | main's tip        |
-| `hosts`         | The only hosts a session's commands reach                                    | main's tip        |
-| `writable`      | Commands that print the paths, beside its checkout, a session may write      | main's tip        |
-| `mcp`           | The only MCP servers a session calls, as Claude Code's settings hold one     | main's tip        |
-| `acceptance`    | Where a spec's acceptance tests live, with `{spec}` for its name. Required.  | the commit queued |
+| `"$schema"`     | The JSON Schema an editor checks this file against, which kiln never reads   | never             |
+| `"gate"`        | Commands that must pass before work lands, each run with `sh -c`. Required.  | main's tip        |
+| `"rounds"`      | How many times a failing gate goes back to the session before a build stops  | main's tip        |
+| `"hosts"`       | The only hosts a session's commands reach                                    | main's tip        |
+| `"writable"`    | Commands that print the paths, beside its checkout, a session may write      | main's tip        |
+| `"mcp"`         | The only MCP servers a session calls, as Claude Code's settings hold one     | main's tip        |
+| `"acceptance"`  | Where a spec's acceptance tests live, with `{spec}` for its name. Required.  | the commit queued |
 | `"testSession"` | `true`: a second session writes the tests; absent: one writes code and tests | the commit queued |
-| `shared`        | Paths both sessions may write when `"testSession"` is true                   | the commit queued |
-| `reaudit`       | Paths the audit reads again whenever the work changes them                   | main's tip        |
-| `notify`        | A program that receives each notification, run with `sh -c`                  | main's tip        |
-| `timeout`       | How long a command may run, or a session be silent, before kiln kills it     | main's tip        |
+| `"shared"`      | Paths both sessions may write when `"testSession"` is true                   | the commit queued |
+| `"reaudit"`     | Paths the audit reads again whenever the work changes them                   | main's tip        |
+| `"notify"`      | A program that receives each notification, run with `sh -c`                  | main's tip        |
+| `"timeout"`     | How long a command may run, or a session be silent, before kiln kills it     | main's tip        |
 
 kiln reads the gate from main's tip, never from the build's checkout, so a build cannot weaken its own gate. It
 refuses a `kiln.json` with a key it does not know. `kiln doctor` reads the working tree's `kiln.json`, before you
@@ -225,9 +225,9 @@ the new version with your edits, as it merges the defaults. A monitor you delete
 
 | Key             | What it holds                                                                                     |
 |-----------------|---------------------------------------------------------------------------------------------------|
-| `$schema`       | `"../../monitor.schema.json"`, the schema an editor reads, which kiln never reads                 |
-| `hours`         | How often it runs, in whole hours. Its range and default: `kiln help monitors`.                   |
-| `recheck`       | `false` keeps the check or gauge out of the fix's gate. Absent, the gate runs it again.           |
+| `"$schema"`     | `"../../monitor.schema.json"`, the schema an editor reads, which kiln never reads                 |
+| `"hours"`       | How often it runs, in whole hours. Its range and default: `kiln help monitors`.                   |
+| `"recheck"`     | `false` keeps the check or gauge out of the fix's gate. Absent, the gate runs it again.           |
 | `"mustAccept"`  | `true` keeps each fix on its branch until `kiln accept <name>`. Absent, a passing fix lands.      |
 | `"writesTests"` | `true` lets a fix write under each `acceptance` path's part before `{spec}`.                      |
 | `"atLeast"`     | Beside a gauge, its line: a reading below it crossed. Name `"atLeast"` or `"atMost"`, never both. |
@@ -289,8 +289,8 @@ with no `command` and no `agent.md`, watches it and fixes nothing:
   monitor.json   {"$schema": "../../monitor.schema.json", "atLeast": 10}
 ```
 
-- Its `monitor.json` has exactly one of `"atLeast"` and `"atMost"`, its line. A reading below `"atLeast"`, or above `"atMost"`,
-  crossed it.
+- Its `monitor.json` has exactly one of `"atLeast"` and `"atMost"`, its line. A reading below `"atLeast"`, or above
+  `"atMost"`, crossed it.
 - kiln reads each gauge after each landing. `kiln status` shows the latest reading, and `kiln tui` each landing's. A
   gauge never blocks a landing, so a line that must hold is a gate command.
 - `kiln monitor run` reads it over the whole repository too, when the monitor is due. In a monitor that only

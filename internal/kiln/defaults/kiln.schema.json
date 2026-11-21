@@ -57,14 +57,14 @@
       ]
     },
     "shared": {
-      "description": "shared holds paths both sessions may write when testSession is true, such as [\"internal/testutil/\"], the code the tests run through. Without testSession, kiln reads none. kiln reads it at the commit the build was queued at.",
+      "description": "shared holds the paths both sessions may write when testSession is true, such as [\"internal/testutil/\"]. Name code the tests run through there. Absent, the test session writes only the acceptance tests and the spec's amendments. kiln queue refuses a spec whose acceptance path meets one of these paths. Without testSession, kiln ignores this key. kiln reads it at the commit the build was queued at.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "reaudit": {
-      "description": "reaudit holds paths that never land unread, such as [\"migrations/\"]. When a session's answer to the audit's findings changes one, the audit reads the work again. Absent, the audit never reads such an answer.",
+      "description": "reaudit holds the paths the audit reads before each change to them lands, such as [\"migrations/\"]. When a session's answer to the audit's findings changes one, the audit reads the work again. Absent, the audit reads the work once, and never reads such an answer.",
       "type": "array",
       "items": {
         "type": "string"

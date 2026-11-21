@@ -4,6 +4,7 @@
 # make it your own. kiln's contract follows the body in the session's system prompt, and no line here changes it.
 # In a split build, kiln reads tools, model, effort and advisor here, and ignores the other keys. In a build then
 # audit, the build session writes the tests too: this body follows the build agent's, and its keys are not read.
+# kiln.json's "testSession": true asks for a split build.
 name: verify
 description: Writes the code of an approved spec's acceptance tests, from the spec alone. kiln runs it on each build. Link it into .claude/agents/ to run it as a subagent too.
 model: opus

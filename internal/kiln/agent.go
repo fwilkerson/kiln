@@ -228,7 +228,7 @@ func (s sides) contract(role string, name Spec) string {
 		text = splitContract
 	}
 
-	harness := "which kiln.json names none of"
+	harness := "which kiln.json's shared names none of"
 	if len(s.shared) > 0 {
 		harness = quoted(s.shared)
 	}

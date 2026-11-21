@@ -158,6 +158,8 @@ func TestRenamedKeys(t *testing.T) {
 			`say "testSession": true in its place for a second session that writes the acceptance tests, or drop it ` +
 			`for one session that writes the code and the tests`},
 		"workflow, any value": {configFile, `{"gate": ["true"], "workflow": "both"}`, `holds "workflow", ` + moved},
+		"two at once": {configFile, `{"workflow": "split", "harness": []}`, `when testSession is true` + "\n" +
+			`.kiln/kiln.json holds "workflow"`},
 		"harness": {configFile, `{"gate": ["true"], "harness": ["h/"]}`, `.kiln/kiln.json holds "harness", ` + moved +
 			`name it "shared", the paths both sessions may write when testSession is true`},
 		"gates":  {settingsFile, `{"gates": false}`, `.kiln/monitors/deps/monitor.json holds "gates", ` + moved + `name it "recheck"`},

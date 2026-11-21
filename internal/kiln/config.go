@@ -51,11 +51,14 @@ type config struct {
 	// "uat/{spec}/". One path may be a plain string. kiln queue refuses a spec while it is absent. kiln reads it at
 	// the commit the build was queued at.
 	Acceptance paths `json:"acceptance,omitempty"`
-	// Shared holds paths both sessions may write when testSession is true, such as ["internal/testutil/"], the code
-	// the tests run through. Without testSession, kiln reads none. kiln reads it at the commit the build was queued at.
+	// Shared holds the paths both sessions may write when testSession is true, such as ["internal/testutil/"]. Name
+	// code the tests run through there. Absent, the test session writes only the acceptance tests and the spec's
+	// amendments. kiln queue refuses a spec whose acceptance path meets one of these paths. Without testSession, kiln
+	// ignores this key. kiln reads it at the commit the build was queued at.
 	Shared []string `json:"shared,omitempty"`
-	// Reaudit holds paths that never land unread, such as ["migrations/"]. When a session's answer to the audit's
-	// findings changes one, the audit reads the work again. Absent, the audit never reads such an answer.
+	// Reaudit holds the paths the audit reads before each change to them lands, such as ["migrations/"]. When a
+	// session's answer to the audit's findings changes one, the audit reads the work again. Absent, the audit reads
+	// the work once, and never reads such an answer.
 	Reaudit []string `json:"reaudit,omitempty"`
 	// Notify is a command that receives each notification, such as ".kiln/notify", run with sh -c. The notice is
 	// JSON in $KILN_NOTICE. Absent, kiln prints each notification in its output as OSC 9, which a terminal shows.
@@ -218,6 +221,13 @@ const configFile = kilnDir + "/kiln.json"
 // parseConfig reads kiln.json. A file that is no JSON object of the keys kiln reads fails as unreadable, as
 // configRefusals words it. Otherwise the error holds each of its refusals, and c is what the file holds.
 func parseConfig(raw []byte) (c config, err error) {
+	// The strict read below stops at the first unknown key, so each moved key is refused first, all at once.
+	var keys map[string]jsontext.Value
+	_ = jsonv2.Unmarshal(raw, &keys)
+	if moved := oldKeys(configFile, keys, func(key string) string { return movedKeys[key] }); len(moved) > 0 {
+		return c, unreadable{moved}
+	}
+
 	// json/v2 matches a key's case exactly, as the schema does, where v1 would take "Gate" for gate.
 	if err := jsonv2.Unmarshal(raw, &c, jsonv2.RejectUnknownMembers(true)); err != nil {
 		return c, unreadable{configRefusals(raw, err)}
@@ -288,10 +298,6 @@ func trailingComma(text []byte) bool {
 // names the key kiln reads that is nearest in spelling. kiln.json nests no object whose keys kiln reads.
 func unknownKey(sem *jsonv2.SemanticError) refusal {
 	key := sem.JSONPointer.LastToken()
-	if went, ok := movedKeys[key]; ok {
-		return refusal{fmt.Sprintf("%s holds %q, a key kiln no longer reads", configFile, key), went}
-	}
-
 	problem := fmt.Sprintf("%s holds %q, a key kiln does not read", configFile, key)
 	keys := jsonKeys(sem.GoType)
 	if near := nearest(key, keys); near != "" {
@@ -398,8 +404,9 @@ func bareHost(h string) bool {
 	return name != "" && !strings.ContainsFunc(name, valid)
 }
 
+// config reads kiln.json at the commit at, which work was queued or started at, as pastFiles reads it.
 func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {
-	raw, found, err := r.git.Show(ctx, at, configFile)
+	raw, found, err := r.pastFiles(at).read(ctx, configFile)
 	if err != nil {
 		return config{}, err
 	}
@@ -420,6 +427,71 @@ func (r *Repo) mainConfig(ctx context.Context) (git.Rev, config, error) {
 	raw, found := files[configFile]
 	c, err := readConfig(raw, found)
 	return main, c, err
+}
+
+// pastFiles reads the files the commit at holds, where work was queued or started. An older kiln may have queued that
+// work, and main's settings no longer bind it. So a key that kiln read, and this kiln renamed, reads as its new key.
+func (r *Repo) pastFiles(at git.Rev) files {
+	f := r.filesAt(at)
+	read := f.read
+	f.read = func(ctx context.Context, p string) ([]byte, bool, error) {
+		raw, found, err := read(ctx, p)
+		switch {
+		case err != nil || !found:
+			return raw, found, err
+		case p == configFile:
+			return rekeyed(raw, pastConfig), true, nil
+		case path.Base(p) == settingsFile:
+			return rekeyed(raw, pastSettings), true, nil
+		}
+
+		return raw, true, nil
+	}
+
+	return f
+}
+
+// pastConfig moves each key of kiln.json that an older kiln read to the key in its place. A setting that moved out of
+// kiln.json reads as absent, since a past commit's monitors are read from their directories.
+func pastConfig(keys map[string]jsontext.Value) {
+	var workflow string
+	if jsonv2.Unmarshal(keys["workflow"], &workflow) == nil && workflow == "split" {
+		keys["testSession"] = jsontext.Value("true")
+	}
+
+	if shared, ok := keys["harness"]; ok {
+		keys["shared"] = shared
+	}
+
+	for key := range movedKeys {
+		delete(keys, key)
+	}
+}
+
+// pastSettings moves each key of a monitor.json that an older kiln read to the key in its place.
+func pastSettings(keys map[string]jsontext.Value) {
+	for old, now := range renamedSettings {
+		if v, ok := keys[old]; ok {
+			keys[now] = v
+			delete(keys, old)
+		}
+	}
+}
+
+// rekeyed is raw, a JSON object, with its keys as edit leaves them. It answers raw that is no object unchanged, for
+// the strict read to refuse.
+func rekeyed(raw []byte, edit func(keys map[string]jsontext.Value)) []byte {
+	var keys map[string]jsontext.Value
+	if jsonv2.Unmarshal(raw, &keys) != nil {
+		return raw
+	}
+
+	edit(keys)
+	if out, err := jsonv2.Marshal(keys); err == nil {
+		return out
+	}
+
+	return raw
 }
 
 // readConfig parses raw, kiln.json as a commit holds it. It refuses a commit that holds none, where found is false.

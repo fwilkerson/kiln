@@ -62,6 +62,7 @@ date, as Presets says:
 	                            acceptance tests live, the shared paths, the paths the audit reads again, and the
 	                            program that receives each notification
 	.kiln/kiln.schema.json      kiln.json's JSON Schema, for an editor, which kiln init writes over each time
+	.kiln/monitor.schema.json   each monitor.json's JSON Schema, for an editor, which kiln init writes over each time
 	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
 	.kiln/init.json             what kiln init and kiln monitor add last wrote, which kiln init merges edits against
 	.kiln/agents/build.md       the build agent
@@ -72,7 +73,9 @@ date, as Presets says:
 	.kiln/monitors/<name>/      a monitor: its scripts, its agent and its settings, out of a fix's reach
 
 A command that refuses kiln.json, an agent's file or a spec prints each problem on a line, with its fix. kiln
-doctor names each in the working tree, before a commit, as Doctor says.
+doctor names each in the working tree, before a commit, as Doctor says. Each command refuses a key of kiln.json or a
+monitor.json that kiln once read, naming its new key. Work an older kiln queued or started reads that commit's
+settings, each old key as its new one.
 
 kiln keeps its own files out of the working tree. Main is the branch named main:
 
@@ -133,12 +136,12 @@ Run again, kiln init brings .kiln/ up to date with the kiln that runs it. It wri
 reviewer the project deleted from .kiln/reviewers/. A reviewers folder holding only a .gitkeep keeps no reviewer. A
 file the project left as kiln init last wrote it takes the new default. Into a file the project changed, git
 merge-file merges the change between the last default and the new one. It leaves each conflict between the usual
-markers, and names the file. With no record of the last default, each difference from the new one is a conflict.
-kiln init writes kiln.schema.json over, since kiln owns it. It records each default of the preset, and the preset, in
-.kiln/init.json. It stages and commits nothing. kiln.json is the project's settings: its gate, and what a session
-reaches. A merge could change either unread, so kiln init never merges kiln.json. A kiln.json that is there gains
-only $schema and rounds, where it lacks them. kiln init brings each monitor kiln monitor add recorded up to date the
-same way, as Monitors says.
+markers, and names the file. With no record of the last default, each difference from the new one is a conflict. kiln
+init writes kiln.schema.json and monitor.schema.json over, since kiln owns them. It records each default of the
+preset, and the preset, in .kiln/init.json. It stages and commits nothing. kiln.json is the project's settings: its
+gate, and what a session reaches. A merge could change either unread, so kiln init never merges kiln.json. A
+kiln.json that is there gains only $schema and rounds, where it lacks them. kiln init brings each monitor kiln
+monitor add recorded up to date the same way, as Monitors says.
 
 kiln init links /shape, and each reviewer's file in .kiln/reviewers/, into .claude/. It links each where .claude/
 holds nothing of its name, or a link that reaches nothing. It replaces a link to a reviewer's old file in
@@ -249,26 +252,25 @@ its interval has passed. kiln reads the files below, each optional, and runs eac
 A helper a script runs goes in a subdirectory, such as lib/. Its interval is hours, a whole number from 0 to 65535,
 or 24 when unset. 0 runs it at each kiln monitor run. kiln refuses a file directly under .kiln/monitors/, and a
 monitor whose name no spec could have. It refuses a file directly in a monitor's directory that is none of the five
-above. It refuses a key it does not know, and a value of the wrong type. It refuses a key it once read, and names
-the key in its place. It refuses a check beside a gauge, a gauge
+above. It refuses a key it does not know, and a value of the wrong type. It refuses a check beside a gauge, a gauge
 with no line, and a line with no gauge. It refuses a check, gauge or command git holds without the executable bit. It
 refuses a monitor with no command and no agent.md, unless the monitor holds a gauge alone to watch. Such a monitor
-fixes nothing, so it refuses recheck, mustAccept and writesTests in its monitor.json, which steer a fix. It
-refuses a monitor that may not write the tests while kiln cannot guard them. acceptance then names no path, or one
-with no part before {spec}. A refusal holds back its one monitor: kiln monitor run runs the rest, and
-says why. It notifies when it first refuses that monitor's directory, and again each time the directory changes. kiln
-status and kiln tui show it refused, with why. kiln monitor run with its name refuses, and says why.
+fixes nothing, so it refuses recheck, mustAccept and writesTests in its monitor.json, which steer a fix. It refuses a
+monitor that may not write the tests while kiln cannot guard them. acceptance then names no path, or one with no part
+before {spec}. A refusal holds back its one monitor: kiln monitor run runs the rest, and says why. It notifies when
+it first refuses that monitor's directory, and again each time the directory changes. kiln status and kiln tui show
+it refused, with why. kiln monitor run with its name refuses, and says why.
 
-kiln monitor add copies a monitor into .kiln/monitors/<name>/, for the developer to commit on main. It takes the
-name of one kiln ships, such as bugs. One that needs a language's tools sits under its preset's name, such as
-go/docs. It takes a directory too, by a path that starts with . or /. The monitor's name is the last element of
-either. Before it writes, it refuses a checkout with no kiln.json, and a monitor kiln could not run by that
-kiln.json. It refuses an agent.md kiln could not read, a name already there, and an unreadable record of kiln
-init. It writes each script kiln runs with the executable bit. It records the monitor in .kiln/init.json, with its
-source. It records a directory by its path from the checkout's top. kiln init brings the monitor up to date from
-that source. It writes a file the source gains as kiln monitor add would. A monitor whose directory the project
-deleted stays deleted, and leaves the record. One whose source kiln init cannot read stays as it is, and kiln init
-says why.
+kiln monitor add copies a monitor into .kiln/monitors/<name>/, for the developer to commit on main. It takes the name
+of one kiln ships, such as bugs. One that needs a language's tools sits under its preset's name, such as go/docs. It
+takes a directory too, by a path that starts with . or /. The monitor's name is the last element of either. Before it
+writes, it refuses a checkout with no kiln.json, and a monitor kiln could not run by that kiln.json. It refuses an
+agent.md kiln could not read, a name already there, and an unreadable record of kiln init. It writes each script kiln
+runs with the executable bit. A monitor.json that names no "$schema" gains "$schema": "../../monitor.schema.json",
+the schema kiln init writes, which kiln never reads. It records the monitor in .kiln/init.json, with its source. It
+records a directory by its path from the checkout's top. kiln init brings the monitor up to date from that source. It
+writes a file the source gains as kiln monitor add would. A monitor whose directory the project deleted stays
+deleted, and leaves the record. One whose source kiln init cannot read stays as it is, and kiln init says why.
 
 One kiln monitor run:
 
