@@ -11,8 +11,8 @@ disable-model-invocation: true
 # Write a spec
 
 A spec is what the developer wants built, and the acceptance tests that show it was. This skill takes a spec from an
-idea to one the developer approves. Building it comes after: the developer runs `kiln queue <name>`, then
-`kiln fire`, and a build never asks the developer anything.
+idea to one the developer approves, and queues it. Building it comes after: `kiln fire` builds each queued spec, and
+a build never asks the developer anything.
 
 The developer's turns go to goals, taste, plans only they hold, and choices that are hard to undo. Settle the rest
 yourself, wherever a file, the code or a measurement settles it.
@@ -115,16 +115,19 @@ reported that you brought to the developer. Put each risk the spec accepts there
 accepts one. A risk is a way the work can go wrong that the spec names and leaves open; a Non-goal is not one. For
 each, give the rule that would make it impossible in code and what that rule costs, or say that you found none.
 
-Once they approve, set its Status to Approved, with the date, and commit it on main. Then tell them to run
-`kiln queue <name>`.
+Once they approve, set its Status to Approved, with the date, and commit it on main. Then run `kiln queue <name>`:
+their approval covers the queueing, so queue without asking again. Show the developer the line it prints. If it
+refuses, it prints why: fix that in the spec, or bring it to the developer. Tell them `kiln fire` builds what is
+queued.
 
 ## Revising a spec
 
-Revising an approved spec is editing it with this skill, from step 1. Commit the revision on main, and tell the
-developer what to run next, by where `kiln status` shows the spec:
+Revising an approved spec is editing it with this skill, from step 1. Once the developer approves the revision, commit
+it on main, and queue it, by where `kiln status` shows the spec:
 
-- Waiting for UAT, when UAT found a problem: `kiln queue <name>`. The new build starts from main, which holds the
+- Waiting for UAT, when UAT found a problem: run `kiln queue <name>`. The new build starts from main, which holds the
   landed work, so it revises that work. kiln refuses to queue it until the spec on main has changed.
-- Waiting on its branch with amendments, to change an amendment's wording: commit the developer's wording, then
-  `kiln reject <name>` and `kiln queue <name>`. The rejected build never reaches main.
-- Stopped, or queued: `kiln queue <name>` builds it anew from the revision.
+- Waiting on its branch with amendments, to change an amendment's wording: commit the developer's wording.
+  `kiln reject <name>` drops a build that passed, so ask the developer before you run it. Then run
+  `kiln queue <name>`. The rejected build never reaches main.
+- Stopped, or queued: run `kiln queue <name>`, which builds it anew from the revision.

@@ -110,13 +110,12 @@ what done means:
 - **Then**: it prints 42.
 ```
 
-When you approve the spec, `/shape` marks it `Status: Approved`. Commit it on main: kiln builds only what main
-holds.
+When you approve the spec, `/shape` marks it `Status: Approved`, commits it on main, and queues it with
+`kiln queue answer`. kiln builds only what main holds.
 
 **3. Build it.**
 
 ```console
-$ kiln queue answer
 $ kiln fire
 answer: landed on main at 3f9c2ab81d0e, and waits for UAT
   4.2 min · $0.42 · 3 turns · 1 failed call
@@ -140,8 +139,8 @@ build.
 | stopped                   | The gate still failed after the last round.      | fix main or the spec, `kiln queue`    |
 
 `kiln accept` retires the spec, and `PRODUCT.md` gains the `git show` command that prints it. When trying the work
-turns up a problem, change the spec with `/shape`, commit it, and queue it again: the new build starts from main,
-which holds the landed work.
+turns up a problem, revise the spec with `/shape`, which commits it and queues it again: the new build starts from
+main, which holds the landed work.
 
 ## Making kiln your own
 

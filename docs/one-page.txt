@@ -52,8 +52,8 @@ phase 2 | BUILD, IN THE BACKGROUND
 phase 3 | LAND
 
 box shape @you 1.1 | **shape a spec** ●1 | `/shape`, then approve
-more `/shape` asks what it needs, and the project's reviewers read the draft before you approve it. Its acceptance tests say what done means, each a Given, a When and a Then.
-box queue @you 1.2 | `kiln queue x` | `kiln fire`
+more `/shape` asks what it needs, and the project's reviewers read the draft before you approve it. Its acceptance tests say what done means, each a Given, a When and a Then. Once you approve, `/shape` commits the spec and queues it.
+box fire @you 1.2 | `kiln fire` | builds each | queued spec
 box spec @repo 1.1-2 | 📄 SPEC | approved, on main
 arrow shape spec
 
@@ -64,8 +64,8 @@ box gate @kiln 2.2 | GATE ●2 | your checks, | read from main
 more kiln reads the gate's commands from main, never from the build's checkout, so a build cannot weaken the checks it is held to.
 box audit @agent 2.3 | AUDIT | a second session | reads the work
 more A failing gate, or the audit's findings, go back to the build as a round. Detail A says what happens when rounds run out.
-arrow queue build
-arrow queue verify
+arrow fire build
+arrow fire verify
 arrow build gate
 arrow verify gate
 arrow gate audit
@@ -123,7 +123,7 @@ linked .claude/skills/shape
 ```
 caption The preset follows your files: `go`, `python` for uv, or `typescript` for npm.
 column
-howto 4.2 | Build a spec | `kiln queue answer` @you then `kiln fire` @you
+howto 4.2 | Build a spec | `/shape` @you then `kiln fire` @you
 ```term
 $ kiln fire
 answer: {ok:landed on main} at {h:3f9c2ab81d0e}
