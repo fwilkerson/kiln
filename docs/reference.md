@@ -61,12 +61,12 @@ replaces, and how kiln reads the path and finds it again on the next run.
 | `"gate"`        | Commands that must pass before work lands, each run with `sh -c`. Required.  | main's tip        |
 | `"rounds"`      | How many times a failing gate goes back to the session before a build stops  | main's tip        |
 | `"hosts"`       | The only hosts a session's commands reach                                    | main's tip        |
-| `"writable"`    | Commands that print the paths, beside its checkout, a session may write      | main's tip        |
+| `"writable"`    | Commands that print the paths a session may write, besides its checkout      | main's tip        |
 | `"mcp"`         | The only MCP servers a session calls, as Claude Code's settings hold one     | main's tip        |
 | `"acceptance"`  | Where a spec's acceptance tests live, with `{spec}` for its name. Required.  | the commit queued |
 | `"testSession"` | `true`: a second session writes the tests; absent: one writes code and tests | the commit queued |
-| `"shared"`      | Paths both sessions may write when `"testSession"` is true                   | the commit queued |
-| `"reaudit"`     | Paths the audit reads again whenever the work changes them                   | main's tip        |
+| `"shared"`      | Paths the verify session may write besides the tests, such as a test harness | the commit queued |
+| `"reaudit"`     | Paths whose changes the audit must read before the work lands                | main's tip        |
 | `"notify"`      | A program that receives each notification, run with `sh -c`                  | main's tip        |
 | `"timeout"`     | How long a command may run, or a session be silent, before kiln kills it     | main's tip        |
 

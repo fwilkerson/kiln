@@ -23,6 +23,10 @@ for macOS.
   `kiln.json` names, which opens a Ghostty tab. `.claude/agents` and `.claude/skills` link to `/shape`, its
   reviewers in `.kiln/reviewers/` and the verify agent there. A session kiln runs changes nothing here, but for the
   amendment file kiln's contract gives it.
+- `.claude/agents/prose.md`: the `prose` agent. It judges prose by the guide's "Docs are the contract", and changes
+  nothing. In a session the developer runs, run it on the words a user of kiln reads, before you commit a change to
+  them. Those are `README.md`, `docs/reference.md`, `docs/one-page.txt`, and the docs of the fields of `config` and
+  `settings`, which an editor shows for each key of `kiln.json` and `monitor.json`.
 - `internal/kiln/defaults/`: what `kiln init` writes, for any project. No line there names kiln's own repository.
 - `internal/kiln/presets/`: each preset's `kiln.json`, its `detect` file, which lists the files `kiln init` knows
   the preset by, and its text for the "Tailor this" sections of the defaults' prompts. `kiln init` writes them with

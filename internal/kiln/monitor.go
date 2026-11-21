@@ -56,36 +56,38 @@ type monitor struct {
 	tree string
 }
 
-// settings is how a monitor runs, and what its fix may do. The monitor's directory, .kiln/monitors/<name>/, holds them
-// as monitor.json. Each key may be left out. The keys recheck, mustAccept and writesTests steer a fix. A monitor with
-// no command and no agent.md names none of them.
+// settings is how a monitor runs, and what its fix may do, in .kiln/monitors/<name>/monitor.json. A monitor with a
+// gauge names atLeast or atMost, and every other key is optional. The keys recheck, mustAccept and writesTests apply
+// to a fix. kiln refuses each of them in a monitor with no command and no agent.md, since that monitor makes no fix.
 type settings struct {
 	// Each field's doc is the hover an editor shows for its key, as TestSchema builds it. So each stands alone.
 
-	// Schema names the JSON Schema an editor checks this file against: "../../monitor.schema.json", which kiln
-	// init writes to .kiln/. kiln reads nothing from it.
+	// Schema is the path of the JSON Schema that an editor checks this file against: "../../monitor.schema.json".
+	// kiln init writes that schema to .kiln/. kiln ignores this key.
 	Schema string `json:"$schema,omitempty"`
-	// Hours is how often kiln monitor run runs the monitor, in whole hours from 0 to 65535, such as 1. 0 runs it at
-	// every kiln monitor run. Absent, it is 24.
+	// Hours is the number of whole hours between runs of the monitor, from 0 to 65535, such as 1. With 0, every
+	// kiln monitor run runs the monitor. Absent, it is 24.
 	Hours uint16 `json:"hours"`
-	// Recheck, when false, leaves the monitor's check or gauge out of its fix's gate. Set it false for a problem no
-	// fix clears until it is deployed. Absent or true, the gate runs the check or gauge again, and fails while it
-	// still finds the problem. A monitor with no command and no agent.md may not name it.
+	// Recheck says whether the gate of the monitor's fix runs the monitor's check or gauge again. Absent or true, the
+	// gate runs it, and fails while it still finds the problem. Set it false when no fix clears the problem until the
+	// fix is deployed. kiln refuses recheck in a monitor with no command and no agent.md.
 	Recheck *bool `json:"recheck"`
-	// MustAccept, when true, keeps each fix that passes on its branch, until the developer runs kiln accept on it.
-	// Without it, a fix that passes lands on main. A monitor with no command and no agent.md may not name it.
+	// MustAccept, when true, keeps each fix that passes on its branch until the developer runs kiln accept on it.
+	// Absent or false, a fix that passes lands on main. kiln refuses mustAccept in a monitor with no command and no
+	// agent.md.
 	MustAccept bool `json:"mustAccept"`
-	// WritesTests, when true, lets a fix write under each acceptance path's part before {spec}, such as all of uat/.
-	// Without it, a fix writes nothing there. kiln then refuses the monitor while acceptance, in kiln.json, names no
-	// path with a part before {spec}. A monitor with no command and no agent.md may not name it.
+	// WritesTests, when true, lets a fix write the acceptance tests of every spec. Those are the files under the
+	// part of each acceptance path before {spec}, such as uat/ for "uat/{spec}/". Absent or false, a fix writes
+	// nothing there. kiln then refuses the monitor while kiln.json's acceptance is absent, or names a path that
+	// starts with {spec}. kiln refuses writesTests in a monitor with no command and no agent.md.
 	WritesTests bool `json:"writesTests"`
-	// AtLeast is the line of the monitor's gauge script, such as 80. A reading below it crossed the line. A crossed
-	// line starts a fix, or asks for the developer in a monitor that only watches. A gauge needs atLeast or atMost,
-	// never both. A monitor with no gauge names neither.
+	// AtLeast is the lowest reading of the monitor's gauge that needs no fix, such as 80. A reading below it starts
+	// a fix. In a monitor with no command and no agent.md, such a reading notifies the developer instead. A monitor
+	// with a gauge names atLeast or atMost, never both. kiln refuses atLeast in a monitor with no gauge.
 	AtLeast *float64 `json:"atLeast"`
-	// AtMost is the line of the monitor's gauge script, such as 0. A reading above it crossed the line. A crossed
-	// line starts a fix, or asks for the developer in a monitor that only watches. A gauge needs atLeast or atMost,
-	// never both. A monitor with no gauge names neither.
+	// AtMost is the highest reading of the monitor's gauge that needs no fix, such as 0. A reading above it starts a
+	// fix. In a monitor with no command and no agent.md, such a reading notifies the developer instead. A monitor
+	// with a gauge names atLeast or atMost, never both. kiln refuses atMost in a monitor with no gauge.
 	AtMost *float64 `json:"atMost"`
 }
 

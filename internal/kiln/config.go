@@ -20,52 +20,65 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// config is kiln's settings for a project, in .kiln/kiln.json. kiln reads them from main's tip, so a build cannot
-// weaken the gate it is held to.
+// config is kiln's settings for a project, in .kiln/kiln.json. kiln reads them from main, never from a build's
+// checkout, so a build cannot weaken its own gate.
 type config struct {
 	// Each field's doc is the hover an editor shows for its key, as TestSchema builds it. So each stands alone.
 
-	// Schema names the JSON Schema an editor checks this file against: "./kiln.schema.json", which kiln init writes
-	// beside it. kiln reads nothing from it.
+	// Schema is the path of the JSON Schema that an editor checks this file against: "./kiln.schema.json". kiln init
+	// writes that schema beside this file. kiln ignores this key.
 	Schema string `json:"$schema,omitempty"`
-	// Gate holds the commands that must pass before work lands on main, such as ["go vet ./...", "go test ./..."].
-	// Each runs with sh -c, at the top of a checkout of the work. kiln refuses a kiln.json without one.
+	// Gate lists the commands that must pass before work lands on main, such as ["go vet ./...", "go test ./..."].
+	// kiln runs each with sh -c, from the top of a checkout of the work. kiln refuses a kiln.json that lists no
+	// command.
 	Gate []string `json:"gate"`
-	// Rounds caps how often a failing gate goes back to the session before the build stops, such as 3. The audit's
-	// findings spend no round. Absent, or 0, the first failing gate stops the build.
+	// Rounds is how many times kiln sends a build back to its session before the build stops, such as 3. kiln sends
+	// a build back when its gate fails, its work conflicts with main, or its work changes nothing. The audit's
+	// findings go back too, and use no round. Absent or 0, the first failing gate stops the build.
 	Rounds int `json:"rounds"`
-	// Hosts are the only hosts a session's shell commands may reach, such as ["proxy.golang.org", "*.example.org"].
-	// Each is a bare host name, with no scheme, port or path. Absent, those commands reach no host.
+	// Hosts lists the only hosts that a session's shell commands may connect to, such as ["proxy.golang.org",
+	// "*.example.org"]. Write each as a bare host name, with no scheme, port or path. Absent, those commands connect
+	// to no host.
 	Hosts []string `json:"hosts,omitempty"`
-	// Writable holds shell commands, not paths, such as ["go env GOCACHE GOMODCACHE"]. Each runs with sh -c. Each
-	// word it prints is an absolute path a session's commands may write. Absent, they write only in the checkout.
+	// Writable lists shell commands that print paths, such as ["go env GOCACHE GOMODCACHE"]. A session's shell
+	// commands may write to each printed path, as well as to the session's checkout. kiln runs each listed command
+	// with sh -c, and reads each word of its output as one absolute path. Absent, a session's commands write only to
+	// its checkout.
 	Writable []string `json:"writable,omitempty"`
-	// MCP names the only MCP servers a session may call, such as {"docs": {"command": "docs-mcp"}}. Each is written as
-	// Claude Code's mcpServers holds one. They run outside the sandbox. Absent, a session calls none.
+	// MCP lists the only MCP servers a session may call, by name, such as {"docs": {"command": "docs-mcp"}}. Write
+	// each server as Claude Code's mcpServers setting holds one. Each server runs outside the sandbox that confines a
+	// session's shell commands. Absent, a session calls no MCP server.
 	MCP map[string]json.RawMessage `json:"mcp,omitempty"`
-	// TestSession, when true, has a second session write the acceptance tests from the spec alone. The first writes
-	// the code, and neither reads the other's checkout. Without it, one session writes the code and the tests. kiln
-	// reads it at the commit the build was queued at.
+	// TestSession, when true, gives each build two sessions. The build session writes the code. The verify session
+	// writes the acceptance tests from the spec alone. Neither session reads the other's checkout. Absent or false,
+	// one session writes the code and the tests. A build uses the value that main held when the build was queued.
 	TestSession bool `json:"testSession,omitempty"`
-	// Acceptance holds each path a spec's acceptance tests live in, with {spec} where the spec's name goes, such as
-	// "uat/{spec}/". One path may be a plain string. kiln queue refuses a spec while it is absent. kiln reads it at
-	// the commit the build was queued at.
+	// Acceptance is the path that holds a spec's acceptance tests, such as "uat/{spec}/". kiln puts the spec's name
+	// in place of {spec}. A list of such paths gives each spec several paths. Each path names {spec} after a
+	// directory that no other listed path starts with. kiln queue refuses every spec while acceptance is absent. A
+	// build uses the value that main held when the build was queued.
 	Acceptance paths `json:"acceptance,omitempty"`
-	// Shared holds the paths both sessions may write when testSession is true, such as ["internal/testutil/"]. Name
-	// code the tests run through there. Absent, the test session writes only the acceptance tests and the spec's
-	// amendments. kiln queue refuses a spec whose acceptance path meets one of these paths. Without testSession, kiln
-	// ignores this key. kiln reads it at the commit the build was queued at.
+	// Shared lists paths that the verify session may write besides the acceptance tests, such as
+	// ["internal/testutil/"]. Use it for helper code that the acceptance tests call, such as a test harness. The
+	// build session may write these paths too. Absent, the verify session writes only the acceptance tests and the
+	// spec's amendment file. kiln queue refuses a spec whose acceptance path equals, holds or lies under one of these
+	// paths. kiln ignores shared unless testSession is true. A build uses the value that main held when the build
+	// was queued.
 	Shared []string `json:"shared,omitempty"`
-	// Reaudit holds the paths the audit reads before each change to them lands, such as ["migrations/"]. When a
-	// session's answer to the audit's findings changes one, the audit reads the work again. Absent, the audit reads
-	// the work once, and never reads such an answer.
+	// Reaudit lists paths whose changes the audit must read before the work lands, such as ["migrations/"]. The
+	// audit reads the work once. When the work changes one of these paths after that, the audit reads the work again.
+	// That second reading uses a round. Absent, the audit never reads what a session changes in answer to the audit's
+	// findings.
 	Reaudit []string `json:"reaudit,omitempty"`
-	// Notify is a command that receives each notification, such as ".kiln/notify", run with sh -c. The notice is
-	// JSON in $KILN_NOTICE. Absent, kiln prints each notification in its output as OSC 9, which a terminal shows.
+	// Notify is a command that receives each notification, such as ".kiln/notify". A notification says that a build
+	// or a fix needs the developer. The command runs with sh -c, and reads the notification as JSON from the
+	// environment variable KILN_NOTICE. kiln kills a command that runs past 30 seconds. Absent, or when the command
+	// fails, kiln prints the notification as an OSC 9 escape sequence. A terminal shows that sequence as a desktop
+	// notification.
 	Notify string `json:"notify,omitempty"`
-	// Timeout bounds each command kiln runs for the project, such as one gate command, and each session's silence.
-	// It never bounds a whole build. Past it, kiln kills that command or session. It is a Go duration above zero,
-	// such as "2h". Absent, it is 1 hour.
+	// Timeout is how long one command that kiln runs for the project may take, such as one gate command. It is also
+	// how long a session may print nothing. Past it, kiln kills that command or session. It does not limit a whole
+	// build. Write a Go duration above zero, such as "2h". Absent, it is 1 hour.
 	Timeout timeout `json:"timeout,omitempty"`
 }
 
