@@ -291,8 +291,9 @@ with no `command` and no `agent.md`, watches it and fixes nothing:
   watches, a crossed reading asks for you rather than for a fix. `kiln help monitors` says when that notifies, and
   which keys of `monitor.json` such a monitor may not name.
 - `kiln help gauges` says where and when kiln runs the gauge, what `$KILN_BASE` holds, and how it reads an unknown
-  number. So `git diff --name-only --diff-filter=d "$KILN_BASE" HEAD` names the files one build left after a landing,
-  and every file in the monitor's run. Give a gauge a line that holds for both.
+  number. So `git diff --name-only --diff-filter=d "$KILN_BASE" HEAD` names the files one build left. A gauge that
+  measures one landing's change prints nothing in the monitor's run, which reads the whole repository: `kiln help
+  gauges` shows how it tells.
 - Print nothing when the landing holds nothing to read. kiln then says the landing read nothing, and `kiln status` keeps
   showing the last reading, with its landing.
 - `kiln help monitors` says what `$KILN_BASE` holds in the monitor's run and in its fix's gate, and when that gate

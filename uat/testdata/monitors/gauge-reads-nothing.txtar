@@ -1,0 +1,41 @@
+# A gauge that reads nothing in a monitor's run finds nothing, as after a landing.
+
+# Given: a monitor that holds a gauge alone. The gauge counts the files one landing changed, and prints nothing when
+# $KILN_BASE is git's empty tree, as in a monitor's run. Its line is at most 0, which any count would cross. kiln.json
+# names a notify program that keeps each notice.
+
+# When: kiln monitor run runs,
+env KILN_NOW=2026-11-14T10:00:00Z
+exec kiln monitor run
+
+# then it says the gauge read nothing, in the landing's words, and finds the monitor healthy.
+stdout '^changed: healthy: changed: nothing to read in the whole repository, as its command printed nothing$'
+
+# kiln status shows it healthy, due at its interval, and its summary.
+exec kiln status
+stdout '^changed: healthy, last ran .*, runs next after '
+stdout '^  changed: nothing to read in the whole repository, as its command printed nothing$'
+
+# No fix starts, no notice goes out, and the ledger holds no reading of the gauge.
+! exists .claude-calls
+! exists .git/notices
+exec kiln ledger --kind monitor
+stdout '"found":"healthy"'
+stdout '"gauge":null'
+
+# When: it runs again an hour later,
+env KILN_NOW=2026-11-14T11:00:00Z
+exec kiln monitor run
+
+# then the monitor is not due.
+stdout '^changed: not due until '
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}
+-- .kiln/monitors/changed/gauge --
+[ "$KILN_BASE" = "$(git hash-object -t tree /dev/null)" ] && exit 0
+git diff --name-only "$KILN_BASE" HEAD | wc -l
+-- .kiln/monitors/changed/monitor.json --
+{"max": 0}
+-- a.txt --
+a

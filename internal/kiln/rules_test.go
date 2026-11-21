@@ -1378,6 +1378,7 @@ func TestGaugeVerdict(t *testing.T) {
 		"on its line":                 {command: "echo 0", ran: true, summary: "count: 0, line ≤ 0"},
 		"crossed":                     {command: "echo a.txt is low; echo 1", ran: true, fix: true, summary: "count: 1, line ≤ 0, crossed", found: "a.txt is low"},
 		"no number":                   {command: "echo nothing to read", summary: "count: its command's last line is no number"},
+		"nothing printed":             {command: "true", ran: true, summary: "count: nothing to read in the whole repository, as its command printed nothing"},
 		"a command that says why":     {command: "echo no such tool >&2; echo 3; exit 1", summary: "no such tool"},
 		"a command that says nothing": {command: "exit 3", summary: "count: its command failed: exit status 3"},
 		"a command that runs past":    {command: "echo 1; sleep 30", limit: 500 * time.Millisecond, summary: "count: its command ran past kiln.json's timeout of 500ms, so kiln killed it"},

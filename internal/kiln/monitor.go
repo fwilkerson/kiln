@@ -508,11 +508,16 @@ func couldNotCheck(m monitor, why string) checked {
 }
 
 // measured reads m's gauge in tree, from base, as a check's verdict. On its line is healthy, and crossed asks for a
-// fix. A reading kiln could not take couldn't run. It answers an error only once kiln is interrupted.
+// fix. A gauge that read nothing is healthy, with no reading, as after a landing. A reading kiln could not take
+// couldn't run. It answers an error only once kiln is interrupted.
 func (s projectShell) measured(ctx context.Context, tree git.Worktree, m monitor, base git.Rev) (checked, error) {
 	rd, err := s.readGauge(ctx, tree, m, base)
-	if err != nil {
+	switch {
+	case err != nil:
 		return checked{}, err
+	case rd.nothing:
+		return checked{ran: true, summary: fmt.Sprintf("%s: nothing to read in the whole repository, as %s", m.Name,
+			rd.why), printed: rd.printed}, nil
 	}
 
 	e := m.reading(rd.value)
