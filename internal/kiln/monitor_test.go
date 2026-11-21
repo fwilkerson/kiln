@@ -49,6 +49,7 @@ func TestMonitorConfig(t *testing.T) {
 		"a gauge alone":                {files: "gauge monitor.json", settings: `{"hours": 1, "max": 0}`},
 		"a gauge alone, no tests":      {files: "gauge", settings: `{"max": 0}`, acceptance: `[]`},
 		"a gauge alone with fix keys":  {files: "gauge", settings: `{"max": 0, "tests": true, "gates": false, "accept": false}`, refused: []string{"names accept in its monitor.json, a key that steers a fix, but holds no command and no agent.md to fix with: drop accept, or add a command or an agent.md", "names gates", "names tests"}},
+		"a line alone":                 {files: "monitor.json", settings: `{"max": 0}`, refused: []string{"names min or max, a gauge's line, but holds no gauge: drop min and max, or add a gauge"}},
 		"a monitor.json alone":         {files: "monitor.json", settings: `{"hours": 1}`, refused: []string{"holds no command and no agent.md, so it fixes nothing: add one, or keep a gauge alone"}},
 		"tests kiln could not guard":   {files: "command", acceptance: `"{spec}_test/"`, refused: []string{"may not write the tests"}},
 		"tests the monitor may write":  {files: "command", settings: `{"tests": true}`, acceptance: `"{spec}_test/"`},

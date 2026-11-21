@@ -310,6 +310,8 @@ var fixKeys = []string{"gates", "accept", "tests"}
 func (c config) monitorRefusals(m monitor, files, keys []string) refusals {
 	stray := strayFile(files)
 	gauged := m.finder == gaugeScript
+	// A line with neither a check nor a gauge means a gauge, whose own refusal says it is missing.
+	meantGauge := gauged || m.finder == "" && m.sides() > 0
 	refused := broken(
 		rule{!specName.MatchString(string(m.Name)), refusal{"has a name no spec could have",
 			"name it in lower-case letters, digits and hyphens, such as deps"}},
@@ -322,7 +324,7 @@ func (c config) monitorRefusals(m monitor, files, keys []string) refusals {
 			"name one, the gauge's line"}},
 		rule{!gauged && m.sides() > 0, refusal{"names min or max, a gauge's line, but holds no gauge",
 			"drop min and max, or add a gauge"}},
-		rule{!m.fixes() && !gauged, refusal{"holds no command and no agent.md, so it fixes nothing",
+		rule{!m.fixes() && !meantGauge, refusal{"holds no command and no agent.md, so it fixes nothing",
 			"add one, or keep a gauge alone, with its line in monitor.json, for kiln to watch"}},
 		rule{m.fixes() && !m.Tests && c.unguarded(), refusal{"may not write the tests, while acceptance names no " +
 			"path before {spec} for kiln to guard", "give each acceptance path a part before {spec}, or say " +

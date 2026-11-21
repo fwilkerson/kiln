@@ -1,15 +1,16 @@
 # kiln doctor prints each problem in the project's setup at once, each with its fix, and fails until none is left.
 
-# Given: a project on main with no pre-commit hook. kiln.json names a host with a scheme, and a monitor names a
-# gauge's line, but its gauge's script the working tree lacks. Spec x's acceptance test has no Then.
+# Given: a project on main with no pre-commit hook. kiln.json names a host with a scheme, and a notify program whose
+# script the working tree lacks. A monitor names a gauge's line, but its gauge's script the working tree lacks. Spec x's
+# acceptance test has no Then.
 
 # When: the developer runs kiln doctor on x,
 ! exec kiln doctor x
 
 # then it prints each problem on a line of its own, with its fix, and exits 1, naming how many it found.
 stdout '^\.kiln/kiln\.json names the host "https://proxy\.golang\.org/": name a bare host, such as "proxy\.golang\.org", or "\*\.example\.org"$'
+stdout '^\.kiln/kiln\.json runs \.kiln/notify, which the working tree lacks: write it, or change the command$'
 stdout '^\.kiln/monitors/size/ names min or max, a gauge''s line, but holds no gauge: drop min and max, or add a gauge$'
-stdout '^\.kiln/monitors/size/ holds no command and no agent\.md, so it fixes nothing: add one, or keep a gauge alone, with its line in monitor\.json, for kiln to watch$'
 stdout '^\.kiln/specs/x\.md leaves /shape''s template: its acceptance test 1 holds no Then, after the clauses before it: write it as - \*\*Then\*\*: on a line of its own$'
 stdout '^/.*/\.git/hooks/pre-commit is missing, so no commit to main runs the gate: run kiln init, which installs it, or names the line to add to your own hook$'
 stderr '^kiln doctor: found 5 problems$'
@@ -19,6 +20,8 @@ stderr '^kiln doctor: found 5 problems$'
 exec sh -c 'sed -i "" "s|https://proxy.golang.org/|proxy.golang.org|" .kiln/kiln.json'
 cp _given/size .kiln/monitors/size/gauge
 chmod 755 .kiln/monitors/size/gauge
+cp _given/notify .kiln/notify
+chmod 755 .kiln/notify
 exec perl -pi -e 's/^(- \*\*When\*\*: X is called\.)$/$1\n- **Then**: it answers 42./' .kiln/specs/x.md
 exec kiln init
 # kiln init, with no record of the defaults it last wrote, leaves each agent in conflict with its new default. The
@@ -43,7 +46,8 @@ stdout '^found no problem$'
 
 -- .kiln/kiln.json --
 {
-  "hosts": ["https://proxy.golang.org/"]
+  "hosts": ["https://proxy.golang.org/"],
+  "notify": ".kiln/notify"
 }
 -- .kiln/monitors/size/monitor.json --
 {"max": 100}
@@ -52,6 +56,9 @@ stdout '^found no problem$'
 
 - **Given**: nothing.
 - **When**: X is called.
+-- _given/notify --
+#!/bin/sh
+echo noticed
 -- _given/size --
 #!/bin/sh
 echo 1
