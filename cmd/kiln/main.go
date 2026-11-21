@@ -47,8 +47,9 @@
 // kiln exits 0 when the command did what it says, and 1 when it refused or failed. kiln help prints the usage to
 // stdout. A usage error exits 2, and prints to stderr a line that names the mistake. Under it come the command's own
 // lines of the usage, and a pointer to kiln help. A command kiln lacks gets the names of kiln's commands instead. kiln
-// hook and kiln complete, which the usage does not list, print the first line alone. A kiln hook that cannot read its
-// call exits 2 too, which Claude Code reads as a refusal. SIGINT and SIGTERM cancel the command.
+// hook and kiln complete, which the usage does not list, print the first line alone. Outside a git repository, each
+// command that acts on one refuses, and exits 1, before it reads its arguments. A kiln hook that cannot read its call
+// exits 2 too, which Claude Code reads as a refusal. SIGINT and SIGTERM cancel the command.
 package main
 
 import (
