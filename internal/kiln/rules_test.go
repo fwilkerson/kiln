@@ -109,6 +109,17 @@ func TestGuard(t *testing.T) {
 	}
 }
 
+// TestFixRefusal holds that a fix kept off the acceptance tests learns which key of monitor.json lets it write them.
+func TestFixRefusal(t *testing.T) {
+	f, _ := reflect.TypeFor[settings]().FieldByName("WritesTests")
+	key, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+	s := side{role: fixRole, acceptance: []string{"acceptance/"}}
+	const file = "acceptance/y/y_test.go"
+	if got := s.refusal(file, fold(file), "x"); !strings.Contains(got, fmt.Sprintf("%q: true", key)) {
+		t.Errorf("the refusal is %q, want it to name %q", got, key)
+	}
+}
+
 // TestGuardLinks holds that the hook judges a write by where it lands, after each link in its path. The links are
 // real, in the worktree x, which w links to.
 func TestGuardLinks(t *testing.T) {

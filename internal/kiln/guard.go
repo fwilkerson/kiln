@@ -82,7 +82,7 @@ func (s side) refusal(rel, folded string, spec Spec) string {
 		i := slices.IndexFunc(s.acceptance, func(fixed string) bool { return strings.HasPrefix(folded, fold(fixed)) })
 		if i >= 0 {
 			return fmt.Sprintf("%s is under the acceptance tests, %s, which judge a monitor's fix: it writes them "+
-				"only when its monitor says \"tests\": true", rel, s.acceptance[i])
+				"only when its monitor says \"writesTests\": true", rel, s.acceptance[i])
 		}
 	}
 
