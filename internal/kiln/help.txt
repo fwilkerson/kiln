@@ -210,7 +210,7 @@ A split build, which kiln.json's "workflow": "split" names at the commit queued,
 	audit the stack       findings: to both
 	land                  as a build does; each setback goes to the side that owns it
 
-A build reply whose last line starts "cannot hold:" goes to the verify session. Each session's settings deny it
+A build reply with a line that starts "cannot hold:" goes to the verify session. Each session's settings deny it
 reads of the other's clone and transcripts, and of kiln's other checkouts. Its hook keeps it to its side.
 
 # The gate

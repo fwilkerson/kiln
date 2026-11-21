@@ -42,7 +42,8 @@
 // them by their process tree, their group, and their working directory. Run waits at most 10 s for a child that holds
 // the session's output open.
 //
-// A session that prints nothing for Launch.Silence is hung. Run kills it, as below, and answers a *Silent.
+// A session that prints nothing for Launch.Silence is hung. Run kills it, with each process it started, and answers
+// a *Silent.
 //
 // A usage limit ends a session with Ended.Limit. A limit is a rate_limit_event that rejects the session or bills
 // overage, or a result with API status 429. Overage bills beyond the plan, which no unattended session should do.

@@ -413,9 +413,7 @@ and for the spec names each command would not refuse.
 ```
 
 `ledger.jsonl` is kiln's own, and changes with kiln. A script reads it through `kiln ledger`, whose lines are a
-contract. `kiln help kiln-ledger` lists each kind of line, each field, and what each option keeps. A gate's `landing`
-is whether it judged a landing, the work rebased onto main. Its `ran_main` is whether it ran the gate's commands at
-main too, rather than read the checks kept there.
+contract. `kiln help kiln-ledger` lists each kind of line, each field, and what each option keeps.
 
 ```console
 $ kiln ledger --kind build --last 1 | jq .
@@ -437,9 +435,8 @@ $ kiln ledger --kind build --last 1 | jq .
 }
 ```
 
-A landed build's commit message holds its time, cost, turns and failed calls too. kiln removes every checkout a build
-made once the build lands, is accepted, is rejected or is queued anew. A build that stopped, or waits on its branch,
-keeps them. Three checkouts belong to no build, and stay as worktrees `git worktree list` shows, for kiln to reuse:
-`.main/`, where the gate runs at main, `.gauges/`, where gauges are read after a landing, and `.monitor-check/`, where a
-monitor's check or gauge runs. Each sits beside the builds' checkouts, under `~/Library/Caches/kiln/`, as
-`kiln help files` lists them.
+A landed build's commit message holds its time, cost, turns and failed calls too. Three checkouts belong to no build,
+and stay as worktrees `git worktree list` shows, for kiln to reuse: `.main/`, where the gate runs at main, `.gauges/`,
+where gauges are read after a landing, and `.monitor-check/`, where a monitor's check or gauge runs. Each sits beside
+the builds' checkouts, under `~/Library/Caches/kiln/`. `kiln help files` lists them, and says when kiln removes the
+checkouts a build made.

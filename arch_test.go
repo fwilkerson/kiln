@@ -57,6 +57,7 @@ var outside = map[string][]string{
 	// repotest's Facts holds a package doc's numbers to its constants, so only a test imports it.
 	"internal/proc":   {"golang.org/x/sys", "github.com/fwilkerson/practices/repotest"},
 	"internal/claude": {"golang.org/x/sys", "github.com/fwilkerson/practices/repotest"},
+	"internal/git":    {"github.com/fwilkerson/practices/repotest"},
 	// claim holds the checks tests share, so only a test imports it.
 	"internal/kiln": {"github.com/fwilkerson/practices/claim", "github.com/fwilkerson/practices/repotest"},
 	"internal/scenariotest": {"github.com/rogpeppe/go-internal", "github.com/charmbracelet/x/ansi",

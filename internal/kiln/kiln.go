@@ -210,7 +210,7 @@
 //	audit the stack       findings: to both
 //	land                  as a build does; each setback goes to the side that owns it
 //
-// A build reply whose last line starts "cannot hold:" goes to the verify session. Each session's settings deny it
+// A build reply with a line that starts "cannot hold:" goes to the verify session. Each session's settings deny it
 // reads of the other's clone and transcripts, and of kiln's other checkouts. Its hook keeps it to its side.
 //
 // # The gate
@@ -1072,10 +1072,10 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 // Takes answers the names command takes, for the shell to complete. For queue, accept and reject, they are specs, and
 // for accept and reject, waiting fixes too. For tui, they are the specs kiln holds or its ledger holds. For "monitor
 // run" and "monitor show", they are the monitors at main's tip, refused or not. kiln monitor run then says why it
-// refuses one. While kiln refuses kiln.json there, they are none. For "monitor add", they are the monitors kiln ships
-// that fit the preset .kiln/init.json records, as ShippedMonitors says. Each whose directory the checkout holds already
-// is left out. For doctor, they are the specs the working tree holds, each by a name a spec may have. Other commands
-// take none.
+// refuses one. While kiln refuses kiln.json there, Takes answers the refusal. For "monitor add", they are the
+// monitors kiln ships that fit the preset .kiln/init.json records, as ShippedMonitors says. Each whose directory the
+// checkout holds already is left out. For doctor, they are the specs the working tree holds, each by a name a spec may
+// have. Other commands take none.
 func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 	switch command {
 	case "tui":
