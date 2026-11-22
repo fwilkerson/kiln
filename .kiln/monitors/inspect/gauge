@@ -8,10 +8,11 @@
 #     // way.Busy:  a rebase, a bisect or another git is busy with main, in that worktree
 #       The verb 'bisect' does not usually follow articles like 'a'. ... (GrazieInspection)
 #
-# Its last line is the count of those findings. It prints no number where it read no file. It leaves out each file
-# no fix may change: .kiln/ and .claude/, which kiln's contract keeps from a session, uat/, docs/guide.md, which
-# go tool guide writes, docs/one-page.html, which onepage renders, docs/research/, and test data. It also leaves out
-# each symbolic link, whose findings are its target's.
+# Its last line is the count of those findings. It prints no number where it read no file. It leaves out each finding
+# that .kiln/monitors/inspect/kept lists, as kept says. It leaves out each file no fix may change: .kiln/ and
+# .claude/, which kiln's contract keeps from a session, uat/, docs/guide.md, which go tool guide writes,
+# docs/one-page.html, which onepage renders, docs/research/, and test data. It also leaves out each symbolic link,
+# whose findings are its target's.
 set -eu
 export LC_ALL=C
 
@@ -40,7 +41,15 @@ fi
 # kiln holds a monitor while its gauge prints the same, so each finding shows its line's text, not its number. A nil
 # finding's trace after <br> names lines and offsets, and a duplicate's message names lines, so both go, with each HTML
 # tag.
-low=$(awk -v here="$here/" '
+low=$(awk -v here="$here/" -v kept=.kiln/monitors/inspect/kept '
+  BEGIN {
+    FS = "\t"
+    while ((getline k < kept) > 0) {
+      if (k ~ /^#/ || split(k, part, "\t") != 3) continue
+      kn++; kf[kn] = part[1]; kt[kn] = part[2]; km[kn] = part[3]
+    }
+    FS = " "
+  }
   NR == FNR { read[$0] = 1; next }
   index($0, here) == 1 {
     $0 = substr($0, length(here) + 1)
@@ -55,6 +64,7 @@ low=$(awk -v here="$here/" '
     sub(/ *<br>.*/, "", msg); gsub(/<[^>]+>/, "", msg); sub(/: lines [0-9,]+-[0-9,]+$/, "", msg)
     if (!(f in loaded)) { i = 0; while ((getline l < f) > 0) text[f, ++i] = l; close(f); loaded[f] = 1 }
     t = text[f, n]; gsub(/\t/, " ", t); gsub(/^ +| +$/, "", t)
+    for (i = 1; i <= kn; i++) if ((kf[i] == "*" || kf[i] == f) && index(t, kt[i]) && index(msg id, km[i])) next
     print f "\t" t "\t" msg id
   }
 ' "$files" "$found")

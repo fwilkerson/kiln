@@ -6,12 +6,23 @@
       <scope name="Facts" level="WARNING" enabled="false" />
     </inspection_tool>
     <inspection_tool class="GoDfaErrorMayBeNotNil" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="GoDfaNilDereference" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="GoMaybeNil" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="GoMixedReceiverTypes" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
+    <inspection_tool class="GoResourceLeak" enabled="true" level="WARNING" enabled_by_default="true">
+      <scope name="Harness" level="WARNING" enabled="false" />
+    </inspection_tool>
+    <inspection_tool class="GoSwitchMissingCasesForIotaConsts" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="GoUnhandledErrorResult" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="GoUnusedExportedFunction" enabled="true" level="WARNING" enabled_by_default="true">
+      <scope name="Harness" level="WARNING" enabled="false" />
+    </inspection_tool>
     <inspection_tool class="GrazieInspection" enabled="true" level="GRAMMAR_ERROR" enabled_by_default="true">
+      <scope name="Copies" level="GRAMMAR_ERROR" enabled="false" />
       <scope name="Not prose" level="GRAMMAR_ERROR" enabled="false" />
     </inspection_tool>
     <inspection_tool class="GrazieStyle" enabled="true" level="STYLE_SUGGESTION" enabled_by_default="true">
+      <scope name="Copies" level="STYLE_SUGGESTION" enabled="false" />
       <scope name="Not prose" level="STYLE_SUGGESTION" enabled="false" />
     </inspection_tool>
     <inspection_tool class="HttpUrlsUsage" enabled="true" level="WEAK WARNING" enabled_by_default="true">

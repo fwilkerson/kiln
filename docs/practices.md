@@ -74,13 +74,14 @@ organize current work by stories, then reorganize it by functional area. A story
 ## Mechanical checks
 
 - `gofmt`, and `go tool style`: blank lines, and the 20-word and 120-column limits. A hook runs it after each edit.
-- `go tool health .`: each Go file's score by the guide's "Inside a function". `TestHealth` holds the score of each file
-  under 10 in `held`, so no change lowers one. The `code-health` monitor, in `.kiln/monitors/code-health/`, refactors
-  the files with the lowest scores, as its gauge lists them, and deletes each from `held` once it scores 10.
+- `go tool health .`: the score of each Go file by the guide's "Inside a function". `TestHealth` holds the score of each
+  file under 10 in `held`, so no change lowers one. The `code-health` monitor, in `.kiln/monitors/code-health/`,
+  refactors the files with the lowest scores, as its gauge lists them, and deletes each from `held` once it scores 10.
 - `go tool inspect`: GoLand's inspections, by the profile in `.idea/inspectionProfiles/` and its scopes in
   `.idea/scopes/`, which git tracks with `.idea/dictionaries/` alone. It needs a licensed GoLand. The `inspect`
   monitor, in `.kiln/monitors/inspect/`, clears the findings in the files its gauge lists. Where an inspection
-  misreads kiln, the developer tunes the profile, and no comment suppresses it.
+  misreads kiln, the developer tunes the profile, or keeps one finding in the monitor's `kept`, with the reason above
+  it. No comment suppresses an inspection.
 - `arch_test.go` and `style_test.go`: import rules, modern Go, and doc names.
 - `TestFacts` in a package's `facts_test.go`: each number the package doc states, beside the constant that holds it.
   `repotest.Facts` fails when one moves without the other. A number a doc states gets a row there.

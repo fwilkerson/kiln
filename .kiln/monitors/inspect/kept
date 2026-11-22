@@ -1,0 +1,21 @@
+# The findings the developer keeps, which the gauge leaves out. Each line names a file, or * for any file, then text
+# the finding's line holds, then text the finding's message holds, apart by tabs. The comment above each says why.
+
+# rec is the name of a parameter or a field, which Grazie reads as Redis misspelled.
+internal/kiln/monitor_show.go	rec	Redis
+internal/kiln/stats.go	rec	Redis
+
+# A doc comment starts with the name it documents, which Grazie reads as a word.
+internal/kiln/hold.go	// due is	'do'
+internal/kiln/monitor.go	// settings is	'are'
+internal/tui/markdown.go	// markdown draws	formatting language
+internal/tui/theme.go	// you marks	agreement
+
+# a is the name of the receiver, which Grazie reads as an article.
+internal/kiln/agent.go	into a,	Articles like 'a'
+
+# go, python and typescript are the presets kiln init --preset takes by name.
+internal/kiln/kiln.go	go, python and typescript	TypeScript
+
+# A go:embed directive lists paths, not words.
+*	//go:embed	repeated a word

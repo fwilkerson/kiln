@@ -1,0 +1,3 @@
+<component name="DependencyValidationManager">
+  <scope name="Copies" pattern="file:internal/kiln/help.txt" />
+</component>
