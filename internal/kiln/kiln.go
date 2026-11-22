@@ -1194,18 +1194,24 @@ func (r *Repo) end(ctx context.Context, rec record, e entry, out io.Writer) erro
 }
 
 // Reject turns away the amendments of a spec waiting on its branch, or of its stopped landing. It drops the build, its
-// worktree and its branch, and kiln holds no record of the spec. Main is as it was.
+// worktree and its branch, and kiln holds no record of the spec. Main is as it was. It marks the record rejected
+// before it drops anything, so a kiln accept of name that starts meanwhile refuses. A kiln accept of name still
+// running makes Reject refuse.
 func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
-	k, err := r.store.read()
+	var rec record
+	err := r.store.update(func(b *book) error {
+		if err := b.may(rejectCommand, name, nil); err != nil {
+			return err
+		}
+
+		s := b.find(name)
+		s.Rejected, rec = true, *s
+		return nil
+	})
 	if err != nil {
 		return err
 	}
 
-	if err := k.may(rejectCommand, name, nil); err != nil {
-		return err
-	}
-
-	rec := *k.find(name)
 	outcome := outDropped
 	if rec.Monitor {
 		outcome = outRejected
@@ -1477,12 +1483,19 @@ func (r *Repo) Accept(ctx context.Context, name Spec, out io.Writer) error {
 	case rec.Accepted:
 		return r.landAccepted(ctx, b)
 	case rec.Monitor:
-		return r.acceptFix(ctx, b)
+		err = r.acceptFix(ctx, b)
 	case rec.State == amended:
-		return r.acceptAmended(ctx, b)
+		err = r.acceptAmended(ctx, b)
+	default:
+		err = r.acceptLanded(ctx, b)
 	}
 
-	return r.acceptLanded(ctx, b)
+	if err != nil {
+		// The failed accept lets go of the record, so kiln reject takes it at once.
+		err = errors.Join(err, r.store.set(name, func(s *record) { s.Accepting = 0 }))
+	}
+
+	return err
 }
 
 // acceptLanded retires the spec of b, whose build landed, in a commit on main as it stands. It says so as that
@@ -1538,7 +1551,9 @@ func (r *Repo) acceptAmended(ctx context.Context, b *build) error {
 		return errors.Join(err, r.git.Reset(ctx, at, tip))
 	}
 
-	err = r.store.set(name, func(s *record) { s.State, s.Accepted, s.Rounds, s.Amendments = queued, true, 0, "" })
+	err = r.store.set(name, func(s *record) {
+		s.State, s.Accepted, s.Rounds, s.Amendments, s.Accepting = queued, true, 0, "", 0
+	})
 	if err != nil {
 		return err
 	}
@@ -1555,7 +1570,7 @@ func (r *Repo) acceptFix(ctx context.Context, b *build) error {
 	}
 
 	err = r.store.set(b.rec.Name, func(s *record) {
-		s.State, s.Accepted, s.Rounds, s.AcceptedAt, s.Audited = queued, true, 0, tip, tip
+		s.State, s.Accepted, s.Rounds, s.AcceptedAt, s.Audited, s.Accepting = queued, true, 0, tip, tip, 0
 	})
 	if err != nil {
 		return err

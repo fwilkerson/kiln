@@ -411,6 +411,8 @@ func (r *Repo) filesChanged(ctx context.Context, from, to git.Rev) string {
 func nextStep(rec record, landedAt git.Rev) string {
 	name := rec.Name
 	switch {
+	case rec.Rejected:
+		return fmt.Sprintf("run kiln reject %s, which ends the drop that stopped", name)
 	case rec.Monitor:
 		return fixStep(rec)
 	case rec.State == landed:

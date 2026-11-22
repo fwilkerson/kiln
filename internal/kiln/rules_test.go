@@ -1027,6 +1027,152 @@ func TestAcceptDuringReinstall(t *testing.T) {
 	}
 }
 
+// TestRejectBesideAccept holds that kiln reject and kiln accept of one fix never both act on its record. Whichever
+// starts second, while the first stalls in git, is refused, at once or once the first ends. The first goes on as it
+// would alone: a reject drops the fix, and an accept lands it.
+func TestRejectBesideAccept(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]race{
+		"kiln accept while kiln reject removes the worktree": {stall: "worktree remove"},
+		"kiln reject while kiln accept reads the fix's tip":  {stall: "rev-parse --verify HEAD^{commit}", acceptingFirst: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			tc.run(t)
+		})
+	}
+}
+
+// race is a row of TestRejectBesideAccept. stall is the git command, as its arguments start, that stalls the first
+// command the first time it runs.
+type race struct {
+	stall          string
+	acceptingFirst bool
+}
+
+// run starts the first command, then the second once git stalls the first. It lets git go on once the second ends,
+// or after a second. It then holds what both left.
+func (tc race) run(t *testing.T) {
+	r, repo, main := waitingFix(t)
+	stalled, goOn := stallGit(t, r, tc.stall)
+	reject := func(out io.Writer) error { return r.Reject(t.Context(), "c", out) }
+	accept := func(out io.Writer) error { return r.Accept(t.Context(), "c", out) }
+	first, second := reject, accept
+	if tc.acceptingFirst {
+		first, second = accept, reject
+	}
+
+	firstErr, secondErr := make(chan error, 1), make(chan error, 1)
+	var firstSaid, secondSaid strings.Builder
+	go func() { firstErr <- first(&firstSaid) }()
+	for !exists(stalled) {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	go func() { secondErr <- second(&secondSaid) }()
+	// A second command that waits for the first ends only once the first goes on.
+	select {
+	case err := <-secondErr:
+		secondErr <- err
+	case <-time.After(time.Second):
+	}
+
+	if err := os.WriteFile(goOn, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	errFirst, errSecond := <-firstErr, <-secondErr
+	k, err := r.store.read()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	moved := git.Rev(shell(t, repo, "git rev-parse main")) != main
+	if !claim.Holds(errFirst == nil, errors.Is(errSecond, errRefused), k.find("c") == nil,
+		moved == tc.acceptingFirst) {
+		t.Errorf("the first answered %v, and said:\n%s\nthe second, during it, answered %v, and said:\n%s\n"+
+			"the book holds c %v, and main moved %v; want the first to go on, the second refused, no record "+
+			"of c, and main moved %v", errFirst, &firstSaid, errSecond, &secondSaid, k.find("c") != nil, moved,
+			tc.acceptingFirst)
+	}
+}
+
+// TestRejectThatFails holds the next step kiln status shows once kiln reject fails to remove a fix's worktree. It
+// names kiln reject, which ends the drop, and no command the book refuses.
+func TestRejectThatFails(t *testing.T) {
+	t.Parallel()
+	r, _, _ := waitingFix(t)
+	stalled, _ := stallGit(t, r, "worktree remove")
+	if err := os.WriteFile(stalled+"-fails", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Reject(t.Context(), "c", io.Discard); err == nil {
+		t.Fatal("kiln reject answered no error, though git worktree remove failed")
+	}
+
+	k, err := r.store.read()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := k.find("c")
+	if rec == nil {
+		t.Fatal("a failed kiln reject left no record of c, so nothing names kiln reject c to end the drop")
+	}
+
+	rec.Name = "x"
+	next := nextStep(*rec, "1a2b3c4d5e6f7a8b")
+	if named := namedIn(t, next, rec); !slices.Contains(named, rejectCommand) {
+		t.Errorf("%q names kiln %q; want kiln reject among them", next, named)
+	}
+}
+
+// waitingFix is a repository whose monitor c has a fix waiting on its branch. The check of c finds nothing to fix.
+// It answers main's tip.
+func waitingFix(t *testing.T) (r *Repo, repo string, main git.Rev) {
+	t.Helper()
+	r, repo, _ = tendRepo(t, tendConfig)
+	writeMonitor(t, repo, "c", map[string]string{"command": "true", "check": `echo '{"fix": false, "summary": "s"}'`})
+	shell(t, repo, "git add . && git commit --quiet -m c")
+	main = git.Rev(shell(t, repo, "git rev-parse main"))
+	if err := r.git.Checkout(t.Context(), r.tree("c"), Spec("c").branch(), main); err != nil {
+		t.Fatal(err)
+	}
+
+	shell(t, string(r.tree("c")), "echo fixed >fix.txt && git add fix.txt && git commit --quiet -m 'fix(c): f'")
+	given(t, r, []*record{{Name: "c", State: waiting, Monitor: true, Build: "b1", Session: "s1", Approved: main,
+		Title: "fix(c): f"}}, nil)
+	return r, repo, main
+}
+
+// stallGit gives r a git whose first command that starts with command stalls, as a slow one would. It makes the file
+// stalled as it stalls, then goes on once the file goOn is there. Once the file stalled-fails is there, that command
+// fails.
+func stallGit(t *testing.T, r *Repo, command string) (stalled, goOn string) {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bin := t.TempDir()
+	stalled, goOn = filepath.Join(bin, "stalled"), filepath.Join(bin, "go")
+	script := fmt.Sprintf("#!/bin/sh\ncase \"$*\" in %[4]q*)\n"+
+		"  [ -e %[1]q-fails ] && exit 1\n"+
+		"  if mkdir %[1]q 2>/dev/null; then while [ ! -e %[2]q ]; do sleep 0.05; done; fi;;\nesac\nexec %[3]q \"$@\"\n",
+		stalled, goOn, real, command)
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if r.git, err = git.New(r.top, append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))); err != nil {
+		t.Fatal(err)
+	}
+
+	return stalled, goOn
+}
+
 func TestAuditDid(t *testing.T) {
 	audit := run{role: auditRole, why: reason{Why: whyAudit}}
 	findings := run{role: "build", why: reason{Why: whyFindings}}

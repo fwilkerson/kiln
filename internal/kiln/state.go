@@ -94,6 +94,11 @@ type record struct {
 	Tended bool `json:"tended,omitempty"`
 	// LandedAt is the commit main moved to when the build's work landed.
 	LandedAt git.Rev `json:"landed_at,omitempty"`
+	// Rejected is true once kiln reject took the record, which it then drops. The book takes only kiln reject on it.
+	Rejected bool `json:"rejected,omitempty"`
+	// Accepting is the process ID of the kiln accept that took the record, until its landing is queued. While that
+	// kiln lives, the book takes only kiln accept on the record.
+	Accepting int `json:"accepting,omitempty"`
 	runner
 }
 
@@ -177,6 +182,9 @@ const (
 //	a fix's landing, stopped               refuses                          lands it again   drops build,   takes it
 //	                                                                                         branch
 //
+// A record kiln reject took, and has yet to drop, refuses each command but kiln reject. A record that a live kiln
+// accept took refuses each command but kiln accept, until its landing is queued.
+//
 // A fix is a monitor's, under its name. Its accept retires nothing, since a monitor has no spec. kiln tend takes a
 // monitor with no record by its last run, as Tend says. Each refusal of kiln tend names the next step.
 //
@@ -199,6 +207,10 @@ func (b *book) refusal(command string, name Spec, changed func(since git.Rev) (b
 		return "", nil
 	case r == nil:
 		return "kiln holds no record of it", nil
+	case r.Rejected && command != rejectCommand:
+		return fmt.Sprintf("kiln reject is dropping it: should that kiln stop, kiln reject %s ends it", name), nil
+	case alive(r.Accepting) && command != acceptCommand:
+		return "kiln accept is taking it: run kiln status once that kiln ends", nil
 	case command == tendCommand:
 		return r.tendRefusal(), nil
 	case r.halted() && !r.Monitor:
@@ -348,13 +360,18 @@ func (b *book) queue(name Spec, main git.Rev, changed func(since git.Rev) (bool,
 // accept answers the record of a spec the developer accepts, as it stood. A stopped landing of accepted amendments is
 // queued again afresh. It keeps only its build, sessions, turns cut short and audit, and that it lands accepted
 // amendments. It keeps a branch a landing left to put back, too. It keeps the rounds' limit, the title and the
-// commit the developer accepted. Without the limit, a fix's landing that goes back to its session has no round.
+// commit the developer accepted. Without the limit, a fix's landing that goes back to its session has no round. Any
+// other record the kiln accept running now takes, until its landing is queued or the accept fails.
 func (b *book) accept(name Spec) (record, error) {
 	if err := b.may(acceptCommand, name, nil); err != nil {
 		return record{}, err
 	}
 
 	r := b.find(name)
+	if !r.Accepted {
+		r.Accepting = os.Getpid()
+	}
+
 	was := *r
 	if r.Accepted {
 		*r = record{Name: name, State: queued, Approved: r.Approved, Build: r.Build, Session: r.Session,
