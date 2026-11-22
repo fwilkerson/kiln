@@ -23,12 +23,12 @@ motto Specs in. Commits out.
 para kiln runs Claude Code in the background, on your Mac. It builds each spec you approve, and does chores on a schedule. Work reaches main only once your checks pass.
 
 cell problem | How agents get used
-lead **You hand an agent a task.**
-para Then you stay. You wait, read the diff, run the tests, say what is wrong, and wait again.
-para Nothing but you checks the work, so you cannot walk away. A second agent only gives you more to check.
+lead **You give an agent a task. Then you wait, or start a second agent.**
+para Either way, no task starts until you prompt it. Only you check the result.
+para Running a second agent means switching between tasks. So you run only as many agents as you can manage.
 
 cell answer | With kiln
-big You write the @you{spec} and the checks. kiln runs the @agent{agents}, and lands only work that passes.
+big You write a @you{spec} and the checks. kiln runs the @agent{agents}, and lands only the work that passes your checks.
 para **Each acceptance test becomes code.** You approve each test as a Given, a When and a Then. A session writes it as a test that runs your program as its user would.
 para **Your checks decide what lands.** They run those tests on every later build too. kiln reads your checks from main, so no build can weaken them.
 para **Chores run without you.** On a schedule, a monitor looks for a problem, such as a filed bug. An agent fixes what the monitor finds.

@@ -2,8 +2,8 @@
 
 Approve a spec, walk away, and come back to it built, tested and on main.
 
-A coding agent writes code fast, but someone has to check that code, and today that is you. You prompt, wait, read
-the diff, run the tests, and prompt again, so you cannot walk away.
+A coding agent writes code fast, but only you start its tasks and check its results. So you wait on one agent, or
+you switch between several, as many as you can manage.
 
 kiln does that checking before the work reaches you. You approve a **spec**: a Markdown file that says what to build,
 and how to tell it is done. kiln then runs [Claude Code](https://claude.com/claude-code) sessions that write the code

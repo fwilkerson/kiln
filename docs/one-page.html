@@ -580,13 +580,13 @@
   </div>
   <div class="cell problem">
     <span class="lab">How agents get used</span>
-    <p class="lead"><b>You hand an agent a task.</b></p>
-    <p>Then you stay. You wait, read the diff, run the tests, say what is wrong, and wait again.</p>
-    <p>Nothing but you checks the work, so you cannot walk away. A second agent only gives you more to check.</p>
+    <p class="lead"><b>You give an agent a task. Then you wait, or start a second agent.</b></p>
+    <p>Either way, no task starts until you prompt it. Only you check the result.</p>
+    <p>Running a second agent means switching between tasks. So you run only as many agents as you can manage.</p>
   </div>
   <div class="cell answer">
     <span class="lab">With kiln</span>
-    <p class="big">You write the <span class="you">spec</span> and the checks. kiln runs the <span class="agent">agents</span>, and lands only work that passes.</p>
+    <p class="big">You write a <span class="you">spec</span> and the checks. kiln runs the <span class="agent">agents</span>, and lands only the work that passes your checks.</p>
     <p><b>Each acceptance test becomes code.</b> You approve each test as a Given, a When and a Then. A session writes it as a test that runs your program as its user would.</p>
     <p><b>Your checks decide what lands.</b> They run those tests on every later build too. kiln reads your checks from main, so no build can weaken them.</p>
     <p><b>Chores run without you.</b> On a schedule, a monitor looks for a problem, such as a filed bug. An agent fixes what the monitor finds.</p>
