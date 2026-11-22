@@ -338,6 +338,7 @@ func (w reason) shown() string {
 		whyUnchanged:     "work changed nothing on main, " + round,
 		whyLimit:         "after a usage limit",
 		whyInterrupted:   "after kiln stopped",
+		whyTended:        "after kiln tend",
 		whyStack:         "stack's gate failed, " + round,
 		whyStackConflict: "conflict in the stack, " + round,
 		whyBug:           "a bug the verify session found, " + round,

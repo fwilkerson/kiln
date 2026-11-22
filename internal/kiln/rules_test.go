@@ -473,6 +473,22 @@ var specStates = map[string]specState{
 	"reject a stopped fix":                     {given: "fix stopped", command: "reject"},
 	"reject a waiting fix":                     {given: "fix waiting on its branch", command: "reject", then: none},
 	"reject a fix's stopped landing":           {given: "fix stopped landing", command: "reject", then: none},
+	"tend a spec with no record":               {given: "", command: "tend"},
+	"tend a queued spec":                       {given: "queued", command: "tend"},
+	"tend a halted spec":                       {given: "building", command: "tend"},
+	"tend a stopped spec":                      {given: "stopped", command: "tend", then: "stopped"},
+	"tend a spec waiting for UAT":              {given: "waiting for UAT", command: "tend"},
+	"tend a spec with amendments":              {given: "waiting on its branch with amendments", command: "tend"},
+	"tend a queued landing":                    {given: "queued landing", command: "tend"},
+	"tend a stopped landing":                   {given: "stopped landing", command: "tend", then: "stopped landing"},
+	"tend a halted fix":                        {given: "fix building", command: "tend"},
+	"tend a stopped fix":                       {given: "fix stopped", command: "tend", then: "fix stopped"},
+	"tend a waiting fix":                       {given: "fix waiting on its branch", command: "tend"},
+	"tend a fix's queued landing":              {given: "fix queued landing", command: "tend"},
+	"tend a fix's stopped landing":             {given: "fix stopped landing", command: "tend", then: "fix stopped landing"},
+	"a tended build goes on as it stood":       {given: "stopped", command: "resume", then: "queued"},
+	"a tended landing goes on by kiln accept":  {given: "stopped landing", command: "resume"},
+	"a tended fix goes on by kiln monitor run": {given: "fix stopped", command: "resume"},
 }
 
 // TestHaltedRefusal holds what a command says of x, building for a kiln fire that is gone. A plain kiln fire takes
@@ -537,6 +553,10 @@ func (tc specState) apply(t *testing.T, b *book) (commanded, *record) {
 		_, err = b.accept("x")
 	case "reject":
 		_, err = b.reject("x")
+	case "tend":
+		err = b.may(tendCommand, "x", nil)
+	case "resume":
+		err = b.resume("x", "the note")
 	}
 
 	r := b.find("x")
@@ -561,6 +581,9 @@ func (tc specState) carries() (carried, bool) {
 		return carried{}, false
 	case tc.command == "queue":
 		return carried{approved: "new"}, true
+	case tc.command == "resume":
+		return carried{approved: "old", session: "s", oldBuild: true, audited: true, failingAtMain: true,
+			landing: true}, true
 	case strings.HasSuffix(tc.then, "queued landing"):
 		return carried{approved: "old", session: "s", oldBuild: true, audited: true, landing: true}, true
 	}
@@ -722,10 +745,12 @@ func TestCommandsLock(t *testing.T) {
 }
 
 // TestNext holds which queued spec a kiln fire takes. One started for a single spec, as kiln accept starts it, takes
-// every landing of accepted amendments too. A kiln accept that found it holding the specs' lane counts on it to.
+// every landing of accepted amendments too. It takes each build kiln tend queued again, which owes a message. A kiln
+// accept or kiln tend that found it holding the specs' lane counts on it to.
 func TestNext(t *testing.T) {
 	b := book{Specs: []*record{{Name: "y", State: queued}, {Name: "x", State: queued, Accepted: true},
-		{Name: "z", State: queued, Accepted: true}}}
+		{Name: "z", State: queued, Accepted: true},
+		{Name: "o", State: queued, Session: "s", Owed: "go on", Tended: true}}}
 	var took []Spec
 	for {
 		r, found := b.next(specsLane, "z", 1)
@@ -736,8 +761,8 @@ func TestNext(t *testing.T) {
 		took = append(took, r.Name)
 	}
 
-	if !slices.Equal(took, []Spec{"x", "z"}) {
-		t.Errorf("a kiln fire for z took %q, want the accepted landings x and z", took)
+	if !slices.Equal(took, []Spec{"x", "z", "o"}) {
+		t.Errorf("a kiln fire for z took %q, want the accepted landings x and z, and the tended build o", took)
 	}
 }
 
@@ -768,6 +793,31 @@ func TestNextFix(t *testing.T) {
 				t.Errorf("took %q, want %q", took, tc.want)
 			}
 		})
+	}
+}
+
+// TestHaltedTendedBuild holds that a build kiln tend queued again, once a kiln took it and halted, waits for kiln
+// fire. A kiln accept of another spec takes its own landing alone, though the build still owes its message.
+func TestHaltedTendedBuild(t *testing.T) {
+	b := book{Specs: []*record{{Name: "x", State: stopped, Session: "s", Why: "w"},
+		{Name: "y", State: queued, Accepted: true}}}
+	if err := b.resume("x", "a note"); err != nil {
+		t.Fatal(err)
+	}
+
+	// The kiln tend that took x is gone, so x is left building.
+	if took, _ := b.next(specsLane, "x", 1); took.Name != "x" {
+		t.Fatalf("kiln tend took %q, want x", took.Name)
+	}
+
+	b.requeue(specsLane)
+	var took []Spec
+	for r, found := b.next(specsLane, "y", 1); found; r, found = b.next(specsLane, "y", 1) {
+		took = append(took, r.Name)
+	}
+
+	if !slices.Equal(took, []Spec{"y"}) || b.find("x").Owed == "" {
+		t.Errorf("kiln accept y took %q, and x owes %q; want y alone, and x still owing", took, b.find("x").Owed)
 	}
 }
 
@@ -884,15 +934,13 @@ func TestAuditDid(t *testing.T) {
 	}
 }
 
-// TestNextStep holds the next step to spec 4's table: each command it names is a command the book takes.
+// TestNextStep holds the next step to spec 4's table: each command it names is a command the book takes. Each state
+// kiln tend takes names it, and no step resumes a session itself.
 func TestNextStep(t *testing.T) {
 	const why = "the gate still failed after its last round:\nreport"
 	for name, tc := range map[string]struct {
 		rec      record
 		commands []string
-		resume   bool
-		// rerun is a step that runs the monitor again, by name.
-		rerun bool
 		// says is text the step holds.
 		says string
 	}{
@@ -901,25 +949,29 @@ func TestNextStep(t *testing.T) {
 			rec: record{State: amended}, commands: []string{"accept", "reject"},
 		},
 		"stopped past its last round": {
-			rec: record{State: stopped, Session: "s", Why: why}, commands: []string{"queue"}, resume: true,
+			rec: record{State: stopped, Session: "s", Why: why}, commands: []string{"queue", "tend"},
+			says: "kiln queue x, which builds anew",
 		},
 		"stopped for a kiln error": {
-			rec: record{State: stopped, Session: "s", Why: couldNotGoOn + "no disk"}, commands: []string{"queue"},
+			rec: record{State: stopped, Session: "s", Why: couldNotGoOn + "no disk"}, commands: []string{"queue", "tend"},
 		},
-		"stopped before its session began": {rec: record{State: stopped, Why: why}, commands: []string{"queue"}},
+		"a split build stopped": {
+			rec: record{State: stopped, Session: "s", Verify: "v", Why: why}, commands: []string{"queue", "tend"},
+		},
+		"stopped before its session began": {rec: record{State: stopped, Why: why}, commands: []string{"queue", "tend"}},
 		"a landing of accepted amendments stopped past its last round": {
 			rec:      record{State: stopped, Accepted: true, Session: "s", Why: why},
-			commands: []string{"accept", "reject"}, resume: true,
+			commands: []string{"accept", "reject", "tend"},
 		},
 		"a landing of accepted amendments stopped for a kiln error": {
 			rec:      record{State: stopped, Accepted: true, Session: "s", Why: couldNotGoOn + "main's checkout"},
-			commands: []string{"accept", "reject"},
+			commands: []string{"accept", "reject", "tend"},
 		},
 		"a fix waiting on its branch": {
 			rec: record{State: waiting, Monitor: true}, commands: []string{"accept", "reject"},
 		},
 		"a fix's landing stopped": {
-			rec: record{State: stopped, Accepted: true, Monitor: true}, commands: []string{"accept", "reject"},
+			rec: record{State: stopped, Accepted: true, Monitor: true}, commands: []string{"accept", "reject", "tend"},
 		},
 		"a fix's landing queued": {
 			rec: record{State: queued, Accepted: true, Monitor: true}, says: "the next kiln monitor run, which lands it",
@@ -937,36 +989,33 @@ func TestNextStep(t *testing.T) {
 		"a fix whose kiln is gone": {
 			rec: record{State: building, Monitor: true, Session: "s"}, says: "run kiln monitor run x, which drops",
 		},
-		// The book has no command for kiln monitor run x, so the step's text names it.
 		"a fix stopped": {
-			rec: record{State: stopped, Monitor: true, Session: "s"}, commands: nil, rerun: true,
+			rec: record{State: stopped, Monitor: true, Session: "s"}, commands: []string{"tend"},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tc.rec.Name = "x"
-			next := nextStep(tc.rec, "/cache/kiln/a b/x", "1a2b3c4d5e6f7a8b")
+			next := nextStep(tc.rec, "1a2b3c4d5e6f7a8b")
 			named := namedIn(t, next, &tc.rec)
 			slices.Sort(named)
-			resume := strings.HasPrefix(next, "cd '/cache/kiln/a b/x' && claude --resume s, ")
-			rerun := strings.HasSuffix(next, "kiln monitor run x")
-			if !claim.Holds(slices.Equal(named, tc.commands), resume == tc.resume, rerun == tc.rerun,
-				strings.Contains(next, tc.says)) {
-				t.Errorf("%q names kiln %q, resumes the session %v, runs the monitor again %v; want %q, %v, %v, "+
-					"with the text %q", next, named, resume, rerun, tc.commands, tc.resume, tc.rerun, tc.says)
+			if !claim.Holds(slices.Equal(named, tc.commands), strings.Contains(next, tc.says),
+				!strings.Contains(next, "claude --resume")) {
+				t.Errorf("%q names kiln %q; want %q, with the text %q, and no claude --resume", next, named,
+					tc.commands, tc.says)
 			}
 		})
 	}
 }
 
 // TestFixStep holds a fix's next step to spec 4's table in every state, accepted or not, session or none. A
-// new state needs no row. An accepted fix that conflicts with main, with no session, names kiln reject alone. No
-// session resolves its conflict. One with a session resumes it, then names kiln accept and kiln reject.
+// new state needs no row. An accepted fix that conflicts with main, with no session, names kiln tend and kiln reject
+// alone. No session resolves its conflict. One with a session names kiln accept too.
 func TestFixStep(t *testing.T) {
 	for _, s := range []state{queued, building, stopped, landed, amended, waiting} {
 		for _, accepted := range []bool{false, true} {
 			for _, session := range []string{"", "s"} {
 				rec := record{Name: "x", State: s, Accepted: accepted, Monitor: true, Session: session}
-				namedIn(t, fixStep(rec, "/trees/x"), &rec)
+				namedIn(t, fixStep(rec), &rec)
 			}
 		}
 	}
@@ -974,21 +1023,18 @@ func TestFixStep(t *testing.T) {
 	for name, tc := range map[string]struct {
 		session string
 		want    []string
-		resumes bool
 	}{
-		"a conflicted fix with no session": {want: []string{"reject"}},
-		"a conflicted fix with a session":  {session: "s", want: []string{"accept", "reject"}, resumes: true},
+		"a conflicted fix with no session": {want: []string{"reject", "tend"}},
+		"a conflicted fix with a session":  {session: "s", want: []string{"accept", "reject", "tend"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			rec := record{Name: "x", State: stopped, Accepted: true, Monitor: true, Session: tc.session,
 				Why: fixConflicts + "docs.txt"}
-			next := fixStep(rec, "/trees/x")
+			next := fixStep(rec)
 			named := namedIn(t, next, &rec)
 			slices.Sort(named)
-			resumes := strings.HasPrefix(next, "cd /trees/x && claude --resume s, ")
-			if !slices.Equal(named, tc.want) || resumes != tc.resumes {
-				t.Errorf("the step %q names kiln %v, resumes the session %v; want %v, %v", next, named, resumes,
-					tc.want, tc.resumes)
+			if !slices.Equal(named, tc.want) {
+				t.Errorf("the step %q names kiln %v; want %v", next, named, tc.want)
 			}
 		})
 	}
@@ -1730,7 +1776,7 @@ func TestBugsLine(t *testing.T) {
 }
 
 // TestSumUpPlaces holds that a stopped build's summary names its stack only where its worktree is. A split build
-// stopped before its first stack has none, and its summary still names each session's clone.
+// stopped before its first stack has none. Its summary still names kiln tend, whose session names each clone.
 func TestSumUpPlaces(t *testing.T) {
 	dir := t.TempDir()
 	r := &Repo{store: store{dir: dir}}
@@ -1756,9 +1802,8 @@ func TestSumUpPlaces(t *testing.T) {
 				t.Errorf("the summary names the stack %v, want %v:\n%s", !tc.stack, tc.stack, lines)
 			}
 
-			if !strings.Contains(lines, "/.build-x' && claude --resume b") &&
-				!strings.Contains(lines, "/.build-x && claude --resume b") {
-				t.Errorf("the summary names no resume of the build session in its clone:\n%s", lines)
+			if !strings.Contains(lines, "next: run kiln tend x") || strings.Contains(lines, "claude --resume") {
+				t.Errorf("the summary's next step names no kiln tend x, or resumes a session itself:\n%s", lines)
 			}
 		})
 	}

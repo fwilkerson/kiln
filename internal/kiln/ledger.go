@@ -161,6 +161,7 @@ const (
 	whyUnchanged   = "unchanged"
 	whyLimit       = "limit"
 	whyInterrupted = "interrupted"
+	whyTended      = "tended"
 )
 
 // write appends e to the ledger, as one line.

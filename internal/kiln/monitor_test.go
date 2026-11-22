@@ -605,16 +605,19 @@ func TestMonitorStatusLines(t *testing.T) {
 	}{
 		"a stopped fix shows what failed": {s: stoppedFix, rec: &record{Name: "m", State: stopped, Monitor: true},
 			want: "acceptance/a/x refused"},
-		"and is run again by name": {s: stoppedFix, rec: &record{Name: "m", State: stopped, Monitor: true},
-			want: "kiln monitor run m"},
+		"and is tended by name": {s: stoppedFix, rec: &record{Name: "m", State: stopped, Monitor: true},
+			want: "kiln tend m"},
 		"an accepted landing that stopped is accepted again": {s: stoppedFix,
 			rec: &record{Name: "m", State: stopped, Accepted: true, Monitor: true}, want: "kiln accept m"},
 		"a waiting fix is accepted or rejected": {s: standing{outcome: outWaits},
 			rec: &record{Name: "m", State: waiting, Monitor: true}, want: "kiln reject m"},
-		"an agent's report stays out of status": {s: standing{outcome: outNeedsYou, fixed: true, summary: "look",
-			report: "the long report"}, want: "kiln monitor run m"}} {
+		"an agent's report stays out of status": {s: standing{result: outNeedsYou, outcome: outNeedsYou, fixed: true, summary: "look",
+			report: "the long report"}, want: "kiln tend m"},
+		"a refused monitor is tended":     {s: standing{result: foundRefused, summary: "why"}, want: "kiln tend m"},
+		"one that couldn't run is tended": {s: standing{result: "held: " + foundCouldNot}, want: "kiln tend m"},
+	} {
 		t.Run(name, func(t *testing.T) {
-			lines := strings.Join(tc.s.lines("m", tc.rec, "/trees/m"), "\n")
+			lines := strings.Join(tc.s.lines("m", tc.rec), "\n")
 			if !strings.Contains(lines, tc.want) {
 				t.Errorf("%q holds no %q", lines, tc.want)
 			}

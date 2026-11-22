@@ -1,0 +1,65 @@
+# kiln tend refuses what waits on no repair.
+
+# Given: a monitor whose last run ended healthy,
+env KILN_NOW=2026-11-14T10:00:00Z
+exec kiln monitor run
+stdout '^tidy: healthy'
+
+# and a spec that waits for UAT.
+exec kiln queue x
+exec kiln fire
+stdout '^x: landed on main'
+exec kiln status
+stdout '^x: waiting for UAT$'
+
+# When: the developer runs kiln tend with each name.
+# Then: kiln refuses each, and says where it stands.
+! exec sh -c 'kiln tend tidy 2>&1'
+stdout '\btidy: [^\n]*healthy'
+! exec sh -c 'kiln tend x 2>&1'
+stdout '\bx: [^\n]*waiting for UAT'
+
+# No session starts.
+! exists .claude-calls/tend
+
+-- .kiln/monitors/tidy/check --
+echo '{"fix": false, "summary": "each file is tidy"}'
+-- .kiln/monitors/tidy/agent.md --
+Tidy each file.
+
+Tidy each file.
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+ "build": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+  {"result": {"result": "Built x."}}
+ ]}},
+ "audit": {"1": {"1": [{"result": {"result": "read 1 directory, found 0"}}]}},
+ "tend": {"1": {"1": [{"exit": 0}]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

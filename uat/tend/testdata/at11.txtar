@@ -1,0 +1,55 @@
+# A stopped build's summary and notice name kiln tend.
+
+# Given: a notify program that keeps each notice it receives, and an approved spec whose build stops: kiln.json gives
+# the build 1 round, and the session fails to fix its test in it.
+exec kiln queue x
+
+# When: kiln fire ends.
+exec kiln fire
+stdout '^x: stopped'
+
+# Then: the next step in the build's summary names kiln tend with the spec's name.
+stdout '(?s)^x: stopped: .*^  next: .*\brun kiln tend x\b'
+
+# So does the notice's.
+grep -count=1 '"name":"x"' .git/notices
+grep '"name":"x",.*"next":"[^"]*\brun kiln tend x\b' .git/notices
+
+-- .kiln/kiln.json --
+{"notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+ "build": {"1": {
+  "1": [
+   {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+   {"result": {"result": "Built x."}}
+  ],
+  "2": [{"result": {"result": "I could not make X answer 42."}}]
+ }}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 41.
+func X() int { return 41 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

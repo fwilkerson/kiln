@@ -112,7 +112,10 @@ A build runs with no one watching, so kiln limits what a build can do:
 |---------------------------|----------------------------------------|----------------------------------------------|
 | landed, and waits for UAT | The work is on main. Try it.           | `kiln accept <name>`                         |
 | waits on its branch       | The build asks to amend the spec.      | `kiln accept <name>` or `kiln reject <name>` |
-| stopped                   | Usually, the last round's gate failed. | fix main or the spec; `kiln queue <name>`    |
+| stopped                   | Usually, the last round's gate failed. | `kiln tend <name>`                           |
+
+`kiln tend` opens a Claude Code session of your own, which already knows why the build stopped. Have it make the
+repair, and exit: the build goes on where it stopped.
 
 `kiln accept` deletes the spec, and adds a line to `PRODUCT.md` with the `git show` command that prints the spec.
 If the work is wrong, do not accept it: revise the spec with `/shape`, which queues the spec again.
@@ -139,7 +142,8 @@ kiln monitor install        # once: a launchd job then runs each due monitor, ev
 ```
 
 A fix of `go/deps`, `go/docs` or `go/gate-time` waits on its branch until you accept it, such as with
-`kiln accept deps` for `go/deps`.
+`kiln accept deps` for `go/deps`. When a monitor needs you, `kiln tend <name>` opens a session on what it found, and
+runs the monitor again once you exit.
 
 A monitor is a directory you own: a check script, an agent's instructions and a `monitor.json`. A monitor can also
 watch a **gauge**: a number, such as the tests' time, that kiln reads after every landing.

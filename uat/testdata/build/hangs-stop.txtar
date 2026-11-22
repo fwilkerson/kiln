@@ -25,8 +25,8 @@ stdout 'the gate''s "sleep 600": ran past kiln.json''s timeout of 10s'
 
 # Each summary's last line says what to do next.
 exec cat .tmp/run
-stdout '^  next: fix what the error names, then run kiln queue y, which builds anew$'
-stdout '^  next: fix what the error names, then run kiln queue x, which builds anew$'
+stdout '^  next: run kiln tend y, .*kiln queue y, which builds anew$'
+stdout '^  next: run kiln tend x, .*kiln queue x, which builds anew$'
 
 -- .kiln/kiln.json --
 {"gate": ["sleep 600"], "timeout": "10s"}

@@ -1,0 +1,107 @@
+# The session finishes the build's work itself, and kiln records it landed.
+
+# Given: an approved spec whose build stopped. kiln.json gives the build 1 round, and the session fails to fix its
+# test in it.
+exec kiln queue x
+exec kiln fire
+stdout '^x: stopped'
+cp stdout .tmp/fire.out
+exec sh -c 'sed -n "s/^  the work is on kiln\/x, in //p" .tmp/fire.out'
+stdout .
+cp stdout .tmp/worktree
+exec sh -c 'test -d "$(cat .tmp/worktree)"'
+
+# When: the developer runs kiln tend with the spec's name. The session commits the work and its acceptance tests on
+# main, tells kiln the work landed, and exits.
+exec sh -c 'kiln tend x >.tmp/tend.out 2>&1 || true'
+exists .claude-calls/tend/1/1/call.json
+exec git show main:x.go
+stdout 'return 42'
+exec git show main:acceptance/x/x_test.go
+stdout 'func TestAT1'
+
+# Then: kiln resumes no session of the build.
+! exists .claude-calls/build/1/3
+! exists .claude-calls/build/2
+
+# kiln status shows the spec waiting for UAT,
+exec kiln status
+stdout '^x: waiting for UAT$'
+
+# the build's branch and worktree are gone,
+! exec git rev-parse --verify --quiet refs/heads/kiln/x
+exec git branch --list 'kiln/*'
+! stdout .
+exec sh -c 'test ! -e "$(cat .tmp/worktree)"'
+
+# and kiln accept retires the spec.
+exec kiln accept x
+stdout '^x: accepted'
+! exists .kiln/specs/x.md
+exec kiln status
+stdout '^kiln holds no approved spec$'
+
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+ "build": {"1": {
+  "1": [
+   {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+   {"result": {"result": "Built x."}}
+  ],
+  "2": [{"result": {"result": "I could not make X answer 42."}}],
+  "3": [{"result": {"result": "Went on."}}],
+  "4": [{"result": {"result": "Went on."}}]
+ }},
+ "audit": {"1": {"1": [{"result": {"result": "read 2 directories, found 0"}}]}},
+ "tend": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/done/.\" . && git add x.go acceptance && git commit -q -m 'feat(x): answer 42'"}}},
+  {"tool": {"name": "Bash", "input": {"command": "kiln tend x --landed"}}},
+  {"exit": 0}
+ ]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 41.
+func X() int { return 41 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}
+-- _given/done/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/done/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

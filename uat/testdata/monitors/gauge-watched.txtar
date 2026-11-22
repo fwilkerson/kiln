@@ -20,11 +20,11 @@ cmp stdout $WORK/_given/main-before
 exec kiln status
 stdout '^score: needs you, last ran '
 stdout '^  score: 70, line ≥ 80, crossed$'
-stdout '^  next: bring the reading back to its line; kiln monitor run reads it again when it is due$'
+stdout '^  next: run kiln tend score, to repair it in a session of your own$'
 
 # The developer is notified once, with the reading.
 grep -count=1 '"kind":"monitor"' .git/notices
-grep '^\{"kind":"monitor","name":"score","state":"needs you","summary":"score: 70, line ≥ 80, crossed","next":"bring the reading back to its line; kiln monitor run reads it again when it is due",' .git/notices
+grep '^\{"kind":"monitor","name":"score","state":"needs you","summary":"score: 70, line ≥ 80, crossed","next":"run kiln tend score, to repair it in a session of your own",' .git/notices
 ! grep '"commit"' .git/notices
 
 # The ledger's monitor line says needs you, with the reading, and names no fix.

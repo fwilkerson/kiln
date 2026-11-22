@@ -103,7 +103,7 @@ func admitClaude(args []string) (*claudeSession, error) {
 		return nil, fmt.Errorf("scripted claude: %w", err)
 	}
 
-	prompt, err := io.ReadAll(os.Stdin)
+	prompt, err := flags.readPrompt()
 	if err != nil {
 		return nil, fmt.Errorf("scripted claude: reading the prompt: %w", err)
 	}
@@ -132,12 +132,25 @@ func (f *claudeFlags) newCall(args []string) (ClaudeCall, error) {
 	return call, err
 }
 
+// readPrompt reads a call's prompt. Claude Code's -p reads it on standard input, which an interactive session leaves
+// to the terminal. An interactive session takes its first message as its last argument.
+func (f *claudeFlags) readPrompt() ([]byte, error) {
+	switch {
+	case f.print:
+		return io.ReadAll(os.Stdin)
+	case len(f.positional) > 0:
+		return []byte(f.positional[len(f.positional)-1]), nil
+	}
+
+	return nil, nil
+}
+
 var claudeUUID = regexp.MustCompile(`^(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // refusal is what Claude Code says to a call it refuses, or "" for one it takes.
 func (s *claudeSession) refusal() string {
 	prompt := ""
-	if len(strings.TrimSpace(string(s.prompt))) == 0 {
+	if s.flags.print && len(strings.TrimSpace(string(s.prompt))) == 0 {
 		prompt = "Error: Input must be provided either through stdin or as a prompt argument when using --print"
 	}
 
@@ -158,9 +171,12 @@ func (f *claudeFlags) sessionRefusal() string {
 	return ""
 }
 
-// formatRefusal is what the scripted claude says to an output format it does not write, or "".
+// formatRefusal is what the scripted claude says to an output format it does not write, or "". An interactive
+// session writes none.
 func (f *claudeFlags) formatRefusal() string {
 	switch {
+	case !f.print:
+		return ""
 	case f.outputFormat == "stream-json" && !f.verbose:
 		return "Error: When using --print, --output-format=stream-json requires --verbose"
 	case !f.print || f.outputFormat != "stream-json":
@@ -265,7 +281,11 @@ func (s *claudeSession) emit(line jsonObject) {
 	}
 
 	b = append(b, '\n')
-	_, _ = os.Stdout.Write(b)
+	// An interactive session draws on the terminal, so it prints no stream. Its record still keeps one.
+	if s.flags.print {
+		_, _ = os.Stdout.Write(b)
+	}
+
 	_, _ = s.stream.Write(b)
 }
 

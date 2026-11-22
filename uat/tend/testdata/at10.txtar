@@ -1,0 +1,41 @@
+# A stopped landing lands again.
+
+# Given: a monitor's fix the developer accepted, whose landing stopped on a gate that fails at main. The gate fails
+# while main holds a file named broken, and a commit on main adds one after the fix waits.
+env KILN_NOW=2026-11-14T10:00:00Z
+exec sh -c 'kiln monitor run || true'
+exec kiln status
+stdout 'docs: waiting on the developer'
+exec sh -c 'touch broken && git add broken && git commit -qm "break the gate"'
+! exec kiln accept docs
+exec kiln status
+stdout '^docs: stopped'
+exec git log --format=%H main -- docs.txt
+! stdout .
+
+# When: the developer runs kiln tend with the monitor's name. The session makes the gate pass on main, and exits.
+exec sh -c 'kiln tend docs >.tmp/tend.out 2>&1 || true'
+exists .claude-calls/tend/1/1/call.json
+exec git log -1 --format=%s main -- broken
+stdout '^fix: mend the gate$'
+
+# Then: the fix lands on main, as kiln accept would land it again.
+exec git show main:docs.txt
+stdout '^the docs, brought up to date$'
+exec kiln status
+! stdout 'docs: stopped'
+! stdout 'docs: waiting'
+
+-- .kiln/kiln.json --
+{"gate": ["test ! -f broken"]}
+-- .kiln/monitors/docs/command --
+echo 'the docs, brought up to date' >docs.txt
+-- .kiln/monitors/docs/monitor.json --
+{"hours": 168, "mustAccept": true}
+-- claude.json --
+{
+ "tend": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "git rm -q broken && git commit -q -m 'fix: mend the gate'"}}},
+  {"exit": 0}
+ ]}}
+}

@@ -1,0 +1,80 @@
+# A build that stopped on an error of kiln's goes on.
+
+# Given: a build whose gate and audit passed, which stopped because a file of the developer's in main's checkout was
+# in the way of its landing: main's checkout holds an untracked x.go, which the build adds.
+exec kiln queue x
+cp _given/mine.go x.go
+exec sh -c 'kiln fire >.tmp/fire.out 2>&1 || true'
+exec cat .tmp/fire.out
+stdout '^x: stopped'
+exists .claude-calls/audit/1/1/call.json
+exec kiln status
+stdout '^x: stopped'
+exec git log --format=%H main -- x.go
+! stdout .
+
+# When: the developer runs kiln tend with the spec's name. The session moves the file away, and exits.
+exec sh -c 'kiln tend x >.tmp/tend.out 2>&1 || true'
+exists .claude-calls/tend/1/1/call.json
+exists .tmp/mine.go
+
+# Then: kiln starts no new build.
+! exists .claude-calls/build/2
+
+# The work lands on main,
+exec git show main:x.go
+stdout 'return 42'
+exec git show main:acceptance/x/x_test.go
+stdout 'func TestAT1'
+
+# and the spec waits for UAT.
+exec kiln status
+stdout '^x: waiting for UAT$'
+
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- _given/mine.go --
+// The developer's own sketch of X, never committed.
+-- claude.json --
+{
+ "build": {"1": {
+  "1": [
+   {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+   {"result": {"result": "Built x."}}
+  ],
+  "2": [{"result": {"result": "Went on: the work stands."}}],
+  "3": [{"result": {"result": "Went on: the work stands."}}]
+ }},
+ "audit": {
+  "1": {"1": [{"result": {"result": "read 2 directories, found 0"}}]},
+  "2": {"1": [{"result": {"result": "read 2 directories, found 0"}}]}
+ },
+ "tend": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "mv x.go .tmp/mine.go"}}},
+  {"exit": 0}
+ ]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

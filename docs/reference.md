@@ -49,6 +49,10 @@ kiln status              show the specs, the monitors, each gauge's reading, and
 kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
 kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
 kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
+kiln tend <name> [--landed]
+                         repair a stopped build or landing, or a monitor that waits on you, in a Claude Code
+                         session of your own; kiln goes on once it exits; --landed records a stopped build's
+                         work landed on main
 kiln monitor add [<name>|<dir>]
                          copy a monitor into .kiln/monitors/: one kiln ships, such as bugs or go/docs, or the
                          one in a directory, by a path that starts with . or /; with neither, list those kiln
@@ -493,7 +497,7 @@ A build ends in one of three states. `kiln status` shows each spec's state, and 
 |---------------------------------------|----------------------------------------|----------------------------------------------|
 | waiting for UAT                       | The work is on main. Try it.           | `kiln accept <name>`, which retires the spec |
 | waiting on its branch with amendments | The build asks to change the spec.     | `kiln accept <name>` or `kiln reject <name>` |
-| stopped                               | Usually, the last round's gate failed. | fix main or the spec; `kiln queue <name>`    |
+| stopped                               | Usually, the last round's gate failed. | `kiln tend <name>`, or `kiln queue <name>`   |
 
 An amendment is a change a build asks for to a Given, a When or a Then that could not hold. The build finishes the
 work to the amended wording, and writes `.kiln/specs/<name>.amend.md` on its branch, `kiln/<name>`. `kiln accept`
@@ -508,12 +512,13 @@ x: stopped: the gate still failed after its last round:
   3 of 3 rounds · the audit had not run
   failing: TestAT2 (example.com/scratch)
   the work is on kiln/x, in ~/Library/Caches/kiln/scratch-1f2e3d4c/x
-  next: cd ~/Library/Caches/kiln/scratch-1f2e3d4c/x && claude --resume <session>, to ask the session why;
-        then fix main or the spec, and run kiln queue x
+  next: run kiln tend x, to repair it in a session of your own; or kiln queue x, which builds anew
 ```
 
-- A stopped build names the command that resumes its session in its checkout, to ask it why. A split build names
-  one for each session. A fix made there is lost to `kiln queue <name>`, which builds anew from main.
+- `kiln tend <name>` opens a Claude Code session of your own, in your checkout, on a stopped build or landing, or on
+  a monitor that waits on you. Its first message says why it stopped, and where its work and sessions are. Once you
+  exit, kiln goes on at once. `kiln help kiln-tend` says how.
+- `kiln queue <name>` builds a stopped build anew from main, for a spec you changed.
 - `kiln queue` refuses a landed spec whose text on main is unchanged.
 - To change an amendment's wording, commit your own wording to the spec, then run `kiln reject <name>` and
   `kiln queue <name>`.
@@ -521,7 +526,8 @@ x: stopped: the gate still failed after its last round:
 - kiln signs each commit it makes when your git config sets `commit.gpgSign`. A key that would ask for its passphrase
   stops the landing, and never waits: load the key with `ssh-add`, then queue or accept again.
 - `kiln tui` shows each build's spec as the commit it was queued at held it.
-- `kiln monitor show <name>` shows how a monitor's last run ended, with its summary and the command to run next.
+- `kiln monitor show <name>` shows how a monitor's last run ended, with its summary and the command to run next. For
+  a monitor that waits on a repair, that is `kiln tend <name>`.
 
 ## Installing
 
@@ -539,6 +545,8 @@ and for the spec names each command would not refuse.
 .git/kiln/
   ledger.jsonl                    each build, session run, gate, outcome, gauge reading and monitor run
   sessions/<id>/stream.jsonl      each session's stream, for why a number is what it is
+  sessions/<id>/tend.md           what a kiln tend session knows of kiln
+  sessions/<id>/note.md           the note a kiln tend session leaves for the stopped build
 ```
 
 `ledger.jsonl` is kiln's own, and changes with kiln. A script reads it through `kiln ledger`, whose lines are a

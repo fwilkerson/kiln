@@ -10,6 +10,10 @@
 //	kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
 //	kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
 //	kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
+//	kiln tend <name> [--landed]
+//	                         repair a stopped build or landing, or a monitor that waits on you, in a Claude Code
+//	                         session of your own; kiln goes on once it exits; --landed records a stopped build's
+//	                         work landed on main
 //	kiln monitor add [<name>|<dir>]
 //	                         copy a monitor into .kiln/monitors/: one kiln ships, such as bugs or go/docs, or the
 //	                         one in a directory, by a path that starts with . or /; with neither, list those kiln
@@ -40,7 +44,8 @@
 //	kiln complete [<command>]                         _kiln, the zsh completion, runs it
 //
 // kiln complete lists kiln's commands, one per line. With a command, it lists the names that command would not refuse.
-// For accept and reject, those include the waiting fixes. For monitor run and monitor show, they are every monitor,
+// For accept and reject, those include the waiting fixes. For tend, they are the specs and monitors that wait on a
+// repair. For monitor run and monitor show, they are every monitor,
 // refused ones too, so monitor run can say why. For monitor add, they are the monitors kiln ships that fit the preset
 // .kiln/generated/init.json records. For help, they are the topics of kiln's docs.
 //
@@ -78,6 +83,10 @@ const usage = `usage:
   kiln tui [<name>]        show every build, live and past, in a full-screen view; or open it on one spec
   kiln accept <name>       take the work: retire the spec, or land its amendments first; or land a waiting fix
   kiln reject <name>       turn the amendments away: drop the build, and its branch; or drop a waiting fix
+  kiln tend <name> [--landed]
+                           repair a stopped build or landing, or a monitor that waits on you, in a Claude Code
+                           session of your own; kiln goes on once it exits; --landed records a stopped build's
+                           work landed on main
   kiln monitor add [<name>|<dir>]
                            copy a monitor into .kiln/monitors/: one kiln ships, such as bugs or go/docs, or the
                            one in a directory, by a path that starts with . or /; with neither, list those kiln
@@ -143,6 +152,7 @@ var onRepo = map[string]repoCommand{
 	"queue":   oneName((*kiln.Repo).Queue),
 	"accept":  oneName((*kiln.Repo).Accept),
 	"reject":  oneName((*kiln.Repo).Reject),
+	"tend":    tend,
 	"monitor": monitor,
 	"doctor":  doctor,
 	"ledger":  ledger,
@@ -333,6 +343,24 @@ func oneName(do func(*kiln.Repo, context.Context, kiln.Spec, io.Writer) error) r
 		return do(r, ctx, kiln.Spec(args[0]), out)
 	}
 }
+
+// tend is kiln tend, which takes one spec's or monitor's name, and --landed, before or after it.
+func tend(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {
+	landed := slices.Contains(args, landedFlag)
+	names := slices.DeleteFunc(slices.Clone(args), func(arg string) bool { return arg == landedFlag })
+	if len(names) != 1 || strings.HasPrefix(names[0], "-") {
+		return usageError("takes one spec's or monitor's name, and --landed")
+	}
+
+	if landed {
+		return r.TendLanded(ctx, kiln.Spec(names[0]), out)
+	}
+
+	return r.Tend(ctx, kiln.Spec(names[0]), kiln.Terminal{In: os.Stdin, Out: out, Err: os.Stderr})
+}
+
+// landedFlag is kiln tend's flag that records a stopped build's work as landed on main.
+const landedFlag = "--landed"
 
 // tui is kiln tui, which takes a spec's name or none.
 func tui(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error {

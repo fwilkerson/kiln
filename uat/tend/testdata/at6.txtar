@@ -1,0 +1,81 @@
+# A stopped build opens in a session that holds why it stopped.
+
+# Given: an approved spec whose build stopped, its gate still failing after its last round. kiln.json gives the build
+# 1 round, and the session fails to fix its test in it.
+exec kiln queue x
+exec kiln fire
+stdout '^x: stopped'
+
+# When: the developer runs kiln tend with the spec's name. The scripted session ends at once, with no repair, so the
+# build goes on, and stops again.
+exec sh -c 'kiln tend x >.tmp/tend.out 2>&1 || true'
+
+# Then: an interactive Claude Code session starts: one call, with no -p, whose role is tend,
+exists .claude-calls/tend/1/1/call.json
+! exists .claude-calls/tend/2
+! grep '^-p$' .claude-calls/tend/1/1/args
+! grep '^--print$' .claude-calls/tend/1/1/args
+
+# in the developer's checkout.
+exec sh -c 'cd "$(sed -n "s/.*\"dir\": \"\(.*\)\".*/\1/p" .claude-calls/tend/1/1/call.json)" && pwd -P'
+cp stdout .tmp/session-dir
+exec pwd -P
+cmp stdout .tmp/session-dir
+
+# Its first message holds the spec's name, and why the build stopped,
+grep '^The spec x: stopped' .claude-calls/tend/1/1/prompt
+grep 'the gate still failed after its last round' .claude-calls/tend/1/1/prompt
+
+# the test that failed,
+grep 'failing: TestAT1 \(example\.com/scratch/acceptance/x\)$' .claude-calls/tend/1/1/prompt
+
+# the branch and the worktree that hold the work,
+grep '^Its work: kiln/x, in .' .claude-calls/tend/1/1/prompt
+exec sh -c 'cd "$(sed -n "s/^Its work: kiln\/x, in //p" .claude-calls/tend/1/1/prompt)" && git branch --show-current'
+stdout '^kiln/x$'
+
+# and the build session's ID.
+exec sh -c 'sed -n "s/.*\"session_id\": \"\(.*\)\".*/\1/p" .claude-calls/build/1/1/call.json'
+cp stdout .tmp/build-id
+exec sh -c 'sed -n "s/^Its sessions: build \([0-9a-f-]*\), in .*/\1/p" .claude-calls/tend/1/1/prompt'
+cmp stdout .tmp/build-id
+
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+ "build": {"1": {
+  "1": [
+   {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+   {"result": {"result": "Built x."}}
+  ],
+  "2": [{"result": {"result": "I could not make X answer 42."}}],
+  "3": [{"result": {"result": "I still could not make X answer 42."}}],
+  "4": [{"result": {"result": "I still could not make X answer 42."}}]
+ }},
+ "tend": {"1": {"1": [{"exit": 0}]}}
+}
+-- _given/x/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 41.
+func X() int { return 41 }
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"testing"
+
+	"example.com/scratch"
+)
+
+func TestAT1(t *testing.T) {
+	if got := scratch.X(); got != 42 {
+		t.Fatalf("X answers %d, want 42", got)
+	}
+}

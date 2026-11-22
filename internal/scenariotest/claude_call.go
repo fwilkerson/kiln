@@ -23,6 +23,8 @@ type claudeFlags struct {
 	settingSources claudeList
 	settings       string
 	outputFormat   string
+	// positional holds the arguments that are no flag's. An interactive call's last one is its first message.
+	positional []string
 	// refusal is what Claude Code says to the arguments it could not parse, or "".
 	refusal string
 }
@@ -54,6 +56,11 @@ func parseClaudeFlags(args []string) claudeFlags {
 			}
 
 			value = args[i]
+		}
+
+		if !strings.HasPrefix(name, "-") {
+			f.positional = append(f.positional, name)
+			continue
 		}
 
 		f.set(name, value)

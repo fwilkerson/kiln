@@ -1,4 +1,5 @@
-// Package claude runs Claude Code sessions headless, as claude -p, and reads how each one ended.
+// Package claude runs Claude Code sessions headless, as claude -p, and reads how each one ended. It starts one
+// session for the developer at the keyboard too, as Interact says.
 //
 //	c := claude.New(claude.Config{Program: "claude", Env: os.Environ(), Sessions: dir})
 //	l := claude.Launch{Session: id, Role: "build", System: role, Prompt: prompt, Dir: tree, Silence: time.Hour}
@@ -49,6 +50,14 @@
 // A usage limit ends a session with Ended.Limit. A limit is a rate_limit_event that rejects the session or bills
 // overage, or a result with API status 429. Overage bills beyond the plan, which no unattended session should do.
 // Run kills the session at the first such event, and reads none of its stream after.
+//
+// Interact is the one interactive launch, for a session the developer works in, as kiln tend starts it:
+//
+//	claude --session-id <Session> --append-system-prompt-file <dir>/<Role>.md <Prompt>
+//
+// It passes no -p, no settings and no permission mode: the session is the developer's own. It runs in Dir, with
+// kiln's standard input, output and error, and inherits Config.Env whole. It starts in kiln's process group, and no
+// context ends it.
 //
 // Run totals what each run printed, in Ended.Totals: its turns, cost, context, tool calls, waits and failed calls.
 // Totals keeps at most 200 bytes of a call's input, or of its cause. Recount totals a run again from the stream, from

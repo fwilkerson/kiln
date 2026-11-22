@@ -31,18 +31,9 @@ stdout 'X answers 41, want 42'
 # hold the work,
 exec cat .tmp/run
 stdout '(?s)^x: stopped: .*^  failing: TestAT1 \(example\.com/scratch/acceptance/x\)$.*^  the work is on kiln/x, in '
-stdout '(?s)^x: stopped: .*^  next: cd .* && claude --resume '
+stdout '(?s)^x: stopped: .*^  next: run kiln tend x, '
 exec sh -c 'cd "$(sed -n "s/^  the work is on kiln\/x, in //p" .tmp/run)" && git branch --show-current'
 stdout '^kiln/x$'
-
-# and a command that opens a Claude Code session on the stopped build. A stand-in claude shows where the command runs
-# it, and with what. It runs in the session's directory, and resumes the build's session.
-exec sh -c 'sed -n "s/^  next: \(cd .* && claude --resume [^,]*\), to ask the session why;$/\1/p" .tmp/run >.tmp/resume'
-exec sh -c 'mkdir .tmp/bin && printf "#!/bin/sh\npwd -P\necho \"\$@\"\n" >.tmp/bin/claude && chmod +x .tmp/bin/claude'
-exec sh -c 'PATH="$PWD/.tmp/bin:$PATH" && eval "$(cat .tmp/resume)"'
-cp stdout .tmp/resumed
-exec sh -c 'call=.claude-calls/build/1/1/call.json && cd "$(sed -n "s/.*\"dir\": \"\(.*\)\".*/\1/p" $call)" && pwd -P && echo --resume "$(sed -n "s/.*\"session_id\": \"\(.*\)\".*/\1/p" $OLDPWD/$call)"'
-cmp stdout .tmp/resumed
 
 -- .kiln/specs/x.md --
 ### 1. X answers

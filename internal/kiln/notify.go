@@ -95,7 +95,7 @@ func (r *Repo) specNoticeOf(rec record, tree git.Worktree, lines []string, lande
 	}
 
 	return notice{Kind: specNotice, Name: rec.Name, State: shownState(&rec), Summary: strings.Join(summary, "\n"),
-		Next: nextStep(rec, tree, landed), Top: r.top, Commit: landed}
+		Next: nextStep(rec, landed), Top: r.top, Commit: landed}
 }
 
 // notifyFix notifies how the last run of the monitor name ended, as kiln monitor show shows it. landed is the commit

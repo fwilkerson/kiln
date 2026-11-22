@@ -8,6 +8,7 @@
 //	err = r.TUI(ctx, "", os.Stdin, os.Stdout) // every build, live and past, in a full-screen view
 //	err = r.Accept(ctx, "x", os.Stdout)       // takes the work: lands its amendments, and retires the spec
 //	err = r.Reject(ctx, "x", os.Stdout)       // turns the amendments away: drops the build, and its branch
+//	err = r.Tend(ctx, "x", kiln.Terminal{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}) // a session of yours, then on
 //	err = r.MonitorAdd("bugs", os.Stdout)     // copies the bugs monitor kiln ships into .kiln/monitors/bugs/
 //	err = r.MonitorRun(ctx, "", os.Stdout)    // runs each monitor in .kiln/monitors/ that is due
 //	err = r.Doctor(ctx, "", os.Stdout)        // each problem in the working tree's setup, with its fix
@@ -23,25 +24,27 @@
 //	                                    │            ├─ accept ──▶ retired
 //	                                    │            └─ queue, once its spec on main changed ──▶ queued
 //	                                    ├─ stops ──▶ stopped
-//	                                    │            └─ queue ──▶ queued
+//	                                    │            ├─ queue ──▶ queued
+//	                                    │            ├─ tend ───▶ queued as it stood, and goes on in its sessions
+//	                                    │            └─ tend --landed ──▶ waiting for UAT
 //	                                    └─ amends ─▶ waiting on its branch with amendments
 //	                                                 ├─ reject ──▶ (no record)
 //	                                                 └─ accept ──▶ landing accepted amendments
 //	                                                               ├─ lands ──▶ retired
 //	                                                               └─ stops ──▶ landing accepted amendments, stopped
 //	                                                                            ├─ reject ──▶ (no record)
-//	                                                                            └─ accept ──▶ landing again
+//	                                                                            └─ accept or tend ──▶ landing again
 //
 // A spec landing accepted amendments is queued, building or stopped, as the build that lands it stands. Every other
 // command refuses. A monitor's fix lives in the book under the monitor's name:
 //
 //	(no record) ─fix─▶ building ├─ lands, is unchanged, asks, fails, couldn't run or meets a limit ──▶ (no record)
-//	                            ├─ stops ──▶ stopped, until its next fix replaces it
+//	                            ├─ stops ──▶ stopped, until its next fix replaces it, or a healthy run drops it
 //	                            └─ passes, "mustAccept": true ───▶ waiting on its branch
 //	                                                               ├─ reject ──▶ (no record)
 //	                                                               └─ accept ──▶ landing an accepted fix
 //	                                                                             ├─ lands ──▶ (no record)
-//	                                                                             ├─ stops ──▶ accept or reject again
+//	                                                                             ├─ stops ──▶ accept, reject or tend
 //	                                                                             └─ a conflict, or a failed gate,
 //	                                                                                with a session ──▶ back to the
 //	                                                                                session, as a round
@@ -84,11 +87,13 @@
 //	  lock                         held while kiln changes state.json
 //	  specs.lock                   held by the one kiln at work in the specs' lane, and names it
 //	  monitors.lock                held by the one kiln at work in the monitors' lane, and names it
+//	  tend-<name>.lock             held by the one kiln tend at work on a spec or monitor, until it exits
 //	  commands.lock                held while kiln runs what judges the work or moves main, as Lanes says
 //	  worktrees.lock               held while git adds or removes a worktree, which writes the shared config
 //	  ledger.jsonl                 every build, session run, gate, outcome, gauge reading and monitor run
 //	  monitor.log                  what the launchd job of kiln monitor install printed
-//	  sessions/<id>/               each session's files, as go doc ./internal/claude lists them
+//	  sessions/<id>/               each session's files, as go doc ./internal/claude lists them; a kiln tend
+//	                               session's tend.md, and the note.md it leaves for the build
 //	<user cache dir>/kiln/         ~/Library/Caches/kiln/
 //	  build.lock                   shared by each kiln that drives a build session; HoldBuilds takes it alone
 //	  <repo>-<8 hex>/              <trees>, the repository's checkouts, named for its directory and git common dir
@@ -212,6 +217,50 @@
 //
 // A build reply with a line that starts "cannot hold:" goes to the verify session. Each session's settings deny it
 // reads of the other's clone and transcripts, and of kiln's other checkouts. Its hook keeps it to its side.
+//
+// # kiln tend
+//
+// kiln tend <name> opens an interactive Claude Code session on what waits on a repair, in the developer's checkout.
+// The session is theirs: their settings and permissions, no sandbox or hook of kiln's. So it may change
+// main, the spec, a monitor's own files and the rest of .kiln/. It takes a name as it stands:
+//
+//	a spec's stopped build, or its stopped landing of accepted amendments
+//	a monitor's stopped fix, or its accepted landing that stopped
+//	a monitor that needs you, whose session failed, that couldn't run, or that kiln refuses, held or not
+//
+// A monitor also waits on a repair while kiln cannot read main's monitors, such as for a kiln.json it refuses.
+// It refuses any other name, and says where it stands. It refuses while another kiln tend is at work on the name, by
+// tend-<name>.lock. The book's record decides a name that is both a spec's and a monitor's. The session's system
+// prompt ends with kiln's know-how, which no file of the project changes. Its first message holds these lines, but
+// each with nothing to hold:
+//
+//	The spec <name>: <state>                 or The monitor <name>: <state>, as kiln status words it
+//	<why>                                    why the build stopped, and its failing: line; or the summary of the
+//	                                         check that started the monitor's fix, then the fix's summary and
+//	                                         report; or why kiln refuses it
+//	Its work: kiln/<name>, in <worktree>     a stopped record's, while its worktree is there
+//	Its sessions: build <id>, in <dir>; ...  each session the record holds, with its checkout
+//	Its directory: .kiln/monitors/<name>/    a monitor's
+//	A note for the build: <path>             a stopped build's: note.md in the session's directory
+//
+// A Ctrl-C reaches the session, and kiln ignores it while the session runs. A session that exits non-zero fails kiln
+// tend. Otherwise kiln reads where the name stands again, and goes on at once, asking nothing:
+//
+//	a spec's stopped build     queued as it stood: its build ID, sessions, branch, audit and limit; rounds at 0
+//	a stopped landing          lands again, as kiln accept does
+//	a monitor                  runs again, as kiln monitor run with its name does; it waits for the monitors' lane
+//
+// A build that goes on owes each of its sessions a message: why it stopped, and the note's text. kiln merges main into
+// its branch, or into each clone of a split build, when main moved. A conflict joins the message. kiln resumes each
+// session once with it, whichever turn had ended. From there it is the same build, under the same build ID. While
+// another kiln holds the specs' lane, that kiln goes on with it, as with an accepted landing. Should it halt once
+// taken, it still owes the message, and waits for kiln fire. kiln queue builds it anew instead.
+//
+// kiln tend <name> --landed records a stopped build's work as landed on main, by commits kiln did not make. The
+// session runs it once it finished the work there. It refuses all but a spec's stopped build. It refuses while main
+// changed no file under the spec's acceptance paths since the build was queued. Otherwise kiln drops the build's
+// checkouts and branches, and the spec waits for UAT at main's tip. It sends no notice and reads no gauge, and no audit
+// reads the work.
 //
 // # The gate
 //
@@ -342,6 +391,9 @@
 // A monitor that fixes nothing is held by its last needs you, until its directory or what it printed changes. A
 // healthy run releases it too. So it notifies once for each finding. kiln monitor run with a name skips that hold,
 // but never starts a second fix.
+//
+// A healthy run drops the monitor's stopped fix the developer has not accepted, with its branch and worktree. kiln
+// monitor run skips a monitor while a kiln tend is at work on it, and says so.
 //
 // # Lanes
 //
@@ -560,8 +612,7 @@
 //	  3 of 3 rounds · the audit had not run
 //	  failing: TestAT2 (example.com/scratch)
 //	  the work is on kiln/x, in ~/Library/Caches/kiln/scratch-1f2e3d4c/x
-//	  next: cd ~/Library/Caches/kiln/scratch-1f2e3d4c/x && claude --resume <session>, to ask the session why;
-//	        then fix main or the spec, and run kiln queue x
+//	  next: run kiln tend x, to repair it in a session of your own; or kiln queue x, which builds anew
 //
 // A landed build shows the files its commit changed, and a build on its branch those it changed since main. That
 // build shows its amendments too. The last line is the next command, never one the spec's state refuses.
@@ -1087,7 +1138,8 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 // Takes answers the names command takes, for the shell to complete. For queue, accept and reject, they are specs, and
 // for accept and reject, waiting fixes too. For tui, they are the specs kiln holds or its ledger holds. For "monitor
 // run" and "monitor show", they are the monitors at main's tip, refused or not. kiln monitor run then says why it
-// refuses one. While kiln refuses kiln.json there, Takes answers the refusal. For "monitor add", they are the monitors
+// refuses one. While kiln refuses kiln.json there, Takes answers the refusal. For tend, they are the specs and
+// monitors that wait on a repair. For "monitor add", they are the monitors
 // kiln ships that fit the preset .kiln/generated/init.json records, as ShippedMonitors says. Each whose directory the
 // checkout holds already is left out. For doctor, they are the specs the working tree holds, each by a name a spec may
 // have. Other commands take none.
@@ -1101,6 +1153,8 @@ func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {
 		return r.taking(command)
 	case queueCommand:
 		return r.queueNames(ctx)
+	case tendCommand:
+		return r.tendNames(ctx)
 	case "monitor run", "monitor show":
 		return r.monitorNames(ctx)
 	case "monitor add":
@@ -1434,7 +1488,7 @@ func (r *Repo) acceptFix(ctx context.Context, b *build) error {
 // that lane, that kiln lands a spec's. The next kiln monitor run lands a fix's.
 func (r *Repo) landAccepted(ctx context.Context, b *build) error {
 	name := b.rec.Name
-	err := r.run(ctx, b.out, laneOf(&b.rec), name)
+	err := r.run(ctx, b.out, inLane{lane: laneOf(&b.rec), only: name, holder: acceptHolder})
 	if held, ok := errors.AsType[*laneHeld](err); ok {
 		fmt.Fprintf(b.out, "%s: accepted; %s lands it\n", name, landsAccepted(held))
 		return nil
@@ -1473,6 +1527,8 @@ func landsAccepted(held *laneHeld) string {
 		return "the next kiln monitor run"
 	case held.holder == acceptHolder:
 		return "the kiln accept that is landing"
+	case held.holder == tendHolder:
+		return "the kiln tend that goes on with a build"
 	}
 
 	return "the kiln fire that is building"

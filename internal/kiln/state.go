@@ -83,6 +83,13 @@ type record struct {
 	Monitor bool `json:"monitor,omitempty"`
 	// Title is the title the fix's agent last gave the commit that lands it, in place of kiln's own.
 	Title string `json:"title,omitempty"`
+	// Owed is the message kiln owes each session of a stopped build that kiln tend saw to. kiln resumes each with it.
+	Owed string `json:"owed,omitempty"`
+	// Tended is true from kiln tend's queue of the stopped build until a kiln takes it. Any run in the specs' lane
+	// takes it meanwhile. A build halted since then waits for kiln fire, as any halted build does.
+	Tended bool `json:"tended,omitempty"`
+	// LandedAt is the commit main moved to when the build's work landed.
+	LandedAt git.Rev `json:"landed_at,omitempty"`
 	runner
 }
 
@@ -118,28 +125,35 @@ const (
 	queueCommand  = "queue"
 	acceptCommand = "accept"
 	rejectCommand = "reject"
+	tendCommand   = "tend"
 )
 
-// may answers nil when the book takes command on the spec name, or why it refuses. It holds spec 4's table:
+// may answers nil when the book takes command on the spec name, or why it refuses. It holds spec 4's table, and
+// spec 16's column for kiln tend:
 //
-//	state                                  queue                            accept           reject
-//	no record                              queues it                        refuses          refuses
-//	queued                                 queues it again, from main's tip refuses          refuses
-//	building                               refuses                          refuses          refuses
-//	stopped                                builds anew from main            refuses          refuses
-//	waiting for UAT                        only once its spec on main has   retires it       refuses
+//	state                                  queue                            accept           reject         tend
+//	no record                              queues it                        refuses          refuses        refuses
+//	queued                                 queues it again, from main's tip refuses          refuses        refuses
+//	building                               refuses                          refuses          refuses        refuses
+//	stopped                                builds anew from main            refuses          refuses        takes it
+//	waiting for UAT                        only once its spec on main has   retires it       refuses        refuses
 //	                                       changed
-//	waiting on its branch with amendments  refuses                          folds, and lands drops build, branch
-//	landing accepted amendments, queued    refuses                          refuses          refuses
-//	landing accepted amendments, building  refuses                          refuses          refuses
-//	landing accepted amendments, stopped   refuses                          lands it again   drops build, branch
-//	a fix, building                        refuses                          refuses          refuses
-//	a fix, stopped                         refuses                          refuses          refuses
-//	a fix, waiting on its branch           refuses                          lands it         drops build, branch
-//	a fix's landing, queued or building    refuses                          refuses          refuses
-//	a fix's landing, stopped               refuses                          lands it again   drops build, branch
+//	waiting on its branch with amendments  refuses                          folds, and lands drops build,   refuses
+//	                                                                                         branch
+//	landing accepted amendments, queued    refuses                          refuses          refuses        refuses
+//	landing accepted amendments, building  refuses                          refuses          refuses        refuses
+//	landing accepted amendments, stopped   refuses                          lands it again   drops build,   takes it
+//	                                                                                         branch
+//	a fix, building                        refuses                          refuses          refuses        refuses
+//	a fix, stopped                         refuses                          refuses          refuses        takes it
+//	a fix, waiting on its branch           refuses                          lands it         drops build,   refuses
+//	                                                                                         branch
+//	a fix's landing, queued or building    refuses                          refuses          refuses        refuses
+//	a fix's landing, stopped               refuses                          lands it again   drops build,   takes it
+//	                                                                                         branch
 //
-// A fix is a monitor's, under its name. Its accept retires nothing, since a monitor has no spec.
+// A fix is a monitor's, under its name. Its accept retires nothing, since a monitor has no spec. kiln tend takes a
+// monitor with no record by its last run, as Tend says. Each refusal of kiln tend names the next step.
 //
 // changed answers whether the spec on main differs from the spec at the commit since. Only queue calls it, on a spec
 // waiting for UAT.
@@ -160,6 +174,8 @@ func (b *book) refusal(command string, name Spec, changed func(since git.Rev) (b
 		return "", nil
 	case r == nil:
 		return "kiln holds no record of it", nil
+	case command == tendCommand:
+		return r.tendRefusal(), nil
 	case r.halted() && !r.Monitor:
 		// A plain kiln fire takes up a spec's build or landing, but no monitor's fix.
 		return "it is halted, as " + haltedNext, nil
@@ -232,6 +248,29 @@ func (r *record) takeRefusal(command string) string {
 	return why
 }
 
+// tendRefusal says why kiln tend refuses r, or "" if it takes it. It takes a stopped build, landing or fix.
+func (r *record) tendRefusal() string {
+	switch {
+	case r.State == stopped:
+		return ""
+	case r.Monitor:
+		return fmt.Sprintf("its monitor's fix is %s; next: %s", shownState(r), fixStep(*r))
+	case r.halted():
+		return "it is halted, as " + haltedNext
+	case r.landing():
+		return fmt.Sprintf("its landing is %s", r.State)
+	case r.State == landed, r.State == amended:
+		return fmt.Sprintf("it is %s; next: %s", r.State, nextStep(*r, r.LandedAt))
+	}
+
+	return fmt.Sprintf("it is %s, and kiln tend takes a stopped build", r.State)
+}
+
+// unacceptedStop reports whether r, which may be nil, is a monitor's stopped fix the developer has not accepted.
+func (r *record) unacceptedStop() bool {
+	return r != nil && r.Monitor && r.State == stopped && !r.Accepted
+}
+
 // shownState is where the spec of r stands, in the words kiln status shows.
 func shownState(r *record) string {
 	shown := string(r.State)
@@ -302,6 +341,22 @@ func (b *book) accept(name Spec) (record, error) {
 	return was, nil
 }
 
+// resume queues again the stopped build of name, as it stood, once kiln tend saw to it. It keeps the build's ID,
+// sessions, audited commit and rounds' limit, and what a split build holds of its sessions. Its rounds start
+// again at 0. The record owes each session a message, with why the build stopped and note, the tend session's note.
+// It holds the message before why is cleared, so a kiln that dies next loses neither.
+func (b *book) resume(name Spec, note string) error {
+	r := b.find(name)
+	switch {
+	case r == nil, r.Monitor, r.Accepted, r.State != stopped:
+		return fmt.Errorf("%w: %s: kiln tend goes on with a spec's stopped build alone", errRefused, name)
+	}
+
+	r.Owed, r.Tended = owedMessage(r.Why, note), true
+	r.State, r.Rounds, r.Why, r.Failing, r.runner = queued, 0, "", nil, runner{}
+	return nil
+}
+
 // reject removes the record of a spec whose amendments the developer turns away, and answers it.
 func (b *book) reject(name Spec) (record, error) {
 	if err := b.may(rejectCommand, name, nil); err != nil {
@@ -324,7 +379,7 @@ func (b *book) retire(name Spec) {
 func (b *book) next(l lane, only Spec, pid int) (record, bool) {
 	for _, r := range b.Specs {
 		if r.State == queued && r.runsFor(l, only) {
-			r.State, r.runner = building, runner{PID: pid}
+			r.State, r.runner, r.Tended = building, runner{PID: pid}, false
 			return *r, true
 		}
 	}
@@ -333,8 +388,9 @@ func (b *book) next(l lane, only Spec, pid int) (record, bool) {
 }
 
 // runsFor is whether a run of the lane l started for only builds the record r. A run builds no record of the other
-// lane. A run started for no spec builds every spec, and every run builds a landing of accepted amendments. A fix's
-// accepted landing is built only by a run started for its name, or for landings.
+// lane. A run started for no spec builds every spec. Every run builds a landing of accepted amendments. Every run
+// builds a build kiln tend queued again, until a kiln takes it. A fix's accepted landing is built only by
+// a run started for its name, or for landings.
 func (r *record) runsFor(l lane, only Spec) bool {
 	switch {
 	case !l.holds(r):
@@ -343,7 +399,7 @@ func (r *record) runsFor(l lane, only Spec) bool {
 		return r.Accepted && (r.Name == only || only == landings)
 	}
 
-	return only == "" || r.Name == only || r.Accepted
+	return only == "" || r.Name == only || r.Accepted || r.Tended
 }
 
 // landings, as a run's field only, starts the run for the accepted landings alone, as kiln monitor run does. No

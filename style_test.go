@@ -28,10 +28,7 @@ func TestHealth(t *testing.T) { repotest.Health(t, held) }
 
 // held is the score of each file under 10. The code-health monitor refactors them, and a line goes once its file
 // scores 10. A comment above a line keeps that file's finding, by the developer's choice.
-var held = map[string]string{
-	// Fire stays a pass-through to run, so cmd/kiln never picks run's lock holder or its spec.
-	"internal/kiln/build.go": "9",
-}
+var held = map[string]string{}
 
 // TestNames fails on a code span in a doc that names nothing declared in kiln's Go code. It skips lower-case words
 // and names in capitals. It also skips Markdown file names and names from packages outside kiln.

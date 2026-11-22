@@ -53,6 +53,7 @@ const (
 	runHolder     = "kiln fire"
 	monitorHolder = "kiln monitor run"
 	acceptHolder  = "kiln accept"
+	tendHolder    = "kiln tend"
 )
 
 // lockLane takes the lock of the lane l, or refuses at once with a *laneHeld while another kiln holds it. holder

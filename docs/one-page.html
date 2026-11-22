@@ -702,13 +702,13 @@
 
 <div class="details">
   <div class="view">
-    <span class="lab"><span class="tag">A</span>Detail A — when a build cannot land as it is<span class="rule-note">The build keeps its checkout, so you can ask its session why.</span></span>
+    <span class="lab"><span class="tag">A</span>Detail A — when a build cannot land as it is<span class="rule-note">The build keeps its checkout and sessions, so it can go on.</span></span>
     <div class="ladder">
       <svg width="34" height="145" viewBox="0 0 34 145" style="grid-row: 1 / 4">
         <path d="M6,0 V145 M28,0 V145 M6,23 H28 M6,72 H28 M6,122 H28" class="w"/>
         <path d="M17,137 V8" class="w dash" marker-end="url(#a)"/>
       </svg>
-      <div class="rung you"><b>3 · Decide<small>you <span class="disc" data-n="3"></span></small></b><span>Accept or reject the amendment. Or fix main or the spec, and queue the spec again.</span></div>
+      <div class="rung you"><b>3 · Decide<small>you <span class="disc" data-n="3"></span></small></b><span>Accept or reject the amendment. Or run <code>kiln tend</code>, repair what stopped in a session of your own, and the build goes on.</span></div>
       <div class="rung agent"><b>2 · Amend<small>the build</small></b><span>A build that finds the spec wrong writes an amendment, and waits on its branch.</span></div>
       <div class="rung agent"><b>1 · Round<small>the build</small></b><span>A failing gate goes back to the session, for up to 3 rounds by default. Then the build stops.</span></div>
     </div>

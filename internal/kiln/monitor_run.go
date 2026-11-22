@@ -14,7 +14,8 @@ import (
 // monitor alone, due or not, and held or not by its last finding. It never starts a second fix while one builds, waits
 // or lands. It works in the monitors' lane, beside a kiln fire. It refuses while another kiln monitor run, or a kiln
 // accept that lands a fix, holds that lane. It refuses while kiln is being reinstalled. First it drops each fix a kiln
-// cut short, and lands each fix's accepted landing that is queued.
+// cut short, and lands each fix's accepted landing that is queued. It skips a monitor while a kiln tend is at work on
+// it. A run that finds nothing to fix drops the monitor's stopped fix, unless the developer accepted it.
 func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {
 	unlock, err := r.lockLane(monitorsLane, monitorHolder)
 	if err != nil {
@@ -22,6 +23,12 @@ func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {
 	}
 
 	defer unlock()
+	return r.monitorRunHeld(ctx, name, out, "")
+}
+
+// monitorRunHeld is kiln monitor run, for every monitor or the one named name, once its caller holds the monitors'
+// lane. tending names the monitor the caller's kiln tend is at work on, which the run does not skip.
+func (r *Repo) monitorRunHeld(ctx context.Context, name Spec, out io.Writer, tending Spec) error {
 	unshare, err := shareBuilds()
 	if err != nil {
 		return err
@@ -37,6 +44,7 @@ func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {
 		return err
 	}
 
+	run.tending = tending
 	for _, d := range reads {
 		if err := run.read(ctx, d); err != nil {
 			return err
@@ -70,9 +78,14 @@ func (r *Repo) monitorRun(ctx context.Context, name Spec, out io.Writer) (*monit
 	return run, []monitorRead{{name: name, monitor: m}}, nil
 }
 
-// read runs the monitor d holds, as monitor does, or says why kiln refuses it, as refused does.
+// read runs the monitor d holds, as monitor does, or says why kiln refuses it, as refused does. It skips a monitor
+// while another kiln tend is at work on it. So no run drops or replaces a stopped fix that session reads.
 func (run *monitorRunning) read(ctx context.Context, d monitorRead) error {
-	if d.refused != nil {
+	switch {
+	case d.name != run.tending && run.r.tended(d.name):
+		fmt.Fprintf(run.out, "%s: skipped, since a kiln tend is at work on it\n", d.name)
+		return nil
+	case d.refused != nil:
 		return run.refused(ctx, d)
 	}
 
@@ -158,6 +171,22 @@ func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 	return nil
 }
 
+// dropStopped drops rec, the monitor's stopped fix the developer had not accepted, with its branch and checkouts. A
+// run that found nothing to fix calls it, while it holds the monitors' lane.
+func (r *Repo) dropStopped(ctx context.Context, rec record, out io.Writer) error {
+	if err := r.store.update(func(b *book) error { b.retire(rec.Name); return nil }); err != nil {
+		return err
+	}
+
+	r.ended(rec.Name, rec.Build, outDropped, out)
+	if err := r.dropCheckouts(ctx, rec.Name); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(out, "%s: dropped its stopped fix, since the monitor finds nothing to fix\n", rec.Name)
+	return nil
+}
+
 // monitorRunning is what one kiln monitor run runs its monitors with.
 type monitorRunning struct {
 	r   *Repo
@@ -166,6 +195,8 @@ type monitorRunning struct {
 	c config
 	// named is a run of one monitor by its name, which runs due or not.
 	named bool
+	// tending is the monitor the kiln tend that started the run is at work on, or "".
+	tending Spec
 }
 
 // monitor runs m, if it is due or named. It runs again, due or not, after each fix that landed for a check that asked
@@ -256,12 +287,7 @@ func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec
 	}
 
 	if line.Found != foundFix {
-		err := run.write(line)
-		if err == nil && line.Found == outNeedsYou {
-			run.r.notifyFix(ctx, m.Name, "", run.out)
-		}
-
-		return false, err
+		return false, run.noFix(ctx, line, rec)
 	}
 
 	line.Build = newBuild()
@@ -271,6 +297,23 @@ func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec
 
 	landed, err := run.fix(ctx, newFixing(run.c, m, found), line, h)
 	return landed && found.drain, err
+}
+
+// noFix writes the monitor line of a run that starts no fix. A watching monitor that needs the developer notifies. A
+// healthy run drops the monitor's stopped fix, rec, unless the developer accepted it.
+func (run *monitorRunning) noFix(ctx context.Context, line entry, rec *record) error {
+	if err := run.write(line); err != nil {
+		return err
+	}
+
+	switch {
+	case line.Found == outNeedsYou:
+		run.r.notifyFix(ctx, line.Monitor, "", run.out)
+	case line.Found == foundHealthy && rec.unacceptedStop():
+		return run.r.dropStopped(ctx, *rec, run.out)
+	}
+
+	return nil
 }
 
 // checkMain runs m's check, or reads its gauge, at main's tip, and answers that tip and what it found. It holds

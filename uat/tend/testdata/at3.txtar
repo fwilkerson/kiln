@@ -1,0 +1,30 @@
+# A monitor kiln refuses opens with why.
+
+# Given: a monitor whose directory kiln refuses at main's tip: it holds README.md, a file kiln does not read.
+exec kiln status
+stdout '^lint: refused'
+
+# When: the developer runs kiln tend with the monitor's name. The scripted session ends at once, with no repair.
+exec sh -c 'kiln tend lint >.tmp/tend.out 2>&1 || true'
+
+# Then: the session's first message holds the monitor's name, and why kiln refuses it.
+exists .claude-calls/tend/1/1/prompt
+grep '^The monitor lint: refused' .claude-calls/tend/1/1/prompt
+grep 'holds README\.md, a file kiln does not read' .claude-calls/tend/1/1/prompt
+
+-- .kiln/kiln.json --
+{"gate": ["true"]}
+-- .kiln/monitors/lint/check --
+echo '{"fix": true, "summary": "a file fails lint"}'
+-- .kiln/monitors/lint/agent.md --
+Make each file pass lint.
+
+Make each file pass lint.
+-- .kiln/monitors/lint/README.md --
+What lint checks.
+-- claude.json --
+{
+ "tend": {"1": {"1": [
+  {"exit": 0}
+ ]}}
+}

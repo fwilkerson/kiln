@@ -64,6 +64,11 @@
 // ends once the test process ends, so none outlives the run. Where kqueue cannot watch the test process, an await
 // or a scripted claude asks once a second whether it runs.
 //
+// The scripted claude speaks as claude -p --output-format stream-json --verbose, and reads its prompt on standard
+// input. A call with no -p is an interactive session, as kiln tend starts one. Its last argument is its first
+// message, which its record keeps as the prompt. It prints no stream, and its tools run with the settings Claude
+// Code reads for the developer.
+//
 // Main refuses to run any test, exiting 2, when the first claude on the PATH is not the scripted one. A real claude
 // would call the model.
 //

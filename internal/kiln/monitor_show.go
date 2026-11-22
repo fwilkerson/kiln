@@ -5,9 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
+	"strings"
 	"time"
 
-	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/kiln/internal/tui"
 )
 
@@ -149,7 +150,7 @@ func (r *Repo) monitorStatus(ctx context.Context, out io.Writer) error {
 		}
 
 		fmt.Fprintf(out, "%s: %s\n", d.name, head)
-		for _, line := range s.lines(d.name, rec, r.tree(d.name)) {
+		for _, line := range s.lines(d.name, rec) {
 			fmt.Fprintln(out, indent(line))
 		}
 	}
@@ -167,8 +168,8 @@ func refusedStanding(d monitorRead) standing {
 }
 
 // lines are what kiln status shows below the monitor name's line. They are its summary, why its fix stopped, and the
-// command to run next. rec is the record of its fix, if it has one, and tree its worktree.
-func (s standing) lines(name Spec, rec *record, tree git.Worktree) []string {
+// command to run next. rec is the record of its fix, if it has one.
+func (s standing) lines(name Spec, rec *record) []string {
 	var lines []string
 	if s.summary != "" {
 		lines = append(lines, s.summary)
@@ -179,7 +180,7 @@ func (s standing) lines(name Spec, rec *record, tree git.Worktree) []string {
 		lines = append(lines, s.report)
 	}
 
-	if next := s.step(name, rec, tree); next != "" {
+	if next := s.step(name, rec); next != "" {
 		lines = append(lines, "next: "+next)
 	}
 
@@ -187,18 +188,30 @@ func (s standing) lines(name Spec, rec *record, tree git.Worktree) []string {
 }
 
 // step is the command the developer runs next on the monitor name. rec is the record of its fix, if the book holds
-// one, and tree its worktree. It says where the fix stands now, such as an accepted landing that stopped, which the
-// ledger's outcome can't.
-func (s standing) step(name Spec, rec *record, tree git.Worktree) string {
+// one. It says where the fix stands now, such as an accepted landing that stopped, which the ledger's outcome can't.
+func (s standing) step(name Spec, rec *record) string {
 	switch {
-	case s.outcome == outNeedsYou && !s.fixed:
-		// A monitor that fixes nothing has no report: its summary is its gauge's reading.
-		return "bring the reading back to its line; kiln monitor run reads it again when it is due"
 	case rec != nil && rec.Monitor:
-		return fixStep(*rec, tree)
+		return fixStep(*rec)
+	case s.waitsOnRepair():
+		return tendStep(name)
 	}
 
 	return fixNext(name, s.outcome)
+}
+
+// repairs are the results of a monitor's last run that wait on a repair, which kiln tend takes. A bare held is a
+// check or gauge held since it ran past kiln.json's timeout, so it couldn't run.
+var repairs = []string{outStopped, outNeedsYou, outFailed, outCouldNot, foundRefused, foundHeld}
+
+// waitsOnRepair is whether the monitor's last run, as s holds it, waits on a repair. A hold leaves it waiting.
+func (s standing) waitsOnRepair() bool {
+	return slices.Contains(repairs, s.unheld())
+}
+
+// unheld is the monitor's result as kiln status words it, without "held: ".
+func (s standing) unheld() string {
+	return strings.TrimPrefix(s.result, foundHeld+": ")
 }
 
 // when says when the monitor last ran, and when it runs next. The monitor is due now when due is true.
@@ -220,11 +233,7 @@ func (s standing) when(due bool) string {
 func fixNext(name Spec, outcome string) string {
 	switch outcome {
 	case outStopped:
-		return fmt.Sprintf("read why it stopped, fix main, then run kiln monitor run %s", name)
-	case outFailed:
-		return fmt.Sprintf("fix what the error names, then run kiln monitor run %s", name)
-	case outNeedsYou:
-		return fmt.Sprintf("read the report, see to it, then run kiln monitor run %s", name)
+		return tendStep(name)
 	case outWaits:
 		// A fix holds a commit for each round, so git show would print the last round alone.
 		return fmt.Sprintf("read it with git diff main...kiln/%s, then run kiln accept %s, or kiln reject %s", name,
@@ -282,5 +291,5 @@ func (r *Repo) lastStanding(name Spec) (standing, string, error) {
 
 	rec := k.find(name)
 	s := h.standing(monitor{Name: name}, rec)
-	return s, s.step(name, rec, r.tree(name)), nil
+	return s, s.step(name, rec), nil
 }

@@ -21,7 +21,7 @@ stdout '^usage:'
 # the usage does not list, prints the first line alone.
 ! exec kiln bogus
 ! stdout .
-stderr '\Akiln: unknown command bogus\ncommands: init queue fire status tui accept reject monitor doctor ledger help\nrun kiln help for what each does\n\z'
+stderr '\Akiln: unknown command bogus\ncommands: init queue fire status tui accept reject tend monitor doctor ledger help\nrun kiln help for what each does\n\z'
 ! exec kiln queue
 ! stdout .
 stderr '\Akiln queue: takes one spec''s name\nusage:\n  kiln queue <name> +queue a build of .*\nrun kiln help for every command\n\z'

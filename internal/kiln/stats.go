@@ -280,7 +280,7 @@ func (r *Repo) sumUp(ctx context.Context, rec record, tree git.Worktree, landedA
 		lines = append(lines, where)
 	}
 
-	return append(lines, "next: "+nextStep(rec, tree, landedAt))
+	return append(lines, "next: "+nextStep(rec, landedAt))
 }
 
 // auditOf says what the audit did on the build of rec, as the ledger holds it.
@@ -403,45 +403,38 @@ func (r *Repo) filesChanged(ctx context.Context, from, to git.Rev) string {
 }
 
 // nextStep is what the developer runs next on the build of rec, which waits on them. It never names a command spec
-// 4's table refuses in the state rec is in. A build stopped past its last round first resumes its session, in tree,
-// to ask it why.
-func nextStep(rec record, tree git.Worktree, landedAt git.Rev) string {
+// 4's table refuses in the state rec is in. landedAt is the commit a landed build moved main to.
+func nextStep(rec record, landedAt git.Rev) string {
 	name := rec.Name
 	switch {
 	case rec.Monitor:
-		return fixStep(rec, tree)
+		return fixStep(rec)
 	case rec.State == landed:
 		return fmt.Sprintf("read it with git show %s, then run kiln accept %s, or change the spec and run "+
 			"kiln queue %s", short(landedAt), name, name)
 	case rec.State == amended:
 		return fmt.Sprintf("read the amendments, then run kiln accept %s, or kiln reject %s", name, name)
-	case byKiln(rec):
-		// The session never saw kiln's error, so it can't say why.
-		return kilnFix(rec)
-	case rec.Verify != "":
-		build, verify := sideClone(tree, rec.Name, buildRole), sideClone(tree, rec.Name, verifyRole)
-		return fmt.Sprintf("cd %s && claude --resume %s, to ask the build session why;\n      "+
-			"cd %s && claude --resume %s, to ask the verify session why;\n      then %s",
-			shellQuote(build), rec.Session, shellQuote(verify), rec.Verify, gateFix(rec))
-	case rec.Session != "":
-		return resumeStep(rec, tree)
 	case rec.Accepted:
-		return gateFix(rec)
+		return landAgainStep(rec)
 	}
 
-	return fmt.Sprintf("read kiln status, fix main or the spec, then run kiln queue %s", name)
+	return fmt.Sprintf("%s; or kiln queue %s, which builds anew", tendStep(name), name)
 }
 
-// resumeStep is what the developer runs on the build of rec, stopped with a session. It resumes the session in tree,
-// to ask it why, then names what gateFix names.
-func resumeStep(rec record, tree git.Worktree) string {
-	return fmt.Sprintf("cd %s && claude --resume %s, to ask the session why;\n      then %s",
-		shellQuote(string(tree)), rec.Session, gateFix(rec))
+// tendStep names kiln tend on name, which opens a session of the developer's own on what waits on a repair.
+func tendStep(name Spec) string {
+	return fmt.Sprintf("run kiln tend %s, to repair it in a session of your own", name)
 }
 
-// fixStep is what the developer runs next on the monitor's fix of rec, whose worktree is tree. A landed fix leaves no
-// record. The stopped landing of a fix with a session resumes that session first, as a stopped build's step does.
-func fixStep(rec record, tree git.Worktree) string {
+// landAgainStep is what the developer runs on the stopped landing of rec, a spec's accepted amendments or a fix.
+func landAgainStep(rec record) string {
+	return fmt.Sprintf("%s; or fix main, and run kiln accept %s to land it again, or kiln reject %s",
+		tendStep(rec.Name), rec.Name, rec.Name)
+}
+
+// fixStep is what the developer runs next on the monitor's fix of rec. It is "" in a state no fix is in. A landed
+// fix leaves no record.
+func fixStep(rec record) string {
 	switch {
 	case rec.fixHalted() && rec.Accepted:
 		return fmt.Sprintf("run kiln monitor run %s, which lands it", rec.Name)
@@ -451,36 +444,18 @@ func fixStep(rec record, tree git.Worktree) string {
 		return "wait for it to end"
 	case rec.landing():
 		return "wait for the next kiln monitor run, which lands it"
-	case rec.Accepted && rec.Session != "":
-		return resumeStep(rec, tree)
 	case conflicted(rec):
-		return fmt.Sprintf("run kiln reject %s, and the monitor's next run fixes anew, from main", rec.Name)
+		return fmt.Sprintf("%s; or run kiln reject %s, and the monitor's next run fixes anew, from main",
+			tendStep(rec.Name), rec.Name)
 	case rec.Accepted:
-		return fmt.Sprintf("fix main, and run kiln accept %s to land it again, or kiln reject %s", rec.Name, rec.Name)
+		return landAgainStep(rec)
 	case rec.State == waiting:
 		return fixNext(rec.Name, outWaits)
+	case rec.State == stopped:
+		return fixNext(rec.Name, outStopped)
 	}
 
-	return fixNext(rec.Name, outStopped)
-}
-
-// kilnFix is what the developer runs on the build of rec, stopped for an error of kiln's.
-func kilnFix(rec record) string {
-	if rec.Accepted {
-		return fmt.Sprintf("fix main, or what the error names, and run kiln accept %s to land it again, or "+
-			"kiln reject %s", rec.Name, rec.Name)
-	}
-
-	return fmt.Sprintf("fix what the error names, then run kiln queue %s, which builds anew", rec.Name)
-}
-
-// gateFix is what the developer runs on the build of rec, stopped by its gate.
-func gateFix(rec record) string {
-	if rec.Accepted {
-		return fmt.Sprintf("fix main, and run kiln accept %s to land it again, or kiln reject %s", rec.Name, rec.Name)
-	}
-
-	return fmt.Sprintf("fix main or the spec, and run kiln queue %s", rec.Name)
+	return ""
 }
 
 // conflicted reports whether rec is an accepted fix with no session, whose landing stopped on a conflict with main.

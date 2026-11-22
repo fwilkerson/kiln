@@ -25,18 +25,13 @@ const unknownReset = 5 * time.Minute
 // landing of accepted amendments, which a kiln accept left. Fire refuses while another kiln fire, or a kiln accept that
 // lands a spec, holds the specs' lane. It refuses while kiln is being reinstalled. It skips a monitor's fix.
 func (r *Repo) Fire(ctx context.Context, out io.Writer) error {
-	return r.run(ctx, out, specsLane, "")
+	return r.run(ctx, out, inLane{lane: specsLane, holder: runHolder})
 }
 
-// run builds the queued records of the lane l, or only the one named only, if it is not "". kiln accept starts a run
-// for a name, and kiln fire one for each spec. It first recovers what a dead kiln left in l.
-func (r *Repo) run(ctx context.Context, out io.Writer, l lane, only Spec) error {
-	holder := runHolder
-	if only != "" {
-		holder = acceptHolder
-	}
-
-	unlock, err := r.lockLane(l, holder)
+// run builds the queued records of in's lane, or only the one in names. kiln accept and kiln tend start a run for a
+// name, and kiln fire one for each spec. It first recovers what a dead kiln left in the lane. in's unlock is unused.
+func (r *Repo) run(ctx context.Context, out io.Writer, in inLane) error {
+	unlock, err := r.lockLane(in.lane, in.holder)
 	if err != nil {
 		return err
 	}
@@ -50,19 +45,21 @@ func (r *Repo) run(ctx context.Context, out io.Writer, l lane, only Spec) error 
 
 	defer unshare()
 
-	r.recount(ctx, out, l)
-	if err := r.store.update(func(b *book) error { b.requeue(l); return nil }); err != nil {
+	r.recount(ctx, out, in.lane)
+	if err := r.store.update(func(b *book) error { b.requeue(in.lane); return nil }); err != nil {
 		return err
 	}
 
-	return r.buildEach(ctx, out, inLane{lane: l, only: only, unlock: unlock})
+	in.unlock = unlock
+	return r.buildEach(ctx, out, in)
 }
 
 // inLane is what a kiln builds in the lane it holds. It builds each record of lane, or only the one named only, if it
-// is not "". unlock frees the lane once take finds no record left.
+// is not "". holder names the kiln, as lockLane writes it. unlock frees the lane once take finds no record left.
 type inLane struct {
 	lane   lane
 	only   Spec
+	holder string
 	unlock func()
 }
 
@@ -286,11 +283,40 @@ func (b *build) goOn(ctx context.Context) error {
 
 	switch {
 	case b.rec.Session == "":
+		b.set(func(r *record) { r.Owed = "" })
 		return b.start(ctx)
+	case b.rec.Owed != "":
+		return b.payOwed(ctx)
 	case !b.rec.Accepted:
 		return b.tell(ctx, true, interrupted, reason{Why: whyInterrupted, Round: b.rec.Rounds})
 	}
 
+	return nil
+}
+
+// payOwed resumes the build's session with the message kiln owes it, once kiln tend saw to the stopped build. It
+// first commits what the session left, and merges main into the branch. A conflict goes to the session with the
+// message. Then the record owes nothing.
+func (b *build) payOwed(ctx context.Context) error {
+	if _, err := b.r.git.Commit(ctx, b.tree, b.message("the session's work")); err != nil {
+		return err
+	}
+
+	conflict, err := b.r.git.Merge(ctx, b.tree, mainBranch, fmt.Sprintf("chore(%s): merge main\n", b.rec.Name))
+	if err != nil {
+		return err
+	}
+
+	prompt := b.rec.Owed
+	if conflict != nil {
+		prompt += "\n\n" + fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n"))
+	}
+
+	if err := b.tell(ctx, true, prompt, reason{Why: whyTended}); err != nil {
+		return err
+	}
+
+	b.set(func(r *record) { r.Owed = "" })
 	return nil
 }
 
@@ -463,7 +489,7 @@ func (b *build) onMain(at git.Rev) error {
 	}
 
 	b.record(entry{Kind: outcomeKind, Outcome: outLanded})
-	b.set(func(r *record) { r.State, r.Before, r.Landing, r.Onto = landed, "", "", "" })
+	b.set(func(r *record) { r.State, r.Before, r.Landing, r.Onto, r.LandedAt = landed, "", "", "", at })
 	b.landed = at
 	b.say("landed on main at %s, and waits for UAT", short(at))
 	return nil

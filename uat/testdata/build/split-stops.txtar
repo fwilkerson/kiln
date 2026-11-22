@@ -18,9 +18,8 @@ exec git branch --list 'kiln/*'
 stdout 'kiln/x\.build'
 stdout 'kiln/x\.verify'
 
-# and the summary names the command that resumes each session in its own.
-grep 'next: cd [^\n]*/\.build-x && claude --resume [0-9a-f-]+, to ask the build session why;' .claude-calls/run.out
-grep '^ +cd [^\n]*/\.verify-x && claude --resume [0-9a-f-]+, to ask the verify session why;' .claude-calls/run.out
+# and the summary names kiln tend, whose session names each of the build's sessions.
+grep 'next: run kiln tend x, ' .claude-calls/run.out
 
 -- .kiln/kiln.json --
 {"verifySession": true}

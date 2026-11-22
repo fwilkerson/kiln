@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -73,5 +74,35 @@ func TestSandbox(t *testing.T) {
 
 	if !got.Sandbox.Network.AllowAllUnixSockets {
 		t.Fatalf("%s refuses each Unix socket, though the Launch allows them:\n%s", settingsFile, raw)
+	}
+}
+
+// TestInteract holds the interactive launch: its arguments, its directory, and the file of its system prompt. It
+// passes kiln's environment whole, Claude Code's own variables included.
+func TestInteract(t *testing.T) {
+	dir, work := t.TempDir(), t.TempDir()
+	program := filepath.Join(dir, "claude")
+	record := filepath.Join(dir, "record")
+	script := "#!/bin/sh\n{ pwd -P; for a in \"$@\"; do echo \"$a\"; done; " +
+		"echo \"$CLAUDECODE $ANTHROPIC_API_KEY\"; } >" + record + "\nexit 3\n"
+	if err := os.WriteFile(program, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	env := []string{"PATH=/usr/bin:/bin", "CLAUDECODE=1", "ANTHROPIC_API_KEY=k"}
+	c := New(Config{Program: program, Env: env, Sessions: filepath.Join(dir, "sessions")})
+	err := c.Interact(Interactive{Session: "s", Role: "tend", System: "know-how", Prompt: "first\nmessage", Dir: work})
+	if err == nil {
+		t.Error("a session that exited 3 answered no error")
+	}
+
+	system := filepath.Join(c.Dir("s"), "tend.md")
+	work, _ = filepath.EvalSymlinks(work)
+	want := strings.Join([]string{work, "--session-id", "s", "--append-system-prompt-file", system, "first",
+		"message", "1 k"}, "\n") + "\n"
+	got, _ := os.ReadFile(record)
+	held, _ := os.ReadFile(system)
+	if string(got) != want || string(held) != "know-how" {
+		t.Errorf("the session ran as\n%s\nwith %s holding %q; want\n%s\nand %q", got, system, held, want, "know-how")
 	}
 }

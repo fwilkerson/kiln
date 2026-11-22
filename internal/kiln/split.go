@@ -98,9 +98,12 @@ func (b *build) splitGoOn(ctx context.Context) error {
 	rec := b.now()
 	switch {
 	case rec.Session == "":
+		b.set(func(r *record) { r.Owed = "" })
 		return b.splitStart(ctx)
 	case rec.Accepted:
 		return nil
+	case rec.Owed != "":
+		return b.splitPayOwed(ctx)
 	}
 
 	// Only a session whose turn kiln cut short goes on. One that had ended its turn waits for the next gate.
@@ -114,6 +117,29 @@ func (b *build) splitGoOn(ctx context.Context) error {
 	}
 
 	return b.both(ctx, t)
+}
+
+// splitPayOwed resumes both sessions with the message kiln owes them, whichever turn had ended. kiln tend saw to the
+// stopped build. It first merges main into each clone. A conflict goes to the session whose clone conflicts, with
+// the message. Then the record owes nothing.
+func (b *build) splitPayOwed(ctx context.Context) error {
+	if err := b.fetchSides(ctx); err != nil {
+		return err
+	}
+
+	t, err := b.mergeMains(ctx, reason{Why: whyTended})
+	if err != nil {
+		return err
+	}
+
+	owed := b.now().Owed
+	t.build, t.verify = strings.TrimSpace(owed+"\n\n"+t.build), strings.TrimSpace(owed+"\n\n"+t.verify)
+	if err := b.both(ctx, t); err != nil {
+		return err
+	}
+
+	b.set(func(r *record) { r.Owed = "" })
+	return nil
 }
 
 // splitStart makes each session's clone from main's tip, and starts both sessions at once. A revised spec's old

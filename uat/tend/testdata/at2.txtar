@@ -1,0 +1,57 @@
+# The session repairs the monitor's own files, and kiln runs the monitor again.
+
+# Given: a monitor that needs the developer, whose check finds nothing once the check's own script is changed. Its
+# check flags each note, and its agent asks for the developer, since the check, not the notes, is wrong.
+env KILN_NOW=2026-11-14T10:00:00Z
+exec kiln monitor run
+stdout '^notes: needs you'
+
+# When: the developer runs kiln tend with the monitor's name. The session changes the script, commits it on main,
+# and exits.
+env KILN_NOW=2026-11-14T10:05:00Z
+exec sh -c 'kiln tend notes >.tmp/tend.out 2>&1 || true'
+exists .claude-calls/tend/1/1/call.json
+exec git log -1 --format=%s main -- .kiln/monitors/notes/check
+stdout '^fix\(notes\): flag only a note not done$'
+
+# Then: kiln runs the monitor again, and prints how the run ended: healthy, with no fix to make.
+exec cat .tmp/tend.out
+stdout '^notes: healthy'
+! exists .claude-calls/fix/2
+
+# kiln status shows the monitor healthy.
+exec kiln status
+stdout '^notes: healthy'
+! stdout 'needs you'
+
+-- .kiln/kiln.json --
+{"gate": ["true"]}
+-- .kiln/monitors/notes/check --
+echo notes/a.txt
+echo '{"fix": true, "summary": "a note waits to be done"}'
+-- .kiln/monitors/notes/agent.md --
+Mark each note done.
+
+Mark each note done, or ask for the developer.
+-- .kiln/monitors/notes/monitor.json --
+{"hours": 1}
+-- notes/a.txt --
+done
+-- _given/check --
+found=$(grep -L '^done$' notes/*.txt)
+if [ -n "$found" ]; then
+  echo "$found"
+  echo '{"fix": true, "summary": "a note waits to be done"}'
+else
+  echo '{"fix": false, "summary": "each note is done"}'
+fi
+-- claude.json --
+{
+ "fix": {"1": {"1": [
+  {"result": {"result": "notes/a.txt is already done: the check flags every note.\n{\"ask\": true, \"summary\": \"the check flags a note that is done\"}"}}
+ ]}},
+ "tend": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "cp \"$WORK/_given/check\" .kiln/monitors/notes/check && chmod +x .kiln/monitors/notes/check && git add .kiln/monitors/notes/check && git commit -q -m 'fix(notes): flag only a note not done'"}}},
+  {"exit": 0}
+ ]}}
+}

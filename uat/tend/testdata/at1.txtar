@@ -1,0 +1,62 @@
+# A monitor that needs the developer opens in a session that holds its report.
+
+# Given: a monitor whose fix asked for the developer, with a report.
+env KILN_NOW=2026-11-14T10:00:00Z
+exec kiln monitor run
+stdout '^errors: needs you'
+
+# When: the developer runs kiln tend with the monitor's name. The scripted session ends at once, with no repair, so
+# kiln runs the monitor again, and its fix asks again.
+env KILN_NOW=2026-11-14T10:05:00Z
+exec sh -c 'kiln tend errors >.tmp/tend.out 2>&1 || true'
+
+# Then: an interactive Claude Code session starts: one call, with no -p, whose role is tend,
+exists .claude-calls/tend/1/1/call.json
+! exists .claude-calls/tend/2
+! grep '^-p$' .claude-calls/tend/1/1/args
+! grep '^--print$' .claude-calls/tend/1/1/args
+
+# in the developer's checkout.
+exec sh -c 'cd "$(sed -n "s/.*\"dir\": \"\(.*\)\".*/\1/p" .claude-calls/tend/1/1/call.json)" && pwd -P'
+cp stdout .tmp/session-dir
+exec pwd -P
+cmp stdout .tmp/session-dir
+
+# Its first message holds the monitor's name, and where the monitor stands,
+grep '^The monitor errors: needs you' .claude-calls/tend/1/1/prompt
+
+# the check's summary,
+grep 'the service logged an error' .claude-calls/tend/1/1/prompt
+
+# the agent's report,
+grep '^The payment provider declines the cards; nothing here fixes that\.$' .claude-calls/tend/1/1/prompt
+
+# and the path of the monitor's directory.
+grep '^Its directory: \.kiln/monitors/errors/$' .claude-calls/tend/1/1/prompt
+
+-- .kiln/kiln.json --
+{"gate": ["true"]}
+-- .kiln/monitors/errors/check --
+echo 'error: card declined by the payment provider'
+echo '{"fix": true, "summary": "the service logged an error"}'
+-- .kiln/monitors/errors/agent.md --
+Triage the service's errors.
+
+Fix the error, or ask for the developer.
+-- .kiln/monitors/errors/monitor.json --
+{"hours": 1}
+-- claude.json --
+{
+ "fix": {
+  "1": {"1": [
+   {"tool": {"name": "Bash", "input": {"command": "echo looked >notes.txt"}}},
+   {"result": {"result": "The payment provider declines the cards; nothing here fixes that.\n{\"ask\": true, \"summary\": \"the payment provider refuses cards\"}"}}
+  ]},
+  "2": {"1": [
+   {"result": {"result": "The payment provider still declines the cards.\n{\"ask\": true, \"summary\": \"the payment provider refuses cards\"}"}}
+  ]}
+ },
+ "tend": {"1": {"1": [
+  {"exit": 0}
+ ]}}
+}

@@ -80,10 +80,10 @@ arrow main try
 :::
 
 ::: details
-detail A | Detail A — when a build cannot land as it is | The build keeps its checkout, so you can ask its session why.
+detail A | Detail A — when a build cannot land as it is | The build keeps its checkout and sessions, so it can go on.
 rung @agent | 1 · Round | the build | A failing gate goes back to the session, for up to 3 rounds by default. Then the build stops.
 rung @agent | 2 · Amend | the build | A build that finds the spec wrong writes an amendment, and waits on its branch.
-rung @you | 3 · Decide | you ●3 | Accept or reject the amendment. Or fix main or the spec, and queue the spec again.
+rung @you | 3 · Decide | you ●3 | Accept or reject the amendment. Or run `kiln tend`, repair what stopped in a session of your own, and the build goes on.
 :::
 
 view 3 AUTOMATE | problems found on a schedule, each fixed by an agent | four of the monitors kiln runs on its own repository
