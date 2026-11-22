@@ -671,7 +671,7 @@ func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claud
 	if l.Role == auditRole {
 		// An interrupted audit run may have changed its worktree too, and its end line names what it changed.
 		end.Changed, undone = b.r.undo(context.WithoutCancel(ctx), git.Worktree(l.Dir), read)
-		end.Tally, findings = heardAudit(ended)
+		findings = end.heard(ended)
 	}
 
 	b.record(end)

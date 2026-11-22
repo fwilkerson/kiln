@@ -385,7 +385,7 @@ func TestAuditedDirs(t *testing.T) {
 }
 
 // TestAuditReadsLaterWork holds that only the audit's read records it. An audit with nothing to read records none, so
-// the session's later work gets the audit before it lands.
+// the session's later work gets the audit before it lands. An audit that answers nothing runs again.
 func TestAuditReadsLaterWork(t *testing.T) {
 	t.Parallel()
 	b, repo, _ := landingBuild(t)
@@ -398,7 +398,7 @@ func TestAuditReadsLaterWork(t *testing.T) {
 
 	b.set(func(r *record) { r.Approved = main })
 	program := filepath.Join(t.TempDir(), "claude")
-	if err := os.WriteFile(program, []byte(strings.ReplaceAll(replying, "REPLIES", "r")), 0o700); err != nil {
+	if err := os.WriteFile(program, []byte(strings.ReplaceAll(replying, "REPLIES", "er")), 0o700); err != nil {
 		t.Fatal(err)
 	}
 

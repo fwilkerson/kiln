@@ -217,12 +217,16 @@ func changedBy(runs []run) [][]string {
 	return changed
 }
 
-// replying stands in for claude. Its run n prints a result when character n of REPLIES is r, and nothing otherwise.
+// replying stands in for claude. Its run n prints a result when character n of REPLIES is r. It prints an empty
+// result for e, and nothing otherwise.
 const replying = `#!/bin/sh
 cat >/dev/null
 n=$(($(cat "$0.n" 2>/dev/null || echo 0) + 1))
 echo $n >"$0.n"
-[ "$(echo REPLIES | cut -c$n)" = r ] && echo '{"type":"result","result":"Done."}'
+case "$(echo REPLIES | cut -c$n)" in
+r) echo '{"type":"result","result":"Done."}' ;;
+e) echo '{"type":"result","result":""}' ;;
+esac
 exit 0
 `
 

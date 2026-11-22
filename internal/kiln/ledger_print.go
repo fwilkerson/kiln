@@ -221,7 +221,7 @@ type printedFinding struct {
 func (s *buildStats) printedFinding(e entry) printedFinding {
 	f := e.finding
 	p := printedFinding{Kind: "finding", Build: s.Build, Name: s.Spec, Fix: s.Monitor != "", Session: e.Session,
-		At: stamp(e.At), Parsed: f.Reply == "", Path: orNull(f.Path), Category: orNull(f.Category),
+		At: stamp(e.At), Parsed: f.Parsed, Path: orNull(f.Path), Category: orNull(f.Category),
 		Reaches: orNull(f.Reaches), Chance: orNull(f.Chance), Harm: orNull(f.Harm), Design: orNull(f.Design),
 		Patch: orNull(f.Patch), Proof: orNull(f.Proof), Reply: orNull(f.Reply)}
 	if p.Parsed {

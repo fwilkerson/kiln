@@ -39,7 +39,7 @@ func ledgerRepo(t *testing.T) *Repo {
 		{Kind: endKind, Build: "b1", At: at(7), Session: "s2", Ended: endedResult, Totals: totals(1, 0.125, 0),
 			Tally: &tally{Found: 2, Reported: 1}},
 		{Kind: findingKind, Build: "b1", At: at(7), Session: "s2",
-			Rank: 1, Path: "x.go", Line: 3, Category: "bug", Reaches: "X answers 41"},
+			Parsed: true, Rank: 1, Path: "x.go", Line: 3, Category: "bug", Reaches: "X answers 41"},
 		{Kind: startKind, Build: "b1", At: at(7), Role: buildRole, Session: "s1", Why: whyFindings},
 		{Kind: startKind, Build: "b1", At: at(7), Role: verifyRole, Session: "s4", Why: whyFindings},
 		{Kind: endKind, Build: "b1", At: at(8), Session: "s1", Ended: endedResult, Totals: totals(1, 0.125, 0)},

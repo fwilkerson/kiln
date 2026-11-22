@@ -1072,16 +1072,17 @@ func TestAuditReply(t *testing.T) {
 		"a finding in the contract's form, between prose": {
 			text: "I read x.\n\n" + head + "reaches    X answers\n  41\nproof      TestX\n\nThat is all." + tallied,
 			back: true, tally: &tally{1, 1},
-			lines: []finding{{Rank: 1, Path: "x.go", Line: 3, Category: "bug", Reaches: "X answers 41", Proof: "TestX"}}},
+			lines: []finding{{Parsed: true, Rank: 1, Path: "x.go", Line: 3, Category: "bug", Reaches: "X answers 41",
+				Proof: "TestX"}}},
 		"findings in a fence, of a whole file and a range": {
 			text: "```text\n1. `doc.txt`  false comment\nharm  none\n\n2. y.go:4-9 weak test\ndesign  a table\n```" +
 				"\n\nread 2 directories, found 2, reported 2",
 			back: true, tally: &tally{2, 2},
-			lines: []finding{{Rank: 1, Path: "doc.txt", Category: "false comment", Harm: "none"},
-				{Rank: 2, Path: "y.go", Line: 4, Category: "weak test", Design: "a table"}}},
+			lines: []finding{{Parsed: true, Rank: 1, Path: "doc.txt", Category: "false comment", Harm: "none"},
+				{Parsed: true, Rank: 2, Path: "y.go", Line: 4, Category: "weak test", Design: "a table"}}},
 		"a cap that cut some": {text: head + "harm  a lost row\n\nread 2 directories, found 7, reported 1",
 			back: true, tally: &tally{7, 1},
-			lines: []finding{{Rank: 1, Path: "x.go", Line: 3, Category: "bug", Harm: "a lost row"}}},
+			lines: []finding{{Parsed: true, Rank: 1, Path: "x.go", Line: 3, Category: "bug", Harm: "a lost row"}}},
 		"a reply with no tally": {text: head + "harm  a lost row", back: true,
 			lines: unparsed(head + "harm  a lost row")},
 		"fewer findings than it reported": {text: head + "harm  h" + "\n\nread 2 directories, found 2, reported 2",
@@ -1100,7 +1101,7 @@ func TestAuditReply(t *testing.T) {
 			lines: unparsed(head + "It breaks.\nharm  h" + tallied)},
 		"a run-on line that starts with a field's name": {
 			text: head + "reaches    X answers when\n  harm is done\nproof      TestX" + tallied, back: true,
-			tally: &tally{1, 1}, lines: []finding{{Rank: 1, Path: "x.go", Line: 3, Category: "bug",
+			tally: &tally{1, 1}, lines: []finding{{Parsed: true, Rank: 1, Path: "x.go", Line: 3, Category: "bug",
 				Reaches: "X answers when harm is done", Proof: "TestX"}}},
 		"a field's text run on with no indent": {text: head + "reaches  X answers\n41" + tallied, back: true,
 			tally: &tally{1, 1}, lines: unparsed(head + "reaches  X answers\n41" + tallied)},

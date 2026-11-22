@@ -16,8 +16,8 @@ import (
 
 // audit runs the audit agent on the directories the build changed, and its acceptance tests. It answers the findings,
 // or "" for none. An audit that names no finding count is all findings. An audit that ends with no result runs again,
-// in a new session, up to auditTries times. Once the audit answers, the record's Audited names the commit it read. A
-// build that changed nothing to read records no read.
+// in a new session, up to auditTries times. An empty result is no result. Once the audit answers, the record's
+// Audited names the commit it read. A build that changed nothing to read records no read.
 func (b *build) audit(ctx context.Context) (string, error) {
 	head, dirs, files, err := b.changedFiles(ctx)
 	if err != nil || len(dirs) == 0 {
@@ -90,11 +90,11 @@ func (b *build) auditTry(ctx context.Context, l claude.Launch, head git.Rev, try
 	b.auditing = head
 	l.Session = claude.NewID()
 	ended, err := b.talk(ctx, l, reason{Why: whyAudit, Try: try})
+	rep := replyOf(ended)
 	switch {
 	case err != nil:
 		return "", err
-	case !ended.Failed:
-		rep := readReply(ended.Text)
+	case rep != nil:
 		if !rep.parsed {
 			b.say("kiln could not parse the audit's reply, so its ledger holds the reply whole")
 		}
@@ -125,8 +125,9 @@ type tally struct {
 }
 
 // finding is one finding an audit's reply lists, as a finding line of the ledger holds it. A line for a reply kiln
-// could not parse holds that reply in Reply alone.
+// could not parse holds that reply in Reply alone, and is not Parsed.
 type finding struct {
+	Parsed bool `json:"parsed,omitempty"`
 	// Rank is the finding's number in the reply, from 1.
 	Rank int    `json:"rank,omitempty"`
 	Path string `json:"path,omitempty"`
@@ -163,6 +164,9 @@ func readReply(text string) reply {
 	r.parsed = listed && r.tally != nil && r.tally.Reported <= r.tally.Found && len(findings) == r.tally.Reported
 	if r.parsed {
 		r.findings = findings
+		for i := range r.findings {
+			r.findings[i].Parsed = true
+		}
 	}
 
 	return r
@@ -243,15 +247,29 @@ func fieldOf(f *finding, line string) *string {
 	return field
 }
 
-// heardAudit answers the tally an audit run's reply ends with, and its finding lines. A run that ended with no result
-// has neither.
-func heardAudit(ended claude.Ended) (*tally, []finding) {
-	if ended.Failed {
-		return nil, nil
+// replyOf is the reply an audit run ended with. It is nil for a run that ended with no result, or an empty one.
+func replyOf(ended claude.Ended) *reply {
+	if ended.Failed || strings.TrimSpace(ended.Text) == "" {
+		return nil
 	}
 
-	r := readReply(ended.Text)
-	return r.tally, r.lines()
+	return new(readReply(ended.Text))
+}
+
+// heard adds to e, an audit run's end line, the tally its reply ends with, and answers its finding lines. An empty
+// reply is no result, as replyOf says.
+func (e *entry) heard(ended claude.Ended) []finding {
+	r := replyOf(ended)
+	if r == nil {
+		if e.Ended == endedResult {
+			e.Ended = endedNoResult
+		}
+
+		return nil
+	}
+
+	e.Tally = r.tally
+	return r.lines()
 }
 
 // back is what goes back to the build: "" when r's tally found nothing, or else the whole reply. A reply that names
