@@ -342,7 +342,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]
@@ -351,7 +351,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]
@@ -360,7 +360,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]
@@ -369,7 +369,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]
@@ -378,7 +378,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]
@@ -387,7 +387,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]
@@ -396,7 +396,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]
@@ -405,7 +405,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]
@@ -414,7 +414,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]
@@ -423,7 +423,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]
@@ -432,7 +432,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]
@@ -441,7 +441,7 @@ screen '│\$1\.00 ▼ was \$5\.00 +[0-9.]+ (?:[▲▼] was [0-9.]+|same) +0 ▼
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]

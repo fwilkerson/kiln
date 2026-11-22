@@ -2,11 +2,13 @@ package scenariotest
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -64,12 +66,122 @@ type ClaudeLimit struct {
 	SevenDay     *float64       `json:"seven_day,omitempty"`
 }
 
-// ClaudeResult is the session's result line. CostUSD is what the run cost since the session's last result.
+// ClaudeResult is the session's result line. CostUSD is what the run cost since the session's last result. An audit's
+// result that is no error names Audit in place of Result.
 type ClaudeResult struct {
-	IsError        bool    `json:"is_error,omitempty"`
-	Result         *string `json:"result,omitempty"`
-	APIErrorStatus *int    `json:"api_error_status,omitempty"`
-	CostUSD        float64 `json:"cost_usd,omitempty"`
+	IsError        bool         `json:"is_error,omitempty"`
+	Result         *string      `json:"result,omitempty"`
+	Audit          *ClaudeAudit `json:"audit,omitempty"`
+	APIErrorStatus *int         `json:"api_error_status,omitempty"`
+	CostUSD        float64      `json:"cost_usd,omitempty"`
+}
+
+// ClaudeAudit is an audit's reply, which the scripted claude writes in the form of kiln's contract with the audit. It
+// writes Prose, then each finding, then the line "read <Read> directories, found <Found>, reported <K>". K counts the
+// findings. A Found of 0 counts them too, and a Found above K is a cap that cut the list.
+type ClaudeAudit struct {
+	Prose    string          `json:"prose,omitempty"`
+	Findings []ClaudeFinding `json:"findings,omitempty"`
+	Read     int             `json:"read"`
+	Found    int             `json:"found,omitempty"`
+}
+
+// ClaudeFinding is one finding an audit lists. A Line of 0 names the whole file. Kind is one of auditKinds. A field's
+// text may hold a newline, and the reply indents each line it runs on to.
+type ClaudeFinding struct {
+	Path    string `json:"path"`
+	Line    int    `json:"line,omitempty"`
+	Kind    string `json:"kind"`
+	Reaches string `json:"reaches,omitempty"`
+	Chance  string `json:"chance,omitempty"`
+	Harm    string `json:"harm,omitempty"`
+	Design  string `json:"design,omitempty"`
+	Patch   string `json:"patch,omitempty"`
+	Proof   string `json:"proof,omitempty"`
+}
+
+// auditRole is the role of kiln's audit, whose reply follows kiln's contract.
+const auditRole = "audit"
+
+// auditKinds are the kinds of finding kiln's contract with the audit names.
+var auditKinds = []string{"bug", "impossible by design", "weak test", "false comment", "test-only export"}
+
+func (r ClaudeResult) check(role string) error {
+	switch {
+	case contracted(role, r) != (r.Audit != nil):
+		return errors.New("an audit's result that is no error names audit, which the scripted claude writes in " +
+			"the form of kiln's contract; no other result names audit")
+	case r.Audit == nil:
+		return nil
+	case r.Result != nil:
+		return errors.New("an audit's result names audit, never a result's text")
+	}
+
+	return r.Audit.check()
+}
+
+// contracted is whether r, a result of role, is an audit's reply, whose form kiln's contract sets.
+func contracted(role string, r ClaudeResult) bool {
+	return role == auditRole && !r.IsError
+}
+
+func (a ClaudeAudit) check() error {
+	if a.Found != 0 && a.Found < len(a.Findings) {
+		return fmt.Errorf("the audit found %d, fewer than the %d it lists", a.Found, len(a.Findings))
+	}
+
+	for i, f := range a.Findings {
+		switch {
+		case !slices.Contains(auditKinds, f.Kind):
+			return fmt.Errorf("the audit's finding %d is a %q; kiln's contract names %s", i+1, f.Kind,
+				strings.Join(auditKinds, ", "))
+		case f.Path == "":
+			return fmt.Errorf("the audit's finding %d names no path", i+1)
+		case f.fields() == "":
+			return fmt.Errorf("the audit's finding %d holds no field", i+1)
+		}
+	}
+
+	return nil
+}
+
+// text is the reply a, in the form of kiln's contract.
+func (a ClaudeAudit) text() string {
+	var b strings.Builder
+	if a.Prose != "" {
+		b.WriteString(a.Prose + "\n\n")
+	}
+
+	for i, f := range a.Findings {
+		place := f.Path
+		if f.Line > 0 {
+			place += ":" + strconv.Itoa(f.Line)
+		}
+
+		fmt.Fprintf(&b, "%d. %s  %s\n%s\n", i+1, place, f.Kind, f.fields())
+	}
+
+	directories := "directories"
+	if a.Read == 1 {
+		directories = "directory"
+	}
+
+	fmt.Fprintf(&b, "read %d %s, found %d, reported %d", a.Read, directories, cmp.Or(a.Found, len(a.Findings)),
+		len(a.Findings))
+	return b.String()
+}
+
+// fields are f's fields, a line each, in the contract's order, with each line a field runs on to indented.
+func (f ClaudeFinding) fields() string {
+	var b strings.Builder
+	for _, field := range [][2]string{{"reaches", f.Reaches}, {"chance", f.Chance}, {"harm", f.Harm},
+		{"design", f.Design}, {"patch", f.Patch}, {"proof", f.Proof}} {
+		if field[1] != "" {
+			fmt.Fprintf(&b, "%-10s %s\n", field[0], strings.ReplaceAll(field[1], "\n", "\n           "))
+		}
+	}
+
+	return b.String()
 }
 
 // ClaudeDuration is a duration written as a string, such as "3s".
@@ -103,7 +215,7 @@ type ClaudeCall struct {
 
 var claudeTools = []string{"Bash", "Write", "Edit", "Read"}
 
-func (s ClaudeStep) check() error {
+func (s ClaudeStep) check(role string) error {
 	set := 0
 	for _, isSet := range []bool{s.Write != nil, s.Tool != nil, s.Limit != nil, s.Result != nil, s.Exit != nil} {
 		if isSet {
@@ -124,6 +236,10 @@ func (s ClaudeStep) check() error {
 		if _, err := parseObject(s.Tool.Input); err != nil {
 			return fmt.Errorf("the %s call's input: %w", s.Tool.Name, err)
 		}
+	}
+
+	if s.Result != nil {
+		return s.Result.check(role)
 	}
 
 	return nil
@@ -150,7 +266,7 @@ func loadClaudeScript(work string, c ClaudeCall) ([]ClaudeStep, error) {
 	}
 
 	for i, step := range steps {
-		if err := step.check(); err != nil {
+		if err := step.check(role); err != nil {
 			return nil, fmt.Errorf("%s: role %q, attempt %d, call %d, step %d: %w", ClaudeScriptFile, role, attempt,
 				call, i+1, err)
 		}

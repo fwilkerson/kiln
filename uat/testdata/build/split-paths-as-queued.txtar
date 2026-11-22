@@ -39,7 +39,7 @@ stdout '^written by the build session$'
       {"result": {"result": "Wrote the tests of x."}}
     ]}
   },
-  "audit": {"1": {"1": [{"result": {"result": "read 3 directories, found 0, reported 0"}}]}}
+  "audit": {"1": {"1": [{"result": {"audit": {"read": 3}}}]}}
 }
 -- .kiln/specs/x.md --
 ### 1. X answers

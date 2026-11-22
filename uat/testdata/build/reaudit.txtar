@@ -7,7 +7,7 @@ exec kiln queue x
 # When: kiln fire builds the spec, and the build session fixes the finding.
 exec kiln fire
 stdout '^x: landed on main'
-grep 'harness/h\.go:5 weak test' .claude-calls/build/1/2/prompt
+grep 'harness/h\.go:5  weak test' .claude-calls/build/1/2/prompt
 
 # Then: the audit reads the work again before it lands.
 exists .claude-calls/audit/2/1/call.json
@@ -85,7 +85,7 @@ stdout 'Checked = true'
    "1": [
     {
      "result": {
-      "result": "1. harness/h.go:5 weak test\n\nread 3 directories, found 1, reported 1"
+      "audit": {"read": 3, "findings": [{"path": "harness/h.go", "line": 5, "kind": "weak test", "harm": "it checks nothing"}]}
      }
     }
    ]
@@ -94,7 +94,7 @@ stdout 'Checked = true'
    "1": [
     {
      "result": {
-      "result": "read 3 directories, found 0, reported 0"
+      "audit": {"read": 3}
      }
     }
    ]

@@ -58,7 +58,7 @@ stdout '^kiln holds no approved spec$'
   "3": [{"result": {"result": "Went on."}}],
   "4": [{"result": {"result": "Went on."}}]
  }},
- "audit": {"1": {"1": [{"result": {"result": "read 2 directories, found 0, reported 0"}}]}},
+ "audit": {"1": {"1": [{"result": {"audit": {"read": 2}}}]}},
  "tend": {"1": {"1": [
   {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/done/.\" . && git add x.go acceptance && git commit -q -m 'feat(x): answer 42'"}}},
   {"tool": {"name": "Bash", "input": {"command": "kiln tend x --landed"}}},

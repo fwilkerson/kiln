@@ -37,9 +37,8 @@ func ledgerRepo(t *testing.T) *Repo {
 		{Kind: gateKind, Build: "b1", At: at(5), End: at(6), Passed: true, RanMain: new(false)},
 		{Kind: startKind, Build: "b1", At: at(6), Role: auditRole, Session: "s2", Why: whyAudit, Try: 1},
 		{Kind: endKind, Build: "b1", At: at(7), Session: "s2", Ended: endedResult, Totals: totals(1, 0.125, 0),
-			Tally: &tally{Found: 2, Reported: 1}},
-		{Kind: findingKind, Build: "b1", At: at(7), Session: "s2",
-			Parsed: true, Rank: 1, Path: "x.go", Line: 3, Category: "bug", Reaches: "X answers 41"},
+			Tally: &tally{Found: 2, Reported: 1}, Findings: []finding{{Parsed: true, Rank: 1, Path: "x.go", Line: 3,
+				Category: "bug", Reaches: "X answers 41"}}},
 		{Kind: startKind, Build: "b1", At: at(7), Role: buildRole, Session: "s1", Why: whyFindings},
 		{Kind: startKind, Build: "b1", At: at(7), Role: verifyRole, Session: "s4", Why: whyFindings},
 		{Kind: endKind, Build: "b1", At: at(8), Session: "s1", Ended: endedResult, Totals: totals(1, 0.125, 0)},
@@ -55,7 +54,9 @@ func ledgerRepo(t *testing.T) *Repo {
 		{Kind: monitorKind, Build: "b3", At: at(20), Monitor: "gate-time", Main: "abc123", Found: foundFix,
 			Summary: "the gate slowed 60%"},
 		{Kind: builtKind, Build: "b3", At: at(20.5), Spec: "gate-time", Monitor: "gate-time"},
-		{Kind: findingKind, Build: "b3", At: at(20.75), Session: "s5", Reply: "It reads fine."},
+		{Kind: startKind, Build: "b3", At: at(20.5), Role: auditRole, Session: "s5", Why: whyAudit, Try: 1},
+		{Kind: endKind, Build: "b3", At: at(20.75), Session: "s5", Ended: endedResult, Totals: totals(1, 0, 0),
+			Findings: []finding{{Reply: "It reads fine."}}},
 		{Kind: gateKind, Build: "b3", At: at(22), End: at(23), Passed: true},
 		{Kind: builtKind, Build: "b2", At: at(21), Spec: "y", Size: 1},
 		{Kind: startKind, Build: "b2", At: at(21), Role: buildRole, Session: "s3"},
@@ -144,8 +145,11 @@ func TestLedger(t *testing.T) {
 				`"found":"fix","build":"b3","summary":"the gate slowed 60%","gauge":null,"value":null,` +
 				`"crossed":false}` + "\n" +
 				`{"kind":"build","build":"b3","name":"gate-time","fix":true,"at":"2026-11-18T05:20:30Z","size":0,` +
-				`"outcome":null,"seconds":60,"cost_usd":0,"turns":0,"failed_calls":0,"rounds":0,"audits":0,` +
-				`"findings":0}` + "\n" + fixFinding + "\n" + fixGate},
+				`"outcome":null,"seconds":75,"cost_usd":0,"turns":1,"failed_calls":0,"rounds":0,"audits":1,` +
+				`"findings":0}` + "\n" +
+				`{"kind":"run","build":"b3","name":"gate-time","role":"audit","session":"s5",` +
+				`"at":"2026-11-18T05:20:30Z","end":"2026-11-18T05:20:45Z","seconds":15,"ended":"result","cost_usd":0,` +
+				`"turns":1,"failed_calls":0,"found":null,"reported":null}` + "\n" + fixFinding + "\n" + fixGate},
 		{"lines come by when each started, not by when kiln wrote them", LedgerOptions{Last: 3},
 			buildY + "\n" + runY + "\n" + fixGate},
 	} {

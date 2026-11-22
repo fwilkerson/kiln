@@ -80,9 +80,9 @@ x
  "audit": {
   "1": {"1": [
    {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/auditing\"; await \"$WORK/.tmp/fix-go\""}}},
-   {"result": {"result": "read 1 directories, found 0, reported 0"}}
+   {"result": {"audit": {"read": 1}}}
   ]},
-  "2": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]},
-  "3": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]}
+  "2": {"1": [{"result": {"audit": {"read": 1}}}]},
+  "3": {"1": [{"result": {"audit": {"read": 1}}}]}
  }
 }

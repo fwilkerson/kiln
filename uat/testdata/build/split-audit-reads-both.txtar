@@ -17,8 +17,8 @@ grep 'harness/h\.go' .claude-calls/audit/1/1/prompt
 grep 'The build session changed these files of the test harness[^\n]*harness/h\.go' .claude-calls/audit/1/1/prompt
 
 # and its findings go to both sessions.
-grep 'h\.go:3 weak test' .claude-calls/build/1/2/prompt
-grep 'h\.go:3 weak test' .claude-calls/verify/1/2/prompt
+grep 'h\.go:3  weak test' .claude-calls/build/1/2/prompt
+grep 'h\.go:3  weak test' .claude-calls/verify/1/2/prompt
 
 -- .kiln/kiln.json --
 {"workflow": "build-and-verify", "rounds": 3, "testHelpers": ["harness/"]}
@@ -81,7 +81,7 @@ grep 'h\.go:3 weak test' .claude-calls/verify/1/2/prompt
    "1": [
     {
      "result": {
-      "result": "1. harness/h.go:3 weak test\n\nread 3 directories, found 1, reported 1"
+      "audit": {"read": 3, "findings": [{"path": "harness/h.go", "line": 3, "kind": "weak test", "harm": "it checks nothing"}]}
      }
     }
    ]

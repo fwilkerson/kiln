@@ -36,7 +36,7 @@ grep 'doc\.txt' .claude-calls/audit/2/1/prompt
 ! grep 'extra\.txt' .claude-calls/audit/2/1/prompt
 
 # The audit's findings go back to the fix's session. When the session answers them, main has not moved yet.
-grep 'doc\.txt:2 drops the title' .claude-calls/fix/1/3/prompt
+grep 'doc\.txt:2  bug\nharm +drops the title' .claude-calls/fix/1/3/prompt
 cmp .tmp/main-at-answer .tmp/main-before
 
 # Main holds both main's change and the fix's, in each file the fix changed.
@@ -87,8 +87,8 @@ extra
   ]
  }},
  "audit": {
-  "1": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]},
-  "2": {"1": [{"result": {"result": "1. doc.txt:2 drops the title\n\nread 1 directories, found 1, reported 1"}}]},
-  "3": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]}
+  "1": {"1": [{"result": {"audit": {"read": 1}}}]},
+  "2": {"1": [{"result": {"audit": {"read": 1, "findings": [{"path": "doc.txt", "line": 2, "kind": "bug", "harm": "drops the title"}]}}}]},
+  "3": {"1": [{"result": {"audit": {"read": 1}}}]}
  }
 }

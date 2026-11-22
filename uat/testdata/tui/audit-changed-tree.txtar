@@ -40,7 +40,7 @@ exec git log --all --format=%H -- shot.png
   }},
   "audit": {"1": {"1": [
     {"tool": {"name": "Bash", "input": {"command": "printf 'a screen' > shot.png"}}},
-    {"result": {"result": "X has no doc comment.\n\nread 1 package, found 1, reported 1"}}
+    {"result": {"audit": {"read": 1, "findings": [{"path": "x.go", "kind": "false comment", "harm": "X has no doc comment."}]}}}
   ]}}
 }
 -- _given/right/x.go --

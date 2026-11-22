@@ -479,18 +479,18 @@ func (s *scratch) problems(f flow) []string {
 	return found
 }
 
-// ledgerProblems lists each run line of the ledger with no end, and each build with no outcome. The last build
-// must end as f's does.
+// ledgerProblems lists each run line of the ledger with no end, and each build with no outcome. An audit run that
+// ended with a result holds a tally. The last build must end as f's does.
 func (s *scratch) ledgerProblems(f flow) []string {
 	var found []string
 	for line := range strings.Lines(s.read("kiln", "ledger", "--kind", "run")) {
-		var run struct {
-			Session string  `json:"session"`
-			End     *string `json:"end"`
-		}
-
-		if err := json.Unmarshal([]byte(line), &run); err != nil || run.End == nil {
+		var run ledgerRun
+		err := json.Unmarshal([]byte(line), &run)
+		switch {
+		case err != nil || run.End == nil:
 			found = append(found, "a run has no end: "+line)
+		case run.answered() && run.Found == nil:
+			found = append(found, "an audit run ended with a result, but its line holds no tally: "+line)
 		}
 	}
 
@@ -513,6 +513,19 @@ func (s *scratch) ledgerProblems(f flow) []string {
 	}
 
 	return found
+}
+
+// ledgerRun is a run line, as kiln ledger prints it.
+type ledgerRun struct {
+	Role  string  `json:"role"`
+	End   *string `json:"end"`
+	Ended string  `json:"ended"`
+	Found *int    `json:"found"`
+}
+
+// answered is whether r is an audit run that ended with a result. Its reply ends with a tally, as the contract sets it.
+func (r ledgerRun) answered() bool {
+	return r.Role == "audit" && r.Ended == "result"
 }
 
 // told is whether a build session's prompt holds text.

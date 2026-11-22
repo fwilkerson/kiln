@@ -82,5 +82,5 @@ other work
       {"result": {"result": "a.txt says fine."}}
     ]
   }},
-  "audit": {"1": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]}}
+  "audit": {"1": {"1": [{"result": {"audit": {"read": 1}}}]}}
 }

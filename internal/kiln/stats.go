@@ -22,8 +22,8 @@ type buildStats struct {
 	summary, report string
 	runs            []run
 	gates           []entry
-	// readings are the build's gauge lines, and findings its finding lines, as they were written.
-	readings, findings []entry
+	// readings are the build's gauge lines, as they were written.
+	readings []entry
 }
 
 // run is one session run. Its end is zero while it runs.
@@ -38,8 +38,9 @@ type run struct {
 	// from and to are its bytes of the session's stream. A to below 0 reads to the stream's end.
 	from, to int64
 	changed  []string
-	// tally is an audit run's, as its reply ends with it.
-	tally *tally
+	// tally is an audit run's, as its reply ends with it, and findings those the reply lists.
+	tally    *tally
+	findings []finding
 	// gates counts the build's gates that ran before it.
 	gates int
 }
@@ -83,8 +84,6 @@ func (c *collector) add(e entry) {
 		s.gates = append(s.gates, e)
 	case e.Kind == gaugeKind:
 		s.readings = append(s.readings, e)
-	case e.Kind == findingKind:
-		s.findings = append(s.findings, e)
 	case e.Kind == outcomeKind:
 		s.outcome = e.Outcome
 		s.amendments = cmpOr(e.Amendments, s.amendments)
@@ -121,7 +120,7 @@ func (c *collector) end(s *buildStats, e entry) {
 	}
 
 	s.runs[i].end, s.runs[i].ended, s.runs[i].to, s.runs[i].changed = e.At, e.Ended, e.Streamed, e.Changed
-	s.runs[i].tally = e.Tally
+	s.runs[i].tally, s.runs[i].findings = e.Tally, e.Findings
 	if e.Totals != nil {
 		s.runs[i].totals = *e.Totals
 	}

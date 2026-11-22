@@ -340,8 +340,11 @@ func (s *claudeSession) resultLine(r *ClaudeResult) jsonObject {
 	}
 
 	text := ""
-	if r.Result != nil {
+	switch {
+	case r.Result != nil:
 		text = *r.Result
+	case r.Audit != nil:
+		text = r.Audit.text()
 	}
 
 	s.mu.Lock()

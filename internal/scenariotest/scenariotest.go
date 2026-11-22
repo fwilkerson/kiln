@@ -24,7 +24,7 @@
 //	    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
 //	    {"result": {"result": "Built x."}}
 //	  ]}},
-//	  "audit": {"1": {"1": [{"result": {"result": "read 1 directory, found 0, reported 0"}}]}}
+//	  "audit": {"1": {"1": [{"result": {"audit": {"read": 1}}}]}}
 //	}
 //	-- .kiln/specs/x.md --
 //	### 1. X answers
@@ -75,7 +75,8 @@
 // on to the program. Run and RunAll refuse a script that runs kiln under ! exec or ? exec, which accept any status.
 //
 // The scripted claude speaks as claude -p --output-format stream-json --verbose, and reads its prompt on standard
-// input. A call with no -p is an interactive session, as kiln tend starts one. Its last argument is its first
+// input. An audit's result names audit, and the scripted claude writes that reply in the form of kiln's
+// contract. A call with no -p is an interactive session, as kiln tend starts one. Its last argument is its first
 // message, which its record keeps as the prompt. It prints no stream, and its tools run with the settings Claude
 // Code reads for the developer.
 //

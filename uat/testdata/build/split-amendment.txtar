@@ -74,7 +74,7 @@ grep '\*\*Then\*\*: it answers 42, or more\.' .claude-calls/build/1/2/prompt
    "1": [
     {
      "result": {
-      "result": "1. x.go:4 false comment\n\nread 2 directories, found 1, reported 1"
+      "audit": {"read": 2, "findings": [{"path": "x.go", "line": 4, "kind": "false comment", "harm": "a stale doc"}]}
      }
     }
    ]

@@ -27,9 +27,8 @@ import (
 //	start     before each session run: its role, its session, the length of the session's stream, why it started,
 //	          the process ID of the kiln fire that started it, and the commit an audit run read
 //	end       after each session run: how it ended, its totals, the stream's length, and what an audit changed. An
-//	          audit's adds the tally its reply ends with
-//	finding   after an audit's end line, one per finding its reply lists: its rank, place, category and fields.
-//	          A reply kiln could not parse gets one line, which holds it whole
+//	          audit's adds the tally its reply ends with, and each finding it lists: its rank, place, category and
+//	          fields. A reply kiln could not parse is one finding, which holds it whole
 //	gate      after each gate: when it ended, whether it passed, whether it gated a landing, whether it ran the
 //	          commands at main too, and whether it gated a verify-first fix's tests before the fix
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
@@ -59,7 +58,6 @@ const (
 	outcomeKind kind = "outcome"
 	gaugeKind   kind = "gauge"
 	monitorKind kind = "monitor"
-	findingKind kind = "finding"
 )
 
 // How a session run ended, in an end line.
@@ -113,13 +111,13 @@ type entry struct {
 	// Streamed is the length of the session's stream. A start line holds it before the run, and an end line after.
 	Streamed int64 `json:"streamed,omitempty"`
 	// An end line's. Changed names the paths an audit run changed in the build's tree, which kiln then put back.
-	// Tally is the one an audit's reply ends with.
-	Ended   string         `json:"ended,omitempty"`
-	Totals  *claude.Totals `json:"totals,omitempty"`
-	Changed []string       `json:"changed,omitempty"`
-	Tally   *tally         `json:"tally,omitempty"`
-	// A finding line's, and Session the audit's.
-	finding
+	// Tally is the one an audit's reply ends with, and Findings those it lists. One append holds them, so no kill
+	// splits them.
+	Ended    string         `json:"ended,omitempty"`
+	Totals   *claude.Totals `json:"totals,omitempty"`
+	Changed  []string       `json:"changed,omitempty"`
+	Tally    *tally         `json:"tally,omitempty"`
+	Findings []finding      `json:"findings,omitempty"`
 	// A gate line's. At is when it started. Landing is the gate on the work rebased onto main. RanMain is whether it
 	// ran the commands at main too. A line from before kiln wrote it holds none. BeforeFix is the gate on a
 	// verify-first fix's tests, which must fail.
@@ -338,7 +336,7 @@ func inOrder(order []string, open map[string]entry) []entry {
 }
 
 // lostEnd is the end line of the run whose start line is start, totaled from its session's stream. spec is its
-// build's spec.
+// build's spec. A lost audit run's holds the tally and findings of the reply its stream holds, as talk's would.
 func (r *Repo) lostEnd(ctx context.Context, start entry, spec Spec, say func(format string, args ...any)) entry {
 	counted, err := r.claude.Recount(start.Session, start.Streamed, -1)
 	if err != nil {
@@ -355,6 +353,10 @@ func (r *Repo) lostEnd(ctx context.Context, start entry, spec Spec, say func(for
 		Totals: &counted.Totals, Streamed: streamed}
 	if counted.Written.Before(start.At) {
 		e.At = start.At
+	}
+
+	if start.Role == auditRole {
+		e.heard(claude.Ended{Text: counted.Answer, Failed: counted.Failed})
 	}
 
 	if start.Role == auditRole && start.Read != "" {

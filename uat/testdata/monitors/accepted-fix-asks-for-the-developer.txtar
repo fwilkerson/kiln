@@ -67,6 +67,6 @@ stale
   "3": [{"result": {"result": "Main and the fix each rewrote the second line: which edit of doc.txt wins?\n{\"ask\": true, \"summary\": \"main rewrote the line the fix marks\"}"}}]
  }},
  "audit": {
-  "1": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]}
+  "1": {"1": [{"result": {"audit": {"read": 1}}}]}
  }
 }

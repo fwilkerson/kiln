@@ -124,7 +124,7 @@ type tally struct {
 	Reported int `json:"reported"`
 }
 
-// finding is one finding an audit's reply lists, as a finding line of the ledger holds it. A line for a reply kiln
+// finding is one finding an audit's reply lists, as the audit run's end line holds it. A finding for a reply kiln
 // could not parse holds that reply in Reply alone, and is not Parsed.
 type finding struct {
 	Parsed bool `json:"parsed,omitempty"`
@@ -256,20 +256,19 @@ func replyOf(ended claude.Ended) *reply {
 	return new(readReply(ended.Text))
 }
 
-// heard adds to e, an audit run's end line, the tally its reply ends with, and answers its finding lines. An empty
-// reply is no result, as replyOf says.
-func (e *entry) heard(ended claude.Ended) []finding {
+// heard adds to e, an audit run's end line, the tally its reply ends with, and its findings. An empty reply is no
+// result, as replyOf says.
+func (e *entry) heard(ended claude.Ended) {
 	r := replyOf(ended)
 	if r == nil {
 		if e.Ended == endedResult {
 			e.Ended = endedNoResult
 		}
 
-		return nil
+		return
 	}
 
-	e.Tally = r.tally
-	return r.lines()
+	e.Tally, e.Findings = r.tally, r.lines()
 }
 
 // back is what goes back to the build: "" when r's tally found nothing, or else the whole reply. A reply that names
@@ -282,7 +281,7 @@ func (r reply) back() string {
 	return r.text
 }
 
-// lines are r's finding lines for the ledger. A parsed reply has one per finding. Another has one that holds it whole.
+// lines are r's findings for the ledger. A parsed reply has one per finding. Another has one that holds it whole.
 func (r reply) lines() []finding {
 	if r.parsed {
 		return r.findings

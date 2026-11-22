@@ -16,6 +16,7 @@ import (
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/practices/claim"
 )
 
 // TestSecondsPrinted holds that kiln ledger prints a duration in seconds to the millisecond, as a script reads it. A
@@ -35,7 +36,8 @@ func TestSecondsPrinted(t *testing.T) {
 
 // TestRecount holds what kiln fire does with each run that has a start line but no end line. kiln leaves one when it
 // dies mid-run, in any session: an audit try's is never resumed. Before any build goes on, each lost run is totaled
-// from the stream it wrote. It ends as the stream shows: with a result only if the stream holds one.
+// from the stream it wrote. It ends as the stream shows: with a result only if the stream holds one. A lost audit
+// run's end line holds the tally and the findings of the reply its stream holds.
 func TestRecount(t *testing.T) {
 	dir := t.TempDir()
 	const buildSession, auditSession = "5f0c1a54-2a8e-4b0e-9a65-0d1f6b8c2e11", "8a1d2b3c-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
@@ -50,6 +52,7 @@ func TestRecount(t *testing.T) {
 		`"input":{"command":"go test ./..."}}],"usage":{}}}` + "\n"
 	audited := `{"type":"assistant","message":{"id":"m3","content":[{"type":"tool_use","id":"t3","name":"Read",` +
 		`"input":{"file_path":"x.go"}}],"usage":{}}}` + "\n" + `{"type":"result","num_turns":1,` +
+		`"result":"1. x.go:3  bug\\nharm  h\\n\\nread 1 directory, found 1, reported 1",` +
 		`"model_usage_since_last_result":{"m":{"costUSD":0.25}}}` + "\n"
 	writeStreams(t, sessions, map[string]string{buildSession: ended + lost, auditSession: audited})
 
@@ -81,6 +84,11 @@ func TestRecount(t *testing.T) {
 		if got := endOf(run); got != want {
 			t.Errorf("the lost %s run: %s; want %s, with an end", run.role, got, want)
 		}
+	}
+
+	if audit := runs[2]; !claim.Holds(audit.tally != nil && *audit.tally == tally{1, 1}, len(audit.findings) == 1) {
+		t.Errorf("the lost audit run holds the tally %v and the findings %+v; want 1 found and reported, and 1 listed",
+			audit.tally, audit.findings)
 	}
 
 	if n := len(entries); n != 7 {

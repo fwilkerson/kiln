@@ -83,11 +83,14 @@ func printable(entries []entry) []printed {
 	return lines
 }
 
-// printed is the build's lines: the build, then its runs, gates, readings and findings.
+// printed is the build's lines: the build, then its runs with their findings, its gates and its readings.
 func (s *buildStats) printed() []printed {
 	lines := []printed{{"build", s.Spec, s.At, s.printedBuild()}}
 	for _, r := range s.runs {
 		lines = append(lines, printed{"run", s.Spec, r.start, s.printedRun(r)})
+		for _, f := range r.findings {
+			lines = append(lines, printed{"finding", s.Spec, r.end, s.printedFinding(r, f)})
+		}
 	}
 
 	for _, g := range s.gates {
@@ -100,10 +103,6 @@ func (s *buildStats) printed() []printed {
 		lines = append(lines, printed{"reading", s.Spec, e.At, printedReading{Kind: "reading", Build: s.Build,
 			Name: s.Spec, Gauge: e.Gauge, At: stamp(e.At), Landed: e.Landed, Value: e.Value,
 			Crossed: e.crossed(e.Value)}})
-	}
-
-	for _, e := range s.findings {
-		lines = append(lines, printed{"finding", s.Spec, e.At, s.printedFinding(e)})
 	}
 
 	return lines
@@ -217,11 +216,10 @@ type printedFinding struct {
 	Reply    *string `json:"reply"`
 }
 
-// printedFinding is e, a finding line of the build, as kiln ledger prints it.
-func (s *buildStats) printedFinding(e entry) printedFinding {
-	f := e.finding
-	p := printedFinding{Kind: "finding", Build: s.Build, Name: s.Spec, Fix: s.Monitor != "", Session: e.Session,
-		At: stamp(e.At), Parsed: f.Parsed, Path: orNull(f.Path), Category: orNull(f.Category),
+// printedFinding is f, a finding of the build's audit run r, as kiln ledger prints it.
+func (s *buildStats) printedFinding(r run, f finding) printedFinding {
+	p := printedFinding{Kind: "finding", Build: s.Build, Name: s.Spec, Fix: s.Monitor != "", Session: r.session,
+		At: stamp(r.end), Parsed: f.Parsed, Path: orNull(f.Path), Category: orNull(f.Category),
 		Reaches: orNull(f.Reaches), Chance: orNull(f.Chance), Harm: orNull(f.Harm), Design: orNull(f.Design),
 		Patch: orNull(f.Patch), Proof: orNull(f.Proof), Reply: orNull(f.Reply)}
 	if p.Parsed {

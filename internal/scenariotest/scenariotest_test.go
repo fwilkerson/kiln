@@ -80,6 +80,41 @@ func TestRefuseUnstated(t *testing.T) {
 	}
 }
 
+// TestAuditResult holds that an audit's result is written only in the form of kiln's contract, from its parts. So no
+// script writes a reply that kiln's audit could not have sent.
+func TestAuditResult(t *testing.T) {
+	text, found := "read 1 directory, found 0, reported 0", ClaudeFinding{Path: "x.go", Line: 3, Kind: "bug",
+		Harm: "a lost row,\nand more"}
+	audit := func(a ClaudeAudit) ClaudeResult { return ClaudeResult{Audit: &a} }
+	for name, row := range map[string]struct {
+		role   string
+		result ClaudeResult
+		passes bool
+	}{
+		"an audit's text":  {role: auditRole, result: ClaudeResult{Result: &text}},
+		"an audit's error": {role: auditRole, result: ClaudeResult{IsError: true, Result: &text}, passes: true},
+		"a build's audit":  {role: "build", result: audit(ClaudeAudit{Read: 1})},
+		"a kind the contract lacks": {role: auditRole,
+			result: audit(ClaudeAudit{Read: 1, Findings: []ClaudeFinding{{Path: "x.go", Kind: "style", Harm: "h"}}})},
+		"a finding with no field": {role: auditRole,
+			result: audit(ClaudeAudit{Read: 1, Findings: []ClaudeFinding{{Path: "x.go", Kind: "bug"}}})},
+		"fewer found than listed": {role: auditRole,
+			result: audit(ClaudeAudit{Read: 1, Found: 1, Findings: []ClaudeFinding{found, found}})},
+		"a list a cap cut": {role: auditRole, result: audit(ClaudeAudit{Read: 2, Found: 3,
+			Findings: []ClaudeFinding{found}}), passes: true},
+	} {
+		if err := row.result.check(row.role); (err == nil) != row.passes {
+			t.Errorf("%s: check answers %v, want it to pass %v", name, err, row.passes)
+		}
+	}
+
+	want := "Prose.\n\n1. x.go:3  bug\nharm       a lost row,\n           and more\n\n" +
+		"read 2 directories, found 3, reported 1"
+	if got := (ClaudeAudit{Prose: "Prose.", Read: 2, Found: 3, Findings: []ClaudeFinding{found}}).text(); got != want {
+		t.Errorf("the audit's reply is\n%s\nwant\n%s", got, want)
+	}
+}
+
 // recorder keeps the errors a check reports, in place of failing the test.
 type recorder struct {
 	testing.TB

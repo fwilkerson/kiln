@@ -111,8 +111,8 @@ exec git log --format=%H main -- x.go .kiln/specs/x.amend.md
     ]}
   },
   "audit": {
-    "1": {"1": [{"result": {"result": "read 2 packages, found 0, reported 0"}}]},
-    "2": {"1": [{"result": {"result": "read 2 packages, found 0, reported 0"}}]}
+    "1": {"1": [{"result": {"audit": {"read": 2}}}]},
+    "2": {"1": [{"result": {"audit": {"read": 2}}}]}
   }
 }
 -- _given/x/x.go --

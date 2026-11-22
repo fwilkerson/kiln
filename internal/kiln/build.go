@@ -667,17 +667,13 @@ func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claud
 	end := entry{Kind: endKind, Session: l.Session, Ended: how(ended), Totals: &ended.Totals}
 	end.Streamed, _ = b.r.claude.Streamed(l.Session)
 	var undone error
-	var findings []finding
 	if l.Role == auditRole {
 		// An interrupted audit run may have changed its worktree too, and its end line names what it changed.
 		end.Changed, undone = b.r.undo(context.WithoutCancel(ctx), git.Worktree(l.Dir), read)
-		findings = end.heard(ended)
+		end.heard(ended)
 	}
 
 	b.record(end)
-	for _, f := range findings {
-		b.record(entry{Kind: findingKind, Session: l.Session, finding: f})
-	}
 
 	if ctx.Err() != nil {
 		return ended, ctx.Err()

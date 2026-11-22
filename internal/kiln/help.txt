@@ -200,8 +200,8 @@ the nearest above. Nothing the audit writes reaches the build, and kiln removes 
 The contract that ends the audit's system prompt sets the form of the audit's reply. Each finding listed is a block
 of named fields. The reply's last line is "read N directories, found M, reported K". While M is 0, nothing goes back
 to the build. Otherwise the whole reply goes back, as does a reply without that line. An empty reply is no result,
-so the audit runs again. The ledger holds each finding listed. A reply in another form gets one ledger line, which
-holds the whole reply. A
+so the audit runs again. The audit run's end line in the ledger holds each finding listed. A reply in another form
+is one finding there, which holds the whole reply. A
 landing that doesn't move main leaves the branch as it stood before the landing began. Should kiln die once main
 holds the landing, the next kiln fire records it landed, and starts no session. kiln accept lands a commit that
 retires the spec. A spec that waited on its branch lands its work first, with the amendments folded in.

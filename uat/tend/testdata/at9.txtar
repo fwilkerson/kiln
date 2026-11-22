@@ -50,8 +50,8 @@ stdout '^x: waiting for UAT$'
   "3": [{"result": {"result": "Went on: the work stands."}}]
  }},
  "audit": {
-  "1": {"1": [{"result": {"result": "read 2 directories, found 0, reported 0"}}]},
-  "2": {"1": [{"result": {"result": "read 2 directories, found 0, reported 0"}}]}
+  "1": {"1": [{"result": {"audit": {"read": 2}}}]},
+  "2": {"1": [{"result": {"audit": {"read": 2}}}]}
  },
  "tend": {"1": {"1": [
   {"tool": {"name": "Bash", "input": {"command": "mv x.go .tmp/mine.go"}}},

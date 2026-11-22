@@ -97,8 +97,9 @@ type Recounted struct {
 	// Written is when the stream was last written, across all its runs.
 	Written time.Time
 	// Answer is the text of the stretch's last result event: what the session answered. It is "" until the session
-	// writes one.
+	// writes one. Failed is true of a stretch with no result, or an error as its result, as for Ended.
 	Answer string
+	Failed bool
 }
 
 // Action is one tool call, or one text the model said.
@@ -154,10 +155,9 @@ func (c Claude) Recount(session string, from, to int64) (Recounted, error) {
 		read.line(lines.Bytes())
 	}
 
-	counted := Recounted{Totals: read.count.totals(), Actions: read.count.actions, Written: info.ModTime()}
-	if read.result != nil {
-		counted.Answer = read.result.Text
-	}
+	ended := read.ended()
+	counted := Recounted{Totals: ended.Totals, Actions: read.count.actions, Written: info.ModTime(), Answer: ended.Text,
+		Failed: ended.Failed}
 
 	return counted, lines.Err()
 }

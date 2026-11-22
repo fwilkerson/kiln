@@ -60,7 +60,7 @@ const Base = 41
   "2": [{"result": {"result": "X answers Base + 1, and Base is 40 on main, which I may not change."}}],
   "3": [{"result": {"result": "Went on, as the developer said."}}]
  }},
- "audit": {"1": {"1": [{"result": {"result": "read 2 directories, found 0, reported 0"}}]}},
+ "audit": {"1": {"1": [{"result": {"audit": {"read": 2}}}]}},
  "tend": {"1": {"1": [
   {"tool": {"name": "Bash", "input": {"command": "cp \"$WORK/_given/base.go\" base.go && git add base.go && git commit -q -m 'fix: set Base to 41'"}}},
   {"tool": {"name": "Bash", "input": {"command": "note=$(sed -n 's/^A note for the build: //p' \"$WORK/.claude-calls/tend/1/1/prompt\") && test -n \"$note\" && echo 'Keep X as Base + 1: the developer set Base to 41 on main.' >\"$note\""}}},

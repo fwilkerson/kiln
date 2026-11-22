@@ -79,8 +79,8 @@ screen '^2 +audit +audit, try 1 '
     ]}
   },
   "audit": {
-    "1": {"1": [{"result": {"result": "read 1 package, found 0, reported 0", "cost_usd": 0.01}}]},
-    "2": {"1": [{"result": {"result": "read 1 package, found 0, reported 0", "cost_usd": 0.01}}]}
+    "1": {"1": [{"result": {"audit": {"read": 1}, "cost_usd": 0.01}}]},
+    "2": {"1": [{"result": {"audit": {"read": 1}, "cost_usd": 0.01}}]}
   }
 }
 -- _given/a/a.go --

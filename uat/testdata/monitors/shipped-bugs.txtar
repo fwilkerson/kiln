@@ -255,7 +255,7 @@ func B() int { return 2 }
    "1": [
     {
      "result": {
-      "result": "1. a_test.go:5  weak test\nreaches    TestA checks one clause of the bug\nproof      none\n\nread 1 directories, found 1, reported 1"
+      "audit": {"read": 1, "findings": [{"path": "a_test.go", "line": 5, "kind": "weak test", "reaches": "TestA checks one clause of the bug", "proof": "none"}]}
      }
     }
    ]
@@ -264,7 +264,7 @@ func B() int { return 2 }
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "audit": {"read": 1}
      }
     }
    ]

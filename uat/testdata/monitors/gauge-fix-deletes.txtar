@@ -51,5 +51,5 @@ low a
     {"tool": {"name": "Bash", "input": {"command": "rm a.txt"}}},
     {"result": {"result": "Deleted a.txt."}}
   ]}},
-  "audit": {"1": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]}}
+  "audit": {"1": {"1": [{"result": {"audit": {"read": 1}}}]}}
 }

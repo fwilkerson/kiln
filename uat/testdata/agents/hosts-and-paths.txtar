@@ -22,7 +22,7 @@ grep '"allowWrite": \[\s*"/tmp/kiln-writable/build"\s*\]' .claude-calls/audit/1/
     {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
     {"result": {"result": "Built x."}}
   ]}},
-  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0, reported 0"}}]}}
+  "audit": {"1": {"1": [{"result": {"audit": {"read": 2}}}]}}
 }
 -- .kiln/specs/x.md --
 ### 1. X answers

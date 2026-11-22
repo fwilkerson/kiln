@@ -109,7 +109,7 @@ exec git branch --list 'kiln/*'
   "audit": {
     "1": {"1": [{"result": {"is_error": true, "api_error_status": 529, "result": "API Error: 529 Overloaded"}}]},
     "2": {"1": [
-      {"result": {"result": "1. x.go:3  false comment\nreaches    the doc says 41\ndesign     none\npatch      say\n  42\n\nread 2 packages, found 2, reported 1", "cost_usd": 0.12}}
+      {"result": {"audit": {"read": 2, "found": 2, "findings": [{"path": "x.go", "line": 3, "kind": "false comment", "reaches": "the doc says 41", "design": "none", "patch": "say\n42"}]}, "cost_usd": 0.12}}
     ]}
   }
 }

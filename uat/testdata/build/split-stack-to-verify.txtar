@@ -85,7 +85,7 @@ grep '"kind":"gate"[^\n]*\n(?:[^\n]*\n)*?[^\n]*"kind":"gate"[^\n]*"passed":true[
    "1": [
     {
      "result": {
-      "result": "read 2 directories, found 0, reported 0"
+      "audit": {"read": 2}
      }
     }
    ]
