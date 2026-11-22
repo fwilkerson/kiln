@@ -1,0 +1,3 @@
+<component name="DependencyValidationManager">
+  <scope name="Facts" pattern="file:*/facts_test.go" />
+</component>

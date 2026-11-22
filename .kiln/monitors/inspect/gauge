@@ -1,0 +1,72 @@
+#!/bin/sh
+# The gauge of kiln's inspect monitor. It runs go tool inspect, GoLand's inspections by the profile in .idea, and
+# prints each finding in a file changed since $KILN_BASE that the commit still holds:
+#
+#   KILN_BASE=<commit or tree> sh .kiln/monitors/inspect/gauge
+#
+#   internal/git/git.go
+#     // way.Busy:  a rebase, a bisect or another git is busy with main, in that worktree
+#       The verb 'bisect' does not usually follow articles like 'a'. ... (GrazieInspection)
+#
+# Its last line is the count of those findings. It prints no number where it read no file. It leaves out each file
+# no fix may change: .kiln/ and .claude/, which kiln's contract keeps from a session, uat/, docs/guide.md, which
+# go tool guide writes, docs/one-page.html, which onepage renders, docs/research/, and test data. It also leaves out
+# each symbolic link, whose findings are its target's.
+set -eu
+export LC_ALL=C
+
+read=$(git diff --name-only --diff-filter=d "$KILN_BASE" HEAD -- . ':!.kiln/' ':!.claude/' ':!uat/' \
+  ':!docs/guide.md' ':!docs/one-page.html' ':!docs/research/' ':(glob,exclude)**/testdata/**' |
+  while IFS= read -r f; do [ -L "$f" ] || echo "$f"; done)
+if [ -z "$read" ]; then
+  exit 0
+fi
+
+# A bare mktemp ignores TMPDIR on macOS, and a session's sandbox lets it write nowhere else.
+found=$(mktemp "${TMPDIR:-/tmp}/inspect.XXXXXX")
+failed=$(mktemp "${TMPDIR:-/tmp}/inspect.XXXXXX")
+files=$(mktemp "${TMPDIR:-/tmp}/inspect.XXXXXX")
+trap 'rm -f "$found" "$failed" "$files"' EXIT
+echo "$read" >"$files"
+
+# inspect exits 1 on a finding, and when it could not run. A failed run that printed no finding could not run.
+here=$(pwd)
+if ! go tool inspect . >"$found" 2>"$failed" && ! grep -q "^$here/" "$found"; then
+  cat "$failed" >&2
+  echo "inspect: go tool inspect could not run" >&2
+  exit 1
+fi
+
+# kiln holds a monitor while its gauge prints the same, so each finding shows its line's text, not its number. A nil
+# finding's trace after <br> names lines and offsets, and a duplicate's message names lines, so both go, with each HTML
+# tag.
+low=$(awk -v here="$here/" '
+  NR == FNR { read[$0] = 1; next }
+  index($0, here) == 1 {
+    $0 = substr($0, length(here) + 1)
+    if (!match($0, /^[^:]+:[0-9]+: /)) next
+    at = substr($0, 1, RLENGTH - 2)
+    msg = substr($0, RLENGTH + 1)
+    f = at; sub(/:[0-9]+$/, "", f)
+    n = substr(at, length(f) + 2)
+    if (!(f in read)) next
+    id = ""
+    if (match(msg, / \([A-Za-z]+\)$/)) { id = substr(msg, RSTART); msg = substr(msg, 1, RSTART - 1) }
+    sub(/ *<br>.*/, "", msg); gsub(/<[^>]+>/, "", msg); sub(/: lines [0-9,]+-[0-9,]+$/, "", msg)
+    if (!(f in loaded)) { i = 0; while ((getline l < f) > 0) text[f, ++i] = l; close(f); loaded[f] = 1 }
+    t = text[f, n]; gsub(/\t/, " ", t); gsub(/^ +| +$/, "", t)
+    print f "\t" t "\t" msg id
+  }
+' "$files" "$found")
+
+if [ -z "$low" ]; then
+  echo 0
+  exit 0
+fi
+
+echo "$low" | awk -F'\t' '
+  $1 != f { print $1; f = $1; t = "" }
+  $2 != t { print "  " $2; t = $2 }
+  { print "    " $3 }
+'
+echo "$low" | wc -l | tr -d ' '

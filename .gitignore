@@ -2,3 +2,10 @@
 *.test
 /NOTES.md
 /.claude/worktrees/
+# The global ignore hides .idea/, so un-hide it. Keep only the project dictionary, the inspection profile and the
+# scopes it uses, which go tool inspect reads.
+!/.idea/
+/.idea/*
+!/.idea/dictionaries/
+!/.idea/inspectionProfiles/
+!/.idea/scopes/

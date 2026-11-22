@@ -41,6 +41,7 @@ require (
 tool (
 	github.com/fwilkerson/practices/cmd/guide
 	github.com/fwilkerson/practices/cmd/health
+	github.com/fwilkerson/practices/cmd/inspect
 	github.com/fwilkerson/practices/cmd/size
 	github.com/fwilkerson/practices/cmd/style
 )
