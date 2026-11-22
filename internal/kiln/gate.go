@@ -374,17 +374,13 @@ func (r *Repo) removed(ctx context.Context, head git.Rev, p string, without []st
 	return !held, err
 }
 
-// checksVersion is part of the key main's checks are kept under. Raise it whenever what a check records changes, so
-// no check an older kiln kept is read.
-const checksVersion = 2
-
 // atMain runs c's gate at main's tip, less the paths without, in a worktree of its own. It keeps the checks, and
 // runs them again only once main, without or the commands change. Its bool is whether it ran them. It runs under
 // held, so every kiln shares the worktree, one at a time.
 func (held commands) atMain(ctx context.Context, main git.Rev, c config, without []string) ([]check, bool, error) {
 	r, gate := held.r, c.Gate
 	// The count of without tells where its paths end and the commands begin.
-	parts := append([]string{fmt.Sprint(checksVersion), string(main), fmt.Sprint(len(without))}, without...)
+	parts := append([]string{string(main), fmt.Sprint(len(without))}, without...)
 	key := strings.Join(append(parts, gate...), "\x00")
 	b, err := r.store.read()
 	if err != nil {

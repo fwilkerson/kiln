@@ -161,7 +161,7 @@ func TestHookArguments(t *testing.T) {
 		"no worktree":                     {"--spec", "x"},
 		"a role kiln never writes":        {"--spec", "x", "--place", "/w", "--role", "verfy", "--acceptance", "a/"},
 		"a split build's side, pathless":  {"--spec", "x", "--place", "/w", "--role", verifyRole},
-		"a flag kiln no longer writes":    {"--spec", "x", "--place", "/w", "--fix"},
+		"a flag kiln does not read":       {"--spec", "x", "--place", "/w", "--fix"},
 		"a flag with no value":            {"--spec", "x", "--place", "/w", "--role"},
 		"a word after the flags":          {"--spec", "x", "--place", "/w", "y"},
 		"an acceptance path with no role": {"--spec", "x", "--place", "/w", "--acceptance", "a/"},

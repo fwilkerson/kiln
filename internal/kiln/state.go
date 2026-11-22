@@ -56,8 +56,7 @@ type record struct {
 	Rounds int `json:"rounds,omitempty"`
 	// Limit is how many rounds kiln.json gave the build's last gate. It is nil until a gate has run.
 	Limit *int `json:"limit,omitempty"`
-	// Audited is the commit the audit last read, once it has answered. An older kiln kept a bool under "audited",
-	// which this key leaves unread.
+	// Audited is the commit the audit last read, once it has answered.
 	Audited git.Rev `json:"audited_at,omitempty"`
 	// Accepted is a spec the developer accepted while it waited on its branch. kiln lands it as a build does, then
 	// retires it.

@@ -142,11 +142,10 @@
 // monitor add recorded up to date the same way, as Monitors says.
 //
 // kiln init links /shape, and each reviewer's file in .kiln/reviewers/, into .claude/. It links each where .claude/
-// holds nothing of its name, or a link that reaches nothing. It replaces a link to a reviewer's old file in
-// .kiln/agents/, and says that file is unused. It removes each link in .claude/agents/ to a reviewer's file that is
-// gone. It says so when the repository has no branch main, which each command that reads main then refuses. It prints
-// kiln.json's gate, the commands the pre-commit hook runs on each commit to main. The hook refuses a commit to main
-// that fails them. Last, kiln init installs the hook, or says why it installed none.
+// holds nothing of its name, or a link that reaches nothing. It removes each link in .claude/agents/ to a reviewer's
+// file that is gone. It says so when the repository has no branch main, which each command that reads main then
+// refuses. It prints kiln.json's gate, the commands the pre-commit hook runs on each commit to main. The hook refuses
+// a commit to main that fails them. Last, kiln init installs the hook, or says why it installed none.
 //
 // # Agents
 //
@@ -165,8 +164,7 @@
 // with it. It refuses a path that path.Clean changes, but for its last slash, or one that starts with a slash. It
 // refuses a list in which one path's part before {spec} starts another's, or equals it, with case folded. It
 // refuses a spec when a testHelpers path is one of its paths, or holds one, or lies under one. It refuses a build
-// agent that says how to write the tests. Such a line is an older default's heading for them, or its line on what
-// the build writes. Or it names a path's part before {spec}, where the part starts a path.
+// agent that says where the tests live. Such an agent names a path's part before {spec}, where the part starts a path.
 //
 // # Builds
 //
@@ -479,7 +477,7 @@
 //
 // A sum, such as a build's cost, is null while one of its runs lacks its part. A run lacks its time and failed calls
 // until it ends. A build's rounds are null while a run's start line does not say why it started. A gate's ran_main is
-// null for a gate older than the field, or one that stopped on an error first. A build's outcome is landed, stopped,
+// null for a gate that stopped on an error first. A build's outcome is landed, stopped,
 // waits on its branch, dropped or accepted. A fix's may also be needs you, session failed, usage limit, couldn't run,
 // unchanged or rejected.
 //
@@ -978,18 +976,13 @@ func (c config) readiness(ctx context.Context, f files) (refusals, error) {
 	return refused, nil
 }
 
-// testsText is the first line of body that says how to write the acceptance tests, or "". An older default build
-// agent said so. Such a line is its heading, or its line on what the build writes. Or it names one of fixed, where
-// the tests live.
+// testsText is the first line of body that names one of fixed, where the acceptance tests live, or "".
 func testsText(body string, fixed []string) string {
 	for line := range strings.Lines(body) {
 		line = strings.TrimSpace(line)
 		// A part of "" is no path's, so it says nothing about where the tests live.
 		names := func(part string) bool { return part != "" && startsPath(line, part) }
-		switch {
-		case line == "## Acceptance tests",
-			strings.HasPrefix(line, "- The code of each of the spec's acceptance tests"),
-			slices.ContainsFunc(fixed, names):
+		if slices.ContainsFunc(fixed, names) {
 			return line
 		}
 	}

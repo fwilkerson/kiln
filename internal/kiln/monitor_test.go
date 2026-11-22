@@ -39,7 +39,6 @@ func TestMonitorConfig(t *testing.T) {
 		"a negative interval":          {files: "command", settings: `{"hours": -1}`, refused: []string{"monitor.json: "}},
 		"a word for an interval":       {files: "command", settings: `{"hours": "daily"}`, refused: []string{"monitor.json: "}},
 		"over the decoder's limit":     {files: "command", settings: `{"hours": 65536}`, refused: []string{"monitor.json: "}},
-		"the old key, every":           {files: "command", settings: `{"every": "24h"}`, refused: []string{"monitor.json: "}},
 		"a key kiln does not know":     {files: "check command", settings: `{"drain": true}`, refused: []string{"monitor.json: "}},
 		"a check alone":                {files: "check", refused: []string{"holds no command and no agent.md, so it fixes nothing"}},
 		"a check and a gauge":          {files: "check gauge agent.md", settings: `{"atLeast": 10}`, refused: []string{"holds both a check and a gauge"}},
@@ -624,17 +623,6 @@ func TestMonitorStatusLines(t *testing.T) {
 				t.Errorf("%q holds the agent's report", lines)
 			}
 		})
-	}
-}
-
-// TestStoppedWhyOnce holds that a stopped fix's ledger line from before the fix split why still shows each line once.
-func TestStoppedWhyOnce(t *testing.T) {
-	first := "main changed what the fix changed, in these files:"
-	h := histories([]entry{{Kind: monitorKind, Monitor: "m", Found: foundFix, Build: "b"},
-		{Kind: outcomeKind, Build: "b", Outcome: outStopped, Summary: first, Report: first + "\ndocs.txt"}})["m"]
-	lines := strings.Join(h.standing(monitor{Name: "m"}, nil).lines("m", nil, "/trees/m"), "\n")
-	if strings.Count(lines, first) != 1 || !strings.Contains(lines, "docs.txt") {
-		t.Errorf("%q holds %q other than once, or no docs.txt", lines, first)
 	}
 }
 

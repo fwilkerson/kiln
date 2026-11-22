@@ -166,15 +166,12 @@ func TestInitKeeps(t *testing.T) {
 
 // TestInitReviewers holds how kiln init links the reviewers a project keeps. It refuses a reviewer that Claude Code
 // could not run, before it writes anything. It writes no default reviewer into a reviewers folder that is there. It
-// links each reviewer there, in place of a link that reaches nothing. It links one in place of a link to its old file
-// in .kiln/agents/, and says that file is unused. It removes each link to a reviewer that is gone.
+// links each reviewer there, in place of a link that reaches nothing. It removes each link to a reviewer that is gone.
 func TestInitReviewers(t *testing.T) {
 	t.Parallel()
 	r, repo := scratchRepo(t)
 	shell(t, repo, `mkdir -p .kiln/reviewers .kiln/agents .claude/agents && touch .kiln/reviewers/.gitkeep && `+
 		`printf -- '---\nname: upgrade\n---\n' >.kiln/reviewers/upgrade.md && `+
-		`printf -- '---\nname: legacy\ndescription: Reads a spec.\n---\n' >.kiln/reviewers/legacy.md && `+
-		`echo old >.kiln/agents/legacy.md && ln -s ../../.kiln/agents/legacy.md .claude/agents && `+
 		`ln -s ../../.kiln/agents/upgrade.md .claude/agents && `+
 		`ln -s ../../.kiln/reviewers/critic.md .claude/agents && ln -s ../../.kiln/agents/gone.md .claude/agents`)
 	err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"})
@@ -193,12 +190,9 @@ func TestInitReviewers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, line := range []string{"unlinked .claude/agents/critic.md, since .kiln/reviewers/critic.md is gone\n",
-		"linked .claude/agents/legacy.md to ../../.kiln/reviewers/legacy.md, in place of its link to " +
-			".kiln/agents/legacy.md, which kiln no longer reads: delete that file\n"} {
-		if !strings.Contains(out.String(), line) {
-			t.Errorf("kiln init said:\n%s\nwant the line %q", out.String(), line)
-		}
+	const line = "unlinked .claude/agents/critic.md, since .kiln/reviewers/critic.md is gone\n"
+	if !strings.Contains(out.String(), line) {
+		t.Errorf("kiln init said:\n%s\nwant the line %q", out.String(), line)
 	}
 
 	for p, want := range map[string]bool{
@@ -210,11 +204,9 @@ func TestInitReviewers(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"upgrade", "legacy"} {
-		link, err := os.Readlink(filepath.Join(repo, ".claude/agents", name+".md"))
-		if link != "../../.kiln/reviewers/"+name+".md" {
-			t.Errorf(".claude/agents/%s.md links to %q, %v", name, link, err)
-		}
+	link, err := os.Readlink(filepath.Join(repo, ".claude/agents/upgrade.md"))
+	if link != "../../.kiln/reviewers/upgrade.md" {
+		t.Errorf(".claude/agents/upgrade.md links to %q, %v", link, err)
 	}
 }
 
@@ -295,7 +287,7 @@ func TestQueueNeedsInit(t *testing.T) {
 
 // TestQueueNeedsTestsPlace holds that kiln queue refuses a kiln.json that names no place for the acceptance tests.
 // It refuses paths that two specs could share. It refuses a spec whose paths meet a testHelpers path. It refuses a
-// build agent that still says how to write the tests, as an older default did.
+// build agent that says where the tests live.
 func TestQueueNeedsTestsPlace(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
@@ -318,11 +310,6 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 		"a helpers path is under the spec's path":    {change: helpers(`acceptance/x/h/`), refusal: "meets the testHelpers path"},
 		"the spec's path is under a helpers path":    {change: helpers(`acceptance/`), refusal: "meets the testHelpers path"},
 		"a helpers path beside the spec's":           {change: helpers(`acceptance/xh/`)},
-		"the build agent keeps the old heading": {change: `printf '\n## Acceptance tests\n' >>.kiln/agents/build.md`,
-			refusal: "move that text to .kiln/agents/verify.md"},
-		"the build agent keeps the old line": {
-			change:  `printf "\n- The code of each of the spec's acceptance tests.\n" >>.kiln/agents/build.md`,
-			refusal: "move that text to .kiln/agents/verify.md"},
 		"the build agent names where the tests live": {
 			change:  `printf '\nWrite them in acceptance/x/.\n' >>.kiln/agents/build.md`,
 			refusal: "move that text to .kiln/agents/verify.md"},

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/git"
@@ -52,11 +51,6 @@ func (h *history) standing(m monitor, rec *record) standing {
 		s.found(h, e)
 	default:
 		s.result, s.summary = e.Found, e.Summary
-	}
-
-	// An older ledger line of a stopped fix repeats its summary as the first line of its report.
-	if rest, ok := strings.CutPrefix(s.report, s.summary+"\n"); ok && s.summary != "" {
-		s.report = rest
 	}
 
 	switch {
