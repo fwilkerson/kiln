@@ -55,8 +55,10 @@ const (
 	monitorsPane
 	nowPane
 	recentPane
-	panes
 )
+
+// panes counts the panes, so a new pane after recentPane moves it.
+const panes = recentPane + 1
 
 type kind int
 
@@ -325,11 +327,10 @@ func (m model) homeBuild(p pane) (buildRef, bool) {
 	case nowPane:
 		ref, ok := m.nowPicked()
 		return ref.buildRef, ok
-	}
-
-	all := m.recent()
-	if i := m.sel[recentPane]; i < len(all) {
-		return all[i].buildRef, true
+	case recentPane:
+		if all := m.recent(); m.sel[recentPane] < len(all) {
+			return all[m.sel[recentPane]].buildRef, true
+		}
 	}
 
 	return buildRef{}, false
@@ -452,9 +453,11 @@ func (m model) items(p pane) int {
 		return len(m.sideSpecs(monitorsPane)) + 1
 	case nowPane:
 		return len(atWork(m.specs))
+	case recentPane:
+		return len(m.recent())
 	}
 
-	return len(m.recent())
+	return 0
 }
 
 func (m *model) move(by int) {

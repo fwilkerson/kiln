@@ -19,3 +19,6 @@ internal/kiln/kiln.go	go, python and typescript	TypeScript
 
 # A go:embed directive lists paths, not words.
 *	//go:embed	repeated a word
+
+# schemaOf fails the test on each reflect.Kind it has no schema for. Listing every other kind would add nothing.
+internal/kiln/schema_test.go	switch typ.Kind()	Missing 'case'

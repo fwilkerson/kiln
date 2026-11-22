@@ -12,7 +12,6 @@
     <inspection_tool class="GoResourceLeak" enabled="true" level="WARNING" enabled_by_default="true">
       <scope name="Harness" level="WARNING" enabled="false" />
     </inspection_tool>
-    <inspection_tool class="GoSwitchMissingCasesForIotaConsts" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="GoUnhandledErrorResult" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="GoUnusedExportedFunction" enabled="true" level="WARNING" enabled_by_default="true">
       <scope name="Harness" level="WARNING" enabled="false" />

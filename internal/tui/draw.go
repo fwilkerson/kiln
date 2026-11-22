@@ -620,8 +620,17 @@ func (m model) page(s *screen) (head, body []row, sel int) {
 		return m.buildPage(s)
 	case runScreen:
 		return m.runPage(s)
+	case textScreen:
+		return m.textPage(s)
+	case homeScreen:
+		// The home screen draws its panes instead, so no caller asks for its page.
 	}
 
+	return nil, nil, -1
+}
+
+// textPage is the spec s shows, as approved for its build, under a head that says when.
+func (m model) textPage(s *screen) (head, body []row, sel int) {
 	b := m.build(s.buildRef)
 	if b == nil {
 		return []row{{text: s.spec}}, nil, -1
