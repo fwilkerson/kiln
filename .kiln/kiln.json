@@ -24,6 +24,7 @@
     "pypi.org",
     "files.pythonhosted.org"
   ],
+  "allowUnixSockets": true,
   "writablePathCommands": [
     "go env GOCACHE GOMODCACHE",
     "echo \"$(go env GOPATH | cut -d: -f1)/pkg/sumdb\"",

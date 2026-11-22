@@ -44,8 +44,9 @@ message, with the inspection's ID in parentheses. Search the file for the line's
 ## How you check the fix
 
 - Run `go vet ./...` and `go test ./...`. Format each Go file with `gofmt`.
-- Don't run `go tool inspect` or the gauge: the sandbox refuses the socket GoLand opens as it starts. The gate reads
-  the gauge after your round, and names each finding that remains.
+- Commit, then run the gauge over what you changed:
+  `KILN_BASE=$(git merge-base main HEAD) sh .kiln/monitors/inspect/gauge`. Its last line is 0 once no file you
+  changed holds a finding. It takes about 30 seconds, and the gate reads it again after your round.
 
 ## Your last reply
 
