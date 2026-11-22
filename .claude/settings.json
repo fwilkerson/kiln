@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/style-hook.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/style.sh",
             "statusMessage": "Running go tool style"
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/style-hook.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/style.sh",
             "statusMessage": "Running go tool style"
           }
         ]
