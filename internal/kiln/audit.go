@@ -44,6 +44,8 @@ func (b *build) audit(ctx context.Context) (string, error) {
 		prompt += fmt.Sprintf(auditingHarness, strings.Join(harness, ", "))
 	}
 
+	prompt += b.fix.auditNote(b.rec.Accepted)
+
 	// The audit's own worktree keeps what it writes out of the build's, even when kiln stops mid-audit.
 	l, err := b.agentLaunch(ctx, auditRole, claude.Launch{Prompt: prompt, Dir: string(b.r.auditTree(b.rec.Name))})
 	if err != nil {

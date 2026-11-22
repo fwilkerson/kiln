@@ -74,6 +74,7 @@ type schemaNode struct {
 	Title                string        `json:"title,omitempty"`
 	Description          string        `json:"description,omitempty"`
 	Type                 string        `json:"type,omitempty"`
+	Enum                 []workflow    `json:"enum,omitempty"`
 	AnyOf                []*schemaNode `json:"anyOf,omitempty"`
 	Items                *schemaNode   `json:"items,omitempty"`
 	Properties           properties    `json:"properties,omitempty"`
@@ -130,6 +131,8 @@ func schemaOf(t *testing.T, typ reflect.Type, docs map[string]string) *schemaNod
 		return &schemaNode{}
 	case reflect.TypeFor[timeout]():
 		return &schemaNode{Type: "string"}
+	case reflect.TypeFor[workflow]():
+		return &schemaNode{Type: "string", Enum: workflows}
 	}
 
 	switch typ.Kind() {

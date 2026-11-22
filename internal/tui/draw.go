@@ -753,6 +753,10 @@ func (t theme) verdict(g *Gate) string {
 		said += " · landing"
 	}
 
+	if g.BeforeFix {
+		said += " · before the fix"
+	}
+
 	return said
 }
 

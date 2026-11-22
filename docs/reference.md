@@ -82,6 +82,7 @@ kiln help [<topic>]      print this usage and the topics of kiln's docs, as kiln
   "acceptanceTests": "acceptance/{spec}/",
   "verifySession": true,
   "testHelpers": ["internal/testutil/"],
+  "testFiles": ["*_test.go", "testdata"],
   "reaudit": ["migrations/"],
   "notify": ".kiln/notify",
   "timeout": "2h"
@@ -100,6 +101,7 @@ kiln help [<topic>]      print this usage and the topics of kiln's docs, as kiln
 | `"acceptanceTests"`      | Where a spec's acceptance tests go, with `{spec}` for the spec's name        | `kiln queue` refuses every spec   |
 | `"verifySession"`        | `true`: a second session writes the acceptance tests, from the spec alone    | one session writes code and tests |
 | `"testHelpers"`          | Paths of helper code the acceptance tests call, such as a test harness       | no helper path                    |
+| `"testFiles"`            | Patterns of a test file's name, or of a directory that holds tests           | kiln refuses a test-first monitor |
 | `"reaudit"`              | Paths whose changes the audit must read before the work lands                | the audit reads the work once     |
 | `"notify"`               | A program that receives each notification, run with `sh -c`                  | kiln prints each in its output    |
 | `"timeout"`              | How long a command may run, or a session print nothing, before kiln kills it | 1 hour                            |
@@ -276,11 +278,14 @@ monitor:
   gauge          in place of check: prints a number, and a reading past the limit in monitor.json asks for a fix
   command        a fix that needs no model, run outside the sandbox
   agent.md       an agent's file, run when there is no command, or command left the gate failing
+  test.md        with "workflow": "test-first", an agent's file that writes the fix's test before agent.md runs
   monitor.json   the keys below
 ```
 
 A monitor holds a `command`, an `agent.md` or both, and at most one of `check` and `gauge`. With neither, each due
-run starts a fix. A monitor with a `gauge` alone watches a number and fixes nothing, as [Gauges](#gauges) says.
+run starts a fix. A monitor with a `gauge` alone watches a number and fixes nothing, as [Gauges](#gauges) says. A
+monitor whose workflow is `"test-first"` holds a `check`, a `test.md` and an `agent.md`, and no `command`. Its
+`monitor.json` names no `"writesTests"`.
 
 | Key             | What it holds                                                                  | When absent            |
 |-----------------|--------------------------------------------------------------------------------|------------------------|
@@ -289,6 +294,7 @@ run starts a fix. A monitor with a `gauge` alone watches a number and fixes noth
 | `"recheck"`     | `false` keeps the check or gauge out of the fix's gate                         | the gate runs it again |
 | `"mustAccept"`  | `true` keeps each passing fix on its branch until `kiln accept <name>`         | a passing fix lands    |
 | `"writesTests"` | `true` lets a fix write every spec's acceptance tests                          | a fix writes none      |
+| `"workflow"`    | `"test-first"`: one session writes a failing test, and a second the fix        | one session, `"fix"`   |
 | `"atLeast"`     | Beside a gauge: the lowest reading that asks for no fix                        | kiln refuses a gauge   |
 | `"atMost"`      | Beside a gauge: the highest reading that asks for no fix                       | with neither, or both  |
 
@@ -305,7 +311,7 @@ what it writes on main. The copy is yours from then on. kiln ships four:
 
 | Monitor        | Its check asks for a fix while                       | Its fix                                       | Runs      | Lands           |
 |----------------|------------------------------------------------------|-----------------------------------------------|-----------|-----------------|
-| `bugs`         | `bugs/` holds a bug report                           | fixes the first, with a test that fails first | each hour | once it passes  |
+| `bugs`         | `bugs/` holds a bug report                           | a failing test of the first bug, then its fix | each hour | once it passes  |
 | `go/deps`      | a Go module has a newer release at least 7 days old  | updates each, and adapts the code             | each week | once you accept |
 | `go/docs`      | a Go package's code changed since its docs were read | corrects each doc the code contradicts        | each day  | once you accept |
 | `go/gate-time` | the gate takes 50% longer than it did                | makes the slowest Go tests faster             | each day  | once you accept |
@@ -332,6 +338,10 @@ with your edits. A monitor you deleted stays deleted.
   `command`, or `command` left the gate failing.
 - The agent's first message holds what the check or gauge printed, and what the gate printed after `command`. Its
   instructions are the body of `agent.md`.
+- With `"workflow": "test-first"`, a session of `test.md` first writes failing tests from what the check printed.
+  That session works in a clone of its own, and writes only the test files that `"testFiles"` names. Then a new
+  session of `agent.md` writes the fix, and no test file. `kiln help test-first-fixes` says how kiln holds each
+  session to its part, and where the audit's findings go.
 - A fix must pass the gate, with the check or gauge added to it. `"recheck": false` leaves them out, for a check that
   reads something no fix changes until the fix is deployed.
 - A fix never writes under `.kiln/`. Without `"writesTests": true`, a fix never writes under an

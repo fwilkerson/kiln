@@ -190,6 +190,8 @@ type Gate struct {
 	Passed     bool
 	// Landing is the gate on the work rebased onto main.
 	Landing bool
+	// BeforeFix is the gate on a test-first fix's test, before the fix: it fails when the test shows the problem.
+	BeforeFix bool
 }
 
 // Run is one session run: one start or resume of a session.

@@ -51,8 +51,9 @@ func other(role string) string {
 // gate's worktrees, and each session's clone. The .main worktree stays, since every gate shares it.
 func (r *Repo) dropCheckouts(ctx context.Context, name Spec) error {
 	trees := []git.Worktree{r.tree(name), r.auditTree(name), r.gateTree(name), r.clone(name, buildRole),
-		r.clone(name, verifyRole)}
-	return r.git.Remove(ctx, trees, name.branch(), name.sideBranch(buildRole), name.sideBranch(verifyRole))
+		r.clone(name, verifyRole), r.clone(name, testRole)}
+	return r.git.Remove(ctx, trees, name.branch(), name.sideBranch(buildRole), name.sideBranch(verifyRole),
+		name.sideBranch(testRole))
 }
 
 // turn is what each session of a split build is told next. A session whose prompt is "" does not run.
@@ -630,20 +631,20 @@ func (b *build) sessionLaunch(ctx context.Context, role string, resume bool, pro
 	session := map[string]string{buildRole: rec.Session, verifyRole: rec.Verify}[role]
 	l := claude.Launch{Session: session, Resume: resume, Prompt: prompt, Dir: string(g.place),
 		Hook: g.hookCommand(b.r.exe)}
-	l.DenyRead, l.AllowRead, l.Deny = b.r.blinds(b.rec.Name, role)
+	l.DenyRead, l.AllowRead, l.Deny = b.r.blinds(b.rec.Name, g.place, b.r.clone(b.rec.Name, other(role)))
 	return b.agentLaunch(ctx, role, l)
 }
 
-// blinds are what role's session of a split build may not read. The sandbox denies a command the repository's main
-// checkout and its git directory, which hold both sides' branches. It denies the whole of kiln's checkouts too, and
-// allowRead lets its own clone back in. The Read tool's rules deny each other checkout by name, and the other session's
-// transcripts.
-func (r *Repo) blinds(name Spec, role string) (denyRead, allowRead, deny []string) {
-	others := []string{string(r.clone(name, other(role))), string(r.tree(name)), string(r.auditTree(name)),
-		string(r.gateTree(name)), filepath.Join(r.trees, mainTree), r.top, r.common}
+// blinds are what the session in own, a clone of name's build, may not read. rival is where the session it must not
+// see works. The sandbox denies a command the repository's main checkout and its git directory, which hold every
+// branch. It denies the whole of kiln's checkouts too, and allowRead lets own back in. The Read tool's rules deny
+// each other checkout by name, and rival's transcripts.
+func (r *Repo) blinds(name Spec, own, rival git.Worktree) (denyRead, allowRead, deny []string) {
+	others := []string{string(rival), string(r.tree(name)), string(r.auditTree(name)), string(r.gateTree(name)),
+		filepath.Join(r.trees, mainTree), r.top, r.common}
 	denyRead = []string{r.trees, r.top, r.common}
 	if config := r.claudeConfig(); config != "" {
-		transcripts := filepath.Join(config, "projects", projectDir(string(r.clone(name, other(role)))))
+		transcripts := filepath.Join(config, "projects", projectDir(string(rival)))
 		others = append(others, transcripts)
 		denyRead = append(denyRead, transcripts)
 	}
@@ -652,7 +653,7 @@ func (r *Repo) blinds(name Spec, role string) (denyRead, allowRead, deny []strin
 		deny = append(deny, "Read(/"+p+"/**)")
 	}
 
-	return denyRead, []string{string(r.clone(name, role))}, deny
+	return denyRead, []string{string(own)}, deny
 }
 
 // claudeConfig is the folder where a session keeps its transcripts, read from the environment kiln gives it. It is

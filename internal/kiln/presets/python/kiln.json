@@ -13,5 +13,11 @@
   "writablePathCommands": [
     "uv cache dir"
   ],
+  "testFiles": [
+    "test_*.py",
+    "*_test.py",
+    "conftest.py",
+    "tests"
+  ],
   "acceptanceTests": "tests/acceptance/test_{spec}.py"
 }

@@ -33,13 +33,15 @@ const (
 	commandScript = "command"
 	// monitorAgent is the agent that fixes the problem in a session, written as any agent's file is.
 	monitorAgent = "agent.md"
+	// testAgent is the agent that writes a test-first fix's test, before monitorAgent's session writes the fix.
+	testAgent = "test.md"
 )
 
 // roleScripts are the files of a monitor's directory that kiln runs.
 var roleScripts = []string{checkScript, gaugeScript, commandScript}
 
 // roleFiles are the files kiln reads directly in a monitor's directory. Any other file there sits in a subdirectory.
-var roleFiles = slices.Concat(roleScripts, []string{monitorAgent, settingsFile})
+var roleFiles = slices.Concat(roleScripts, []string{monitorAgent, testAgent, settingsFile})
 
 // monitor is a directory under .kiln/monitors/, which kiln monitor run runs once its interval has passed. Its check or
 // its gauge finds a problem, and its command, its agent or both fix it. One with a gauge alone fixes nothing: it
@@ -50,8 +52,8 @@ type monitor struct {
 	settings
 	// finder is checkScript or gaugeScript, whichever the directory holds, or "" for neither.
 	finder string
-	// command and agent say whether the directory holds commandScript and monitorAgent.
-	command, agent bool
+	// command, agent and tester say whether the directory holds commandScript, monitorAgent and testAgent.
+	command, agent, tester bool
 	// tree is git's ID of the directory, which a change to any file in it changes. The hold compares it.
 	tree string
 }
@@ -81,6 +83,13 @@ type settings struct {
 	// nothing there. kiln then refuses the monitor while kiln.json's acceptanceTests is absent, or names a path that
 	// starts with {spec}. kiln refuses writesTests in a monitor with no command and no agent.md.
 	WritesTests bool `json:"writesTests"`
+	// Workflow is how kiln runs the monitor's fix: "fix" or "test-first". Absent or "fix", one session of agent.md
+	// writes the fix and any test of it. With "test-first", a session of test.md first writes tests from the check's
+	// finding alone. That session writes only test files, which kiln.json's testFiles names. Once the gate fails on
+	// those tests alone, a new session of agent.md writes the fix, and no test file. kiln refuses "test-first" in a
+	// monitor that lacks a check, test.md or agent.md, or holds a command, or names writesTests. kiln refuses
+	// "test-first" while kiln.json names no testFiles. kiln refuses test.md in a monitor with any other workflow.
+	Workflow workflow `json:"workflow"`
 	// AtLeast is the lowest reading of the monitor's gauge that needs no fix, such as 80. A reading below it starts
 	// a fix. In a monitor with no command and no agent.md, such a reading notifies the developer instead. A monitor
 	// with a gauge names atLeast or atMost, never both. kiln refuses atLeast in a monitor with no gauge.
@@ -90,6 +99,19 @@ type settings struct {
 	// with a gauge names atLeast or atMost, never both. kiln refuses atMost in a monitor with no gauge.
 	AtMost *float64 `json:"atMost"`
 }
+
+// workflow is how kiln runs a monitor's fix, as its monitor.json names it.
+type workflow string
+
+const (
+	// oneSession is the workflow of a monitor.json that names none: one session of agent.md writes the fix.
+	oneSession workflow = "fix"
+	// testFirst runs a session of test.md that writes a failing test, then one of agent.md that makes it pass.
+	testFirst workflow = "test-first"
+)
+
+// workflows are the workflows a monitor.json may name.
+var workflows = []workflow{oneSession, testFirst}
 
 // line is the gauge's line that s names.
 func (s settings) line() gaugeLine {
@@ -118,6 +140,20 @@ func (m monitor) finds() bool {
 // gauge.
 func (m monitor) fixes() bool {
 	return m.command || m.agent
+}
+
+// agentFiles are the files in m's directory that a fix runs as agents' files.
+func (m monitor) agentFiles() []string {
+	var files []string
+	if m.agent {
+		files = append(files, monitorAgent)
+	}
+
+	if m.tester {
+		files = append(files, testAgent)
+	}
+
+	return files
 }
 
 // path is the path of file in m's directory, from the repository's top.
@@ -306,7 +342,7 @@ func roleConflicts(ctx context.Context, f files, d monitorDir) ([]byte, refusals
 // refusal names dir, which kiln monitor add gives as its source.
 func (c config) readMonitor(name Spec, dir string, files []string, raw []byte) (monitor, refusals) {
 	m := monitor{Name: name, Hours: defaultHours, command: slices.Contains(files, commandScript),
-		agent: slices.Contains(files, monitorAgent)}
+		agent: slices.Contains(files, monitorAgent), tester: slices.Contains(files, testAgent)}
 	var keys map[string]jsontext.Value
 	if raw != nil {
 		// A monitor.json that is no object fails the strict read below, which words why.
@@ -329,7 +365,7 @@ func (c config) readMonitor(name Spec, dir string, files []string, raw []byte) (
 }
 
 // fixKeys are the keys of monitor.json that steer a fix, which a monitor that fixes nothing may not name.
-var fixKeys = []string{"recheck", "mustAccept", "writesTests"}
+var fixKeys = []string{"recheck", "mustAccept", "writesTests", "workflow"}
 
 // monitorRefusals say why kiln may not run m, whose directory holds files, and whose monitor.json names keys.
 func (c config) monitorRefusals(m monitor, files, keys []string) refusals {
@@ -355,6 +391,7 @@ func (c config) monitorRefusals(m monitor, files, keys []string) refusals {
 			"kiln.json's acceptanceTests is absent, or names a path that starts with {spec}", "give each acceptance " +
 			"path a part before {spec}, or say \"writesTests\": true in its monitor.json"}},
 	)
+	refused = append(refused, c.workflowRefusals(m)...)
 	for _, key := range keys {
 		if !m.fixes() && slices.Contains(fixKeys, key) {
 			refused = append(refused, refusal{fmt.Sprintf("names %s in its monitor.json, a key that steers a fix, "+
@@ -364,6 +401,29 @@ func (c config) monitorRefusals(m monitor, files, keys []string) refusals {
 	}
 
 	return refused
+}
+
+// workflowRefusals say why kiln may not run m by the workflow its monitor.json names, with c as kiln.json. A
+// test-first fix needs the testFiles of c, which tell its tests from its fix.
+func (c config) workflowRefusals(m monitor) refusals {
+	first := m.Workflow == testFirst
+	return broken(
+		rule{m.Workflow != "" && !slices.Contains(workflows, m.Workflow), refusal{fmt.Sprintf("names the workflow "+
+			"%q in its monitor.json, which kiln does not know", m.Workflow), fmt.Sprintf("name %q or %q, or drop "+
+			"workflow", oneSession, testFirst)}},
+		rule{first && (m.finder != checkScript || !m.tester || !m.agent), refusal{fmt.Sprintf("names the workflow "+
+			"%s, which needs a check, %s and %s", testFirst, testAgent, monitorAgent),
+			"add each it lacks, or drop workflow"}},
+		rule{first && m.command, refusal{fmt.Sprintf("names the workflow %s, but holds a command, which fixes with no "+
+			"test first", testFirst), "remove the command, or drop workflow"}},
+		rule{first && m.WritesTests, refusal{fmt.Sprintf("names the workflow %s and writesTests, but its test session "+
+			"alone writes the tests", testFirst), "drop writesTests"}},
+		rule{first && len(c.TestFiles) == 0, refusal{fmt.Sprintf("names the workflow %s, but %s names no testFiles, "+
+			"so kiln cannot tell the tests from the fix", testFirst, configFile), fmt.Sprintf("add testFiles to %s, "+
+			"such as [\"*_test.go\", \"testdata\"]", configFile)}},
+		rule{m.tester && !first, refusal{fmt.Sprintf("holds %s, which only the workflow %s runs", testAgent, testFirst),
+			fmt.Sprintf("say \"workflow\": %q in its monitor.json, or remove %s", testFirst, testAgent)}},
+	)
 }
 
 // strayFile is the first of files that sits directly in a monitor's directory, and is none of roleFiles, or "".

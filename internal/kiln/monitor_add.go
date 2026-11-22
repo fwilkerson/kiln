@@ -299,8 +299,8 @@ func (r *Repo) addable(from fs.FS, source string) (monitor, []string, error) {
 	}
 
 	m, refused := c.readMonitor(Spec(path.Base(dir)), dir, files, settings)
-	if m.agent {
-		if err := refused.add(readableAgent(from, dir)); err != nil {
+	for _, file := range m.agentFiles() {
+		if err := refused.add(readableAgent(from, dir, file)); err != nil {
 			return m, nil, err
 		}
 	}
@@ -315,17 +315,17 @@ func (r *Repo) addable(from fs.FS, source string) (monitor, []string, error) {
 	return m, files, nil
 }
 
-// readableAgent refuses the agent.md in the directory from, where kiln could not read it. Each refusal names the file
-// in dir, the directory as kiln monitor add was given it.
-func readableAgent(from fs.FS, dir string) error {
-	raw, err := fs.ReadFile(from, monitorAgent)
+// readableAgent refuses the agent's file in the directory from, where kiln could not read it. Each refusal names the
+// file in dir, the directory as kiln monitor add was given it.
+func readableAgent(from fs.FS, dir, file string) error {
+	raw, err := fs.ReadFile(from, file)
 	if err != nil {
 		return err
 	}
 
 	_, err = parseAgent(string(raw))
 	if refused, ok := errors.AsType[refusals](err); ok {
-		return refused.about(path.Join(dir, monitorAgent) + ",")
+		return refused.about(path.Join(dir, file) + ",")
 	}
 
 	return err

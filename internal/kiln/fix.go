@@ -44,8 +44,11 @@ type fixing struct {
 	monitor monitor
 	// checked is what the run's first check, or its gauge, found. A landing kiln accept started has none.
 	checked checked
-	// side is what the fix may write.
+	// side is what the fix's session that works now may write. Its role is testRole while a test-first fix's test
+	// session works.
 	side side
+	// tested is what the fix session's first message says of a test-first fix's proved tests.
+	tested string
 	// outcome, summary and report say how the fix ended, once it has.
 	outcome, summary, report string
 	// answering is true while the session answers a landing audit's findings. It ends once the work passes the gate,
@@ -55,10 +58,14 @@ type fixing struct {
 	since []string
 }
 
-// newFixing is the fix of m, as c, kiln.json at main's tip when it started, says. found is what its check found.
+// newFixing is the fix of m, as c, kiln.json at main's tip when it started, says. found is what its check found. A
+// test-first fix's sides tell the tests apart by kiln.json's testFiles, its testHelpers and its acceptance paths.
 func newFixing(c config, m monitor, found checked) *fixing {
 	fixes := side{role: fixRole}
-	if !m.WritesTests {
+	switch {
+	case m.Workflow == testFirst:
+		fixes.tests, fixes.acceptance, fixes.helpers = c.TestFiles, c.fixedParts(), c.TestHelpers
+	case !m.WritesTests:
 		fixes.acceptance = c.fixedParts()
 	}
 
@@ -119,15 +126,24 @@ func (r *Repo) startFix(ctx context.Context, out io.Writer, f *fixing, line entr
 	return b, b.fixSettle(ctx, b.fixWork(ctx))
 }
 
-// fixWork runs the fix: the command first, then the agent when the command left the gate failing.
+// fixWork runs the fix: the command first, then the agent when the command left the gate failing. A test-first fix
+// runs its test session first, and its agent from the tests kiln proved.
 func (b *build) fixWork(ctx context.Context) error {
-	name := b.rec.Name
-	if err := b.r.git.Checkout(ctx, b.tree, name.branch(), b.rec.Approved); err != nil {
+	name, m, from := b.rec.Name, b.fix.monitor, b.rec.Approved
+	if m.Workflow == testFirst {
+		tested, err := b.testFirst(ctx)
+		if err != nil || tested == "" {
+			return err
+		}
+
+		from = tested
+	}
+
+	if err := b.r.git.Checkout(ctx, b.tree, name.branch(), from); err != nil {
 		return err
 	}
 
 	b.say("fixing on %s, in %s", name.branch(), b.tree)
-	m := b.fix.monitor
 	if !m.command {
 		return b.fixAgent(ctx, "")
 	}
@@ -245,6 +261,10 @@ func (f *fixing) prompt(gateReport string) string {
 		parts = append(parts, fmt.Sprintf(commandFailed, m.path(commandScript), gateReport))
 	}
 
+	if f.tested != "" {
+		parts = append(parts, f.tested)
+	}
+
 	parts = append(parts, fmt.Sprintf(fixWhat, m.Name))
 	return strings.Join(parts, "\n\n")
 }
@@ -357,8 +377,12 @@ func (b *build) fixAfter(ctx context.Context) (string, reason, error) {
 	}
 
 	if b.rec.Session != "" {
-		if findings, why, err := b.fixFindings(ctx); err != nil || findings != "" {
-			return fmt.Sprintf(fixAudited, findings), why, err
+		findings, why, err := b.fixFindings(ctx)
+		switch {
+		case err != nil:
+			return "", reason{}, err
+		case findings != "":
+			return b.sendFindings(ctx, findings, why)
 		}
 	}
 
@@ -668,24 +692,34 @@ func (b *build) fixEnded(ctx context.Context) error {
 }
 
 // fixLaunch is a run of the monitor's agent's session, in the fix's worktree. Its hook keeps it off .kiln/, and off
-// the acceptance tests unless the monitor says it may write them.
+// the tests the monitor's fix may not write.
 func (b *build) fixLaunch(ctx context.Context, resume bool, prompt string) (claude.Launch, error) {
-	f, name := b.fix, b.rec.Name
-	a, err := b.r.filesAt(b.rec.Approved).agent(ctx, f.monitor.path(monitorAgent), "commit it to main")
+	l := claude.Launch{Session: b.now().Session, Resume: resume, Prompt: prompt, System: b.fix.contract(b.rec.Name)}
+	return b.monitorLaunch(ctx, monitorAgent, b.treeGuard(), l)
+}
+
+// monitorLaunch is l, a run of a session from file, an agent's file of the fix's monitor, in g's place. Its system
+// prompt is the file's body, as the fix's start read it, then l's own, kiln's contract. Its hook asks g.
+func (b *build) monitorLaunch(ctx context.Context, file string, g guard, l claude.Launch) (claude.Launch, error) {
+	a, err := b.r.filesAt(b.rec.Approved).agent(ctx, b.fix.monitor.path(file), "commit it to main")
 	if err != nil {
 		return claude.Launch{}, err
 	}
 
-	l := claude.Launch{Session: b.now().Session, Resume: resume, Prompt: prompt, Dir: string(b.tree),
-		Hook: b.treeGuard().hookCommand(b.r.exe), Role: fixRole,
-		System: strings.TrimSpace(a.body + "\n\n" + f.contract(name))}
+	l.Dir, l.Hook, l.Role = string(g.place), g.hookCommand(b.r.exe), g.side.role
+	l.System = strings.TrimSpace(a.body + "\n\n" + l.System)
 	l.Tools, l.Model, l.Effort, l.Advisor = a.tools, a.model, a.effort, a.advisor
 	return b.sandboxed(ctx, l)
 }
 
-// kept is the forbidden action that keeps the fix's session off what it may not write.
-func (f *fixing) kept() string {
-	if len(f.side.acceptance) == 0 {
+// kept is the forbidden action that keeps role's session of the fix off what it may not write.
+func (f *fixing) kept(role string) string {
+	switch {
+	case role == testRole:
+		return "Changing anything under .kiln/, or any file but a test file, by a file tool or a shell command."
+	case len(f.side.tests) > 0:
+		return "Changing anything under .kiln/, or any test file, by a file tool or a shell command."
+	case len(f.side.acceptance) == 0:
 		return "Changing anything under .kiln/, by a file tool or a shell command."
 	}
 
@@ -696,7 +730,11 @@ func (f *fixing) kept() string {
 // contract is kiln's contract with the agent of the monitor name.
 func (f *fixing) contract(name Spec) string {
 	tests := "The monitor says its fixes may write the acceptance tests."
-	if len(f.side.acceptance) > 0 {
+	switch {
+	case len(f.side.tests) > 0:
+		tests = fmt.Sprintf("Nor is any test file: %s. A test session wrote the tests that judge your fix. It "+
+			"updated each old test that held the behavior your fix changes.", f.side.testWords())
+	case len(f.side.acceptance) > 0:
 		tests = fmt.Sprintf("Nor is anything under %s, the acceptance tests, which judge your fix.",
 			quoted(f.side.acceptance))
 	}
@@ -729,6 +767,9 @@ const (
 func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdict, error) {
 	switch {
 	case b.fix == nil || !b.fix.monitor.gated():
+		return v, nil
+	case b.fix.testing():
+		// A test-first fix's test must fail the gate before any fix, so its check, which asks for one, waits.
 		return v, nil
 	case b.fix.monitor.finder == gaugeScript:
 		return b.gatedGauge(ctx, held, v)

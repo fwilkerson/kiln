@@ -29,8 +29,8 @@ import (
 //	          audit's adds the tally its reply ends with
 //	finding   after an audit's end line, one per finding its reply lists: its rank, place, category and fields.
 //	          A reply kiln could not parse gets one line, which holds it whole
-//	gate      after each gate: when it ended, whether it passed, whether it gated a landing, and whether it ran the
-//	          commands at main too
+//	gate      after each gate: when it ended, whether it passed, whether it gated a landing, whether it ran the
+//	          commands at main too, and whether it gated a test-first fix's test before the fix
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
 //	gauge     after a landing, one per gauge that printed something or failed: its name, the landed
 //	          commit, its value or none, and its line and side
@@ -120,11 +120,13 @@ type entry struct {
 	// A finding line's, and Session the audit's.
 	finding
 	// A gate line's. At is when it started. Landing is the gate on the work rebased onto main. RanMain is whether it
-	// ran the commands at main too. A line from before kiln wrote it holds none.
-	End     time.Time `json:"end,omitzero"`
-	Passed  bool      `json:"passed,omitempty"`
-	Landing bool      `json:"landing,omitempty"`
-	RanMain *bool     `json:"ran_main,omitempty"`
+	// ran the commands at main too. A line from before kiln wrote it holds none. BeforeFix is the gate on a
+	// test-first fix's test, which must fail.
+	End       time.Time `json:"end,omitzero"`
+	Passed    bool      `json:"passed,omitempty"`
+	Landing   bool      `json:"landing,omitempty"`
+	RanMain   *bool     `json:"ran_main,omitempty"`
+	BeforeFix bool      `json:"before_fix,omitempty"`
 	// An outcome line's. Amendments is the text of a waiting build's amendments.
 	Outcome    string `json:"outcome,omitempty"`
 	Amendments string `json:"amendments,omitempty"`
@@ -170,6 +172,7 @@ const (
 	whyLimit       = "limit"
 	whyInterrupted = "interrupted"
 	whyTended      = "tended"
+	whyNoTest      = "no test"
 )
 
 // write appends e to the ledger, as one line.

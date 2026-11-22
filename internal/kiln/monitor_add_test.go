@@ -36,7 +36,7 @@ func TestMonitorAdd(t *testing.T) {
 		says           string // a part of the refusal
 		schema         string // the monitor.json it writes, from one that names no "$schema"
 	}{
-		"a monitor kiln ships": {source: "bugs", want: []string{"bugs/agent.md", "bugs/check*", "bugs/monitor.json"}},
+		"a monitor kiln ships": {source: "bugs", want: []string{"bugs/agent.md", "bugs/check*", "bugs/monitor.json", "bugs/test.md"}},
 		"one under its preset": {source: "go/docs", want: []string{"docs/agent.md", "docs/check*", "docs/monitor.json"}},
 		"a team's directory": {source: team + "/deps", schema: `{"$schema": "../../generated/monitor.schema.json", "hours": 168}`,
 			want: []string{"deps/command*", "deps/lib/run*", "deps/monitor.json", "deps/notes/why.md"}},
@@ -52,7 +52,8 @@ func TestMonitorAdd(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := &Repo{top: t.TempDir()}
-			writeAll(t, r.top, map[string]string{configFile: `{"gate": ["true"], "acceptanceTests": "a/{spec}/"}`})
+			writeAll(t, r.top, map[string]string{configFile: `{"gate": ["true"], "acceptanceTests": "a/{spec}/", ` +
+				`"testFiles": ["*_test.go"]}`})
 			if tc.there {
 				writeMonitor(t, r.top, "bugs", map[string]string{"command": "mine"})
 			}
@@ -82,7 +83,8 @@ var kilnOwn = regexp.MustCompile(`fwilkerson|docs/practices\.md|uat/|internal/|s
 // TestShippedMonitors holds that kiln could run each monitor it ships, in a project whose tests it can guard. None
 // names a path of kiln's own repository.
 func TestShippedMonitors(t *testing.T) {
-	c, err := parseConfig([]byte(`{"gate": ["true"], "acceptanceTests": "acceptance/{spec}/"}`))
+	c, err := parseConfig([]byte(`{"gate": ["true"], "acceptanceTests": "acceptance/{spec}/", ` +
+		`"testFiles": ["*_test.go"]}`))
 	if err != nil || len(shippedNames()) == 0 {
 		t.Fatalf("kiln.json reads %v, and kiln ships %v", err, shippedNames())
 	}

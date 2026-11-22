@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,28 +86,64 @@ func TestGuard(t *testing.T) {
 		"and leaves what only shares its directory":  {tool: "Write", file: place + "/tests/acceptance/conftest.py", side: fixesPython},
 	} {
 		t.Run(name, func(t *testing.T) {
-			input := map[string]string{"file_path": tc.file}
-			if tc.tool == "NotebookEdit" {
-				input = map[string]string{"notebook_path": tc.file}
-			}
-
-			in, _ := json.Marshal(map[string]any{"tool_name": tc.tool, "cwd": tc.cwd, "tool_input": input})
-			var out bytes.Buffer
 			worktree := git.Worktree(place)
 			if strings.HasPrefix(tc.file, "/private") {
 				worktree = "/tmp/w"
 			}
 
-			g := guard{spec: "x", place: worktree, side: tc.side}
-			if err := Hook(g.hookArgs(), bytes.NewReader(in), &out); err != nil {
-				t.Fatal(err)
-			}
-
-			if refused := strings.Contains(out.String(), `"permissionDecision":"deny"`); refused != tc.refused {
-				t.Errorf("refused %v, want %v: %s", refused, tc.refused, out.String())
+			c := hookCall{Tool: tc.tool, Cwd: tc.cwd}
+			c.Input.File = tc.file
+			out := hookSays(t, guard{spec: "x", place: worktree, side: tc.side}, c)
+			if refused := strings.Contains(out, `"permissionDecision":"deny"`); refused != tc.refused {
+				t.Errorf("refused %v, want %v: %s", refused, tc.refused, out)
 			}
 		})
 	}
+}
+
+// TestTestFirstSides holds which files each session of a test-first fix may write. The test session writes only test
+// files, and the fix session none. A test file matches a pattern of testFiles, or lies under an acceptance path's
+// fixed part or a helper.
+func TestTestFirstSides(t *testing.T) {
+	const place = "/w"
+	for file, may := range map[string]struct{ test, fix bool }{
+		"x_test.go":             {test: true},
+		"X_TEST.GO":             {test: true},
+		"x/testdata/in.txt":     {test: true},
+		"acceptance/y/y.go":     {test: true},
+		"h/helper.go":           {test: true},
+		"x.go":                  {fix: true},
+		".kiln/specs/x_test.go": {},
+	} {
+		for role, mayWrite := range map[string]bool{testRole: may.test, fixRole: may.fix} {
+			s := side{role: role, acceptance: []string{"acceptance/"}, helpers: []string{"h/"},
+				tests: []string{"*_test.go", "testdata"}}
+			c := hookCall{Tool: "Write", Cwd: place}
+			c.Input.File = place + "/" + file
+			out := hookSays(t, guard{spec: "x", place: place, side: s}, c)
+			if refused := strings.Contains(out, `"permissionDecision":"deny"`); refused == mayWrite {
+				t.Errorf("the %s session's write to %s: refused %v, want %v: %s", role, file, refused, !mayWrite, out)
+			}
+		}
+	}
+}
+
+// hookSays is what the hook answers c, a call of a tool, in the session g guards. A NotebookEdit names its file as
+// notebook_path.
+func hookSays(t *testing.T, g guard, c hookCall) string {
+	t.Helper()
+	input := map[string]string{"file_path": c.Input.File}
+	if c.Tool == "NotebookEdit" {
+		input = map[string]string{"notebook_path": c.Input.File}
+	}
+
+	in, _ := json.Marshal(map[string]any{"tool_name": c.Tool, "cwd": c.Cwd, "tool_input": input})
+	var out bytes.Buffer
+	if err := Hook(g.hookArgs(), bytes.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+
+	return out.String()
 }
 
 // TestFixRefusal holds that a fix kept off the acceptance tests learns which key of monitor.json lets it write them.
@@ -139,15 +176,10 @@ func TestGuardLinks(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			place := filepath.Join(top, cmp.Or(tc.place, "x"))
-			in, _ := json.Marshal(map[string]any{"tool_name": "Write", "cwd": place,
-				"tool_input": map[string]string{"file_path": tc.file}})
-			var out bytes.Buffer
-			g := guard{spec: "x", place: git.Worktree(place)}
-			if err := Hook(g.hookArgs(), bytes.NewReader(in), &out); err != nil {
-				t.Fatal(err)
-			}
-
-			if got := out.String(); (got == "") != (tc.refusal == "") || !strings.Contains(got, tc.refusal) {
+			c := hookCall{Tool: "Write", Cwd: place}
+			c.Input.File = tc.file
+			got := hookSays(t, guard{spec: "x", place: git.Worktree(place)}, c)
+			if (got == "") != (tc.refusal == "") || !strings.Contains(got, tc.refusal) {
 				t.Errorf("the hook answered %q, want the refusal %q", got, tc.refusal)
 			}
 		})
@@ -167,10 +199,74 @@ func TestHookArguments(t *testing.T) {
 		"an acceptance path with no role": {"--spec", "x", "--place", "/w", "--acceptance", "a/"},
 		"two acceptance paths, no role":   {"--spec", "x", "--place", "/w", "--acceptance", "a/", "--acceptance", "b/"},
 		"helpers in a fix":                {"--spec", "x", "--place", "/w", "--role", fixRole, "--helpers", "h/"},
+		"a test side with no test files":  {"--spec", "x", "--place", "/w", "--role", testRole},
+		"test files in a split build":     {"--spec", "x", "--place", "/w", "--role", buildRole, "--acceptance", "a/", "--tests", "*_test.go"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := Hook(args, strings.NewReader("{}"), io.Discard); !errors.Is(err, ErrUsage) {
 				t.Errorf("Hook answered %v, want ErrUsage", err)
+			}
+		})
+	}
+}
+
+// TestTestFiles holds that the gate refuses a test-first fix's change to a test file, however made. A test file passes
+// while it stays as the proved tests hold it.
+func TestTestFiles(t *testing.T) {
+	t.Parallel()
+	r, repo := scratchRepo(t)
+	shell(t, repo, "mkdir testdata && echo in >testdata/in.txt && echo 'package x' >x.go && echo old >x_test.go && "+
+		"git add . && git commit --quiet -m main && git checkout --quiet -b kiln/m && echo 'test' >x_test.go && "+
+		"echo 'new' >y_test.go && git add . && git commit --quiet -m test")
+	tested := git.Rev(strings.TrimSpace(shell(t, repo, "git rev-parse HEAD")))
+	g := guard{spec: "m", place: git.Worktree(repo), tested: tested,
+		side: side{role: fixRole, tests: []string{"*_test.go", "testdata"}}}
+	for name, tc := range map[string]struct {
+		change  string
+		refused []string
+	}{
+		"the fix changes code":            {change: "echo 'package x // fixed' >x.go"},
+		"the fix changes a test":          {change: "echo weaker >x_test.go", refused: []string{"x_test.go"}},
+		"the fix deletes a test":          {change: "rm y_test.go", refused: []string{"y_test.go"}},
+		"the fix puts a test back":        {change: "echo old >x_test.go", refused: []string{"x_test.go"}},
+		"the fix adds a test that passes": {change: "echo 'func TestMain' >main_test.go", refused: []string{"main_test.go"}},
+		"the fix changes a fixture":       {change: "echo out >testdata/in.txt", refused: []string{"testdata/in.txt"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			shell(t, repo, "git checkout --quiet --detach "+string(tested)+" && "+tc.change+
+				" && git add -A && git commit --quiet -m fix")
+			g.head = git.Rev(strings.TrimSpace(shell(t, repo, "git rev-parse HEAD")))
+			refused, _, err := r.refused(t.Context(), g, "main", nil)
+			if got := slices.Sorted(maps.Keys(refused)); err != nil || !slices.Equal(got, tc.refused) {
+				t.Errorf("the gate refused %q, %v; want %q", got, err, tc.refused)
+			}
+		})
+	}
+}
+
+// TestFailsOnTests holds when a gate shows a test-first fix's test: it fails on tests alone, and on one at least.
+func TestFailsOnTests(t *testing.T) {
+	const other = "--- FAIL: TestNew (0.00s)\nFAIL\nFAIL\texample.com/s\t0.1s\n"
+	const broken = "# example.com/s\n./s.go:3:1: syntax error\nFAIL\texample.com/s [build failed]\n"
+	for name, tc := range map[string]struct {
+		tip, main []check
+		refused   map[string]string
+		shows     bool
+	}{
+		"a new test fails":                     {tip: goTest(1, other), main: goTest(0, ""), shows: true},
+		"every test passes":                    {tip: goTest(0, ""), main: goTest(0, "")},
+		"a test fails at main too":             {tip: goTest(1, other), main: goTest(1, other)},
+		"a package no longer builds":           {tip: goTest(1, broken), main: goTest(0, "")},
+		"a new test fails beside a broken one": {tip: goTest(1, other+broken), main: goTest(0, "")},
+		"a new test fails, and a path is refused": {tip: goTest(1, other), main: goTest(0, ""),
+			refused: map[string]string{".kiln/kiln.json": "under .kiln/"}},
+		"a command fails that names no test": {tip: append(goTest(1, other), check{Command: "go vet ./...", Exit: 1}),
+			main: goTest(0, "")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := judge(readOutputs(tc.tip), readOutputs(tc.main), tc.refused)
+			if got := v.failsOnTests(); got != tc.shows {
+				t.Errorf("failsOnTests is %v, want %v: %s", got, tc.shows, v.report)
 			}
 		})
 	}
@@ -521,9 +617,14 @@ func givenBook(given string) book {
 
 	given, landing := strings.CutSuffix(given, " landing")
 	given, fix := strings.CutPrefix(given, "fix ")
-	return book{Specs: []*record{{Name: "x", State: state(given), Accepted: landing, Approved: "old", Session: "s",
-		Build: "b", Rounds: 2, Limit: new(3), Audited: "read", Why: "w", FailingAtMain: []string{"TestF"},
-		Monitor: fix, AcceptedAt: "taken", Title: "fix(x): t", Running: []string{"m"}}}}
+	r := &record{Name: "x", State: state(given), Accepted: landing, Approved: "old", Session: "s", Build: "b",
+		Rounds: 2, Limit: new(3), Audited: "read", Why: "w", FailingAtMain: []string{"TestF"}, Monitor: fix,
+		AcceptedAt: "taken", Title: "fix(x): t", Running: []string{"m"}}
+	if fix {
+		r.TestSession, r.Tested = "t", "proved"
+	}
+
+	return book{Specs: []*record{r}}
 }
 
 // commanded is what a command left of the spec x. It holds x's state, as a row's then words it, its error and
@@ -574,7 +675,8 @@ func (tc specState) want() commanded {
 }
 
 // carries is what x's record should carry of the build before, if the row checks it. A new queue carries nothing.
-// A landing accepted again keeps its build, session, audit, rounds' limit, title, accepted commit and cut turns.
+// A landing accepted again keeps its build, session, audit, rounds' limit, title, accepted commit and cut turns. A
+// fix's landing keeps its test session and proved tests too, which judge each later gate.
 func (tc specState) carries() (carried, bool) {
 	switch {
 	case tc.then == "":
@@ -583,9 +685,10 @@ func (tc specState) carries() (carried, bool) {
 		return carried{approved: "new"}, true
 	case tc.command == "resume":
 		return carried{approved: "old", session: "s", oldBuild: true, audited: true, failingAtMain: true,
-			landing: true}, true
+			landing: true, tested: strings.HasPrefix(tc.given, "fix ")}, true
 	case strings.HasSuffix(tc.then, "queued landing"):
-		return carried{approved: "old", session: "s", oldBuild: true, audited: true, landing: true}, true
+		return carried{approved: "old", session: "s", oldBuild: true, audited: true, landing: true,
+			tested: strings.HasPrefix(tc.given, "fix ")}, true
 	}
 
 	return carried{}, false
@@ -600,13 +703,15 @@ type carried struct {
 	failingAtMain              bool
 	// landing is what a landing keeps to go back to its session: its limit, title, accepted commit and cut turns.
 	landing bool
+	// tested is a test-first fix's test session and proved tests.
+	tested bool
 }
 
 func carriedOf(r *record) carried {
 	landing := r.Limit != nil && r.Title != "" && r.AcceptedAt != "" && r.Running != nil
 	return carried{approved: r.Approved, session: r.Session, why: r.Why, oldBuild: r.Build == "b",
 		noBuild: r.Build == "", audited: r.Audited != "", rounds: r.Rounds, failingAtMain: r.FailingAtMain != nil,
-		landing: landing}
+		landing: landing, tested: r.TestSession == "t" && r.Tested == "proved"}
 }
 
 // thenOf words the state of r as a row's then does.
@@ -1767,7 +1872,7 @@ func TestGateLineAfterError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.HasSuffix(out.String(), `"passed":false,"landing":false,"ran_main":true}`+"\n") {
+	if !strings.HasSuffix(out.String(), `"passed":false,"landing":false,"ran_main":true,"before_fix":false}`+"\n") {
 		t.Errorf("the gate's line is %s, want it failed, and ran at main", out.String())
 	}
 }
@@ -1891,7 +1996,7 @@ func TestBlindTranscripts(t *testing.T) {
 
 			r := &Repo{trees: "/trees", top: "/repo", common: "/repo/.git", env: tt.env}
 			want := filepath.Join(tt.want, projectDir(string(r.clone("x", verifyRole))))
-			denyRead, _, deny := r.blinds("x", buildRole)
+			denyRead, _, deny := r.blinds("x", r.clone("x", buildRole), r.clone("x", verifyRole))
 			if !slices.Contains(denyRead, want) || !slices.Contains(deny, "Read(/"+want+"/**)") {
 				t.Errorf("blinds deny %v and %v, want both to hold %s", denyRead, deny, want)
 			}

@@ -545,6 +545,8 @@ func (s setback) said() (goesBack, stops, prompt string) {
 		return "the work conflicts with main", "the work still conflicts with main", s.report
 	case whyUnchanged:
 		return "the work changes nothing on main", "the work still changes nothing on main", s.report
+	case whyNoTest:
+		return "no test fails on its own", "still no test failed on its own", s.report
 	case whyStackConflict:
 		return "the verify session's tests conflict with the build session's code",
 			"the verify session's tests still conflict with the build session's code", s.report
@@ -803,7 +805,7 @@ func (b *build) judgeWork(ctx context.Context, without []string, guards ...guard
 func (b *build) treeGuard(allowed ...string) guard {
 	g := guard{spec: b.rec.Name, place: b.tree, allowed: allowed}
 	if b.fix != nil {
-		g.side = b.fix.side
+		g.side, g.tested = b.fix.side, b.now().Tested
 	}
 
 	return g
@@ -814,6 +816,7 @@ func (b *build) treeGuard(allowed ...string) guard {
 // sets the record's Before. A gate while it is set is the landing's gate, on the work rebased onto main.
 func (b *build) gated(ctx context.Context, held commands, without []string, guards ...guard) (verdict, error) {
 	e := entry{Kind: gateKind, At: time.Now(), Landing: b.now().Before != ""}
+	e.BeforeFix = b.fix != nil && b.fix.testing()
 	v, err := held.gate(ctx, without, guards...)
 	if err == nil {
 		e.RanMain = new(v.ranMain)

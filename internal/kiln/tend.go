@@ -379,7 +379,14 @@ func (r *Repo) workOf(rec *record) string {
 // sessionsOf names each session rec holds, with the checkout it runs in. It is "" when rec holds none.
 func (r *Repo) sessionsOf(rec *record) string {
 	switch {
-	case rec == nil || rec.Session == "":
+	case rec == nil:
+		return ""
+	case rec.TestSession != "" && rec.Session == "":
+		return fmt.Sprintf("%s %s, in %s", testRole, rec.TestSession, r.clone(rec.Name, testRole))
+	case rec.TestSession != "":
+		return fmt.Sprintf("%s %s, in %s; %s %s, in %s", testRole, rec.TestSession, r.clone(rec.Name, testRole),
+			fixRole, rec.Session, r.tree(rec.Name))
+	case rec.Session == "":
 		return ""
 	case rec.Verify != "":
 		return fmt.Sprintf("%s %s, in %s; %s %s, in %s", buildRole, rec.Session, r.clone(rec.Name, buildRole),

@@ -93,7 +93,7 @@ func (s *buildStats) printed() []printed {
 	for _, g := range s.gates {
 		lines = append(lines, printed{"gate", s.Spec, g.At, printedGate{Kind: "gate", Build: s.Build, Name: s.Spec,
 			At: stamp(g.At), End: stamp(g.End), Seconds: seconds(g.End.Sub(g.At)), Passed: g.Passed,
-			Landing: g.Landing, RanMain: g.RanMain}})
+			Landing: g.Landing, RanMain: g.RanMain, BeforeFix: g.BeforeFix}})
 	}
 
 	for _, e := range s.readings {
@@ -171,15 +171,16 @@ func (s *buildStats) printedRun(r run) printedRun {
 
 // printedGate is a run of the gate, as kiln ledger prints it.
 type printedGate struct {
-	Kind    string  `json:"kind"`
-	Build   string  `json:"build"`
-	Name    Spec    `json:"name"`
-	At      stamp   `json:"at"`
-	End     stamp   `json:"end"`
-	Seconds float64 `json:"seconds"`
-	Passed  bool    `json:"passed"`
-	Landing bool    `json:"landing"`
-	RanMain *bool   `json:"ran_main"`
+	Kind      string  `json:"kind"`
+	Build     string  `json:"build"`
+	Name      Spec    `json:"name"`
+	At        stamp   `json:"at"`
+	End       stamp   `json:"end"`
+	Seconds   float64 `json:"seconds"`
+	Passed    bool    `json:"passed"`
+	Landing   bool    `json:"landing"`
+	RanMain   *bool   `json:"ran_main"`
+	BeforeFix bool    `json:"before_fix"`
 }
 
 // printedReading is a gauge's reading of a landing, as kiln ledger prints it.

@@ -150,6 +150,8 @@ type verdict struct {
 	// failing names each failure report counts. A test is named as check.Failed names it, and only if it passes at
 	// main. A command that failed is named when it names no such test. A refused path is named too.
 	failing []string
+	// tests names the tests of failing.
+	tests []string
 	// rounds is how many times kiln.json lets a failing gate go back to the session.
 	rounds int
 	// ranMain is whether the gate ran the commands at main, rather than reading the checks kept from an earlier gate.
@@ -168,6 +170,8 @@ func judge(tip, main []check, refused map[string]string) verdict {
 		if report, failing := c.judged(atMain[c.Command]); report != "" {
 			failures = append(failures, report)
 			v.failing = append(v.failing, failing...)
+			tests, _ := c.against(atMain[c.Command])
+			v.tests = append(v.tests, tests...)
 		}
 	}
 
@@ -200,6 +204,11 @@ func failedAt(main []check) (byCommand map[string]check, names []string) {
 
 	slices.Sort(names)
 	return byCommand, slices.Compact(names)
+}
+
+// failsOnTests is whether v failed on tests alone: on one at least, with no command broken and no path refused.
+func (v verdict) failsOnTests() bool {
+	return !v.passed && len(v.tests) > 0 && len(v.tests) == len(v.failing)
 }
 
 // unnamed is what a report adds for a command that failed at the tip and at main. It named no test at either.
@@ -328,8 +337,8 @@ func (r *Repo) atCommit(ctx context.Context, spec Spec, head git.Rev, c config) 
 }
 
 // refused says, by path, why the build may not change each path its work changed since it left main. A path under
-// one of without that the work lacks is kiln's removal, not the work's. It answers head, the commit it read at g's
-// place.
+// one of without that the work lacks is kiln's removal, not the work's. It judges each file g.tested changed too. So
+// it refuses a fix that puts a test back as main holds it. It answers head, the commit it read at g's place.
 func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []string) (map[string]string, git.Rev,
 	error) {
 	head := g.head
@@ -340,7 +349,7 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []str
 		}
 	}
 
-	changed, err := r.git.Branched(ctx, main, head)
+	changed, err := r.judgedPaths(ctx, g, main, head)
 	if err != nil {
 		return nil, "", err
 	}
@@ -357,12 +366,45 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []str
 			return nil, "", err
 		}
 
-		if !removed {
+		kept, err := r.keptTest(ctx, g, head, p)
+		if err != nil {
+			return nil, "", err
+		}
+
+		if !removed && !kept {
 			refused[p] = why
 		}
 	}
 
 	return refused, head, nil
+}
+
+// judgedPaths lists, sorted, each path head changed since it left main, and each that g.tested changed.
+func (r *Repo) judgedPaths(ctx context.Context, g guard, main, head git.Rev) ([]string, error) {
+	changed, err := r.git.Branched(ctx, main, head)
+	if err != nil || g.tested == "" {
+		return changed, err
+	}
+
+	tests, err := r.git.Branched(ctx, main, g.tested)
+	return slices.Compact(slices.Sorted(slices.Values(slices.Concat(changed, tests)))), err
+}
+
+// keptTest is whether p is a test file of a test-first fix, and head holds it as g.tested does. g.tested holds the
+// proved tests.
+// Then the test session wrote it, or main held it so, and the fix left it as it was.
+func (r *Repo) keptTest(ctx context.Context, g guard, head git.Rev, p string) (bool, error) {
+	if g.tested == "" || !g.side.testFile(fold(p)) {
+		return false, nil
+	}
+
+	was, wasHeld, err := r.git.Show(ctx, g.tested, p)
+	if err != nil {
+		return false, err
+	}
+
+	is, held, err := r.git.Show(ctx, head, p)
+	return held == wasHeld && bytes.Equal(is, was), err
 }
 
 // removed is whether p is under one of without, and head lacks it. That is kiln's removal, not the work's.

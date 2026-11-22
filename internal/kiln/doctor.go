@@ -147,8 +147,8 @@ func (r *Repo) diagnoseProject(ctx context.Context, c config, monitors []monitor
 			return err
 		}
 
-		if m.agent {
-			_, err := tree.agent(ctx, m.path(monitorAgent), "write it")
+		for _, file := range m.agentFiles() {
+			_, err := tree.agent(ctx, m.path(file), "write it")
 			if err := d.found.add(err); err != nil {
 				return err
 			}

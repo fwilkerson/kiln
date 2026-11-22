@@ -67,6 +67,13 @@
         "type": "string"
       }
     },
+    "testFiles": {
+      "description": "testFiles lists patterns that name the project's test files, such as [\"*_test.go\", \"testdata\"]. A file is a test file when a pattern matches an element of its path, by Go's path.Match. A pattern holds no slash. In a monitor whose workflow is \"test-first\", the files under testHelpers are test files too. So are the files under each acceptanceTests path's part before {spec}. A test-first monitor's test session writes only test files, and its fix session writes none. Absent, kiln refuses each test-first monitor.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "reaudit": {
       "description": "reaudit lists paths whose changes the audit must read before the work lands, such as [\"migrations/\"]. The audit reads the work once. When the work changes one of these paths after that, the audit reads the work again. That second reading uses a round. Absent, the audit never reads what a session changes in answer to the audit's findings.",
       "type": "array",

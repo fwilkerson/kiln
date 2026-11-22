@@ -23,6 +23,9 @@ type guard struct {
 	place git.Worktree
 	// head is the commit kiln made at place, or "" for the gate to read there.
 	head git.Rev
+	// tested is the commit of a test-first fix's proved tests, or "". The fix holds each test file as tested does.
+	// The hook's command line leaves it out, since the hook refuses each test file.
+	tested git.Rev
 	// allowed holds the paths the build may change, though guarded names them. A landing of accepted amendments changes
 	// its spec. The hook's command line leaves them out.
 	allowed []string
@@ -33,28 +36,39 @@ type guard struct {
 // side is the part of a build's worktree one session may write. The zero side is a build then audit's session,
 // which writes anywhere but where every guard refuses.
 type side struct {
-	// role is buildRole or verifyRole in a split build, fixRole in a monitor's fix, and "" otherwise.
+	// role is buildRole or verifyRole in a split build, testRole or fixRole in a monitor's fix, and "" otherwise.
 	role string
 	// acceptance holds a split build's acceptance paths, with the spec's name filled in, such as "acceptance/x/". In
 	// a fix it holds each path's fixed part, and guards each path that starts with one. It is empty in a fix whose
 	// monitor says it may write the tests.
 	acceptance []string
-	// helpers holds the paths both sessions of a split build write, as kiln.json's testHelpers names them.
+	// helpers holds the paths both sessions of a split build write, as kiln.json's testHelpers names them. A
+	// test-first fix holds them as test files.
 	helpers []string
+	// tests holds kiln.json's testFiles in a test-first fix, and nothing elsewhere. A test file matches one, lies
+	// under an acceptance path's fixed part, or lies under a helper.
+	tests []string
 }
 
-// fixRole is the side of a monitor's fix, which has no spec. It writes nothing under .kiln/.
-const fixRole = "fix"
+// The sides of a monitor's fix, which has no spec. Neither writes anything under .kiln/. In a test-first fix, the test
+// session works first, then the fix session.
+const (
+	fixRole  = "fix"
+	testRole = "test"
+)
 
-// valid is whether s is a side kiln builds. Only a side of a split build has helpers, and each has an acceptance path.
+// valid is whether s is a side kiln builds. A split build's side has an acceptance path. Helpers belong to a split
+// build's side or a test-first fix's. A test session's side names its test files.
 func (s side) valid() bool {
 	switch s.role {
 	case "":
-		return s.acceptance == nil && s.helpers == nil
+		return s.acceptance == nil && s.helpers == nil && s.tests == nil
 	case fixRole:
-		return s.helpers == nil
+		return s.helpers == nil || len(s.tests) > 0
+	case testRole:
+		return len(s.tests) > 0
 	case buildRole, verifyRole:
-		return len(s.acceptance) > 0
+		return len(s.acceptance) > 0 && s.tests == nil
 	}
 
 	return false
@@ -62,7 +76,8 @@ func (s side) valid() bool {
 
 // refusal says why the session of s may not write folded, a path folded as APFS reads it, or "". A split build's
 // build session writes neither the acceptance tests nor the amendments. Its verify session writes only those, and
-// the paths of testHelpers. A fix writes no acceptance test, unless its monitor says it may.
+// the paths of testHelpers. A fix writes no acceptance test, unless its monitor says it may. A test-first fix's test
+// session writes only test files, and its fix session writes none.
 func (s side) refusal(rel, folded string, spec Spec) string {
 	in := func(root string) bool { return within(folded, root) }
 	tests := slices.ContainsFunc(s.acceptance, in) || folded == fold(spec.amendPath())
@@ -78,15 +93,58 @@ func (s side) refusal(rel, folded string, spec Spec) string {
 			return fmt.Sprintf("%s is the build session's: in a split build, the verify session writes only %s, "+
 				"%s and the paths of kiln.json's testHelpers", rel, paths, spec.amendPath())
 		}
-	case fixRole:
-		i := slices.IndexFunc(s.acceptance, func(fixed string) bool { return strings.HasPrefix(folded, fold(fixed)) })
-		if i >= 0 {
-			return fmt.Sprintf("%s is under the acceptance tests, %s, which judge a monitor's fix: it writes them "+
-				"only when its monitor says \"writesTests\": true", rel, s.acceptance[i])
+	case testRole:
+		if !s.testFile(folded) {
+			return fmt.Sprintf("%s is no test file: in a test-first fix, the test session writes only %s", rel,
+				s.testWords())
 		}
+	case fixRole:
+		return s.fixRefusal(rel, folded)
 	}
 
 	return ""
+}
+
+// fixRefusal says why the fix session of s may not write folded, or "". A test-first fix writes no test file. Any
+// other fix writes no acceptance test.
+func (s side) fixRefusal(rel, folded string) string {
+	if len(s.tests) > 0 && s.testFile(folded) {
+		return fmt.Sprintf("%s is a test file: in a test-first fix, the test session wrote the tests that judge the "+
+			"fix, and the fix changes none of %s", rel, s.testWords())
+	}
+
+	i := slices.IndexFunc(s.acceptance, func(fixed string) bool { return strings.HasPrefix(folded, fold(fixed)) })
+	if i < 0 {
+		return ""
+	}
+
+	return fmt.Sprintf("%s is under the acceptance tests, %s, which judge a monitor's fix: it writes them only "+
+		"when its monitor says \"writesTests\": true", rel, s.acceptance[i])
+}
+
+// testFile is whether folded is a test file of s, a test-first fix's side. folded is a path folded as APFS reads it.
+func (s side) testFile(folded string) bool {
+	matches := func(name string) bool {
+		return slices.ContainsFunc(s.tests, func(p string) bool {
+			ok, _ := path.Match(fold(p), name)
+			return ok
+		})
+	}
+
+	under := func(fixed string) bool { return strings.HasPrefix(folded, fold(fixed)) }
+	in := func(root string) bool { return within(folded, root) }
+	return slices.ContainsFunc(strings.Split(folded, "/"), matches) || slices.ContainsFunc(s.acceptance, under) ||
+		slices.ContainsFunc(s.helpers, in)
+}
+
+// testWords names the test files of s, a test-first fix's side, for a refusal.
+func (s side) testWords() string {
+	words := "the files kiln.json's testFiles names, " + strings.Join(s.tests, ", ")
+	if under := slices.Concat(s.acceptance, s.helpers); len(under) > 0 {
+		words += ", and those under " + strings.Join(under, ", ")
+	}
+
+	return words
 }
 
 // within is whether folded is root or under it. A root that ends in a slash is a directory, and holds only what is
@@ -112,7 +170,7 @@ func (g guard) guarded(rel string) string {
 		return ""
 	case slices.Contains(names, fold(".git")):
 		return rel + " is in a git directory, which only git and kiln write"
-	case names[0] == fold(kilnDir) && g.side.role == fixRole:
+	case names[0] == fold(kilnDir) && slices.Contains([]string{fixRole, testRole}, g.side.role):
 		return rel + " is under .kiln/, which holds what the developer approved, the agents and the gate: a " +
 			"monitor's fix writes nothing there"
 	case names[0] == fold(kilnDir) && folded != fold(g.spec.amendPath()):
@@ -153,6 +211,10 @@ func (g guard) hookArgs() []string {
 		args = append(args, "--helpers", h)
 	}
 
+	for _, p := range g.side.tests {
+		args = append(args, "--tests", p)
+	}
+
 	return args
 }
 
@@ -173,9 +235,10 @@ func hookGuard(args []string) (guard, error) {
 	flags.SetOutput(io.Discard)
 	flags.StringVar((*string)(&g.spec), "spec", "", "the spec the session builds")
 	flags.StringVar((*string)(&g.place), "place", "", "the build's worktree")
-	flags.StringVar(&g.side.role, "role", "", "the session's side: build or verify in a split build, or fix")
+	flags.StringVar(&g.side.role, "role", "", "the session's side: build or verify in a split build, or test or fix")
 	flags.Func("acceptance", "an acceptance path the side guards; given once for each", appendTo(&g.side.acceptance))
 	flags.Func("helpers", "a path both sessions of a split build write; given once for each", appendTo(&g.side.helpers))
+	flags.Func("tests", "a pattern of a test-first fix's test files; given once for each", appendTo(&g.side.tests))
 
 	switch err := flags.Parse(args); {
 	case err != nil, flags.NArg() > 0, g.spec == "", g.place == "", !g.side.valid():

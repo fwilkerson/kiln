@@ -14,5 +14,9 @@
     "go env GOCACHE GOMODCACHE",
     "echo \"$(go env GOPATH | cut -d: -f1)/pkg/sumdb\""
   ],
+  "testFiles": [
+    "*_test.go",
+    "testdata"
+  ],
   "acceptanceTests": "acceptance/{spec}/"
 }

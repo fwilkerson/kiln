@@ -79,6 +79,11 @@ type record struct {
 	Monitor bool `json:"monitor,omitempty"`
 	// Title is the title the fix's agent last gave the commit that lands it, in place of kiln's own.
 	Title string `json:"title,omitempty"`
+	// TestSession is a test-first fix's test session, once it has one. Session is its fix session, once that starts.
+	TestSession string `json:"test_session,omitempty"`
+	// Tested is the commit of a test-first fix's tests that the gate last failed on alone, on kiln/<name>.test. The
+	// fix holds each test file as Tested holds it.
+	Tested git.Rev `json:"tested,omitempty"`
 	// Owed is the message kiln owes each session of a stopped build that kiln tend saw to. kiln resumes each with it.
 	Owed string `json:"owed,omitempty"`
 	// Tended is true from kiln tend's queue of the stopped build until a kiln takes it. Any run in the specs' lane
@@ -351,7 +356,7 @@ func (b *book) accept(name Spec) (record, error) {
 		*r = record{Name: name, State: queued, Approved: r.Approved, Build: r.Build, Session: r.Session,
 			Verify: r.Verify, OldTests: r.OldTests, Told: r.Told, Running: r.Running, Limit: r.Limit,
 			Audited: r.Audited, Accepted: true, AcceptedAt: r.AcceptedAt, Before: r.Before, Monitor: r.Monitor,
-			Title: r.Title}
+			Title: r.Title, TestSession: r.TestSession, Tested: r.Tested}
 	}
 
 	return was, nil

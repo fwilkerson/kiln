@@ -12,5 +12,12 @@
   "writablePathCommands": [
     "npm config get cache"
   ],
+  "testFiles": [
+    "*.test.ts",
+    "*.test.tsx",
+    "*.spec.ts",
+    "tests",
+    "__tests__"
+  ],
   "acceptanceTests": "tests/acceptance/{spec}.test.ts"
 }

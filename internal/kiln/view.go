@@ -312,7 +312,7 @@ func (r run) tuiRun() *tui.Run {
 func gateSteps(gates []entry) []tui.Step {
 	steps := make([]tui.Step, len(gates))
 	for i, e := range gates {
-		steps[i] = &tui.Gate{Start: e.At, End: e.End, Passed: e.Passed, Landing: e.Landing}
+		steps[i] = &tui.Gate{Start: e.At, End: e.End, Passed: e.Passed, Landing: e.Landing, BeforeFix: e.BeforeFix}
 	}
 
 	return steps
@@ -348,5 +348,6 @@ func (w reason) shown() string {
 		whyCannotHold:    "tests the build can't meet",
 		whyNoResult:      fmt.Sprintf("after no result, try %d", w.Try),
 		whyBugsLine:      "asked for its bugs line",
+		whyNoTest:        "no test failed, " + round,
 	}[w.Why]
 }

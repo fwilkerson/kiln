@@ -70,6 +70,12 @@ type config struct {
 	// equals, holds or lies under one of these paths. A build uses the value that main held when the build was
 	// queued.
 	TestHelpers []string `json:"testHelpers,omitempty"`
+	// TestFiles lists patterns that name the project's test files, such as ["*_test.go", "testdata"]. A file is a test
+	// file when a pattern matches an element of its path, by Go's path.Match. A pattern holds no slash. In a monitor
+	// whose workflow is "test-first", the files under testHelpers are test files too. So are the files under each
+	// acceptanceTests path's part before {spec}. A test-first monitor's test session writes only test files, and its
+	// fix session writes none. Absent, kiln refuses each test-first monitor.
+	TestFiles []string `json:"testFiles,omitempty"`
 	// Reaudit lists paths whose changes the audit must read before the work lands, such as ["migrations/"]. The
 	// audit reads the work once. When the work changes one of these paths after that, the audit reads the work again.
 	// That second reading uses a round. Absent, the audit never reads what a session changes in answer to the audit's
@@ -395,7 +401,20 @@ func (c config) refusals() refusals {
 		}
 	}
 
+	for _, p := range c.TestFiles {
+		if !elementPattern(p) {
+			refused = append(refused, refusal{fmt.Sprintf("%s names the test file pattern %q", configFile, p),
+				"name a pattern of one path element, as path.Match reads one, such as \"*_test.go\""})
+		}
+	}
+
 	return refused
+}
+
+// elementPattern is whether p is a pattern of one element of a path, which path.Match parses. An empty p is not.
+func elementPattern(p string) bool {
+	_, err := path.Match(p, "")
+	return err == nil && p != "" && !strings.Contains(p, "/")
 }
 
 // bareHost is whether h names a host as Claude Code's allowedDomains reads one. Such a host holds letters, digits,

@@ -130,7 +130,7 @@ must. kiln ships four monitors:
 
 | Monitor        | What it fixes                                                                        |
 |----------------|--------------------------------------------------------------------------------------|
-| `bugs`         | each bug report filed under `bugs/`, one fix at a time, with a test that fails first |
+| `bugs`         | each bug report under `bugs/`, one at a time: a test that fails first, then its fix  |
 | `go/deps`      | each Go module behind its newest release that is at least 7 days old                 |
 | `go/docs`      | each Go package doc that a change made false                                         |
 | `go/gate-time` | a gate that slowed, by making the Go tests faster                                    |

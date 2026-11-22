@@ -1,19 +1,52 @@
-# A monitor kiln ships, added with one command, fixes each bug filed under bugs/, one fix at a time.
+# A monitor kiln ships, added with one command, fixes each bug filed under bugs/, one fix at a time. A session of its
+# own writes each bug's test first, which must fail before another session writes the fix. The audit's findings go to
+# the test session first, then to the fix session.
 
 # Given: two bugs filed under bugs/, and the bugs monitor kiln ships, added and committed on main.
 exec kiln monitor add bugs
 stdout '^wrote \.kiln/monitors/bugs/check$'
+stdout '^wrote \.kiln/monitors/bugs/test\.md$'
 exec git add .kiln/monitors/bugs
 exec git commit -q -m 'add the bugs monitor'
 
 # When: the developer runs kiln monitor run, once.
 exec kiln monitor run
 
-# Then: the first fix's prompt holds the line for bugs/a.md, and no other bug,
-grep 'Fix this bug, bugs/a\.md, and no other' .claude-calls/fix/1/1/prompt
+# Then: the first test session's prompt holds the line for bugs/a.md, and no other bug,
+grep 'Fix this bug, bugs/a\.md, and no other' .claude-calls/test/1/1/prompt
+grep 'A answers 41' .claude-calls/test/1/1/prompt
+! grep 'bugs/b\.md' .claude-calls/test/1/1/prompt
+! grep 'B answers 1' .claude-calls/test/1/1/prompt
+
+# its test that passed on main's code went back to it,
+grep 'no test fails on what the monitor found' .claude-calls/test/1/2/prompt
+
+# the fix session's prompt holds the bug, the test's file and the test that failed,
 grep 'A answers 41' .claude-calls/fix/1/1/prompt
-! grep 'bugs/b\.md' .claude-calls/fix/1/1/prompt
-! grep 'B hangs' .claude-calls/fix/1/1/prompt
+grep 'a_test\.go' .claude-calls/fix/1/1/prompt
+grep 'TestA' .claude-calls/fix/1/1/prompt
+
+# the hook refused the fix session's write to the test, and the test session's sandbox denied it the fix's worktree,
+grep 'a_test.go is a test file' .claude-calls/fix/1/1/stream.jsonl
+grep 'Read\(//[^"]*/bugs/\*\*\)' .claude-calls/test/1/1/settings.json
+
+# the audit read the tests against the bug, and its finding went to the test session first,
+grep 'Read each test against that finding' .claude-calls/audit/1/1/prompt
+grep 'A answers 41' .claude-calls/audit/1/1/prompt
+grep 'TestA checks one clause' .claude-calls/test/1/3/prompt
+
+# then, with the test session's answer merged, to the fix session,
+grep 'kiln merged its answer here' .claude-calls/fix/1/2/prompt
+grep 'TestA checks one clause' .claude-calls/fix/1/2/prompt
+
+# main holds each test as its test session last wrote it,
+exec git show main:a_test.go
+stdout 'want 42'
+stdout 'want an even answer'
+
+# the ledger marks the four gates of the tests alone,
+exec kiln ledger --kind gate
+stdout -count=4 '"before_fix":true\}'
 
 # two fixes landed, one for each bug,
 exec git log --format=%s main
@@ -28,31 +61,121 @@ exec kiln status
 stdout '^bugs: healthy'
 
 -- .kiln/kiln.json --
-{"gate": ["true"]}
+{"testFiles": ["*_test.go"]}
+-- a.go --
+package scratch
+
+func A() int { return 41 }
+-- b.go --
+package scratch
+
+func B() int { return 1 }
 -- bugs/a.md --
 # A answers 41
 
 A should answer 42.
 -- bugs/b.md --
-# B hangs
+# B answers 1
 
-B should return at once.
+B should answer 2.
+-- _given/passes/a_test.go --
+package scratch
+
+import "testing"
+
+func TestA(t *testing.T) {
+	if got := A(); got != 41 {
+		t.Errorf("A() = %d, want 41", got)
+	}
+}
+-- _given/fails/a_test.go --
+package scratch
+
+import "testing"
+
+func TestA(t *testing.T) {
+	if got := A(); got != 42 {
+		t.Errorf("A() = %d, want 42", got)
+	}
+}
+-- _given/even/a_test.go --
+package scratch
+
+import "testing"
+
+func TestA(t *testing.T) {
+	if got := A(); got != 42 {
+		t.Errorf("A() = %d, want 42", got)
+	}
+
+	if A()%2 != 0 {
+		t.Errorf("A() = %d, want an even answer", A())
+	}
+}
+-- _given/fails/b_test.go --
+package scratch
+
+import "testing"
+
+func TestB(t *testing.T) {
+	if got := B(); got != 2 {
+		t.Errorf("B() = %d, want 2", got)
+	}
+}
+-- _given/fixed/a.go --
+package scratch
+
+func A() int { return 42 }
+-- _given/fixed/b.go --
+package scratch
+
+func B() int { return 2 }
 -- claude.json --
 {
- "fix": {
+ "test": {
   "1": {
    "1": [
     {
      "tool": {
       "name": "Bash",
       "input": {
-       "command": "rm bugs/a.md"
+       "command": "cp \"$WORK/_given/passes/a_test.go\" ."
       }
      }
     },
     {
      "result": {
-      "result": "Fixed bugs/a.md.\n{\"title\": \"fix(bugs): answer 42 from a\"}"
+      "result": "Wrote TestA, which checks A."
+     }
+    }
+   ],
+   "2": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp \"$WORK/_given/fails/a_test.go\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "TestA now wants 42, which A does not answer."
+     }
+    }
+   ],
+   "3": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp \"$WORK/_given/even/a_test.go\" ."
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "TestA checks each clause now."
      }
     }
    ]
@@ -63,13 +186,65 @@ B should return at once.
      "tool": {
       "name": "Bash",
       "input": {
-       "command": "rm bugs/b.md"
+       "command": "cp \"$WORK/_given/fails/b_test.go\" ."
       }
      }
     },
     {
      "result": {
-      "result": "Fixed bugs/b.md.\n{\"title\": \"fix(bugs): stop b hanging\"}"
+      "result": "TestB wants 2."
+     }
+    }
+   ]
+  }
+ },
+ "fix": {
+  "1": {
+   "1": [
+    {
+     "tool": {
+      "name": "Write",
+      "input": {
+       "file_path": "a_test.go",
+       "content": "package scratch\n"
+      }
+     }
+    },
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp \"$WORK/_given/fixed/a.go\" . && rm bugs/a.md"
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Fixed bugs/a.md.\n{\"title\": \"fix(bugs): answer 42 from a\"}"
+     }
+    }
+   ],
+   "2": [
+    {
+     "result": {
+      "result": "The test session answered the finding; the fix stands.\n{\"title\": \"fix(bugs): answer 42 from a\"}"
+     }
+    }
+   ]
+  },
+  "2": {
+   "1": [
+    {
+     "tool": {
+      "name": "Bash",
+      "input": {
+       "command": "cp \"$WORK/_given/fixed/b.go\" . && rm bugs/b.md"
+      }
+     }
+    },
+    {
+     "result": {
+      "result": "Fixed bugs/b.md.\n{\"title\": \"fix(bugs): answer 2 from b\"}"
      }
     }
    ]
@@ -80,7 +255,7 @@ B should return at once.
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0, reported 0"
+      "result": "1. a_test.go:5  weak test\nreaches    TestA checks one clause of the bug\nproof      none\n\nread 1 directories, found 1, reported 1"
      }
     }
    ]

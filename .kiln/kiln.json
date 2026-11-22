@@ -12,6 +12,10 @@
     "internal/scenariotest/",
     "internal/termtest/"
   ],
+  "testFiles": [
+    "*_test.go",
+    "testdata"
+  ],
   "reaudit": [
     "internal/hometest/",
     "internal/scenariotest/",

@@ -44,7 +44,7 @@ func TestConfigWords(t *testing.T) {
 		"a key near none": {config: `{"gate": ["true"], "colour": "red"}`,
 			said: `.kiln/kiln.json holds "colour", a key kiln does not read: remove it, or name one kiln reads: ` +
 				`$schema, gate, rounds, allowedHosts, allowUnixSockets, writablePathCommands, mcpServers, ` +
-				`verifySession, acceptanceTests, testHelpers, reaudit, notify, timeout`},
+				`verifySession, acceptanceTests, testHelpers, testFiles, reaudit, notify, timeout`},
 		"a trailing comma": {config: "{\n  \"gate\": [\"true\"],\n}",
 			said: ".kiln/kiln.json is no JSON at line 2, column 19: a comma with nothing after it: fix its JSON there"},
 		"a number as a string": {config: `{"gate": ["true"], "rounds": "3"}`,
@@ -77,6 +77,26 @@ func TestHosts(t *testing.T) {
 			t.Errorf("%s: parseConfig answers %v, want refused %v", host, err, refused)
 		case refused && !strings.Contains(err.Error(), strconv.Quote(host)):
 			t.Errorf("%s: parseConfig answers %v, which does not name the host", host, err)
+		}
+	}
+}
+
+// TestTestFilePatterns holds that kiln.json names each test file pattern as one path element that path.Match reads.
+// A refusal names the pattern.
+func TestTestFilePatterns(t *testing.T) {
+	for pattern, refused := range map[string]bool{
+		"*_test.go":    false,
+		"testdata":     false,
+		"[":            true,
+		"uat/testdata": true,
+		"":             true,
+	} {
+		_, err := parseConfig([]byte(`{"gate": ["true"], "testFiles": ["` + pattern + `"]}`))
+		switch {
+		case (err != nil) != refused:
+			t.Errorf("%q: parseConfig answers %v, want refused %v", pattern, err, refused)
+		case refused && !strings.Contains(err.Error(), strconv.Quote(pattern)):
+			t.Errorf("%q: parseConfig answers %v, which does not name the pattern", pattern, err)
 		}
 	}
 }
