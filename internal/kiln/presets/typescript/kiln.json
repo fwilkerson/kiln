@@ -1,5 +1,5 @@
 {
-  "$schema": "./kiln.schema.json",
+  "$schema": "./generated/kiln.schema.json",
   "gate": [
     "npm ci --no-audit --no-fund",
     "npx --no -- tsc --noEmit",

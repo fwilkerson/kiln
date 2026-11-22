@@ -39,15 +39,16 @@ func Example() {
 	// wrote .kiln/agents/audit.md
 	// wrote .kiln/agents/build.md
 	// wrote .kiln/agents/verify.md
+	// wrote .kiln/generated/.gitattributes
+	// wrote .kiln/generated/kiln.schema.json
+	// wrote .kiln/generated/monitor.schema.json
 	// wrote .kiln/kiln.json
-	// wrote .kiln/kiln.schema.json
-	// wrote .kiln/monitor.schema.json
 	// wrote .kiln/reviewers/comprehension.md
 	// wrote .kiln/reviewers/critic.md
 	// wrote .kiln/reviewers/zoom-out.md
 	// wrote .kiln/skills/shape/SKILL.md
 	// wrote .kiln/skills/shape/template.md
-	// wrote .kiln/init.json
+	// wrote .kiln/generated/init.json
 	// linked .claude/skills/shape to ../../.kiln/skills/shape
 	// linked .claude/agents/comprehension.md to ../../.kiln/reviewers/comprehension.md
 	// linked .claude/agents/critic.md to ../../.kiln/reviewers/critic.md

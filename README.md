@@ -48,12 +48,12 @@ picked the preset go, since the repository holds go.mod
 wrote .kiln/agents/audit.md
 wrote .kiln/agents/build.md
 ...
+wrote .kiln/generated/kiln.schema.json
+wrote .kiln/generated/monitor.schema.json
 wrote .kiln/kiln.json
-wrote .kiln/kiln.schema.json
-wrote .kiln/monitor.schema.json
 wrote .kiln/reviewers/comprehension.md
 ...
-wrote .kiln/init.json
+wrote .kiln/generated/init.json
 linked .claude/skills/shape to ../../.kiln/skills/shape
 linked .claude/agents/comprehension.md to ../../.kiln/reviewers/comprehension.md
 ...
@@ -73,7 +73,7 @@ $ kiln init
 updated .kiln/agents/audit.md
 merged .kiln/agents/build.md
 merged .kiln/agents/verify.md, with conflicts: resolve them before you commit it
-wrote .kiln/init.json
+wrote .kiln/generated/init.json
 ...
 $ git diff .kiln                     # read what changed, resolve each conflict, then commit
 ```
@@ -83,7 +83,7 @@ Read `.kiln/kiln.json` once. Here is the go preset's `kiln.json`, without its tw
 
 ```json
 {
-  "$schema": "./kiln.schema.json",
+  "$schema": "./generated/kiln.schema.json",
   "gate": ["go vet ./...", "go test ./..."],
   "rounds": 3,
   "acceptanceTests": "acceptance/{spec}/"
@@ -92,7 +92,7 @@ Read `.kiln/kiln.json` once. Here is the go preset's `kiln.json`, without its tw
 
 `gate` lists the commands that must pass before any work lands. A failing gate sends the work back to the session, and
 each time is a round. `rounds` is how many rounds a build gets before it stops. `"acceptanceTests"` is where the
-acceptance tests go. `$schema` names `kiln.schema.json`, which `kiln init` writes, so an editor completes each key. [The
+acceptance tests go. `$schema` names a schema in `.kiln/generated/`, so an editor completes each key. [The
 reference](docs/reference.md#kilnjson) explains every key.
 
 After you change a file under `.kiln/`, run `kiln doctor` before you commit. `kiln doctor` prints each problem that
@@ -294,7 +294,7 @@ watches the number and fixes nothing. [Gauges](docs/reference.md#gauges) says th
 ```text
 kiln init [--preset go|python|typescript|<dir>]
                          write a preset of kiln's defaults into .kiln/, or merge a newer kiln's into yours,
-                         from the preset .kiln/init.json records, or else the one your files match;
+                         from the preset .kiln/generated/init.json records, or else the one your files match;
                          and install the pre-commit hook
 kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 kiln fire                build each queued spec, one at a time, until none is queued

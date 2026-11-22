@@ -62,8 +62,8 @@ type monitor struct {
 type settings struct {
 	// Each field's doc is the hover an editor shows for its key, as TestSchema builds it. So each stands alone.
 
-	// Schema is the path of the JSON Schema that an editor checks this file against: "../../monitor.schema.json".
-	// kiln init writes that schema to .kiln/. kiln ignores this key.
+	// Schema is the path of the JSON Schema that an editor checks this file against:
+	// "../../generated/monitor.schema.json". kiln init writes that schema to .kiln/generated/. kiln ignores this key.
 	Schema string `json:"$schema,omitempty"`
 	// Hours is the number of whole hours between runs of the monitor, from 0 to 65535, such as 1. With 0, every
 	// kiln monitor run runs the monitor. Absent, it is 24.

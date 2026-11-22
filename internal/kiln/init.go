@@ -21,21 +21,16 @@ import (
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
-// schemaFile is kiln.json's JSON Schema, which an editor reads by kiln.json's "$schema". kiln init writes it from the
-// defaults, where TestSchema builds it from config.
-const schemaFile = kilnDir + "/kiln.schema.json"
-
-// monitorSchemaFile is monitor.json's JSON Schema, which an editor reads by a monitor.json's "$schema". kiln init
-// writes it from the defaults too, where TestSchema builds it from settings.
-const monitorSchemaFile = kilnDir + "/monitor.schema.json"
-
-// schemaFiles are the schemas kiln init writes, which kiln owns, so it writes over a project's edits.
-var schemaFiles = []string{schemaFile, monitorSchemaFile}
+// generatedDir holds the files kiln owns in .kiln/, so kiln init writes over a project's edits there. The files are an
+// editor's schemas, kiln init's record, and a .gitattributes that marks each generated. TestSchema builds each schema
+// among the defaults, from config and from settings.
+const generatedDir = kilnDir + "/generated"
 
 // defaults are what kiln init writes into .kiln/ for every preset. A preset fills each marker in their prompts, and
-// adds kiln.json. The project owns them from then on.
+// adds kiln.json. The project owns them from then on, but for those in generatedDir. The second pattern names
+// .gitattributes, since a directory's pattern embeds no file whose name starts with a dot.
 //
-//go:embed defaults
+//go:embed defaults defaults/generated/.gitattributes
 var defaults embed.FS
 
 // reviewersDir holds the reviewers /shape runs on a spec, each a Claude Code agent's file. It lies apart from
@@ -46,12 +41,12 @@ const reviewersDir = kilnDir + "/reviewers"
 const initHint = "run kiln init, and commit what it writes"
 
 // initFile is kiln init's record of the defaults it last wrote, which its next run merges the project's edits against.
-const initFile = kilnDir + "/init.json"
+const initFile = generatedDir + "/init.json"
 
 // InitOptions are what the developer chose for kiln init.
 type InitOptions struct {
-	// Preset names the preset Init writes, as the package doc says under Presets. "" means the preset .kiln/init.json
-	// names, or else the built-in one the repository's files match.
+	// Preset names the preset Init writes, as the package doc says under Presets. "" means the preset
+	// .kiln/generated/init.json names, or else the built-in one the repository's files match.
 	Preset string
 }
 
@@ -481,9 +476,9 @@ func (r *Repo) deletedReviewers(files map[string][]byte) map[string]bool {
 	return deleted
 }
 
-// writeDefault brings the file at name, under .kiln/, to want, the default kiln init writes now. It keeps the
-// project's edits since base, the default kiln init last wrote there. It writes over each schema, which kiln owns. It
-// answers the line kiln init prints, or "" when it changed nothing.
+// writeDefault brings the file at name, under .kiln/, to want, the default kiln init writes now. It keeps the project's
+// edits since base, the default kiln init last wrote there. It writes over each file in generatedDir, which kiln owns.
+// It answers the line kiln init prints, or "" when it changed nothing.
 func (r *Repo) writeDefault(ctx context.Context, name string, base, want []byte) (string, error) {
 	rel := path.Join(kilnDir, name)
 	target := filepath.Join(r.top, rel)
@@ -495,7 +490,7 @@ func (r *Repo) writeDefault(ctx context.Context, name string, base, want []byte)
 		return "", err
 	case rel == configFile:
 		return keepConfig(target, have, want)
-	case slices.Contains(schemaFiles, rel) && !bytes.Equal(have, want):
+	case strings.HasPrefix(rel, generatedDir+"/") && !bytes.Equal(have, want):
 		return "updated " + rel, os.WriteFile(target, want, 0o644)
 	case bytes.Equal(have, want), bytes.Equal(base, want):
 		return "", nil
@@ -576,7 +571,7 @@ func writeFile(target string, raw []byte) error {
 var sharedKeys = []string{"$schema", "rounds"}
 
 // sharedDefaults holds the default of each of sharedKeys, which kiln init adds to a preset's kiln.json that lacks it.
-const sharedDefaults = `{"$schema": "./kiln.schema.json", "rounds": 3}`
+const sharedDefaults = `{"$schema": "./generated/kiln.schema.json", "rounds": 3}`
 
 // addKeys adds to the JSON object old each of sharedKeys that it lacks, as from holds it. It keeps each byte of old,
 // and puts each added key after the last, indented as that key. It answers nil when old lacks none.

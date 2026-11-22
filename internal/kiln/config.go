@@ -25,8 +25,8 @@ import (
 type config struct {
 	// Each field's doc is the hover an editor shows for its key, as TestSchema builds it. So each stands alone.
 
-	// Schema is the path of the JSON Schema that an editor checks this file against: "./kiln.schema.json". kiln init
-	// writes that schema beside this file. kiln ignores this key.
+	// Schema is the path of the JSON Schema that an editor checks this file against: "./generated/kiln.schema.json".
+	// kiln init writes that schema to .kiln/generated/. kiln ignores this key.
 	Schema string `json:"$schema,omitempty"`
 	// Gate lists the commands that must pass before work lands on main, such as ["go vet ./...", "go test ./..."].
 	// kiln runs each with sh -c, from the top of a checkout of the work. kiln refuses a kiln.json that lists no

@@ -61,16 +61,18 @@
 //	                            the MCP servers a session calls, whether a verify session writes the tests, where the
 //	                            acceptance tests live, the test helpers, the paths the audit reads again, and the
 //	                            program that receives each notification
-//	.kiln/kiln.schema.json      kiln.json's JSON Schema, for an editor, which kiln init writes over each time
-//	.kiln/monitor.schema.json   each monitor.json's JSON Schema, for an editor, which kiln init writes over each time
 //	.kiln/specs/<name>.md       a spec, and <name>.amend.md, its amendments
-//	.kiln/init.json             what kiln init and kiln monitor add last wrote, which kiln init merges edits against
 //	.kiln/agents/build.md       the build agent
 //	.kiln/agents/verify.md      how the acceptance tests are written, and a split build's verify agent
 //	.kiln/agents/audit.md       the audit
 //	.kiln/reviewers/            the agents /shape runs on a spec before it is approved, which no build runs
 //	.kiln/skills/shape/         /shape, which writes a spec with the developer, and its template
 //	.kiln/monitors/<name>/      a monitor: its scripts, its agent and its settings, out of a fix's reach
+//	.kiln/generated/            the files kiln owns, which kiln init writes over, so never edit one:
+//	  kiln.schema.json          kiln.json's JSON Schema, for an editor
+//	  monitor.schema.json       each monitor.json's JSON Schema, for an editor
+//	  init.json                 what kiln init and kiln monitor add last wrote, which kiln init merges edits against
+//	  .gitattributes            marks each file there as generated, for a tool that reads the attribute
 //
 // A command that refuses kiln.json, an agent's file or a spec prints each problem on a line, with its fix. kiln
 // doctor names each in the working tree, before a commit, as Doctor says.
@@ -109,13 +111,13 @@
 //
 // # Presets
 //
-// kiln init writes .kiln/ from a preset, the part of it that differs by language. kiln ships go, python and
-// typescript. A preset of your own is a directory laid out as one, named by a path that starts with . or /. A relative
-// path is from the working directory. Any other name is one kiln ships. kiln init records the preset in
-// .kiln/init.json, and takes it again when the developer names none. It records a directory by its path from the
-// checkout's top. With none named or recorded, it picks the one built-in preset whose detect files the checkout's top
-// holds. It says which it picked, and by which files. It refuses when none matches, or more than one, and names each
-// one's files. A preset's directory holds:
+// kiln init writes .kiln/ from a preset, the part of it that differs by language. kiln ships go, python and typescript.
+// A preset of your own is a directory laid out as one, named by a path that starts with . or /. A relative path is from
+// the working directory. Any other name is one kiln ships. kiln init records the preset in .kiln/generated/init.json,
+// and takes it again when the developer names none. It records a directory by its path from the checkout's top. With
+// none named or recorded, it picks the one built-in preset whose detect files the checkout's top holds. It says which
+// it picked, and by which files. It refuses when none matches, or more than one, and names each one's files. A preset's
+// directory holds:
 //
 //	kiln.json         the project's kiln.json, which kiln init writes where the checkout has none
 //	build-checks.md   the text under "How this project checks its work" in .kiln/agents/build.md
@@ -125,18 +127,18 @@
 //
 // Each Markdown file replaces the marker line of its name, without .md, in the default agent's file. The marker for
 // build-checks.md is <!-- kiln:preset build-checks -->, below its section's "Tailor this" comment. A preset's kiln.json
-// may lack $schema and rounds. kiln init then adds "$schema": "./kiln.schema.json" and "rounds": 3, as for a built-in
-// preset. Before it writes anything, kiln init refuses a preset it does not know or cannot use. It refuses a reviewer
-// Claude Code could not run then too. Such a reviewer's frontmatter has no description, or a name other than its
-// file's, without .md. It refuses the checkout's kiln.json then, where kiln could not use it.
+// may lack $schema and rounds. kiln init then adds "$schema": "./generated/kiln.schema.json" and "rounds": 3, as for a
+// built-in preset. Before it writes anything, kiln init refuses a preset it does not know or cannot use. It refuses a
+// reviewer Claude Code could not run then too. Such a reviewer's frontmatter has no description, or a name other than
+// its file's, without .md. It refuses the checkout's kiln.json then, where kiln could not use it.
 //
 // Run again, kiln init brings .kiln/ up to date with the kiln that runs it. It writes each default .kiln/ lacks, but a
 // reviewer the project deleted from .kiln/reviewers/. A reviewers folder holding only a .gitkeep keeps no reviewer. A
 // file the project left as kiln init last wrote it takes the new default. Into a file the project changed, git
 // merge-file merges the change between the last default and the new one. It leaves each conflict between the usual
 // markers, and names the file. With no record of the last default, each difference from the new one is a conflict. kiln
-// init writes kiln.schema.json and monitor.schema.json over, since kiln owns them. It records each default of the
-// preset, and the preset, in .kiln/init.json. It stages and commits nothing. kiln.json is the project's settings: its
+// init writes over each file in .kiln/generated/, since kiln owns them. It records each default of the
+// preset, and the preset, in init.json there. It stages and commits nothing. kiln.json is the project's settings: its
 // gate, and what a session reaches. A merge could change either unread, so kiln init never merges kiln.json. A
 // kiln.json that is there gains only $schema and rounds, where it lacks them. kiln init brings each monitor kiln
 // monitor add recorded up to date the same way, as Monitors says.
@@ -262,11 +264,12 @@
 // takes a directory too, by a path that starts with . or /. The monitor's name is the last element of either. Before it
 // writes, it refuses a checkout with no kiln.json, and a monitor kiln could not run by that kiln.json. It refuses an
 // agent.md kiln could not read, a name already there, and an unreadable record of kiln init. It writes each script kiln
-// runs with the executable bit. A monitor.json that names no "$schema" gains "$schema": "../../monitor.schema.json",
-// the schema kiln init writes, which kiln never reads. It records the monitor in .kiln/init.json, with its source. It
-// records a directory by its path from the checkout's top. kiln init brings the monitor up to date from that source. It
-// writes a file the source gains as kiln monitor add would. A monitor whose directory the project deleted stays
-// deleted, and leaves the record. One whose source kiln init cannot read stays as it is, and kiln init says why.
+// runs with the executable bit. A monitor.json that names no "$schema" gains "$schema":
+// "../../generated/monitor.schema.json", the schema kiln init writes, which kiln never reads. It records the monitor in
+// .kiln/generated/init.json, with its source. It records a directory by its path from the checkout's top. kiln init
+// brings the monitor up to date from that source. It writes a file the source gains as kiln monitor add would. A
+// monitor whose directory the project deleted stays deleted, and leaves the record. One whose source kiln init cannot
+// read stays as it is, and kiln init says why.
 //
 // One kiln monitor run:
 //
@@ -1085,8 +1088,8 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 // Takes answers the names command takes, for the shell to complete. For queue, accept and reject, they are specs, and
 // for accept and reject, waiting fixes too. For tui, they are the specs kiln holds or its ledger holds. For "monitor
 // run" and "monitor show", they are the monitors at main's tip, refused or not. kiln monitor run then says why it
-// refuses one. While kiln refuses kiln.json there, Takes answers the refusal. For "monitor add", they are the
-// monitors kiln ships that fit the preset .kiln/init.json records, as ShippedMonitors says. Each whose directory the
+// refuses one. While kiln refuses kiln.json there, Takes answers the refusal. For "monitor add", they are the monitors
+// kiln ships that fit the preset .kiln/generated/init.json records, as ShippedMonitors says. Each whose directory the
 // checkout holds already is left out. For doctor, they are the specs the working tree holds, each by a name a spec may
 // have. Other commands take none.
 func (r *Repo) Takes(ctx context.Context, command string) ([]string, error) {

@@ -18,7 +18,7 @@ import (
 
 // TestInitUpdates holds how a second kiln init brings .kiln/ up to date with a newer kiln's defaults. ship changes
 // the preset, as a newer kiln would, and edit changes .kiln/, as the developer would. The second run names no preset,
-// so it takes the one .kiln/init.json records.
+// so it takes the one .kiln/generated/init.json records.
 func TestInitUpdates(t *testing.T) {
 	t.Parallel()
 	const build = ".kiln/agents/build.md"
@@ -40,7 +40,7 @@ func TestInitUpdates(t *testing.T) {
 			said:  "merged " + build + ", with conflicts: resolve them before you commit it",
 			holds: []string{"<<<<<<< " + build + "\n", "gofumpt", "- Run make check.\n", ">>>>>>> kiln init's new default"}},
 		{name: "with no record, each difference is a conflict",
-			edit: "echo 'House rule.' >>" + build + " && rm .kiln/init.json && touch go.mod",
+			edit: "echo 'House rule.' >>" + build + " && rm .kiln/generated/init.json && touch go.mod",
 			said: "merged " + build + ", with conflicts", holds: []string{"<<<<<<< " + build + "\nHouse rule.\n"}},
 		{name: "a deleted default is written again, and kiln.json is the project's",
 			ship: "echo '{\"gate\": [\"make\"], \"rounds\": 2, \"acceptanceTests\": \"a/{spec}/\"}' >kiln.json",
@@ -100,7 +100,7 @@ func TestInitAgain(t *testing.T) {
 	}
 
 	rec, err := r.lastInit()
-	for _, name := range []string{"agents/build.md", "reviewers/critic.md", "kiln.schema.json"} {
+	for _, name := range []string{"agents/build.md", "reviewers/critic.md", "generated/kiln.schema.json"} {
 		if _, ok := rec.Files[name]; err != nil || !ok {
 			t.Errorf("kiln init's record lacks %s, %v; it records %v", name, err, slices.Sorted(maps.Keys(rec.Files)))
 		}
@@ -114,18 +114,19 @@ func TestInitAgain(t *testing.T) {
 		t.Errorf("a second kiln init said:\n%s\nwant it to write and link nothing", again.String())
 	}
 
-	shell(t, repo, "rm .kiln/init.json .kiln/reviewers/zoom-out.md && echo 'House rule.' >>.kiln/reviewers/critic.md "+
-		"&& echo '{}' >.kiln/kiln.schema.json")
+	shell(t, repo, "rm .kiln/generated/init.json .kiln/reviewers/zoom-out.md && echo 'House rule.' "+
+		">>.kiln/reviewers/critic.md && echo '{}' >.kiln/generated/kiln.schema.json")
 	if err := r.Init(t.Context(), &third, InitOptions{Preset: "go"}); err != nil {
 		t.Fatal(err)
 	}
 
 	wantHolds(t, third.String(), []string{"merged .kiln/reviewers/critic.md, with conflicts",
-		"updated .kiln/kiln.schema.json\n", "wrote .kiln/init.json\n"}, []string{"wrote .kiln/reviewers/zoom-out.md"})
+		"updated .kiln/generated/kiln.schema.json\n", "wrote .kiln/generated/init.json\n"},
+		[]string{"wrote .kiln/reviewers/zoom-out.md"})
 }
 
-// TestOwnInitRecord holds that kiln's own .kiln/init.json records the defaults kiln init writes now. So kiln status
-// never says that kiln's own .kiln/ is behind.
+// TestOwnInitRecord holds that kiln's own .kiln/generated/init.json records the defaults kiln init writes now. So kiln
+// status never says that kiln's own .kiln/ is behind.
 func TestOwnInitRecord(t *testing.T) {
 	top, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
@@ -171,8 +172,8 @@ func TestStatusSaysInitBehind(t *testing.T) {
 		{"echo '- Run make check.' >team/build-checks.md",
 			".kiln/ is behind the defaults of kiln init's preset ./team: run kiln init, which merges them with your " +
 				"edits\n"},
-		{"git rm --quiet .kiln/init.json", ".kiln/ holds no record of what kiln init wrote: run kiln init, which " +
-			"leaves each difference from its defaults as a conflict\n"},
+		{"git rm --quiet .kiln/generated/init.json", ".kiln/ holds no record of what kiln init wrote: run kiln init, " +
+			"which leaves each difference from its defaults as a conflict\n"},
 	} {
 		shell(t, repo, step.change+commit)
 		var out strings.Builder
@@ -187,7 +188,7 @@ func TestStatusSaysInitBehind(t *testing.T) {
 }
 
 // TestInitRefusesPreset holds that kiln init refuses a preset it can't use before it writes anything. A usage error
-// is the developer's argument alone, never what .kiln/init.json records.
+// is the developer's argument alone, never what .kiln/generated/init.json records.
 func TestInitRefusesPreset(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []refusedInit{
@@ -230,7 +231,7 @@ func TestInitFillsSharedKeys(t *testing.T) {
 		err = json.Unmarshal(raw, &got)
 	}
 
-	want := map[string]any{"$schema": "./kiln.schema.json", "rounds": 3.0, "gate": []any{"make"},
+	want := map[string]any{"$schema": "./generated/kiln.schema.json", "rounds": 3.0, "gate": []any{"make"},
 		"acceptanceTests": "a/{spec}/"}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("kiln init wrote kiln.json:\n%s\n%v; want %v", raw, err, want)
@@ -252,7 +253,7 @@ func TestOpenOutsideRepo(t *testing.T) {
 type refusedInit struct {
 	name     string
 	config   string // the team preset's kiln.json
-	record   string // .kiln/init.json
+	record   string // .kiln/generated/init.json
 	checkout string // the checkout's own kiln.json
 	named    string
 	usage    bool
@@ -301,7 +302,7 @@ func TestInitPicksPreset(t *testing.T) {
 			r, repo := scratchRepo(t)
 			shell(t, repo, "touch "+cmpOr(tt.files, "/dev/null"))
 			if tt.record != "" {
-				shell(t, repo, "mkdir .kiln && echo '"+tt.record+"' >"+initFile)
+				shell(t, repo, "mkdir -p "+generatedDir+" && echo '"+tt.record+"' >"+initFile)
 			}
 
 			var out strings.Builder

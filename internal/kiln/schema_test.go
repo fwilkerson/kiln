@@ -26,8 +26,8 @@ func TestSchema(t *testing.T) {
 		file, title string
 		typ         reflect.Type
 	}{
-		{"defaults/kiln.schema.json", "kiln.json", reflect.TypeFor[config]()},
-		{"defaults/monitor.schema.json", "monitor.json", reflect.TypeFor[settings]()},
+		{"defaults/generated/kiln.schema.json", "kiln.json", reflect.TypeFor[config]()},
+		{"defaults/generated/monitor.schema.json", "monitor.json", reflect.TypeFor[settings]()},
 	} {
 		root := schemaOf(t, s.typ, docs)
 		root.Schema, root.Title = "http://json-schema.org/draft-07/schema#", s.title
@@ -53,7 +53,7 @@ func TestSchema(t *testing.T) {
 
 		if want, err := defaults.ReadFile(s.file); err != nil || !bytes.Equal(got.Bytes(), want) {
 			t.Errorf("%s differs from %s, %v: run go test ./internal/kiln -run TestSchema -write, then cp "+
-				"internal/kiln/%[1]s .kiln/", s.file, s.typ, err)
+				"internal/kiln/%[1]s .kiln/generated/", s.file, s.typ, err)
 		}
 	}
 }

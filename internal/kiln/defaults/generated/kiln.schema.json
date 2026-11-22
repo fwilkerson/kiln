@@ -5,7 +5,7 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "description": "$schema is the path of the JSON Schema that an editor checks this file against: \"./kiln.schema.json\". kiln init writes that schema beside this file. kiln ignores this key.",
+      "description": "$schema is the path of the JSON Schema that an editor checks this file against: \"./generated/kiln.schema.json\". kiln init writes that schema to .kiln/generated/. kiln ignores this key.",
       "type": "string"
     },
     "gate": {

@@ -73,8 +73,8 @@ func TestDoctor(t *testing.T) {
 		"a reviewer whose link reaches another file": {change: "ln -sf ../../.kiln/agents/build.md .claude/agents/critic.md",
 			want: []string{".claude/agents/critic.md links to ../../.kiln/agents/build.md, not .kiln/reviewers/critic.md, " +
 				"so /shape runs another file: remove the link, then run kiln init, which links the reviewer"}},
-		"a record of kiln init that is no JSON": {change: "echo '{' >.kiln/init.json",
-			want: []string{".kiln/init.json: "}},
+		"a record of kiln init that is no JSON": {change: "echo '{' >.kiln/generated/init.json",
+			want: []string{".kiln/generated/init.json: "}},
 		"a spec that leaves the form": {spec: "form",
 			want: []string{"form.md leaves /shape's template: its acceptance test \"2. <Title>\" is not ### 1.",
 				"form.md leaves /shape's template: its acceptance test 1 holds no Then",

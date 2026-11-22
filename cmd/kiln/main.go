@@ -2,7 +2,7 @@
 //
 //	kiln init [--preset go|python|typescript|<dir>]
 //	                         write a preset of kiln's defaults into .kiln/, or merge a newer kiln's into yours,
-//	                         from the preset .kiln/init.json records, or else the one your files match;
+//	                         from the preset .kiln/generated/init.json records, or else the one your files match;
 //	                         and install the pre-commit hook
 //	kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
 //	kiln fire                build each queued spec, one at a time, until none is queued
@@ -42,7 +42,7 @@
 // kiln complete lists kiln's commands, one per line. With a command, it lists the names that command would not refuse.
 // For accept and reject, those include the waiting fixes. For monitor run and monitor show, they are every monitor,
 // refused ones too, so monitor run can say why. For monitor add, they are the monitors kiln ships that fit the preset
-// .kiln/init.json records. For help, they are the topics of kiln's docs.
+// .kiln/generated/init.json records. For help, they are the topics of kiln's docs.
 //
 // kiln exits 0 when the command did what it says, and 1 when it refused or failed. kiln help prints the usage to
 // stdout. A usage error exits 2, and prints to stderr a line that names the mistake. Under it come the command's own
@@ -70,7 +70,7 @@ import (
 const usage = `usage:
   kiln init [--preset go|python|typescript|<dir>]
                            write a preset of kiln's defaults into .kiln/, or merge a newer kiln's into yours,
-                           from the preset .kiln/init.json records, or else the one your files match;
+                           from the preset .kiln/generated/init.json records, or else the one your files match;
                            and install the pre-commit hook
   kiln queue <name>        queue a build of .kiln/specs/<name>.md, as main holds it
   kiln fire                build each queued spec, one at a time, until none is queued

@@ -1,5 +1,5 @@
 {
-  "$schema": "./kiln.schema.json",
+  "$schema": "./generated/kiln.schema.json",
   "gate": [
     "uv run ruff check",
     "uv run ty check",

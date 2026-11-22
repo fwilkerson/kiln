@@ -132,8 +132,8 @@ func (r *Repo) sourceFiles(source string) (fs.FS, map[string][]byte, error) {
 	return from, files, err
 }
 
-// monitorSchemaRef is the "$schema" of a monitor.json: monitorSchemaFile, from .kiln/monitors/<name>/.
-const monitorSchemaRef = "../../monitor.schema.json"
+// monitorSchemaRef is the "$schema" of a monitor.json: its schema in generatedDir, from .kiln/monitors/<name>/.
+const monitorSchemaRef = "../../generated/monitor.schema.json"
 
 // sourceFile reads name from the monitor's directory from, as kiln monitor add writes it. A monitor.json that names no
 // "$schema" gains monitorSchemaRef as its first key, so an editor finds its schema. kiln init reads a source the same
@@ -170,8 +170,8 @@ func dirByPath(name string) string {
 }
 
 // ShippedMonitors prints each monitor kiln ships, one a line, with the preset it fits. One that sits under a preset's
-// name, such as go/docs, fits that preset alone. Its line also names the preset .kiln/init.json records, when kiln
-// ships that preset.
+// name, such as go/docs, fits that preset alone. Its line also names the preset .kiln/generated/init.json records, when
+// kiln ships that preset.
 func (r *Repo) ShippedMonitors(out io.Writer) error {
 	rec, err := r.lastInit()
 	if err != nil {

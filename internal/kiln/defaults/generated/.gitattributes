@@ -1,0 +1,3 @@
+# kiln init writes each file in this folder, and writes over an edit to one. This line marks each as generated, so a
+# tool that reads the attribute, such as GitHub, collapses its diff.
+* linguist-generated

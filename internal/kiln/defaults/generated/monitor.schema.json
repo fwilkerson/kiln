@@ -5,7 +5,7 @@
   "type": "object",
   "properties": {
     "$schema": {
-      "description": "$schema is the path of the JSON Schema that an editor checks this file against: \"../../monitor.schema.json\". kiln init writes that schema to .kiln/. kiln ignores this key.",
+      "description": "$schema is the path of the JSON Schema that an editor checks this file against: \"../../generated/monitor.schema.json\". kiln init writes that schema to .kiln/generated/. kiln ignores this key.",
       "type": "string"
     },
     "hours": {

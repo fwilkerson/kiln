@@ -1,1 +1,1 @@
-{"$schema": "../../monitor.schema.json", "recheck": false, "mustAccept": true, "writesTests": true}
+{"$schema": "../../generated/monitor.schema.json", "recheck": false, "mustAccept": true, "writesTests": true}

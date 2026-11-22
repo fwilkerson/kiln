@@ -133,7 +133,13 @@
       "drives the program through its command line or HTTP, as its user would, and checks each clause of its Then.",
       ""
     ],
-    "kiln.schema.json": [
+    "generated/.gitattributes": [
+      "# kiln init writes each file in this folder, and writes over an edit to one. This line marks each as generated, so a",
+      "# tool that reads the attribute, such as GitHub, collapses its diff.",
+      "* linguist-generated",
+      ""
+    ],
+    "generated/kiln.schema.json": [
       "{",
       "  \"$schema\": \"http://json-schema.org/draft-07/schema#\",",
       "  \"title\": \"kiln.json\",",
@@ -141,7 +147,7 @@
       "  \"type\": \"object\",",
       "  \"properties\": {",
       "    \"$schema\": {",
-      "      \"description\": \"$schema is the path of the JSON Schema that an editor checks this file against: \\\"./kiln.schema.json\\\". kiln init writes that schema beside this file. kiln ignores this key.\",",
+      "      \"description\": \"$schema is the path of the JSON Schema that an editor checks this file against: \\\"./generated/kiln.schema.json\\\". kiln init writes that schema to .kiln/generated/. kiln ignores this key.\",",
       "      \"type\": \"string\"",
       "    },",
       "    \"gate\": {",
@@ -219,7 +225,7 @@
       "}",
       ""
     ],
-    "monitor.schema.json": [
+    "generated/monitor.schema.json": [
       "{",
       "  \"$schema\": \"http://json-schema.org/draft-07/schema#\",",
       "  \"title\": \"monitor.json\",",
@@ -227,7 +233,7 @@
       "  \"type\": \"object\",",
       "  \"properties\": {",
       "    \"$schema\": {",
-      "      \"description\": \"$schema is the path of the JSON Schema that an editor checks this file against: \\\"../../monitor.schema.json\\\". kiln init writes that schema to .kiln/. kiln ignores this key.\",",
+      "      \"description\": \"$schema is the path of the JSON Schema that an editor checks this file against: \\\"../../generated/monitor.schema.json\\\". kiln init writes that schema to .kiln/generated/. kiln ignores this key.\",",
       "      \"type\": \"string\"",
       "    },",
       "    \"hours\": {",
@@ -849,7 +855,7 @@
           ""
         ],
         "monitor.json": [
-          "{\"$schema\": \"../../monitor.schema.json\", \"hours\": 168, \"recheck\": false, \"mustAccept\": true}",
+          "{\"$schema\": \"../../generated/monitor.schema.json\", \"hours\": 168, \"recheck\": false, \"mustAccept\": true}",
           ""
         ]
       }

@@ -19,10 +19,10 @@ for macOS.
   the first by name each hour, as `.kiln/monitors/bugs/agent.md` says. A build never fixes one.
 - `PRODUCT.md`: each spec the developer accepted, and the `git show` command that prints it as it last stood.
 - `.kiln/`: kiln's own settings, agents, reviewers and specs, as `kiln init` wrote them, tailored to kiln.
-  `init.json` records what `kiln init` wrote, so a later run merges newer defaults. `notify` is the program
-  `kiln.json` names, which opens a Ghostty tab. `.claude/agents` and `.claude/skills` link to `/shape`, its
-  reviewers in `.kiln/reviewers/` and the verify agent there. A session kiln runs changes nothing here, but for the
-  amendment file kiln's contract gives it.
+  `generated/` holds the files kiln owns, which `kiln init` writes over: never edit one. Its `init.json` records what
+  `kiln init` wrote, so a later run merges newer defaults. `notify` is the program `kiln.json` names, which opens a
+  Ghostty tab. `.claude/agents` and `.claude/skills` link to `/shape`, its reviewers in `.kiln/reviewers/` and the
+  verify agent there. A session kiln runs changes nothing here, but for the amendment file kiln's contract gives it.
 - `.claude/agents/prose.md`: the `prose` agent. It judges prose by the guide's "Docs are the contract", and changes
   nothing. In a session the developer runs, run it on the words a user of kiln reads, before you commit a change to
   them. Those are `README.md`, `docs/reference.md`, `docs/one-page.txt`, and the docs of the fields of `config` and

@@ -38,7 +38,7 @@ func TestMonitorAdd(t *testing.T) {
 	}{
 		"a monitor kiln ships": {source: "bugs", want: []string{"bugs/agent.md", "bugs/check*", "bugs/monitor.json"}},
 		"one under its preset": {source: "go/docs", want: []string{"docs/agent.md", "docs/check*", "docs/monitor.json"}},
-		"a team's directory": {source: team + "/deps", schema: `{"$schema": "../../monitor.schema.json", "hours": 168}`,
+		"a team's directory": {source: team + "/deps", schema: `{"$schema": "../../generated/monitor.schema.json", "hours": 168}`,
 			want: []string{"deps/command*", "deps/lib/run*", "deps/monitor.json", "deps/notes/why.md"}},
 		"a preset, which is no monitor": {source: "go", refused: true, usage: true},
 		"a name kiln ships nothing of": {source: "deps", refused: true, usage: true,
@@ -140,8 +140,8 @@ func TestShippedDocsCheck(t *testing.T) {
 	}
 }
 
-// TestShippedFit holds which monitors kiln ships fit a project, by the preset .kiln/init.json records. The shell
-// completes only those. kiln monitor add with no source lists each, with the preset it fits.
+// TestShippedFit holds which monitors kiln ships fit a project, by the preset .kiln/generated/init.json records. The
+// shell completes only those. kiln monitor add with no source lists each, with the preset it fits.
 func TestShippedFit(t *testing.T) {
 	t.Parallel()
 	all := []string{"bugs", "go/deps", "go/docs", "go/gate-time"}
@@ -149,8 +149,8 @@ func TestShippedFit(t *testing.T) {
 		fits []string
 		says string
 	}{
-		"go":     {fits: all, says: "go/docs        for the preset go, which .kiln/init.json records\n"},
-		"python": {fits: []string{"bugs"}, says: "go/docs        for the preset go; .kiln/init.json records python\n"},
+		"go":     {fits: all, says: "go/docs        for the preset go, which .kiln/generated/init.json records\n"},
+		"python": {fits: []string{"bugs"}, says: "go/docs        for the preset go; .kiln/generated/init.json records python\n"},
 		"":       {fits: all, says: "go/docs        for the preset go\n"},
 	} {
 		t.Run(cmpOr(preset, "no record"), func(t *testing.T) {
