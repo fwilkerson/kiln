@@ -2,9 +2,10 @@ package proc_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os/exec"
-	"syscall"
+	"os"
+	"time"
 
 	"github.com/fwilkerson/kiln/internal/proc"
 )
@@ -14,26 +15,15 @@ func Example() {
 	fmt.Println(proc.Session.Env(env))
 	fmt.Println(proc.Shell.Env(env))
 
-	path, err := proc.Look(env, "sleep")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	shell := proc.Command{Path: "sh", Args: []string{"-c", "echo $HOME; exit 3"}, Env: proc.Shell.Env(env),
+		Stdout: os.Stdout}
+	fmt.Println(proc.Run(context.Background(), shell))
 
-	cmd := exec.CommandContext(context.Background(), path, "60")
-	cmd.Env = proc.Shell.Env(env)
-	proc.OwnGroup(cmd)
-	if err := cmd.Start(); err != nil {
-		fmt.Println(err)
-		return
-	}
+	ctx, stop := context.WithTimeoutCause(context.Background(), 50*time.Millisecond, errors.New("ran past its limit"))
+	defer stop()
+	fmt.Println(proc.Run(ctx, proc.Command{Path: "sleep", Args: []string{"60"}, Env: env}))
 
-	p, err := proc.Of(cmd.Process.Pid)
-	fmt.Println("leads a group of its own:", err == nil && p.Group == p.PID)
-	fmt.Println(syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL), cmd.Wait())
-
-	_, err = proc.Look(env, "no-such-program")
-	fmt.Println(err)
+	fmt.Println(proc.Run(context.Background(), proc.Command{Path: "no-such-program", Env: env}))
 
 	stderr := proc.NewTail(7)
 	_, _ = fmt.Fprint(stderr, "a long line, and its end")
@@ -41,8 +31,9 @@ func Example() {
 	// Output:
 	// [PATH=/usr/bin:/bin HOME=/home/dev]
 	// [PATH=/usr/bin:/bin HOME=/home/dev ANTHROPIC_API_KEY=key]
-	// leads a group of its own: true
-	// <nil> signal: killed
+	// /home/dev
+	// exit status 3
+	// ran past its limit
 	// no-such-program is not on the PATH: /usr/bin:/bin
 	// "its end"
 }

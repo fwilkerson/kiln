@@ -61,7 +61,7 @@ func (w withholding) holds(c Child, name string) bool {
 }
 
 // Env returns the variables of env that the child inherits, in env's order. It is nil when it keeps none, and
-// [os/exec.Cmd] reads a nil Env as kiln's own environment.
+// [Command] reads a nil Env as kiln's own environment.
 func (c Child) Env(env []string) []string {
 	var kept []string
 	for _, kv := range env {

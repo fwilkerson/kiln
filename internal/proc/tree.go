@@ -1,4 +1,4 @@
-package claude
+package proc
 
 import (
 	"maps"
@@ -8,8 +8,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/fwilkerson/kiln/internal/proc"
 )
 
 const (
@@ -43,7 +41,7 @@ func newTree(root int, place string) *tree {
 
 	t := &tree{known: map[int]int64{}, place: place, forks: watchForks()}
 	t.quit, t.done = make(chan struct{}), make(chan struct{})
-	if p, err := proc.Of(root); err == nil {
+	if p, err := Of(root); err == nil {
 		t.know(root, p.Born)
 		t.began = p.Born
 	}
@@ -73,7 +71,7 @@ func (t *tree) know(pid int, started int64) {
 }
 
 func (t *tree) look() map[int]int64 {
-	procs, err := proc.List()
+	procs, err := list()
 	if err != nil {
 		return nil
 	}
@@ -84,7 +82,7 @@ func (t *tree) look() map[int]int64 {
 }
 
 // grow adds each process of procs that joins the tree, until a pass adds none.
-func (t *tree) grow(procs []proc.Process, living map[int]int64) {
+func (t *tree) grow(procs []Process, living map[int]int64) {
 	for grew := true; grew; {
 		grew = false
 		for _, p := range procs {
@@ -109,7 +107,7 @@ func (t *tree) alive(living map[int]int64) map[int]int64 {
 }
 
 // living maps each process of procs that is not a zombie to when it was born.
-func living(procs []proc.Process) map[int]int64 {
+func living(procs []Process) map[int]int64 {
 	living := map[int]int64{}
 	for _, p := range procs {
 		if !p.Zombie {
@@ -121,7 +119,7 @@ func living(procs []proc.Process) map[int]int64 {
 }
 
 // joins says whether p, not yet known, descends from the tree or belongs to a group it leads.
-func (t *tree) joins(p proc.Process, living map[int]int64) bool {
+func (t *tree) joins(p Process, living map[int]int64) bool {
 	if p.Zombie || t.knows(p) {
 		return false
 	}
@@ -130,7 +128,7 @@ func (t *tree) joins(p proc.Process, living map[int]int64) bool {
 }
 
 // knows says whether the tree holds p, and not another process that reused its pid.
-func (t *tree) knows(p proc.Process) bool {
+func (t *tree) knows(p Process) bool {
 	known, ok := t.known[p.PID]
 	return ok && known == p.Born
 }
@@ -198,13 +196,13 @@ func (t *tree) find() map[int]int64 {
 // adopt finds orphans by their place. Once a shell exits before a look and its child calls setsid, nothing leads
 // back.
 func (t *tree) adopt() {
-	procs, err := proc.List()
+	procs, err := list()
 	if err != nil || t.place == "" {
 		return
 	}
 
 	orphans := t.orphans(procs)
-	for pid, dir := range proc.WorkingDirs(slices.Sorted(maps.Keys(orphans))) {
+	for pid, dir := range workingDirs(slices.Sorted(maps.Keys(orphans))) {
 		if started, ok := orphans[pid]; ok && t.inside(dir) {
 			t.know(pid, started)
 		}
@@ -212,7 +210,7 @@ func (t *tree) adopt() {
 }
 
 // orphans maps each orphan of procs to when it was born.
-func (t *tree) orphans(procs []proc.Process) map[int]int64 {
+func (t *tree) orphans(procs []Process) map[int]int64 {
 	uid := uint32(syscall.Getuid())
 	orphans := map[int]int64{}
 	for _, p := range procs {
@@ -225,13 +223,13 @@ func (t *tree) orphans(procs []proc.Process) map[int]int64 {
 }
 
 // orphan says whether p is an unknown process of uid's that launchd adopted after the tree's root began.
-func (t *tree) orphan(p proc.Process, uid uint32) bool {
+func (t *tree) orphan(p Process, uid uint32) bool {
 	switch {
 	case p.Parent != 1, p.Zombie, p.Born <= t.began, t.knows(p):
 		return false
 	}
 
-	owner, ok := proc.RealUser(p.PID)
+	owner, ok := realUser(p.PID)
 	return ok && owner == uid
 }
 

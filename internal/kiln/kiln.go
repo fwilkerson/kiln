@@ -597,8 +597,8 @@
 //	top      the top directory of the checkout kiln runs in
 //	commit   the full hash of the commit that landed the build or the fix on main; absent when none did
 //
-// What the program prints goes to kiln's output. kiln waits 30 s for it, then kills it and what it started. A program
-// that fails, runs past that, or is missing changes no build's or fix's result. kiln says why in its output.
+// What the program prints goes to kiln's output. kiln waits 30 s for it, then kills it with its process group. A
+// program that fails, runs past that, or is missing changes no build's or fix's result. kiln says why in its output.
 //
 // Without notify, kiln prints each notification in its output as OSC 9, which a terminal such as Ghostty shows. Its
 // body is "kiln: <name> <state>". kiln prints it whether the output is a terminal or not. It prints it too when kiln
@@ -627,7 +627,6 @@ import (
 	"io"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -691,7 +690,7 @@ type Repo struct {
 // withholds. It refuses a dir that no git repository holds.
 func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
 	top, common, err := found(ctx, dir, proc.Git.Env(env))
-	if _, ran := errors.AsType[*exec.ExitError](err); ran {
+	if _, ran := errors.AsType[*proc.Exited](err); ran {
 		// git found no repository there, and its own words name its search, not the fix.
 		return nil, fmt.Errorf("%w: %s is in no git repository: run git init there, or run kiln in a repository",
 			errRefused, dir)

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/fwilkerson/kiln/internal/proc"
@@ -27,9 +26,9 @@ type Interactive struct {
 	Out, Err io.Writer
 }
 
-// Interact runs the session i, with the developer at the keyboard, and waits for it to exit. The session inherits
-// Config.Env whole, and kiln's own process group, so Ctrl-C reaches it as it reaches kiln. No context ends it. Its
-// error is a *[proc.NotOnPath] for a claude it cannot find, or the session's own exit when not 0.
+// Interact runs the session i by [proc.RunAttached], with the developer at the keyboard, and waits for it to
+// exit. The session inherits Config.Env whole. Its error is a *[proc.NotOnPath] for a claude it cannot find, or the
+// session's own exit when not 0.
 func (c Claude) Interact(i Interactive) error {
 	program, err := c.Program()
 	if err != nil {
@@ -47,12 +46,11 @@ func (c Claude) Interact(i Interactive) error {
 	}
 
 	// The developer leaves Claude Code with Ctrl-C, which must end only the session, so no context kills it.
-	cmd := exec.Command(program, "--session-id", i.Session, "--append-system-prompt-file", system, i.Prompt)
-	cmd.Dir, cmd.Env = i.Dir, c.c.Env
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = i.In, i.Out, i.Err
-	err = cmd.Run()
-	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
-		return fmt.Errorf("the session ended: %s", exit.ProcessState)
+	args := []string{"--session-id", i.Session, "--append-system-prompt-file", system, i.Prompt}
+	err = proc.RunAttached(proc.Command{Path: program, Args: args, Dir: i.Dir, Env: c.c.Env, Stdin: i.In,
+		Stdout: i.Out, Stderr: i.Err})
+	if exit, ok := errors.AsType[*proc.Exited](err); ok {
+		return fmt.Errorf("the session ended: %s", exit.State)
 	}
 
 	return err

@@ -1,15 +1,17 @@
 package kiln
 
 import (
+	"bytes"
 	"context"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/fwilkerson/kiln/internal/proc"
 )
 
 // MonitorInstall sets up a launchd job that runs kiln monitor run in the repository each hour. It writes the job to
@@ -36,9 +38,12 @@ func (r *Repo) MonitorInstall(ctx context.Context, out io.Writer) error {
 
 	domain := fmt.Sprintf("gui/%d", os.Getuid())
 	// A job installed before is booted out first. One that isn't loaded makes bootout fail, which changes nothing.
-	_ = exec.CommandContext(ctx, "launchctl", "bootout", domain+"/"+label).Run()
-	if b, err := exec.CommandContext(ctx, "launchctl", "bootstrap", domain, plist).CombinedOutput(); err != nil {
-		return fmt.Errorf("launchctl bootstrap %s %s: %w: %s", domain, plist, err, strings.TrimSpace(string(b)))
+	_ = proc.Run(ctx, proc.Command{Path: "launchctl", Args: []string{"bootout", domain + "/" + label}})
+	var said bytes.Buffer
+	bootstrap := proc.Command{Path: "launchctl", Args: []string{"bootstrap", domain, plist}, Stdout: &said,
+		Stderr: &said}
+	if err := proc.Run(ctx, bootstrap); err != nil {
+		return fmt.Errorf("launchctl bootstrap %s %s: %w: %s", domain, plist, err, strings.TrimSpace(said.String()))
 	}
 
 	fmt.Fprintf(out, "installed %s, which runs kiln monitor run in %s at minute %d of each hour\n", plist, r.top,

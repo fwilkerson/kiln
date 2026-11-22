@@ -93,7 +93,7 @@ func locate(path string) string {
 	return top
 }
 
-// TestOneShell holds that internal/kiln runs a command from kiln.json with sh -c only in projectShell.run, in
+// TestOneShell holds that internal/kiln runs a command from kiln.json with /bin/sh only in projectShell.run, in
 // shell.go. run ends a command that runs past kiln.json's timeout, or whose child holds its output. No caller waits
 // forever.
 func TestOneShell(t *testing.T) {
@@ -112,11 +112,14 @@ func TestOneShell(t *testing.T) {
 			continue
 		}
 
-		if shells := strings.Count(string(code), `"/bin/sh", "-c",`); shells > 0 {
-			t.Errorf("%s runs sh -c %d times: run the command with projectShell.run", file, shells)
+		if shells := len(shell.FindAll(code, -1)); shells > 0 {
+			t.Errorf("%s runs sh %d times: run the command with projectShell.run", file, shells)
 		}
 	}
 }
+
+// shell matches a Go string that names sh, as a program kiln would run.
+var shell = regexp.MustCompile(`"(/bin/)?sh"`)
 
 // TestHomeForGit holds that a package whose tests run git starts them in hometest.Main or scenariotest.Main. A test's
 // git would otherwise read the developer's config. That git would also obey a GIT_DIR from git rebase --exec or a

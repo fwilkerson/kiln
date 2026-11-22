@@ -24,8 +24,8 @@
 // neither, it fails rather than guess one from the host. A commit is signed as the developer's config says. A signing
 // key that would ask for its passphrase fails the call at once, and the error says so. No call opens an editor,
 // prompts for a password, or takes an optional lock. Every call runs in the C locale, so git's words are never
-// translated. Each runs in a process group of its own, which the terminal's Ctrl-C does not
-// reach. When ctx ends, the call's git is killed. [Git.Move]'s fast-forward alone runs to its end, so the checkout is
+// translated. Each runs as [proc.Run] runs a program, in a process group of its own. When ctx ends,
+// the call's git is killed. [Git.Move]'s fast-forward alone runs to its end, so the checkout is
 // never left half-updated.
 //
 // kiln needs git 2.55 or later, whose hook.<event>.enabled turns off a hook that config defines. kiln asks xcrun once
@@ -47,7 +47,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -215,10 +214,9 @@ func throughShim(ctx context.Context, bin string, env []string) string {
 		return bin
 	}
 
-	cmd := exec.CommandContext(ctx, "/usr/bin/xcrun", "--find", "git")
-	cmd.Env = env
-	out, err := cmd.Output()
-	found := strings.TrimSpace(string(out))
+	var out bytes.Buffer
+	err := proc.Run(ctx, proc.Command{Path: "/usr/bin/xcrun", Args: []string{"--find", "git"}, Env: env, Stdout: &out})
+	found := strings.TrimSpace(out.String())
 	switch {
 	case err != nil, !filepath.IsAbs(found), found == shim, !proc.Executable(found):
 		return bin
@@ -255,14 +253,13 @@ type call struct {
 	env   []string
 }
 
-// run's own process group keeps the terminal's Ctrl-C from reaching its git. When ctx ends, run kills that group.
+// run runs git with args, as [proc.Run] runs a program.
 func (g *Git) run(ctx context.Context, c call, args ...string) (string, error) {
-	cmd := g.command(ctx, c, args...)
-	cmd.Stdin = strings.NewReader(c.stdin)
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		if _, exited := errors.AsType[*exec.ExitError](err); !exited {
+	cmd := g.command(ctx, c, args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = strings.NewReader(c.stdin), &stdout, &stderr
+	if err := proc.Run(ctx, cmd); err != nil {
+		if _, exited := errors.AsType[*proc.Exited](err); !exited {
 			return "", ended(args, err, "")
 		}
 
@@ -272,18 +269,14 @@ func (g *Git) run(ctx context.Context, c call, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-// command is the git that args start, in its own process group, with kiln's pinned config.
-func (g *Git) command(ctx context.Context, c call, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, g.binary(ctx), args...)
-	proc.OwnGroup(cmd)
-	cmd.Dir = c.dir
-	cmd.Env = slices.Concat(g.env, configured, c.env)
-	return cmd
+// command is the git that args start, with kiln's pinned config.
+func (g *Git) command(ctx context.Context, c call, args ...string) proc.Command {
+	return proc.Command{Path: g.binary(ctx), Args: args, Dir: c.dir, Env: slices.Concat(g.env, configured, c.env)}
 }
 
 // ended answers why the git that args started failed with err, after it wrote stderr. It answers nil for a nil err.
 func ended(args []string, err error, stderr string) error {
-	exit, exited := errors.AsType[*exec.ExitError](err)
+	exit, exited := errors.AsType[*proc.Exited](err)
 	switch {
 	case err == nil:
 		return nil
@@ -291,7 +284,7 @@ func ended(args []string, err error, stderr string) error {
 		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 
-	f := &failed{Args: args, Exit: exit.ExitCode(), Stderr: stderr}
+	f := &failed{Args: args, Exit: exit.Code, Stderr: stderr}
 	// git commit and git merge print this when the commit's signing failed.
 	if strings.Contains(f.Stderr, "failed to write commit object") {
 		return unsigned(f)
@@ -871,27 +864,24 @@ func (g *Git) Show(ctx context.Context, at Rev, path string) ([]byte, bool, erro
 // it holds no commit. One git learns the commit, then reads each file there.
 func (g *Git) ShowTip(ctx context.Context, branch Branch, paths ...string) (Rev, map[string][]byte, error) {
 	args := []string{"cat-file", "--batch-command", "-Z"}
-	cmd := g.command(ctx, call{dir: string(g.repo)}, args...)
 	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	in, err := cmd.StdinPipe()
-	if err != nil {
-		return "", nil, err
-	}
-
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		return "", nil, err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return "", nil, ended(args, err, "")
-	}
+	cmd := g.command(ctx, call{dir: string(g.repo)}, args...)
+	questions, in := io.Pipe()
+	out, written := io.Pipe()
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = questions, written, &stderr
+	ran := make(chan error, 1)
+	go func() {
+		err := proc.Run(ctx, cmd)
+		// Once git exits, the reads below end, and a question it never read fails rather than waits.
+		written.Close()
+		questions.Close()
+		ran <- err
+	}()
 
 	answers := bufio.NewReader(out)
 	tip, files, asked := askTip(in, answers, branch, paths)
 	_, rest := io.Copy(io.Discard, answers)
-	if err := errors.Join(asked, rest, ended(args, cmd.Wait(), stderr.String())); err != nil {
+	if err := errors.Join(asked, rest, ended(args, <-ran, stderr.String())); err != nil {
 		return "", nil, err
 	}
 

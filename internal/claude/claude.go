@@ -40,9 +40,8 @@
 //	hooks.PreToolUse        Hook, before each Edit, Write, MultiEdit and NotebookEdit, when set
 //
 // The session inherits what [proc.Session] keeps of Config.Env. Run adds CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 and
-// CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1. When the session exits, Run kills every process it left behind. It finds
-// them by their process tree, their group, and their working directory. Run waits at most 10 s for a child that holds
-// the session's output open.
+// CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1. Run runs the session by [proc.RunSession], which kills every process the
+// session left behind.
 //
 // A session that prints nothing for Launch.Silence is hung. Run kills it, with each process it started, and answers
 // a *Silent.
@@ -56,8 +55,7 @@
 //	claude --session-id <Session> --append-system-prompt-file <dir>/<Role>.md <Prompt>
 //
 // It passes no -p, no settings and no permission mode: the session is the developer's own. It runs in Dir, with
-// kiln's standard input, output and error, and inherits Config.Env whole. It starts in kiln's process group, and no
-// context ends it.
+// kiln's standard input, output and error, and inherits Config.Env whole. It runs by [proc.RunAttached].
 //
 // Run totals what each run printed, in Ended.Totals: its turns, cost, context, tool calls, waits and failed calls.
 // Totals keeps at most 200 bytes of a call's input, or of its cause. Recount totals a run again from the stream, from
@@ -65,7 +63,7 @@
 package claude
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -73,11 +71,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/proc"
@@ -173,11 +169,8 @@ type Limit struct {
 
 const (
 	stderrKept = 64 << 10
-	// outputGrace: a child that keeps the session's output open after the session exits would otherwise keep Run
-	// waiting with it.
-	outputGrace = 10 * time.Second
-	streamFile  = "stream.jsonl"
-	stderrFile  = "stderr"
+	streamFile = "stream.jsonl"
+	stderrFile = "stderr"
 )
 
 var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -207,10 +200,9 @@ func (c Claude) Run(ctx context.Context, l Launch) (Ended, error) {
 
 	defer stream.Close()
 
-	cmd := exec.CommandContext(ctx, program, arguments(l, dir)...)
-	cmd.Dir, cmd.Env = l.Dir, sessionEnv(c.c.Env)
-	cmd.Stdin = strings.NewReader(l.Prompt)
-	ended, stderr, err := run(cmd, stream, l.Silence)
+	session := proc.Command{Path: program, Args: arguments(l, dir), Dir: l.Dir, Env: sessionEnv(c.c.Env),
+		Stdin: strings.NewReader(l.Prompt)}
+	ended, stderr, err := run(ctx, session, stream, l.Silence)
 	return ended, errors.Join(err, os.WriteFile(filepath.Join(dir, stderrFile), []byte(stderr), 0o600))
 }
 
@@ -288,68 +280,79 @@ func sessionEnv(env []string) []string {
 	return append(proc.Session.Env(env), own...)
 }
 
-// run runs cmd, a session ready to start, and copies each line it prints to stream. It kills a session that prints
+// run runs c, a session ready to start, and copies each line it prints to stream. It kills a session that prints
 // nothing for silence, and answers a *Silent.
-func run(cmd *exec.Cmd, stream io.Writer, silence time.Duration) (ended Ended, stderr string, err error) {
-	tail := proc.NewTail(stderrKept)
-	cmd.Stderr = tail
-	proc.OwnGroup(cmd)
-	// A group kill misses a child forked as it lands, and that child would hold the output open past Wait. So each
-	// kill, at a limit or when the context ends, ends the tree first. exec calls Cancel only once Start succeeds.
-	begun, group := make(chan *tree, 1), cmd.Cancel
-	cmd.Cancel = func() error {
-		t := <-begun
-		begun <- t
-		t.end()
-		return group()
-	}
-
-	cmd.WaitDelay = outputGrace
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		return Ended{}, "", err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return Ended{}, "", err
-	}
-
-	tree := watch(cmd.Process.Pid, cmd.Dir)
-	begun <- tree
-	var silent atomic.Bool
-	hush := time.AfterFunc(silence, func() {
-		silent.Store(true)
-		_ = cmd.Cancel()
-	})
-
+func run(ctx context.Context, c proc.Command, stream io.Writer, silence time.Duration) (Ended, string, error) {
+	ctx, stop := context.WithCancelCause(ctx)
+	defer stop(nil)
+	hush := time.AfterFunc(silence, func() { stop(&Silent{For: silence}) })
 	var read reading
-	lines := bufio.NewScanner(out)
-	lines.Buffer(nil, 64<<20)
-	for lines.Scan() {
+	out := &lines{each: func(line []byte) bool {
 		hush.Reset(silence)
-		_, _ = stream.Write(append(lines.Bytes(), '\n'))
-		read.line(lines.Bytes())
+		_, _ = stream.Write(append(line, '\n'))
+		read.line(line)
 		// A session that runs on past a limit bills overage, or resumes later from work it has already finished.
 		if read.limited {
-			_ = cmd.Cancel()
+			stop(errLimited)
+		}
+
+		return !read.limited
+	}}
+
+	tail := proc.NewTail(stderrKept)
+	c.Stdout, c.Stderr = out, tail
+	err := proc.RunSession(ctx, c)
+	out.end()
+	// The timer runs on through the run, so a session that closed its output but never exits is killed too.
+	hush.Stop()
+	_, silent := errors.AsType[*Silent](err)
+	_, failed := errors.AsType[*proc.Exited](err)
+	switch {
+	case silent:
+		return read.ended(), tail.String(), err
+	// The stream says how a session that failed, or that kiln killed, ended.
+	case failed, ctx.Err() != nil && err == context.Cause(ctx):
+		return read.ended(), tail.String(), nil
+	}
+
+	return read.ended(), tail.String(), err
+}
+
+// errLimited is the cause run gives the kill of a session that a usage limit ended.
+var errLimited = errors.New("a usage limit ended the session")
+
+// lines is an io.Writer that calls each with each line written to it, without its line ending. It stops once each
+// answers false. One goroutine writes to it.
+type lines struct {
+	each    func(line []byte) bool
+	partial []byte
+	done    bool
+}
+
+func (l *lines) Write(b []byte) (int, error) {
+	if l.done {
+		return len(b), nil
+	}
+
+	l.partial = append(l.partial, b...)
+	for !l.done {
+		line, rest, found := bytes.Cut(l.partial, []byte("\n"))
+		if !found {
 			break
 		}
+
+		l.partial = rest
+		l.done = !l.each(bytes.TrimSuffix(line, []byte("\r")))
 	}
 
-	scanned := lines.Err()
-	err = cmd.Wait()
-	// The timer runs on through Wait, so a session that closed its output but never exits is killed too.
-	hush.Stop()
-	tree.end()
-	if silent.Load() {
-		return read.ended(), tail.String(), &Silent{For: silence}
-	}
+	return len(b), nil
+}
 
-	if _, exited := errors.AsType[*exec.ExitError](err); err != nil && !exited {
-		return read.ended(), tail.String(), err
+// end calls each with a last line that no newline ended, once the writes are done.
+func (l *lines) end() {
+	if !l.done && len(l.partial) > 0 {
+		l.done = !l.each(l.partial)
 	}
-
-	return read.ended(), tail.String(), scanned
 }
 
 // reading is what a session's stream has said so far.

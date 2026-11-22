@@ -1,20 +1,33 @@
-// Package proc holds what kiln's adapters share to start a child process and to read it back. It finds the
-// program, filters the environment, and groups the process. It keeps the end of its standard error, and reads the
-// process table.
+// Package proc is how kiln runs a program, and what it reads of the processes it ran. It finds the program, filters
+// the environment, and runs the program by one of three policies. It keeps the end of a standard error.
 //
 //	path, err := proc.Look(env, "claude")
 //	if err != nil {
 //		return err // a *proc.NotOnPath
 //	}
-//	cmd := exec.CommandContext(ctx, path, args...)
-//	cmd.Env = proc.Session.Env(env)
 //	stderr := proc.NewTail(64 << 10)
-//	cmd.Stderr = stderr
-//	proc.OwnGroup(cmd) // when ctx ends, the whole group is killed
-//	err = cmd.Run()
+//	c := proc.Command{Path: path, Args: args, Dir: tree, Env: proc.Session.Env(env), Stderr: stderr}
+//	ctx, stop := context.WithTimeoutCause(ctx, time.Hour, errHung)
+//	defer stop()
+//	err = proc.RunSession(ctx, c) // errHung, once the session ran an hour: kiln killed what it started
 //
-// Each adapter keeps its own policy: which program it runs, which [Child] that is, and how long it waits. Package
-// proc decides only what each kind of child withholds of kiln's environment, marked ✗:
+// No other package of kiln imports os/exec. A caller picks how its program runs by the func it calls:
+//
+//	func         group     when ctx ends while it runs    once it exits
+//	Run          its own   kills its group                kills its group, if it failed or a child holds its output
+//	RunSession   its own   kills its tree                 kills its tree
+//	RunAttached  kiln's    takes no ctx                   kills nothing
+//
+// A program in a group of its own is out of reach of the terminal's Ctrl-C, which reaches only RunAttached's. A
+// process that leaves the group, as setsid does, survives Run. A session's tree is each process the session started,
+// found by parent and by group. It adds each orphan whose working directory is under Command.Dir. Each kill is
+// SIGKILL, at once, since kiln waits on no program to clean up.
+//
+// kiln ends a program by ending its ctx, with a cause such as context.WithTimeoutCause gives. Run and RunSession then
+// answer that cause. Once a program exits, its children have 10 s to close its output, the output grace. A run then
+// closes the output, and output held past the grace is no error.
+//
+// Each kind of [Child] withholds part of kiln's environment, marked ✗:
 //
 //	variable               Shell  Session  Git    why
 //	ANTHROPIC_API_KEY             ✗               would bill an account instead of the developer's login
@@ -27,13 +40,14 @@
 // variables that name who commits: GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME and GIT_COMMITTER_EMAIL.
 //
 // kiln runs on macOS alone. The process table is read with sysctl(3), not /bin/ps, which is setuid and which a
-// session's sandbox refuses to exec. [WorkingDirs] runs lsof, which it gives 5 s. [Run] gives a group 10 s to close a
-// command's output, once the command exits within its limit.
+// session's sandbox refuses to exec. An orphan's working directory comes from lsof, which proc gives 5 s.
 package proc
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -88,84 +102,176 @@ func (e *NotOnPath) Error() string {
 	return fmt.Sprintf("%s is not on the PATH: %s", e.Program, e.Path)
 }
 
-// outputGrace is how long [Run] waits for a group to close a command's output once the command exits.
-const outputGrace = 10 * time.Second
-
 // Executable says whether path names a regular file that someone may execute.
 func Executable(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0
 }
 
-// OwnGroup makes cmd's process lead a process group of its own. A signal to the group then reaches what it
-// started, and kiln's interrupt does not reach it. When cmd's context ends, the whole group is killed, not
-// cmd's process alone. Call it before cmd starts, on a cmd made with [exec.CommandContext], since
-// Start refuses a Cancel on any other.
-func OwnGroup(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+// outputGrace is how long a run waits for a program's children to close its output, once the program exits.
+const outputGrace = 10 * time.Second
+
+// Command is a program for kiln to run, and what it reads and writes. A nil Stdin reads nothing, and a nil Stdout or
+// Stderr discards what the program writes there.
+type Command struct {
+	// Path is the program: a path, or a name that [Look] finds on Env's PATH.
+	Path string
+	Args []string
+	// Dir is the directory the program runs in, or "" for kiln's own.
+	Dir string
+	// Env is the program's whole environment, or nil for kiln's own.
+	Env            []string
+	Stdin          io.Reader
+	Stdout, Stderr io.Writer
 }
 
-// Run runs cmd, made with [exec.CommandContext], in a process group of its own, as [OwnGroup] says. When cmd's own
-// process still runs once limit has passed, Run kills its group, and answers a *[RanPast]. Once cmd's process exits,
-// what it started has [outputGrace] to close cmd's output. Run then kills cmd's process group, when the output stayed
-// open or cmd failed. A process that left the group survives. Run answers the error cmd's process ended with, and nil
-// for output held past the grace.
-func Run(cmd *exec.Cmd, limit time.Duration) error {
-	OwnGroup(cmd)
+// Run runs c in a process group of its own, and waits for it to end. When ctx ends while c's program runs, Run kills
+// its group, and answers context.Cause(ctx). Once the program exits, Run kills its group if it failed. Run does so
+// too when a child held the output past the output grace. Run answers an *[Exited] for a program that failed, and nil
+// for output held past the grace. Any other error is one that kept the program from starting.
+func Run(ctx context.Context, c Command) error {
+	return run(ctx, c, &group{})
+}
+
+// RunSession runs c as [Run] does, but each kill reaches c's whole tree, and its group. Once c's program exits,
+// RunSession kills what its tree left behind.
+func RunSession(ctx context.Context, c Command) error {
+	return run(ctx, c, &session{place: c.Dir})
+}
+
+// RunAttached runs c in kiln's own process group, and waits for it to end. The terminal's Ctrl-C reaches c's program
+// as it reaches kiln. No context ends it, and it kills nothing. It answers an *[Exited] for a program that failed, and
+// nil for output held past the output grace.
+func RunAttached(c Command) error {
+	cmd, err := c.command(context.Background())
+	if err != nil {
+		return err
+	}
+
 	cmd.WaitDelay = outputGrace
+	return exited(cmd.Run())
+}
+
+// command is the exec.Cmd that runs c, with ctx.
+func (c Command) command(ctx context.Context) (*exec.Cmd, error) {
+	env := c.Env
+	if env == nil {
+		env = os.Environ()
+	}
+
+	path, err := Look(env, c.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := exec.CommandContext(ctx, path, c.Args...)
+	cmd.Dir, cmd.Env = c.Dir, c.Env
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = c.Stdin, c.Stdout, c.Stderr
+	return cmd, nil
+}
+
+// ender kills what a run started: when its ctx ends, and once its program exits.
+type ender interface {
+	// begin learns the program's process, before any kill.
+	begin(pid int)
+	kill()
+	// exited ends what is left once the program exits. failed is true of a program that failed, or whose child held
+	// its output.
+	exited(failed bool)
+}
+
+func run(ctx context.Context, c Command, e ender) error {
+	cmd, err := c.command(ctx)
+	if err != nil {
+		return err
+	}
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.WaitDelay = outputGrace
+	// exec calls Cancel only while the program runs, and may call it before Start returns.
+	begun := make(chan struct{})
+	var killed atomic.Bool
+	cmd.Cancel = func() error {
+		<-begun
+		killed.Store(true)
+		e.kill()
+		return nil
+	}
+
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 
-	var past atomic.Bool
-	pid := cmd.Process.Pid
-	started, _ := Of(pid)
-	timer := time.AfterFunc(limit, func() {
-		// A process that exited ended in time, though a child still holds its output.
-		if stillRuns(pid, started.Born) {
-			past.Store(true)
-			_ = syscall.Kill(-pid, syscall.SIGKILL)
-		}
-	})
-
-	err := cmd.Wait()
-	timer.Stop()
+	e.begin(cmd.Process.Pid)
+	close(begun)
+	err = cmd.Wait()
 	held := errors.Is(err, exec.ErrWaitDelay)
-	// Go answers an ExitError, not ErrWaitDelay, when the output stayed open and the shell failed.
-	if _, failed := errors.AsType[*exec.ExitError](err); held || failed {
-		_ = syscall.Kill(-pid, syscall.SIGKILL)
+	// Go answers an ExitError, not ErrWaitDelay, when the output stayed open and the program failed.
+	_, failed := errors.AsType[*exec.ExitError](err)
+	e.exited(held || failed)
+	if killed.Load() {
+		return context.Cause(ctx)
 	}
 
-	switch {
-	case past.Load():
-		return &RanPast{Limit: limit}
-	case held:
+	return exited(err)
+}
+
+// exited is err, from exec's Wait, as a run answers it.
+func exited(err error) error {
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+		return &Exited{Code: exit.ExitCode(), State: exit.ProcessState.String()}
+	}
+
+	if errors.Is(err, exec.ErrWaitDelay) {
 		return nil
 	}
 
 	return err
 }
 
-// stillRuns reports whether the process pid, started at born, has yet to exit. Born tells a reused pid apart.
-func stillRuns(pid int, born int64) bool {
-	p, err := Of(pid)
-	switch {
-	case err != nil, p.Zombie:
-		return false
+// Exited is a run's error for a program that exited with a nonzero status, or that a signal ended.
+type Exited struct {
+	// Code is the program's exit status, or -1 when a signal ended it.
+	Code int
+	// State says how the program ended, such as "exit status 1" or "signal: killed".
+	State string
+}
+
+func (e *Exited) Error() string { return e.State }
+
+// group kills a program's process group.
+type group struct{ pid int }
+
+func (g *group) begin(pid int) { g.pid = pid }
+
+func (g *group) kill() { _ = syscall.Kill(-g.pid, syscall.SIGKILL) }
+
+// exited leaves a quiet child of a program that succeeded, such as a build daemon, running for the next program.
+func (g *group) exited(failed bool) {
+	if failed {
+		g.kill()
 	}
-
-	return p.Born == born
 }
 
-// RanPast is [Run]'s error for a command whose own process still ran once Limit passed. Run killed its group.
-type RanPast struct {
-	Limit time.Duration
+// session kills a program's tree, which it watches from begin, then its group.
+type session struct {
+	place string
+	pid   int
+	tree  *tree
 }
 
-func (e *RanPast) Error() string {
-	return fmt.Sprintf("ran past %v, so its group was killed", e.Limit)
+func (s *session) begin(pid int) {
+	s.pid = pid
+	s.tree = watch(pid, s.place)
 }
+
+// kill ends the tree before the group: a group kill misses a child forked as it lands.
+func (s *session) kill() {
+	s.tree.end()
+	_ = syscall.Kill(-s.pid, syscall.SIGKILL)
+}
+
+func (s *session) exited(bool) { s.kill() }
 
 // Tail is an [io.Writer] that keeps only the last bytes written to it. Those may be the end of a child's
 // standard error. It is safe for concurrent use.

@@ -31,7 +31,7 @@ const (
 	monitorNotice = "monitor"
 )
 
-// notifyWait is how long kiln waits for the notify program before it kills the program, and what it started. A
+// notifyWait is how long kiln waits for the notify program before it kills the program's process group. A
 // notice holds its kiln's lane meanwhile, so it gets less than kiln.json's timeout, which is sized for a gate.
 const notifyWait = 30 * time.Second
 

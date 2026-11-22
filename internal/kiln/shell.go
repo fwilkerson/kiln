@@ -3,11 +3,9 @@ package kiln
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"slices"
 	"strings"
 	"sync"
@@ -35,8 +33,9 @@ func (s projectShell) with(vars ...string) projectShell {
 	return s
 }
 
-// run runs command in dir, with this kiln's path in $KILN. It answers what the command printed, and the error it
-// ended with. When the shell still runs once s.limit has passed, run kills its group, and answers a *ranPast.
+// run runs command in dir, with this kiln's path in $KILN, as [proc.Run] runs a program. It answers what the command
+// printed, and the error it ended with. When the shell still runs once s.limit has passed, run kills its group, and
+// answers a *ranPast.
 func (s projectShell) run(ctx context.Context, dir git.Worktree, command string) (output, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -45,17 +44,13 @@ func (s projectShell) run(ctx context.Context, dir git.Worktree, command string)
 
 	var stdout, stderr bytes.Buffer
 	both := &lockedBuffer{}
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	ctx, stop := context.WithTimeoutCause(ctx, s.limit, &ranPast{limit: s.limit, bound: s.bound})
+	defer stop()
 	// Of two values of one variable, the last wins. So this kiln's path replaces one a caller passed on.
-	cmd.Dir, cmd.Env = string(dir), append(slices.Clone(s.env), kilnVar+"="+exe)
-	cmd.Stdout, cmd.Stderr = io.MultiWriter(&stdout, both), io.MultiWriter(&stderr, both)
-	err = proc.Run(cmd, s.limit)
-	out := output{stdout: stdout.String(), stderr: stderr.String(), both: both.String()}
-	if _, past := errors.AsType[*proc.RanPast](err); past {
-		return out, &ranPast{limit: s.limit, bound: s.bound}
-	}
-
-	return out, err
+	err = proc.Run(ctx, proc.Command{Path: "/bin/sh", Args: []string{"-c", command}, Dir: string(dir),
+		Env: append(slices.Clone(s.env), kilnVar+"="+exe), Stdout: io.MultiWriter(&stdout, both),
+		Stderr: io.MultiWriter(&stderr, both)})
+	return output{stdout: stdout.String(), stderr: stderr.String(), both: both.String()}, err
 }
 
 // ranPast is a command that ran for limit, which the setting bound names, before kiln killed its group.

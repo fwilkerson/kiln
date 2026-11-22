@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +17,7 @@ const (
 	zombie = 5
 )
 
-// Process is one row of the process table, as [List] and [Of] read it.
+// Process is one row of the process table, as list and [Of] read it.
 type Process struct {
 	PID    int
 	Parent int
@@ -37,8 +36,8 @@ func fromKinfo(p *unix.KinfoProc) Process {
 	}
 }
 
-// List reads every process kiln may see.
-func List() ([]Process, error) {
+// list reads every process kiln may see.
+func list() ([]Process, error) {
 	all, err := unix.SysctlKinfoProcSlice("kern.proc.all")
 	procs := make([]Process, 0, len(all))
 	for i := range all {
@@ -58,8 +57,8 @@ func Of(pid int) (Process, error) {
 	return fromKinfo(p), nil
 }
 
-// RealUser reads the real user of the process pid, and false if it cannot.
-func RealUser(pid int) (uint32, bool) {
+// realUser reads the real user of the process pid, and false if it cannot.
+func realUser(pid int) (uint32, bool) {
 	p, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 	if err != nil {
 		return 0, false
@@ -68,10 +67,9 @@ func RealUser(pid int) (uint32, bool) {
 	return p.Eproc.Pcred.P_ruid, true
 }
 
-// WorkingDirs reads the working directory of each of pids it can, and leaves out the rest.
-//
-// It asks lsof, since macOS gives another process's working directory to no call golang.org/x/sys exports.
-func WorkingDirs(pids []int) map[int]string {
+// workingDirs reads the working directory of each of pids it can, and leaves out the rest. It asks lsof, since macOS
+// gives another process's working directory to no call golang.org/x/sys exports.
+func workingDirs(pids []int) map[int]string {
 	dirs := map[int]string{}
 	if len(pids) == 0 {
 		return dirs
@@ -85,10 +83,11 @@ func WorkingDirs(pids []int) map[int]string {
 	// lsof exits 1 when a pid it was given has exited, and still prints the rest.
 	ctx, cancel := context.WithTimeout(context.Background(), lsofLimit)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "/usr/sbin/lsof", "-a", "-d", "cwd", "-p", strings.Join(list, ","), "-Fpn")
-	out, _ := cmd.Output()
+	var out bytes.Buffer
+	args := []string{"-a", "-d", "cwd", "-p", strings.Join(list, ","), "-Fpn"}
+	_ = Run(ctx, Command{Path: "/usr/sbin/lsof", Args: args, Stdout: &out})
 	pid := 0
-	lines := bufio.NewScanner(bytes.NewReader(out))
+	lines := bufio.NewScanner(&out)
 	for lines.Scan() {
 		line := lines.Text()
 		switch {

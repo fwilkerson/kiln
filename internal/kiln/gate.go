@@ -1,18 +1,19 @@
 package kiln
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/kiln/internal/proc"
 )
 
 // check is one gate command's run.
@@ -73,8 +74,8 @@ func runCheck(ctx context.Context, dir git.Worktree, command string, s projectSh
 	out := []byte(printed.both)
 	cut := max(0, len(out)-outputKept)
 	c := check{Command: command, Output: string(out[cut:]), Cut: cut}
-	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
-		c.Exit = exit.ExitCode()
+	if exit, ok := errors.AsType[*proc.Exited](err); ok {
+		c.Exit = exit.Code
 	} else if err != nil {
 		return check{}, fmt.Errorf("the gate's %q: %w", command, err)
 	}
@@ -461,14 +462,18 @@ func refuseCommit(checks []check, out io.Writer) error {
 	return fmt.Errorf("%w: the gate fails on what the commit holds", errRefused)
 }
 
-// plainGit runs git as the developer would, with no setting pinned, and with env's GIT_ variables.
+// plainGit runs the git on kiln's own PATH as the developer would, with no setting pinned. Its environment is env.
 func plainGit(ctx context.Context, dir string, env []string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Dir, cmd.Env = dir, env
-	out, err := cmd.Output()
-	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, exit.Stderr)
+	git, err := proc.Look(os.Environ(), "git")
+	if err != nil {
+		return "", err
 	}
 
-	return strings.TrimSpace(string(out)), err
+	var stdout, stderr bytes.Buffer
+	err = proc.Run(ctx, proc.Command{Path: git, Args: args, Dir: dir, Env: env, Stdout: &stdout, Stderr: &stderr})
+	if _, exited := errors.AsType[*proc.Exited](err); exited {
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, stderr.String())
+	}
+
+	return strings.TrimSpace(stdout.String()), err
 }

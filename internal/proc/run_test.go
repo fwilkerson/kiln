@@ -3,7 +3,6 @@ package proc_test
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"syscall"
 	"testing"
@@ -18,9 +17,8 @@ import (
 func TestRunKeepsQuietChild(t *testing.T) {
 	dir := t.TempDir()
 	helper := `trap "touch alive; exit" USR1; touch ready; while :; do sleep 1; done`
-	cmd := exec.CommandContext(t.Context(), "/bin/sh", "-c", "sh -c '"+helper+"' >/dev/null 2>&1 & echo $! >pid")
-	cmd.Dir = dir
-	if err := proc.Run(cmd, time.Hour); err != nil {
+	start := "sh -c '" + helper + "' >/dev/null 2>&1 & echo $! >pid"
+	if err := proc.Run(t.Context(), proc.Command{Path: "/bin/sh", Args: []string{"-c", start}, Dir: dir}); err != nil {
 		t.Fatal(err)
 	}
 

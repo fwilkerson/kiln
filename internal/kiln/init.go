@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"maps"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
@@ -531,7 +530,7 @@ func (r *Repo) mergeDefault(ctx context.Context, rel string, base, want []byte) 
 	_, err = plainGit(ctx, r.top, proc.Git.Env(r.env), "merge-file", "-L", rel, "-L", "kiln init's last default",
 		"-L", "kiln init's new default", rel, sides[0], sides[1])
 	// git merge-file exits with its count of conflicts, up to 127, and higher only when it fails.
-	if exit, ok := errors.AsType[*exec.ExitError](err); ok && exit.ExitCode() < 128 {
+	if exit, ok := errors.AsType[*proc.Exited](err); ok && exit.Code < 128 {
 		return "merged " + rel + ", with conflicts: resolve them before you commit it", nil
 	}
 
