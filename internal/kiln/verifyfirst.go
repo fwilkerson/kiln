@@ -149,13 +149,23 @@ func (b *build) sendFindings(ctx context.Context, findings string, why reason) (
 		return "", reason{}, err
 	}
 
-	branch := b.rec.Name.sideBranch(verifyRole)
-	conflict, err := b.r.git.Merge(ctx, b.tree, branch, b.message("merge the verify session's answer to the audit"))
-	if err == nil && conflict != nil {
-		err = fmt.Errorf("the verify session's tests conflict with the fix in %s", strings.Join(conflict.Files, ", "))
+	if err := b.mergeTests(ctx); err != nil {
+		return "", reason{}, err
 	}
 
-	return fmt.Sprintf(fixAuditedTests, findings), why, err
+	return fmt.Sprintf(fixAuditedTests, findings), why, nil
+}
+
+// mergeTests merges the verify session's branch into the fix's. A conflict stops the fix, since neither session may
+// write what the other wrote.
+func (b *build) mergeTests(ctx context.Context) error {
+	branch := b.rec.Name.sideBranch(verifyRole)
+	conflict, err := b.r.git.Merge(ctx, b.tree, branch, b.message("merge the verify session's answer to the audit"))
+	if err != nil || conflict == nil {
+		return err
+	}
+
+	return conflictStop(testsConflict, conflict.Files)
 }
 
 // verifyPrompt is the verify session's first message. It holds what the monitor's check printed, and nothing of a
@@ -189,7 +199,8 @@ const (
 		"fails on main's code for that reason, and end your turn."
 	testBroke = "The gate failed, but not on tests alone: a command failed with no test named, or a path is refused. " +
 		"Make it fail only on a test that shows what the monitor found, and end your turn.\n\n%s"
-	testFailed = "A session before yours wrote tests of it, in %s, and your branch starts from them. The gate " +
+	testsConflict = "the verify session's tests conflict with the fix, in these files:\n"
+	testFailed    = "A session before yours wrote tests of it, in %s, and your branch starts from them. The gate " +
 		"fails on them at main, as it must until the fix:\n\n%s"
 	testsAudited = "The audit read the work: your tests, and the fix another session wrote. Answer each finding " +
 		"on your tests with commits to the tests alone, and leave each finding on the code to the fix session. " +

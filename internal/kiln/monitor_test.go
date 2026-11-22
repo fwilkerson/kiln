@@ -574,6 +574,27 @@ func TestNamedRun(t *testing.T) {
 	}
 }
 
+// TestTestsConflict holds that a verify-first fix stops as a conflict when its tests conflict with the fix. No session
+// may resolve that, so kiln status names where the work is, and no error of kiln's.
+func TestTestsConflict(t *testing.T) {
+	t.Parallel()
+	r, repo := scratchRepo(t)
+	shell(t, repo, "echo base >x_test.go && git add . && git commit --quiet -m main && "+
+		"git checkout --quiet -b kiln/m.verify && echo verify >x_test.go && git commit --quiet -am verify && "+
+		"git checkout --quiet -b kiln/m main && echo fix >x_test.go && git commit --quiet -am fix")
+	b := &build{r: r, rec: record{Name: "m", Monitor: true, Session: "s"}, tree: git.Worktree(repo)}
+	err := b.mergeTests(t.Context())
+	s, stops := errors.AsType[*outOfRounds](err)
+	if !stops {
+		t.Fatalf("the merge answered %v, want a stop", err)
+	}
+
+	rec := record{Name: "m", Monitor: true, Session: "s", State: stopped, stop: s.stop}
+	if where := workPlace(rec, b.tree); s.Kind != stopConflict || !strings.Contains(where, string(b.tree)) {
+		t.Errorf("the fix stopped as %q; status says %q, want a conflict, and where the work is", s.Kind, where)
+	}
+}
+
 // TestAcceptedLandingStops holds that an accepted fix's landing only lands or stops. An error of any kind stops it,
 // so its record and branch stay for kiln accept. So does a session that asks for the developer, or fails, with its
 // summary and report as why. Only an interrupt leaves it as it was.

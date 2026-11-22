@@ -422,7 +422,8 @@ A monitor.json that says "workflow": "verify-first" splits the fix between two s
 	audit  as any fix's. Its prompt adds what the check printed, to read each test against. Its findings go to the
 	       verify session first, which answers with test files alone. kiln gates them as before, and merges
 	       kiln/<name>.verify into kiln/<name>. Then the findings go to the fix session. A merge that conflicts
-	       stops the fix. Once the developer accepted the fix, findings go to the fix session alone.
+	       stops the fix as a conflict, and kiln status names where its work is. Once the developer accepted the
+	       fix, findings go to the fix session alone.
 
 A test file has an element of its path that a pattern of kiln.json's testFiles matches, by path.Match. So is
 each file under testHelpers, and under each acceptance path's part before {spec}. The verify session writes only

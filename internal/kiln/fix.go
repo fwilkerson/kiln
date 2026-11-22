@@ -484,11 +484,16 @@ func (b *build) fixLand(ctx context.Context, head git.Rev) (string, reason, erro
 // aloneStops is the stop of a fix with no session, which back kept from landing. No session resolves a conflict.
 func aloneStops(back setback) error {
 	if back.why == whyConflict {
-		return &outOfRounds{stop{Why: fixConflicts + strings.Join(back.failing, "\n"), Failing: back.failing,
-			Kind: stopConflict}}
+		return conflictStop(fixConflicts, back.failing)
 	}
 
 	return &outOfRounds{stop{Why: "the landing failed:\n" + back.report, Failing: back.failing}}
+}
+
+// conflictStop stops a fix on a conflict no session may resolve. why starts its words, before files, the files in
+// conflict. kiln status then names where the work is, and what to run next.
+func conflictStop(why string, files []string) error {
+	return &outOfRounds{stop{Why: why + strings.Join(files, "\n"), Failing: files, Kind: stopConflict}}
 }
 
 // fixMergeMain merges main into the fix's branch, before back, a failed landing gate, goes back to the session. land
