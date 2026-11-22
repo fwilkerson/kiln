@@ -36,35 +36,35 @@ type config struct {
 	// a build back when its gate fails, its work conflicts with main, or its work changes nothing. The audit's
 	// findings go back too, and use no round. Absent or 0, the first failing gate stops the build.
 	Rounds int `json:"rounds"`
-	// Hosts lists the only hosts that a session's shell commands may connect to, such as ["proxy.golang.org",
-	// "*.example.org"]. Write each as a bare host name, with no scheme, port or path. Absent, those commands connect
-	// to no host.
-	Hosts []string `json:"hosts,omitempty"`
-	// Writable lists shell commands that print paths, such as ["go env GOCACHE GOMODCACHE"]. A session's shell
-	// commands may write to each printed path, as well as to the session's checkout. kiln runs each listed command
-	// with sh -c, and reads each word of its output as one absolute path. Absent, a session's commands write only to
-	// its checkout.
-	Writable []string `json:"writable,omitempty"`
-	// MCP lists the only MCP servers a session may call, by name, such as {"docs": {"command": "docs-mcp"}}. Write
-	// each server as Claude Code's mcpServers setting holds one. Each server runs outside the sandbox that confines a
-	// session's shell commands. Absent, a session calls no MCP server.
-	MCP map[string]json.RawMessage `json:"mcp,omitempty"`
-	// TestSession, when true, gives each build two sessions. The build session writes the code. The verify session
+	// AllowedHosts lists the only hosts that a session's shell commands may connect to, such as
+	// ["proxy.golang.org", "*.example.org"]. Write each as a bare host name, with no scheme, port or path. Absent,
+	// a session's shell commands connect to no host.
+	AllowedHosts []string `json:"allowedHosts,omitempty"`
+	// WritablePathCommands lists shell commands that print paths, such as ["go env GOCACHE GOMODCACHE"]. A
+	// session's shell commands may write to each printed path, as well as to the session's checkout. kiln runs each
+	// listed command with sh -c. kiln reads each word that the command prints as one absolute path. No session
+	// starts while a listed command fails, or prints a path that is not absolute. Absent, a session's shell commands
+	// write only to the session's checkout.
+	WritablePathCommands []string `json:"writablePathCommands,omitempty"`
+	// MCPServers lists the only MCP servers a session may call, by name, such as {"docs": {"command": "docs-mcp"}}.
+	// Write each server as Claude Code's own mcpServers setting holds one. Each server runs outside the sandbox that
+	// confines a session's shell commands. Absent, a session calls no MCP server.
+	MCPServers map[string]json.RawMessage `json:"mcpServers,omitempty"`
+	// VerifySession, when true, gives each build two sessions. The build session writes the code. The verify session
 	// writes the acceptance tests from the spec alone. Neither session reads the other's checkout. Absent or false,
 	// one session writes the code and the tests. A build uses the value that main held when the build was queued.
-	TestSession bool `json:"testSession,omitempty"`
-	// Acceptance is the path that holds a spec's acceptance tests, such as "uat/{spec}/". kiln puts the spec's name
-	// in place of {spec}. A list of such paths gives each spec several paths. Each path names {spec} after a
-	// directory that no other listed path starts with. kiln queue refuses every spec while acceptance is absent. A
-	// build uses the value that main held when the build was queued.
-	Acceptance paths `json:"acceptance,omitempty"`
-	// Shared lists paths that the verify session may write besides the acceptance tests, such as
-	// ["internal/testutil/"]. Use it for helper code that the acceptance tests call, such as a test harness. The
-	// build session may write these paths too. Absent, the verify session writes only the acceptance tests and the
-	// spec's amendment file. kiln queue refuses a spec whose acceptance path equals, holds or lies under one of these
-	// paths. kiln ignores shared unless testSession is true. A build uses the value that main held when the build
-	// was queued.
-	Shared []string `json:"shared,omitempty"`
+	VerifySession bool `json:"verifySession,omitempty"`
+	// AcceptanceTests is the path that holds a spec's acceptance tests, such as "uat/{spec}/". kiln puts the spec's
+	// name in place of {spec}. A list of such paths gives each spec several paths. Each path holds some text before
+	// {spec}. No listed path's text before {spec} starts with another's. kiln queue refuses every spec while
+	// acceptanceTests is absent. A build uses the value that main held when the build was queued.
+	AcceptanceTests paths `json:"acceptanceTests,omitempty"`
+	// TestHelpers lists paths of helper code that the acceptance tests call, such as ["internal/testutil/"]. With
+	// verifySession true, the verify session may write these paths, besides the acceptance tests and the spec's
+	// amendment file. The build session may write these paths too. kiln queue refuses a spec whose acceptance path
+	// equals, holds or lies under one of these paths. A build uses the value that main held when the build was
+	// queued.
+	TestHelpers []string `json:"testHelpers,omitempty"`
 	// Reaudit lists paths whose changes the audit must read before the work lands, such as ["migrations/"]. The
 	// audit reads the work once. When the work changes one of these paths after that, the audit reads the work again.
 	// That second reading uses a round. Absent, the audit never reads what a session changes in answer to the audit's
@@ -115,7 +115,7 @@ func (c config) shell(env []string) projectShell {
 	return projectShell{env: proc.Shell.Env(env), limit: c.killAfter(), bound: timeoutKey}
 }
 
-// specVar stands for the spec's name in kiln.json's acceptance.
+// specVar stands for the spec's name in kiln.json's acceptanceTests.
 const specVar = "{spec}"
 
 // paths is a list of paths in kiln.json, which also reads a JSON string as a list of one. A commit from before
@@ -135,7 +135,7 @@ func (p *paths) UnmarshalJSON(raw []byte) error {
 // acceptancePaths are the paths the acceptance tests of spec live in.
 func (c config) acceptancePaths(spec Spec) []string {
 	var filled []string
-	for _, p := range c.Acceptance {
+	for _, p := range c.AcceptanceTests {
 		filled = append(filled, strings.ReplaceAll(p, specVar, string(spec)))
 	}
 
@@ -145,7 +145,7 @@ func (c config) acceptancePaths(spec Spec) []string {
 // fixedParts are the parts of each acceptance path before {spec}, which are the same for every spec.
 func (c config) fixedParts() []string {
 	var fixed []string
-	for _, p := range c.Acceptance {
+	for _, p := range c.AcceptanceTests {
 		part, _, _ := strings.Cut(p, specVar)
 		fixed = append(fixed, part)
 	}
@@ -156,13 +156,13 @@ func (c config) fixedParts() []string {
 // acceptanceRefusals say why kiln queue may not take acceptance. Each path holds {spec}, after a part of its own, in
 // its clean form. No path's part before {spec} starts another's, so no two specs' paths meet.
 func (c config) acceptanceRefusals() refusals {
-	if len(c.Acceptance) == 0 {
-		return refusals{{configFile + " names no acceptance, the paths of a spec's acceptance tests",
-			fmt.Sprintf("add one, such as \"acceptance/%s/\"", specVar)}}
+	if len(c.AcceptanceTests) == 0 {
+		return refusals{{configFile + " names no acceptanceTests, the paths of a spec's acceptance tests",
+			fmt.Sprintf("add it, such as \"acceptanceTests\": \"acceptance/%s/\"", specVar)}}
 	}
 
 	var refused refusals
-	for _, p := range c.Acceptance {
+	for _, p := range c.AcceptanceTests {
 		if why, ok := pathRefusal(p); ok {
 			refused = append(refused, why.about(fmt.Sprintf("%s names the acceptance path %q,", configFile, p))...)
 		}
@@ -173,8 +173,8 @@ func (c config) acceptanceRefusals() refusals {
 		for j, b := range fixed[i+1:] {
 			if strings.HasPrefix(fold(a), fold(b)) || strings.HasPrefix(fold(b), fold(a)) {
 				refused = append(refused, refusal{fmt.Sprintf("%s names the acceptance paths %q and %q, whose "+
-					"parts before %s could make two specs' paths meet", configFile, c.Acceptance[i],
-					c.Acceptance[i+1+j], specVar), "start each with a part no other starts with"})
+					"parts before %s could make two specs' paths meet", configFile, c.AcceptanceTests[i],
+					c.AcceptanceTests[i+1+j], specVar), "start each with a part no other starts with"})
 			}
 		}
 	}
@@ -182,14 +182,15 @@ func (c config) acceptanceRefusals() refusals {
 	return refused
 }
 
-// sharedRefusals say why kiln queue may not take spec. It refuses a spec whose acceptance paths meet a shared path.
+// helperRefusals say why kiln queue may not take spec. It refuses a spec whose acceptance paths meet a testHelpers
+// path.
 // A split build removes what main holds under those paths from its build session's checkout.
-func (c config) sharedRefusals(spec Spec) refusals {
+func (c config) helperRefusals(spec Spec) refusals {
 	var refused refusals
 	for _, a := range c.acceptancePaths(spec) {
-		for _, h := range c.Shared {
+		for _, h := range c.TestHelpers {
 			if meets(a, h) {
-				refused = append(refused, refusal{fmt.Sprintf("%s's acceptance path %s meets the shared path %s, "+
+				refused = append(refused, refusal{fmt.Sprintf("%s's acceptance path %s meets the testHelpers path %s, "+
 					"which its build would remove", spec, a, h), "rename the spec"})
 			}
 		}
@@ -204,10 +205,10 @@ func meets(a, b string) bool {
 	return strings.HasPrefix(fa, fb) || strings.HasPrefix(fb, fa)
 }
 
-// unguarded is whether kiln cannot keep a fix off the acceptance tests. Then acceptance names no path, or one with
+// unguarded is whether kiln cannot keep a fix off the acceptance tests. Then acceptanceTests names no path, or one with
 // no part before {spec}.
 func (c config) unguarded() bool {
-	return len(c.Acceptance) == 0 || slices.Contains(c.fixedParts(), "")
+	return len(c.AcceptanceTests) == 0 || slices.Contains(c.fixedParts(), "")
 }
 
 // pathRefusal says why kiln.json may not name p as an acceptance path. It answers false for a path it may name.
@@ -237,7 +238,7 @@ func parseConfig(raw []byte) (c config, err error) {
 	// The strict read below stops at the first unknown key, so each moved key is refused first, all at once.
 	var keys map[string]jsontext.Value
 	_ = jsonv2.Unmarshal(raw, &keys)
-	if moved := oldKeys(configFile, keys, func(key string) string { return movedKeys[key] }); len(moved) > 0 {
+	if moved := oldKeys(configFile, keys, movedKey); len(moved) > 0 {
 		return c, unreadable{moved}
 	}
 
@@ -253,11 +254,23 @@ func parseConfig(raw []byte) (c config, err error) {
 var movedKeys = map[string]string{
 	"monitors": "each monitor is a directory of its own now, " + monitorsDir + "/<name>/: move each there, or add one " +
 		"with kiln monitor add",
-	"workflow": "say \"testSession\": true in its place for a second session that writes the acceptance tests, or " +
+	"workflow": "say \"verifySession\": true in its place for a second session that writes the acceptance tests, or " +
 		"drop it for one session that writes the code and the tests",
-	"harness": "name it \"shared\", the paths both sessions may write when testSession is true",
 	"gauges": "each gauge is a monitor now, " + monitorsDir + "/<name>/ with its gauge script, and its line in " +
 		"monitor.json: move each there, as kiln help gauges shows",
+}
+
+// renamedKeys are the keys of kiln.json that kiln once read, each with the key that took its place.
+var renamedKeys = map[string]string{"harness": "testHelpers", "shared": "testHelpers", "testSession": "verifySession",
+	"acceptance": "acceptanceTests", "hosts": "allowedHosts", "writable": "writablePathCommands", "mcp": "mcpServers"}
+
+// movedKey is the fix for key of kiln.json, where kiln renamed it or moved its setting, or "".
+func movedKey(key string) string {
+	if now, ok := renamedKeys[key]; ok {
+		return fmt.Sprintf("name it %q", now)
+	}
+
+	return movedKeys[key]
 }
 
 // configRefusals word err, json/v2's error for raw, as kiln's own refusal. A key kiln does not read is named with the
@@ -399,7 +412,7 @@ func (c config) refusals() refusals {
 		rule{len(c.Gate) == 0, refusal{configFile + " names no gate command", "name one, such as \"go test ./...\""}},
 		rule{c.Rounds < 0, refusal{fmt.Sprintf("%s names %d rounds", configFile, c.Rounds), "name 0 or more"}},
 	)
-	for _, h := range c.Hosts {
+	for _, h := range c.AllowedHosts {
 		if !bareHost(h) {
 			refused = append(refused, refusal{fmt.Sprintf("%s names the host %q", configFile, h),
 				"name a bare host, such as \"proxy.golang.org\", or \"*.example.org\""})
@@ -455,7 +468,7 @@ func (r *Repo) pastFiles(at git.Rev) files {
 		case p == configFile:
 			return rekeyed(raw, pastConfig), true, nil
 		case path.Base(p) == settingsFile:
-			return rekeyed(raw, pastSettings), true, nil
+			return rekeyed(raw, func(keys map[string]jsontext.Value) { rename(keys, renamedSettings) }), true, nil
 		}
 
 		return raw, true, nil
@@ -469,21 +482,19 @@ func (r *Repo) pastFiles(at git.Rev) files {
 func pastConfig(keys map[string]jsontext.Value) {
 	var workflow string
 	if jsonv2.Unmarshal(keys["workflow"], &workflow) == nil && workflow == "split" {
-		keys["testSession"] = jsontext.Value("true")
+		keys["verifySession"] = jsontext.Value("true")
 	}
 
-	if shared, ok := keys["harness"]; ok {
-		keys["shared"] = shared
-	}
+	rename(keys, renamedKeys)
 
 	for key := range movedKeys {
 		delete(keys, key)
 	}
 }
 
-// pastSettings moves each key of a monitor.json that an older kiln read to the key in its place.
-func pastSettings(keys map[string]jsontext.Value) {
-	for old, now := range renamedSettings {
+// rename moves the value of each key of keys that renamed names to the key in its place.
+func rename(keys map[string]jsontext.Value, renamed map[string]string) {
+	for old, now := range renamed {
 		if v, ok := keys[old]; ok {
 			keys[now] = v
 			delete(keys, old)

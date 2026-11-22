@@ -21,7 +21,7 @@ grep 'h\.go:3 weak test' .claude-calls/build/1/2/prompt
 grep 'h\.go:3 weak test' .claude-calls/verify/1/2/prompt
 
 -- .kiln/kiln.json --
-{"testSession": true, "rounds": 3, "shared": ["harness/"]}
+{"verifySession": true, "rounds": 3, "testHelpers": ["harness/"]}
 -- claude.json --
 {
  "build": {

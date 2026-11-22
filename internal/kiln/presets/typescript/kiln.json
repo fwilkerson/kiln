@@ -6,11 +6,11 @@
     "node --test ${KILN_JUNIT:+--test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=\"$KILN_JUNIT\"}"
   ],
   "rounds": 3,
-  "hosts": [
+  "allowedHosts": [
     "registry.npmjs.org"
   ],
-  "writable": [
+  "writablePathCommands": [
     "npm config get cache"
   ],
-  "acceptance": "tests/acceptance/{spec}.test.ts"
+  "acceptanceTests": "tests/acceptance/{spec}.test.ts"
 }

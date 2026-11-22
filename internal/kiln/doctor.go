@@ -427,9 +427,9 @@ func (c config) scriptRefusals(top string) refusals {
 	return refused
 }
 
-// commands are the commands of c that kiln runs with sh -c: the gate's, writable's and notify's.
+// commands are the commands of c that kiln runs with sh -c: those of gate, writablePathCommands and notify.
 func (c config) commands() []string {
-	return slices.Concat(c.Gate, c.Writable, []string{c.Notify})
+	return slices.Concat(c.Gate, c.WritablePathCommands, []string{c.Notify})
 }
 
 // scriptPath is whether word, the first of a command, names a script by its path. It holds a slash, and nothing the

@@ -59,7 +59,7 @@ arrow shape spec
 
 box build @agent 2.1 | BUILD | the code
 box verify @agent 2.1 | VERIFY | the tests, from | the spec alone
-more With testSession on, two sessions work in two clones. One writes the code, and the other writes the acceptance tests. Neither session reads the other's work. Without testSession, one session writes both.
+more With `verifySession` on, two sessions work in two clones. One writes the code, and the other writes the acceptance tests. Neither session reads the other's work. With `verifySession` off, one session writes both.
 box gate @kiln 2.2 | GATE ●2 | your checks, | read from main
 more kiln reads the gate's commands from main, never from the build's checkout, so a build cannot weaken the checks it is held to.
 box audit @agent 2.3 | AUDIT | a second session | reads the work

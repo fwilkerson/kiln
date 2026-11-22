@@ -55,7 +55,7 @@ func (r *Repo) reached(ctx context.Context, l claude.Launch) (claude.Launch, err
 		return l, err
 	}
 
-	for _, command := range c.Writable {
+	for _, command := range c.WritablePathCommands {
 		paths, err := r.printed(ctx, c.shell(r.env), command)
 		if err != nil {
 			return l, err
@@ -64,7 +64,7 @@ func (r *Repo) reached(ctx context.Context, l claude.Launch) (claude.Launch, err
 		l.Writable = append(l.Writable, paths...)
 	}
 
-	l.Domains, l.MCP, l.Silence = c.Hosts, c.MCP, c.killAfter()
+	l.Domains, l.MCP, l.Silence = c.AllowedHosts, c.MCPServers, c.killAfter()
 	return l, nil
 }
 
@@ -79,14 +79,14 @@ func (r *Repo) printed(ctx context.Context, s projectShell, command string) ([]s
 
 	out, err := s.run(ctx, git.Worktree(r.top), command)
 	if err != nil {
-		return nil, fmt.Errorf("%s's writable command %q: %w", configFile, command, err)
+		return nil, fmt.Errorf("the command %q of %s's writablePathCommands: %w", command, configFile, err)
 	}
 
 	paths := strings.Fields(out.stdout)
 	for _, p := range paths {
 		if !filepath.IsAbs(p) {
-			return nil, fmt.Errorf("%s's writable command %q printed %q: print only absolute paths", configFile,
-				command, p)
+			return nil, fmt.Errorf("the command %q of %s's writablePathCommands printed %q: print only absolute paths",
+				command, configFile, p)
 		}
 	}
 

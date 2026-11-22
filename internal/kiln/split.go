@@ -307,7 +307,7 @@ func (b *build) splitAfter(ctx context.Context) (turn, error) {
 // sideGuard is the guard on role's session's own work, in its clone.
 func (b *build) sideGuard(ctx context.Context, role string) (guard, error) {
 	s, err := b.sides(ctx)
-	own := side{role: role, acceptance: s.acceptance, shared: s.shared}
+	own := side{role: role, acceptance: s.acceptance, helpers: s.helpers}
 	return guard{spec: b.rec.Name, place: b.r.clone(b.rec.Name, role), allowed: b.allowed(), side: own}, err
 }
 
@@ -832,7 +832,7 @@ func (b *build) harnessChanged(ctx context.Context) ([]string, error) {
 
 	changed, err := b.r.git.Branched(ctx, mainBranch, tip)
 	return slices.DeleteFunc(changed, func(p string) bool {
-		return !slices.ContainsFunc(s.shared, func(h string) bool { return within(fold(p), fold(h)) })
+		return !slices.ContainsFunc(s.helpers, func(h string) bool { return within(fold(p), fold(h)) })
 	}), err
 }
 

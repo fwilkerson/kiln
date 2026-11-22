@@ -34,7 +34,7 @@ grep '`uat/x/`' .claude-calls/verify/1/1/system
 grep '`integration/x/`' .claude-calls/verify/1/1/system
 
 -- .kiln/kiln.json --
-{"testSession": true, "rounds": 3, "shared": ["harness/"], "acceptance": ["uat/{spec}/", "integration/{spec}/"]}
+{"verifySession": true, "rounds": 3, "testHelpers": ["harness/"], "acceptanceTests": ["uat/{spec}/", "integration/{spec}/"]}
 -- claude.json --
 {
  "build": {

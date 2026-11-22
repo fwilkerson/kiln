@@ -29,9 +29,9 @@ exec kiln init
 exec git checkout -- .kiln/agents
 
 # then it finds no problem, and notes that kiln acts on main's kiln.json, which differs from the working tree's in
-# hosts, and in $schema, which kiln init added.
+# allowedHosts, and in $schema, which kiln init added.
 exec kiln doctor x
-stdout '^note: \.kiln/kiln\.json differs from main''s in \$schema, hosts: kiln acts on main''s, so commit it to main to act on yours$'
+stdout '^note: \.kiln/kiln\.json differs from main''s in \$schema, allowedHosts: kiln acts on main''s, so commit it to main to act on yours$'
 stdout '^found no problem$'
 ! stderr .
 
@@ -46,7 +46,7 @@ stdout '^found no problem$'
 
 -- .kiln/kiln.json --
 {
-  "hosts": ["https://proxy.golang.org/"],
+  "allowedHosts": ["https://proxy.golang.org/"],
   "notify": ".kiln/notify"
 }
 -- .kiln/monitors/size/monitor.json --

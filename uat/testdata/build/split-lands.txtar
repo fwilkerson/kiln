@@ -37,7 +37,7 @@ exec git branch --list 'kiln/*'
 ! stdout .
 
 -- .kiln/kiln.json --
-{"testSession": true}
+{"verifySession": true}
 -- claude.json --
 {
   "build": {"1": {"1": [

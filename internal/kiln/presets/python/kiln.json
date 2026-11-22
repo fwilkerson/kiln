@@ -6,12 +6,12 @@
     "uv run pytest ${KILN_JUNIT:+--junitxml=\"$KILN_JUNIT\"} || [ $? -eq 5 ]"
   ],
   "rounds": 3,
-  "hosts": [
+  "allowedHosts": [
     "pypi.org",
     "files.pythonhosted.org"
   ],
-  "writable": [
+  "writablePathCommands": [
     "uv cache dir"
   ],
-  "acceptance": "tests/acceptance/test_{spec}.py"
+  "acceptanceTests": "tests/acceptance/test_{spec}.py"
 }

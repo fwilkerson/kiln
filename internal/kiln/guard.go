@@ -39,20 +39,20 @@ type side struct {
 	// a fix it holds each path's fixed part, and guards each path that starts with one. It is empty in a fix whose
 	// monitor says it may write the tests.
 	acceptance []string
-	// shared holds the paths both sessions of a split build write, as kiln.json's shared names them.
-	shared []string
+	// helpers holds the paths both sessions of a split build write, as kiln.json's testHelpers names them.
+	helpers []string
 }
 
 // fixRole is the side of a monitor's fix, which has no spec. It writes nothing under .kiln/.
 const fixRole = "fix"
 
-// valid is whether s is a side kiln builds. Only a split build's has shared paths, and it has an acceptance path.
+// valid is whether s is a side kiln builds. Only a side of a split build has helpers, and each has an acceptance path.
 func (s side) valid() bool {
 	switch s.role {
 	case "":
-		return s.acceptance == nil && s.shared == nil
+		return s.acceptance == nil && s.helpers == nil
 	case fixRole:
-		return s.shared == nil
+		return s.helpers == nil
 	case buildRole, verifyRole:
 		return len(s.acceptance) > 0
 	}
@@ -62,7 +62,7 @@ func (s side) valid() bool {
 
 // refusal says why the session of s may not write folded, a path folded as APFS reads it, or "". A split build's
 // build session writes neither the acceptance tests nor the amendments. Its verify session writes only those, and
-// the shared paths. A fix writes no acceptance test, unless its monitor says it may.
+// the paths of testHelpers. A fix writes no acceptance test, unless its monitor says it may.
 func (s side) refusal(rel, folded string, spec Spec) string {
 	in := func(root string) bool { return within(folded, root) }
 	tests := slices.ContainsFunc(s.acceptance, in) || folded == fold(spec.amendPath())
@@ -74,9 +74,9 @@ func (s side) refusal(rel, folded string, spec Spec) string {
 				paths, spec.amendPath())
 		}
 	case verifyRole:
-		if !tests && !slices.ContainsFunc(s.shared, in) {
+		if !tests && !slices.ContainsFunc(s.helpers, in) {
 			return fmt.Sprintf("%s is the build session's: in a split build, the verify session writes only %s, "+
-				"%s and the shared paths", rel, paths, spec.amendPath())
+				"%s and the paths of kiln.json's testHelpers", rel, paths, spec.amendPath())
 		}
 	case fixRole:
 		i := slices.IndexFunc(s.acceptance, func(fixed string) bool { return strings.HasPrefix(folded, fold(fixed)) })
@@ -149,8 +149,8 @@ func (g guard) hookArgs() []string {
 		args = append(args, "--acceptance", a)
 	}
 
-	for _, h := range g.side.shared {
-		args = append(args, "--shared", h)
+	for _, h := range g.side.helpers {
+		args = append(args, "--helpers", h)
 	}
 
 	return args
@@ -175,7 +175,7 @@ func hookGuard(args []string) (guard, error) {
 	flags.StringVar((*string)(&g.place), "place", "", "the build's worktree")
 	flags.StringVar(&g.side.role, "role", "", "the session's side: build or verify in a split build, or fix")
 	flags.Func("acceptance", "an acceptance path the side guards; given once for each", appendTo(&g.side.acceptance))
-	flags.Func("shared", "a path both sessions of a split build write; given once for each", appendTo(&g.side.shared))
+	flags.Func("helpers", "a path both sessions of a split build write; given once for each", appendTo(&g.side.helpers))
 
 	switch err := flags.Parse(args); {
 	case err != nil, flags.NArg() > 0, g.spec == "", g.place == "", !g.side.valid():

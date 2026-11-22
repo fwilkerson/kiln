@@ -19,12 +19,12 @@ cmp .kiln/kiln.json _given/want.json
 
 -- _given/kiln.json --
 {"gate": ["true"],
- "hosts": ["a.example"],
- "acceptance": "acc/{spec}/"}
+ "allowedHosts": ["a.example"],
+ "acceptanceTests": "acc/{spec}/"}
 -- _given/want.json --
 {"gate": ["true"],
- "hosts": ["a.example"],
- "acceptance": "acc/{spec}/",
+ "allowedHosts": ["a.example"],
+ "acceptanceTests": "acc/{spec}/",
  "$schema": "./kiln.schema.json",
  "rounds": 3}
 -- go.mod --

@@ -23,7 +23,7 @@ grep 'next: cd [^\n]*/\.build-x && claude --resume [0-9a-f-]+, to ask the build 
 grep '^ +cd [^\n]*/\.verify-x && claude --resume [0-9a-f-]+, to ask the verify session why;' .claude-calls/run.out
 
 -- .kiln/kiln.json --
-{"testSession": true}
+{"verifySession": true}
 -- claude.json --
 {
  "build": {

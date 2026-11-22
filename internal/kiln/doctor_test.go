@@ -21,10 +21,10 @@ func TestDoctor(t *testing.T) {
 		"each refusal of kiln.json at once": {
 			change: `sed -i '' 's|"rounds": 3|"rounds": -1|; s|"proxy.golang.org"|"https://x.org/"|' .kiln/kiln.json`,
 			want: []string{`names -1 rounds: name 0 or more`, `names the host "https://x.org/": name a bare host`,
-				"note: .kiln/kiln.json differs from main's in hosts, rounds: kiln acts on main's"},
+				"note: .kiln/kiln.json differs from main's in allowedHosts, rounds: kiln acts on main's"},
 		},
 		"a key of kiln.json kiln renamed": {change: withKeys(`"workflow": "split",`),
-			want: []string{`holds "workflow", a key kiln no longer reads: say "testSession": true in its place`}},
+			want: []string{`holds "workflow", a key kiln no longer reads: say "verifySession": true in its place`}},
 		"a key of monitor.json kiln renamed": {change: monitor + "echo Fix it. >agent.md && echo '{\"accept\": true}' >monitor.json",
 			want: []string{`.kiln/monitors/deps/monitor.json holds "accept", a key kiln no longer reads: name it "mustAccept"`,
 				launchd}},
@@ -136,7 +136,7 @@ func TestDoctorMainAndTools(t *testing.T) {
 	project := doctorProject(t)
 	for name, tc := range map[string]doctorCase{
 		"an object's keys reordered, and nothing else": {
-			change: withKeys(`"mcp": {"docs": {"command": "a", "args": []}},`) +
+			change: withKeys(`"mcpServers": {"docs": {"command": "a", "args": []}},`) +
 				` && git commit --quiet --no-verify -am mcp && ` +
 				`sed -i '' 's|{"command": "a", "args": \\[\\]}|{"args": [], "command": "a"}|' .kiln/kiln.json`,
 			want: []string{"found no problem"}},

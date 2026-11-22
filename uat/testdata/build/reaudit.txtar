@@ -17,7 +17,7 @@ exec git show main:harness/h.go
 stdout 'Checked = true'
 
 -- .kiln/kiln.json --
-{"testSession": true, "rounds": 3, "shared": ["harness/"], "reaudit": ["harness/"]}
+{"verifySession": true, "rounds": 3, "testHelpers": ["harness/"], "reaudit": ["harness/"]}
 -- claude.json --
 {
  "build": {

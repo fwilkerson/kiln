@@ -228,9 +228,9 @@ func (s sides) contract(role string, name Spec) string {
 		text = splitContract
 	}
 
-	harness := "which kiln.json's shared names none of"
-	if len(s.shared) > 0 {
-		harness = quoted(s.shared)
+	harness := "of which kiln.json's \"testHelpers\" lists none"
+	if len(s.helpers) > 0 {
+		harness = quoted(s.helpers)
 	}
 
 	return fmt.Sprintf(text, name, quoted(s.acceptance), harness)
@@ -289,7 +289,7 @@ type sides struct {
 	split bool
 	// acceptance holds the spec's acceptance paths, with its name filled in.
 	acceptance []string
-	shared     []string
+	helpers    []string
 }
 
 // sides reads the build's sides from kiln.json at the build's approval, once.
@@ -303,7 +303,7 @@ func (b *build) sides(ctx context.Context) (sides, error) {
 		return sides{}, err
 	}
 
-	s := sides{split: c.TestSession, acceptance: c.acceptancePaths(b.rec.Name), shared: c.Shared}
+	s := sides{split: c.VerifySession, acceptance: c.acceptancePaths(b.rec.Name), helpers: c.TestHelpers}
 	b.side = &s
 	return s, nil
 }

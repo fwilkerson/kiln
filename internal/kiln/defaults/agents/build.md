@@ -7,7 +7,7 @@
 # This body says how the code and its own tests are written, and the verify agent's says how the acceptance tests
 # are. In a build then audit, one session does both: that body follows this one in its prompt. In a split build,
 # this session reads this body alone, and a verify session reads the other. kiln's contract says which it is.
-# kiln.json's "testSession": true asks for a split build.
+# kiln.json's "verifySession": true asks for a split build.
 name: build
 description: Builds an approved spec, alone, with the code it asks for. kiln runs it on each build. Link it into .claude/agents/ to run it as a subagent too.
 model: opus

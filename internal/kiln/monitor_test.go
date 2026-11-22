@@ -59,7 +59,7 @@ func TestMonitorConfig(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			acceptance := cmpOr(tc.acceptance, `"acceptance/{spec}/"`)
-			c, err := parseConfig([]byte(`{"gate": ["true"], "rounds": 1, "acceptance": ` + acceptance + `}`))
+			c, err := parseConfig([]byte(`{"gate": ["true"], "rounds": 1, "acceptanceTests": ` + acceptance + `}`))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -96,7 +96,7 @@ func wantRefused(t *testing.T, got refusals, want []string) {
 func TestMonitorDirs(t *testing.T) {
 	t.Parallel()
 	r, repo := scratchRepo(t)
-	shell(t, repo, `mkdir .kiln && echo '{"gate": ["true"], "acceptance": "uat/{spec}/"}' >.kiln/kiln.json`)
+	shell(t, repo, `mkdir .kiln && echo '{"gate": ["true"], "acceptanceTests": "uat/{spec}/"}' >.kiln/kiln.json`)
 	writeMonitor(t, repo, "b", map[string]string{"command": "true"})
 	writeMonitor(t, repo, "a", map[string]string{"check": "true", "agent.md": "Fix it.", "monitor.json": `{"hours": 1}`,
 		"notes/lost": "true"})
@@ -149,10 +149,10 @@ func TestPastKeys(t *testing.T) {
 	shell(t, repo, "git add . && git commit --quiet -m start")
 	c, reads, err := r.monitors(t.Context(), "main")
 	m, _, refused := monitorNamed(reads, "a")
-	if !claim.Holds(err == nil, refused == nil, c.TestSession, slices.Equal(c.Shared, []string{"h/"}), m.MustAccept,
-		m.WritesTests, !m.gated()) {
-		t.Errorf("the commit reads as %+v and %+v, %v, %v; want testSession, shared, mustAccept, writesTests, "+
-			"and recheck false", c, m.settings, err, refused)
+	if !claim.Holds(err == nil, refused == nil, c.VerifySession, slices.Equal(c.TestHelpers, []string{"h/"}),
+		len(c.AcceptanceTests) == 1, m.MustAccept, m.WritesTests, !m.gated()) {
+		t.Errorf("the commit reads as %+v and %+v, %v, %v; want verifySession, testHelpers, acceptanceTests, "+
+			"mustAccept, writesTests, and recheck false", c, m.settings, err, refused)
 	}
 }
 
@@ -191,7 +191,7 @@ func writeMonitor(t *testing.T, repo string, name string, files map[string]strin
 // TestStatusNeverRan holds that kiln status says once that a monitor never ran, then when it runs.
 func TestStatusNeverRan(t *testing.T) {
 	r, repo := scratchRepo(t)
-	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptance": "a/{spec}/"}`})
+	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptanceTests": "a/{spec}/"}`})
 	writeMonitor(t, repo, "deps", map[string]string{checkScript: checkHealthy, commandScript: "true\n"})
 	shell(t, repo, "git add -A && git commit --quiet -m start")
 	var out strings.Builder
@@ -208,7 +208,7 @@ func TestStatusNeverRan(t *testing.T) {
 func TestMonitorRunRefused(t *testing.T) {
 	t.Parallel()
 	r, repo := scratchRepo(t)
-	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptance": "a/{spec}/", ` +
+	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptanceTests": "a/{spec}/", ` +
 		`"notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}`})
 	writeMonitor(t, repo, "good", map[string]string{gaugeScript: "echo 0\n", commandScript: "true\n",
 		settingsFile: `{"atMost": 0}`})
@@ -264,7 +264,7 @@ func TestMonitorConflict(t *testing.T) {
 	for file, marker := range map[string]string{commandScript: "<<<<<<< ours", settingsFile: ">>>>>>> theirs"} {
 		t.Run(file, func(t *testing.T) {
 			r, repo := scratchRepo(t)
-			writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptance": "a/{spec}/"}`})
+			writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptanceTests": "a/{spec}/"}`})
 			writeMonitor(t, repo, "deps", map[string]string{commandScript: "true\n", settingsFile: "{}\n"})
 			shell(t, repo, "printf '"+marker+"\\n' >>"+monitor{Name: "deps"}.path(file)+
 				" && git add -A && git commit --quiet -m x")

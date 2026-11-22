@@ -27,8 +27,8 @@ import (
 
 func TestGuard(t *testing.T) {
 	const place = "/Users/dev/Library/Caches/kiln/repo/x"
-	builds := side{role: buildRole, acceptance: []string{"acceptance/x/"}, shared: []string{"harness/"}}
-	verifies := side{role: verifyRole, acceptance: []string{"acceptance/x/"}, shared: []string{"harness/"}}
+	builds := side{role: buildRole, acceptance: []string{"acceptance/x/"}, helpers: []string{"harness/"}}
+	verifies := side{role: verifyRole, acceptance: []string{"acceptance/x/"}, helpers: []string{"harness/"}}
 	twoPaths := []string{"uat/x/", "integration/x/"}
 	buildsTwo := side{role: buildRole, acceptance: twoPaths}
 	verifiesTwo := side{role: verifyRole, acceptance: twoPaths}
@@ -166,7 +166,7 @@ func TestHookArguments(t *testing.T) {
 		"a word after the flags":          {"--spec", "x", "--place", "/w", "y"},
 		"an acceptance path with no role": {"--spec", "x", "--place", "/w", "--acceptance", "a/"},
 		"two acceptance paths, no role":   {"--spec", "x", "--place", "/w", "--acceptance", "a/", "--acceptance", "b/"},
-		"shared paths in a fix":           {"--spec", "x", "--place", "/w", "--role", fixRole, "--shared", "h/"},
+		"helpers in a fix":                {"--spec", "x", "--place", "/w", "--role", fixRole, "--helpers", "h/"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := Hook(args, strings.NewReader("{}"), io.Discard); !errors.Is(err, ErrUsage) {

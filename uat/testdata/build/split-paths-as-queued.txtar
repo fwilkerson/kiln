@@ -20,9 +20,9 @@ exec git show main:integration/x/notes.txt
 stdout '^written by the build session$'
 
 -- .kiln/kiln.json --
-{"testSession": true, "rounds": 3, "acceptance": "uat/{spec}/"}
+{"verifySession": true, "rounds": 3, "acceptanceTests": "uat/{spec}/"}
 -- _given/kiln.json --
-{"testSession": true, "rounds": 3, "acceptance": ["uat/{spec}/", "integration/{spec}/"], "gate": ["go vet ./...", "go test ./..."]}
+{"verifySession": true, "rounds": 3, "acceptanceTests": ["uat/{spec}/", "integration/{spec}/"], "gate": ["go vet ./...", "go test ./..."]}
 -- claude.json --
 {
   "build": {

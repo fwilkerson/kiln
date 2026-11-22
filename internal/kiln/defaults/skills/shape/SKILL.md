@@ -67,12 +67,13 @@ Between questions, do the work that waits on no answer, such as research, a chec
 
 ## 3. Write the acceptance tests
 
-Number them. A build writes test N's code where `.kiln/kiln.json`'s acceptance says, as the verify agent's file,
-`.kiln/agents/verify.md`, says. Each has a Given, a When and a Then, and the developer owns their words. A build may
-change one only by an amendment, in `.kiln/specs/<name>.amend.md`, which the developer reads at acceptance.
+Number them. A build writes test N's code under the path that `.kiln/kiln.json`'s `"acceptanceTests"` names. The verify
+agent's file, `.kiln/agents/verify.md`, says how. Each has a Given, a When and a Then, and the developer owns their
+words. A build may change one only by an amendment, in `.kiln/specs/<name>.amend.md`, which the developer reads at
+acceptance.
 
 - A Then names a state a test can read through the program, as its user reaches it.
-- With kiln.json's "testSession": true, a verify session writes the tests from the spec alone, and never sees the
+- With kiln.json's "verifySession": true, a verify session writes the tests from the spec alone, and never sees the
   code. So the Technical Plan names each output form a Then reads, such as a line a command prints.
 - A Given, When, Then names only what the intent names: never a timeout, a length or a message's wording. A test that
   locks a detail the intent never asked for becomes an amendment later.

@@ -237,7 +237,7 @@ func TestStateOf(t *testing.T) {
 func TestMonitorReadings(t *testing.T) {
 	t.Parallel()
 	r, repo := scratchRepo(t)
-	config := `{"gate": ["true"], "rounds": 1, "acceptance": "acceptance/{spec}/"}`
+	config := `{"gate": ["true"], "rounds": 1, "acceptanceTests": "acceptance/{spec}/"}`
 	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json")
 	writeMonitor(t, repo, "m", map[string]string{"gauge": "echo 0", "monitor.json": `{"atMost": 0}`, "command": "true"})
 	writeMonitor(t, repo, "other", map[string]string{"command": "true"})
@@ -317,7 +317,7 @@ func cutShortFix(t *testing.T, accepted bool) *Repo {
 	}
 
 	r, repo := scratchRepo(t)
-	config := `{"gate": ["true"], "rounds": 1, "acceptance": "acceptance/{spec}/"}`
+	config := `{"gate": ["true"], "rounds": 1, "acceptanceTests": "acceptance/{spec}/"}`
 	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json")
 	writeMonitor(t, repo, "m", map[string]string{"command": "true"})
 	shell(t, repo, "git add . && git commit --quiet -m start")

@@ -5,9 +5,9 @@
     "go test -timeout 30m ./..."
   ],
   "rounds": 3,
-  "testSession": true,
-  "acceptance": "uat/{spec}/",
-  "shared": [
+  "verifySession": true,
+  "acceptanceTests": "uat/{spec}/",
+  "testHelpers": [
     "internal/hometest/",
     "internal/scenariotest/",
     "internal/termtest/"
@@ -17,14 +17,14 @@
     "internal/scenariotest/",
     "internal/termtest/"
   ],
-  "hosts": [
+  "allowedHosts": [
     "proxy.golang.org",
     "sum.golang.org",
     "storage.googleapis.com",
     "pypi.org",
     "files.pythonhosted.org"
   ],
-  "writable": [
+  "writablePathCommands": [
     "go env GOCACHE GOMODCACHE",
     "echo \"$(go env GOPATH | cut -d: -f1)/pkg/sumdb\"",
     "uv cache dir"

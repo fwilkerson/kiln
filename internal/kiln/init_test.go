@@ -43,7 +43,7 @@ func TestInitUpdates(t *testing.T) {
 			edit: "echo 'House rule.' >>" + build + " && rm .kiln/init.json && touch go.mod",
 			said: "merged " + build + ", with conflicts", holds: []string{"<<<<<<< " + build + "\nHouse rule.\n"}},
 		{name: "a deleted default is written again, and kiln.json is the project's",
-			ship: "echo '{\"gate\": [\"make\"], \"rounds\": 2, \"acceptance\": \"a/{spec}/\"}' >kiln.json",
+			ship: "echo '{\"gate\": [\"make\"], \"rounds\": 2, \"acceptanceTests\": \"a/{spec}/\"}' >kiln.json",
 			edit: "rm " + build, said: "wrote " + build, holds: []string{"go vet"}},
 	}
 
@@ -219,7 +219,7 @@ func TestInitFillsSharedKeys(t *testing.T) {
 	t.Parallel()
 	r, repo := scratchRepo(t)
 	team := teamPreset(t, t.TempDir())
-	shell(t, team, `echo '{"gate": ["make"], "acceptance": "a/{spec}/"}' >kiln.json`)
+	shell(t, team, `echo '{"gate": ["make"], "acceptanceTests": "a/{spec}/"}' >kiln.json`)
 	if err := r.Init(t.Context(), new(strings.Builder), InitOptions{Preset: team}); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func TestInitFillsSharedKeys(t *testing.T) {
 	}
 
 	want := map[string]any{"$schema": "./kiln.schema.json", "rounds": 3.0, "gate": []any{"make"},
-		"acceptance": "a/{spec}/"}
+		"acceptanceTests": "a/{spec}/"}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("kiln init wrote kiln.json:\n%s\n%v; want %v", raw, err, want)
 	}

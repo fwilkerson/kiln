@@ -21,7 +21,7 @@
       "type": "boolean"
     },
     "writesTests": {
-      "description": "writesTests, when true, lets a fix write the acceptance tests of every spec. Those are the files under the part of each acceptance path before {spec}, such as uat/ for \"uat/{spec}/\". Absent or false, a fix writes nothing there. kiln then refuses the monitor while kiln.json's acceptance is absent, or names a path that starts with {spec}. kiln refuses writesTests in a monitor with no command and no agent.md.",
+      "description": "writesTests, when true, lets a fix write the acceptance tests of every spec. Those are the files under the part of each acceptance path before {spec}, such as uat/ for \"uat/{spec}/\". Absent or false, a fix writes nothing there. kiln then refuses the monitor while kiln.json's acceptanceTests is absent, or names a path that starts with {spec}. kiln refuses writesTests in a monitor with no command and no agent.md.",
       "type": "boolean"
     },
     "atLeast": {

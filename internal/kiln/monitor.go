@@ -78,7 +78,7 @@ type settings struct {
 	MustAccept bool `json:"mustAccept"`
 	// WritesTests, when true, lets a fix write the acceptance tests of every spec. Those are the files under the
 	// part of each acceptance path before {spec}, such as uat/ for "uat/{spec}/". Absent or false, a fix writes
-	// nothing there. kiln then refuses the monitor while kiln.json's acceptance is absent, or names a path that
+	// nothing there. kiln then refuses the monitor while kiln.json's acceptanceTests is absent, or names a path that
 	// starts with {spec}. kiln refuses writesTests in a monitor with no command and no agent.md.
 	WritesTests bool `json:"writesTests"`
 	// AtLeast is the lowest reading of the monitor's gauge that needs no fix, such as 80. A reading below it starts
@@ -380,9 +380,9 @@ func (c config) monitorRefusals(m monitor, files, keys []string) refusals {
 			"drop atLeast and atMost, or add a gauge"}},
 		rule{!m.fixes() && !meantGauge, refusal{"holds no command and no agent.md, so it fixes nothing",
 			"add one, or keep a gauge alone, with its line in monitor.json, for kiln to watch"}},
-		rule{m.fixes() && !m.WritesTests && c.unguarded(), refusal{"may not write the tests, while acceptance names no " +
-			"path before {spec} for kiln to guard", "give each acceptance path a part before {spec}, or say " +
-			"\"writesTests\": true in its monitor.json"}},
+		rule{m.fixes() && !m.WritesTests && c.unguarded(), refusal{"may not write the tests, but kiln cannot guard them: " +
+			"kiln.json's acceptanceTests is absent, or names a path that starts with {spec}", "give each acceptance " +
+			"path a part before {spec}, or say \"writesTests\": true in its monitor.json"}},
 	)
 	for _, key := range keys {
 		if !m.fixes() && slices.Contains(fixKeys, key) {

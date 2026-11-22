@@ -52,7 +52,7 @@ func TestMonitorAdd(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := &Repo{top: t.TempDir()}
-			writeAll(t, r.top, map[string]string{configFile: `{"gate": ["true"], "acceptance": "acceptance/{spec}/"}`})
+			writeAll(t, r.top, map[string]string{configFile: `{"gate": ["true"], "acceptanceTests": "a/{spec}/"}`})
 			if tc.there {
 				writeMonitor(t, r.top, "bugs", map[string]string{"command": "mine"})
 			}
@@ -82,7 +82,7 @@ var kilnOwn = regexp.MustCompile(`fwilkerson|docs/practices\.md|uat/|internal/|s
 // TestShippedMonitors holds that kiln could run each monitor it ships, in a project whose tests it can guard. None
 // names a path of kiln's own repository.
 func TestShippedMonitors(t *testing.T) {
-	c, err := parseConfig([]byte(`{"gate": ["true"], "acceptance": "acceptance/{spec}/"}`))
+	c, err := parseConfig([]byte(`{"gate": ["true"], "acceptanceTests": "acceptance/{spec}/"}`))
 	if err != nil || len(shippedNames()) == 0 {
 		t.Fatalf("kiln.json reads %v, and kiln ships %v", err, shippedNames())
 	}

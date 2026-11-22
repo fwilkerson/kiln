@@ -13,9 +13,9 @@ import (
 
 // seededConfig holds the keys a script's .kiln/kiln.json gets when it lacks them: a Go project's, built in 1 round.
 var seededConfig = map[string]json.RawMessage{
-	"acceptance": json.RawMessage(`"acceptance/{spec}/"`),
-	"gate":       json.RawMessage(`["go vet ./...", "go test ./..."]`),
-	"rounds":     json.RawMessage(`1`),
+	"acceptanceTests": json.RawMessage(`"acceptance/{spec}/"`),
+	"gate":            json.RawMessage(`["go vet ./...", "go test ./..."]`),
+	"rounds":          json.RawMessage(`1`),
 }
 
 // seededModule is the go.mod a script gets when it lacks one and takes the seeded gate, which is Go's.

@@ -5,14 +5,14 @@
     "go test ./..."
   ],
   "rounds": 3,
-  "hosts": [
+  "allowedHosts": [
     "proxy.golang.org",
     "sum.golang.org",
     "storage.googleapis.com"
   ],
-  "writable": [
+  "writablePathCommands": [
     "go env GOCACHE GOMODCACHE",
     "echo \"$(go env GOPATH | cut -d: -f1)/pkg/sumdb\""
   ],
-  "acceptance": "acceptance/{spec}/"
+  "acceptanceTests": "acceptance/{spec}/"
 }

@@ -58,8 +58,8 @@ A project tells kiln how its builds run in .kiln/, on main. kiln init writes it 
 date, as Presets says:
 
 	.kiln/kiln.json             the gate, its rounds, the hosts a session reaches, commands that print writable paths,
-	                            the MCP servers a session calls, whether a test session writes the tests, where the
-	                            acceptance tests live, the shared paths, the paths the audit reads again, and the
+	                            the MCP servers a session calls, whether a verify session writes the tests, where the
+	                            acceptance tests live, the test helpers, the paths the audit reads again, and the
 	                            program that receives each notification
 	.kiln/kiln.schema.json      kiln.json's JSON Schema, for an editor, which kiln init writes over each time
 	.kiln/monitor.schema.json   each monitor.json's JSON Schema, for an editor, which kiln init writes over each time
@@ -105,7 +105,7 @@ kiln removes every checkout a build made once it lands, is accepted, rejected or
 or waits on its branch, keeps them. Only a kiln that holds commands.lock uses .main or .gauges. Only the kiln that
 holds the monitors' lane uses .monitor-check.
 
-A script is a command kiln runs from the project's files. That is each command of the gate and writable, each
+A script is a command kiln runs from the project's files. That is each command of gate and writablePathCommands, each
 script of a monitor, and the notify program. $KILN holds the path of the kiln that runs each. A script runs
 "$KILN", since the PATH of a launchd job or a terminal may name another kiln, or none.
 
@@ -163,12 +163,12 @@ contract, the denied commands, the forbidden actions, or the guard on .kiln/. Th
 servers are kiln.json's at main's tip, and none without its keys. kiln runs each command that prints paths once
 per kiln command. One that fails stops the build.
 
-kiln queue refuses a kiln.json whose acceptance names no path, a path without {spec}, or one that starts with it.
-It refuses a path that path.Clean changes, but for its last slash, or one that starts with a slash. It refuses a
-list in which one path's part before {spec} starts another's, or equals it, with case folded. It refuses a spec
-when a shared path is one of its paths, or holds one, or lies under one. It refuses a build agent that says how
-to write the tests. Such a line is an older default's heading for them, or its line on what the build writes. Or
-it names a path's part before {spec}, where the part starts a path.
+kiln queue refuses a kiln.json whose acceptanceTests names no path, a path without {spec}, or one that starts
+with it. It refuses a path that path.Clean changes, but for its last slash, or one that starts with a slash. It
+refuses a list in which one path's part before {spec} starts another's, or equals it, with case folded. It
+refuses a spec when a testHelpers path is one of its paths, or holds one, or lies under one. It refuses a build
+agent that says how to write the tests. Such a line is an older default's heading for them, or its line on what
+the build writes. Or it names a path's part before {spec}, where the part starts a path.
 
 # Builds
 
@@ -200,7 +200,7 @@ retires the spec. A spec that waited on its branch lands its work first, with th
 A usage limit pauses the build until the limit resets, and then resumes the same session. A limit with no reset
 pauses it for 5 minutes.
 
-A split build, which kiln.json's "testSession": true asks for at the commit queued, runs two sessions at once:
+A split build, which kiln.json's "verifySession": true asks for at the commit queued, runs two sessions at once:
 
 	build session    in <trees>/.build-<name>, a clone of main on kiln/<name>.build: writes the code
 	verify session   in <trees>/.verify-<name>, a clone of main on kiln/<name>.verify: writes the acceptance tests,
@@ -233,7 +233,7 @@ or a Write there before it happens. Each name is folded as APFS folds it:
 	                          a monitor's fix writes nothing there
 	a .claude directory       the developer's Claude Code settings, agents and skills, whose hooks run unsandboxed
 	the other side            in a split build, the build session writes neither the acceptance tests nor the
-	                          amendments; the verify session writes only those, and the shared paths
+	                          amendments; the verify session writes only those, and the testHelpers paths
 	the acceptance tests      to a monitor's fix, each path starting with an acceptance path's part before {spec},
 	                          unless its monitor says "writesTests": true
 
@@ -256,10 +256,10 @@ above. It refuses a key it does not know, and a value of the wrong type. It refu
 with no line, and a line with no gauge. It refuses a check, gauge or command git holds without the executable bit. It
 refuses a monitor with no command and no agent.md, unless the monitor holds a gauge alone to watch. Such a monitor
 fixes nothing, so it refuses recheck, mustAccept and writesTests in its monitor.json, which steer a fix. It refuses a
-monitor that may not write the tests while kiln cannot guard them. acceptance then names no path, or one with no part
-before {spec}. A refusal holds back its one monitor: kiln monitor run runs the rest, and says why. It notifies when
-it first refuses that monitor's directory, and again each time the directory changes. kiln status and kiln tui show
-it refused, with why. kiln monitor run with its name refuses, and says why.
+monitor that may not write the tests while kiln cannot guard them. acceptanceTests then names no path, or one with
+no part before {spec}. A refusal holds back its one monitor: kiln monitor run runs the rest, and says why. It
+notifies when it first refuses that monitor's directory, and again each time the directory changes. kiln status and
+kiln tui show it refused, with why. kiln monitor run with its name refuses, and says why.
 
 kiln monitor add copies a monitor into .kiln/monitors/<name>/, for the developer to commit on main. It takes the name
 of one kiln ships, such as bugs. One that needs a language's tools sits under its preset's name, such as go/docs. It
@@ -381,7 +381,7 @@ kiln takes its lane first, then commands.lock, and never takes a lane while it h
 No hang holds a lane, commands.lock or the launchd job forever. kiln.json's timeout, a Go duration read at main's
 tip, bounds two waits. It is 1 hour when unset:
 
-	a command kiln runs for the project    the gate's, a monitor's check or command, a gauge, a writable command
+	a command kiln runs for the project    the gate's, a monitor's check or command, a gauge, one that prints paths
 	a session                              how long it prints nothing
 
 A session that keeps printing is no hang, and the timeout never ends it. kiln kills a command past the timeout
@@ -389,7 +389,7 @@ with its process group, and a session with each process it started. Its words na
 the setting:
 
 	what ran past                                          ends in
-	a gate's command, a writable command, a monitor's      a stopped build or fix, with those words as its why
+	a gate's command, one that prints paths, a monitor's   a stopped build or fix, with those words as its why
 	command, a gauge in a fix's gate, or a session
 	a monitor's check, or its gauge at main's tip          couldn't run, with those words as its summary
 	a gauge read after a landing                           unknown, with those words as why

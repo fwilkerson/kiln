@@ -19,31 +19,31 @@
       "description": "rounds is how many times kiln sends a build back to its session before the build stops, such as 3. kiln sends a build back when its gate fails, its work conflicts with main, or its work changes nothing. The audit's findings go back too, and use no round. Absent or 0, the first failing gate stops the build.",
       "type": "integer"
     },
-    "hosts": {
-      "description": "hosts lists the only hosts that a session's shell commands may connect to, such as [\"proxy.golang.org\", \"*.example.org\"]. Write each as a bare host name, with no scheme, port or path. Absent, those commands connect to no host.",
+    "allowedHosts": {
+      "description": "allowedHosts lists the only hosts that a session's shell commands may connect to, such as [\"proxy.golang.org\", \"*.example.org\"]. Write each as a bare host name, with no scheme, port or path. Absent, a session's shell commands connect to no host.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
-    "writable": {
-      "description": "writable lists shell commands that print paths, such as [\"go env GOCACHE GOMODCACHE\"]. A session's shell commands may write to each printed path, as well as to the session's checkout. kiln runs each listed command with sh -c, and reads each word of its output as one absolute path. Absent, a session's commands write only to its checkout.",
+    "writablePathCommands": {
+      "description": "writablePathCommands lists shell commands that print paths, such as [\"go env GOCACHE GOMODCACHE\"]. A session's shell commands may write to each printed path, as well as to the session's checkout. kiln runs each listed command with sh -c. kiln reads each word that the command prints as one absolute path. No session starts while a listed command fails, or prints a path that is not absolute. Absent, a session's shell commands write only to the session's checkout.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
-    "mcp": {
-      "description": "mcp lists the only MCP servers a session may call, by name, such as {\"docs\": {\"command\": \"docs-mcp\"}}. Write each server as Claude Code's mcpServers setting holds one. Each server runs outside the sandbox that confines a session's shell commands. Absent, a session calls no MCP server.",
+    "mcpServers": {
+      "description": "mcpServers lists the only MCP servers a session may call, by name, such as {\"docs\": {\"command\": \"docs-mcp\"}}. Write each server as Claude Code's own mcpServers setting holds one. Each server runs outside the sandbox that confines a session's shell commands. Absent, a session calls no MCP server.",
       "type": "object",
       "additionalProperties": {}
     },
-    "testSession": {
-      "description": "testSession, when true, gives each build two sessions. The build session writes the code. The verify session writes the acceptance tests from the spec alone. Neither session reads the other's checkout. Absent or false, one session writes the code and the tests. A build uses the value that main held when the build was queued.",
+    "verifySession": {
+      "description": "verifySession, when true, gives each build two sessions. The build session writes the code. The verify session writes the acceptance tests from the spec alone. Neither session reads the other's checkout. Absent or false, one session writes the code and the tests. A build uses the value that main held when the build was queued.",
       "type": "boolean"
     },
-    "acceptance": {
-      "description": "acceptance is the path that holds a spec's acceptance tests, such as \"uat/{spec}/\". kiln puts the spec's name in place of {spec}. A list of such paths gives each spec several paths. Each path names {spec} after a directory that no other listed path starts with. kiln queue refuses every spec while acceptance is absent. A build uses the value that main held when the build was queued.",
+    "acceptanceTests": {
+      "description": "acceptanceTests is the path that holds a spec's acceptance tests, such as \"uat/{spec}/\". kiln puts the spec's name in place of {spec}. A list of such paths gives each spec several paths. Each path holds some text before {spec}. No listed path's text before {spec} starts with another's. kiln queue refuses every spec while acceptanceTests is absent. A build uses the value that main held when the build was queued.",
       "anyOf": [
         {
           "type": "string"
@@ -56,8 +56,8 @@
         }
       ]
     },
-    "shared": {
-      "description": "shared lists paths that the verify session may write besides the acceptance tests, such as [\"internal/testutil/\"]. Use it for helper code that the acceptance tests call, such as a test harness. The build session may write these paths too. Absent, the verify session writes only the acceptance tests and the spec's amendment file. kiln queue refuses a spec whose acceptance path equals, holds or lies under one of these paths. kiln ignores shared unless testSession is true. A build uses the value that main held when the build was queued.",
+    "testHelpers": {
+      "description": "testHelpers lists paths of helper code that the acceptance tests call, such as [\"internal/testutil/\"]. With verifySession true, the verify session may write these paths, besides the acceptance tests and the spec's amendment file. The build session may write these paths too. kiln queue refuses a spec whose acceptance path equals, holds or lies under one of these paths. A build uses the value that main held when the build was queued.",
       "type": "array",
       "items": {
         "type": "string"

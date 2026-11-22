@@ -78,21 +78,22 @@ wrote .kiln/init.json
 $ git diff .kiln                     # read what changed, resolve each conflict, then commit
 ```
 
-Read `.kiln/kiln.json` once. Here is the go preset's `kiln.json`, without `hosts` and `writable`, the sandbox's keys:
+Read `.kiln/kiln.json` once. Here is the go preset's `kiln.json`, without its two sandbox keys, `"allowedHosts"` and
+`"writablePathCommands"`:
 
 ```json
 {
   "$schema": "./kiln.schema.json",
   "gate": ["go vet ./...", "go test ./..."],
   "rounds": 3,
-  "acceptance": "acceptance/{spec}/"
+  "acceptanceTests": "acceptance/{spec}/"
 }
 ```
 
-`gate` lists the commands that must pass before any work lands. A failing gate sends the work back to the session,
-and each time is a round. `rounds` is how many rounds a build gets before it stops. `acceptance` is where the
-acceptance tests go. `$schema` names `kiln.schema.json`, which `kiln init` writes, so an editor completes each key.
-[The reference](docs/reference.md#kilnjson) explains every key.
+`gate` lists the commands that must pass before any work lands. A failing gate sends the work back to the session, and
+each time is a round. `rounds` is how many rounds a build gets before it stops. `"acceptanceTests"` is where the
+acceptance tests go. `$schema` names `kiln.schema.json`, which `kiln init` writes, so an editor completes each key. [The
+reference](docs/reference.md#kilnjson) explains every key.
 
 After you change a file under `.kiln/`, run `kiln doctor` before you commit. `kiln doctor` prints each problem that
 would make kiln refuse or fail later, with its fix. A line that starts `note:` is no problem:
@@ -214,18 +215,18 @@ printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seco
 
 - **Your gate.** kiln reads `kiln.json` from main, never from the build's checkout, so no build weakens its own
   gate. A test that also fails on main does not fail the build.
-- **Acceptance tests written apart from the code.** With `"testSession": true`, one session writes the code and
+- **Acceptance tests written apart from the code.** With `"verifySession": true`, one session writes the code and
   another writes the tests, from the spec alone. Neither session can read the other's checkout. Otherwise,
   one session writes both.
 - **An audit.** The audit reads the work once the gate passes, before the work lands.
 - **A sandbox, while the session runs.** A session's shell commands write only in the session's checkout, and in the
-  paths that `kiln.json`'s `writable` commands print. A session's shell commands reach only the hosts that
-  `kiln.json` lists. kiln's hook keeps a session's Edit and Write tools off the paths kiln guards, such as
-  `.kiln/kiln.json`. The gate runs outside the sandbox, as your own `go test` does.
+  paths that the commands of `kiln.json`'s `"writablePathCommands"` print. A session's shell commands reach only the
+  hosts that `kiln.json`'s `"allowedHosts"` lists. kiln's hook keeps a session's Edit and Write tools off the paths
+  kiln guards, such as `.kiln/kiln.json`. The gate runs outside the sandbox, as your own `go test` does.
 - **Your spec's wording.** A build that finds the spec wrong writes an amendment, and waits on its branch for you.
   No build changes what the spec asks for on its own.
 
-With `"testSession": true`, a build runs this way. kiln stacks the two sessions' commits on one branch before the
+With `"verifySession": true`, a build runs this way. kiln stacks the two sessions' commits on one branch before the
 gate:
 
 ```text

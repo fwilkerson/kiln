@@ -12,13 +12,13 @@ exec kiln init --preset python
 grep '"gate": \[\n(?:\s+"[^\n]*\n)*?\s+"uv run pytest [^\n]*KILN_JUNIT' .kiln/kiln.json
 grep '"gate": \[\n(?:\s+"[^\n]*\n)*?\s+"uv run ruff check",?\n' .kiln/kiln.json
 grep '"gate": \[\n(?:\s+"[^\n]*\n)*?\s+"uv run ty check",?\n' .kiln/kiln.json
-grep '"hosts": \[\n(?:\s+"[^\n]*\n)*?\s+"pypi\.org",?\n' .kiln/kiln.json
-grep '"hosts": \[\n(?:\s+"[^\n]*\n)*?\s+"files\.pythonhosted\.org",?\n' .kiln/kiln.json
-grep '"writable": \[\n(?:\s+"[^\n]*\n)*?\s+"uv cache dir",?\n' .kiln/kiln.json
+grep '"allowedHosts": \[\n(?:\s+"[^\n]*\n)*?\s+"pypi\.org",?\n' .kiln/kiln.json
+grep '"allowedHosts": \[\n(?:\s+"[^\n]*\n)*?\s+"files\.pythonhosted\.org",?\n' .kiln/kiln.json
+grep '"writablePathCommands": \[\n(?:\s+"[^\n]*\n)*?\s+"uv cache dir",?\n' .kiln/kiln.json
 ! grep 'go ' .kiln/kiln.json
 
 # and kiln.json's acceptance says where Python acceptance tests live, and verify.md how they are written.
-grep '"acceptance": "tests/acceptance/test_\{spec\}\.py"' .kiln/kiln.json
+grep '"acceptanceTests": "tests/acceptance/test_\{spec\}\.py"' .kiln/kiln.json
 grep '`test_at<N>`' .kiln/agents/verify.md
 ! grep 'kiln:preset' .kiln/agents/verify.md
 ! grep 'kiln:preset' .kiln/agents/build.md

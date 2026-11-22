@@ -14,7 +14,7 @@ grep '\*\*Then\*\*: it answers 42, or more\.' .claude-calls/build/1/2/prompt
 ! grep 'it answers 42, or more' .claude-calls/build/1/1/prompt
 
 -- .kiln/kiln.json --
-{"testSession": true, "rounds": 3}
+{"verifySession": true, "rounds": 3}
 -- claude.json --
 {
  "build": {

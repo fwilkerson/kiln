@@ -125,9 +125,9 @@ func TestSpecBeforeKiln(t *testing.T) {
 }
 
 // TestInitKeeps holds what kiln init leaves as the project made it. It keeps kiln.json's gate and rounds, and adds no
-// hosts or writable key, since those differ by preset. With no record, it keeps the project's own file of a default.
-// The difference is left as a conflict. It links nothing over a file in .claude/. It names each such file,
-// unless that path already reaches kiln's own file through a link.
+// allowedHosts or writablePathCommands key, since those differ by preset. With no record, it keeps the project's own
+// file of a default. The difference is left as a conflict. It links nothing over a file in .claude/. It names each
+// such file, unless that path already reaches kiln's own file through a link.
 func TestInitKeeps(t *testing.T) {
 	t.Parallel()
 	r, repo := scratchRepo(t)
@@ -241,7 +241,7 @@ func TestBadReviewer(t *testing.T) {
 	}
 }
 
-// wantConfigKept holds that kiln.json keeps the gate and rounds TestInitKeeps wrote, with no hosts or writable added.
+// wantConfigKept holds that kiln.json keeps the gate and rounds TestInitKeeps wrote, with no sandbox key added.
 func wantConfigKept(t *testing.T, repo string) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(repo, configFile))
@@ -254,8 +254,8 @@ func wantConfigKept(t *testing.T, repo string) {
 		t.Fatal(err)
 	}
 
-	if !claim.Holds(fmt.Sprint(c.Gate, c.Rounds) == "[true] 1", c.Hosts == nil, c.Writable == nil) {
-		t.Errorf("kiln.json is %s; want its gate and rounds kept, with no hosts or writable added", raw)
+	if !claim.Holds(fmt.Sprint(c.Gate, c.Rounds) == "[true] 1", c.AllowedHosts == nil, c.WritablePathCommands == nil) {
+		t.Errorf("kiln.json is %s; want its gate and rounds kept, with no sandbox key added", raw)
 	}
 }
 
@@ -294,15 +294,15 @@ func TestQueueNeedsInit(t *testing.T) {
 }
 
 // TestQueueNeedsTestsPlace holds that kiln queue refuses a kiln.json that names no place for the acceptance tests.
-// It refuses paths that two specs could share. It refuses a spec whose paths meet a shared path. It refuses a build
-// agent that still says how to write the tests, as an older default did.
+// It refuses paths that two specs could share. It refuses a spec whose paths meet a testHelpers path. It refuses a
+// build agent that still says how to write the tests, as an older default did.
 func TestQueueNeedsTestsPlace(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
 		change, refusal string
 	}{
 		"kiln init's files are taken": {},
-		"kiln.json names no acceptance": {change: `perl -0pi -e 's/,\n  "acceptance": [^\n]*//' .kiln/kiln.json`,
+		"kiln.json names no acceptance": {change: `perl -0pi -e 's/,\n  "acceptanceTests": [^\n]*//' .kiln/kiln.json`,
 			refusal: "names no acceptance"},
 		"its acceptance starts with the spec's name": {change: acceptance(`"{spec}/"`), refusal: "starts with {spec}"},
 		"a list of two paths is taken":               {change: acceptance(`["uat/{spec}/", "integration/{spec}/"]`)},
@@ -314,10 +314,10 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 		"a fixed part that starts another's":         {change: acceptance(`["uat/{spec}/", "uat/integration/{spec}/"]`), refusal: "could make two"},
 		"one fixed part twice, in other letters":     {change: acceptance(`["test_{spec}.py", "Test_{spec}-it.py"]`), refusal: "could make two"},
 		"a fixed part that only shares a prefix":     {change: acceptance(`["uat/{spec}/", "uat-it/{spec}/"]`)},
-		"the spec's path is a shared path":           {change: shared(`acceptance/x/`), refusal: "meets the shared path"},
-		"a shared path is under the spec's path":     {change: shared(`acceptance/x/h/`), refusal: "meets the shared path"},
-		"the spec's path is under a shared path":     {change: shared(`acceptance/`), refusal: "meets the shared path"},
-		"a shared path beside the spec's":            {change: shared(`acceptance/xh/`)},
+		"the spec's path is a helpers path":          {change: helpers(`acceptance/x/`), refusal: "meets the testHelpers path"},
+		"a helpers path is under the spec's path":    {change: helpers(`acceptance/x/h/`), refusal: "meets the testHelpers path"},
+		"the spec's path is under a helpers path":    {change: helpers(`acceptance/`), refusal: "meets the testHelpers path"},
+		"a helpers path beside the spec's":           {change: helpers(`acceptance/xh/`)},
 		"the build agent keeps the old heading": {change: `printf '\n## Acceptance tests\n' >>.kiln/agents/build.md`,
 			refusal: "move that text to .kiln/agents/verify.md"},
 		"the build agent keeps the old line": {
@@ -356,14 +356,14 @@ func TestQueueNeedsTestsPlace(t *testing.T) {
 	}
 }
 
-// acceptance is a shell command that sets kiln.json's acceptance to raw, a JSON value.
+// acceptance is a shell command that sets kiln.json's acceptanceTests to raw, a JSON value.
 func acceptance(raw string) string {
-	return `sed -i '' 's|"acceptance": .*|"acceptance": ` + raw + `|' .kiln/kiln.json`
+	return `sed -i '' 's|"acceptanceTests": .*|"acceptanceTests": ` + raw + `|' .kiln/kiln.json`
 }
 
-// shared is a shell command that gives kiln.json one shared path, p.
-func shared(p string) string {
-	return `sed -i '' 's|"acceptance": |"shared": ["` + p + `"], "acceptance": |' .kiln/kiln.json`
+// helpers is a shell command that gives kiln.json one testHelpers path, p.
+func helpers(p string) string {
+	return `sed -i '' 's|"acceptanceTests": |"testHelpers": ["` + p + `"], "acceptanceTests": |' .kiln/kiln.json`
 }
 
 // TestAuditedDirs holds which directories the audit reads. A file at the top, in any language, names ".". A directory

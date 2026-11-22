@@ -13,8 +13,8 @@ grep '"allowedDomains": \[\s*"example\.org"\s*\]' .claude-calls/audit/1/1/settin
 grep '"allowWrite": \[\s*"/tmp/kiln-writable/build"\s*\]' .claude-calls/audit/1/1/settings.json
 
 -- .kiln/kiln.json --
-{"hosts": ["example.org"],
-  "writable": ["echo /tmp/kiln-writable/build"]
+{"allowedHosts": ["example.org"],
+  "writablePathCommands": ["echo /tmp/kiln-writable/build"]
 }
 -- claude.json --
 {
