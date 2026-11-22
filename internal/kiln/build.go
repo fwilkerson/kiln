@@ -22,8 +22,9 @@ const unknownReset = 5 * time.Minute
 
 // Fire builds each queued spec, one at a time, until none is queued. It works in the specs' lane, beside a kiln
 // monitor run. A build that was building when kiln last stopped goes on first, in the same session. So does a queued
-// landing of accepted amendments, which a kiln accept left. Fire refuses while another kiln fire, or a kiln accept that
-// lands a spec, holds the specs' lane. It refuses while kiln is being reinstalled. It skips a monitor's fix.
+// landing of accepted amendments, which a kiln accept left. A build whose session never began starts a new one. Fire
+// refuses while another kiln fire, or a kiln accept that lands a spec, holds the specs' lane. It refuses while kiln is
+// being reinstalled. It skips a monitor's fix.
 func (r *Repo) Fire(ctx context.Context, out io.Writer) error {
 	return r.run(ctx, out, inLane{lane: specsLane, holder: runHolder})
 }
@@ -283,7 +284,7 @@ func (b *build) goOn(ctx context.Context) error {
 	}
 
 	switch {
-	case b.rec.Session == "":
+	case !b.r.begun(b.rec.Session):
 		b.set(func(r *record) { r.Owed = "" })
 		return b.start(ctx)
 	case b.rec.Owed != "":
@@ -293,6 +294,13 @@ func (b *build) goOn(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// begun is whether session printed a line, so Claude Code holds it to resume. A kiln that died before the session's
+// first run left its ID in the record, and no session. A stream kiln cannot measure counts as begun.
+func (r *Repo) begun(session string) bool {
+	streamed, err := r.claude.Streamed(session)
+	return session != "" && (err != nil || streamed > 0)
 }
 
 // payOwed resumes the build's session with the message kiln owes it, once kiln tend saw to the stopped build. It

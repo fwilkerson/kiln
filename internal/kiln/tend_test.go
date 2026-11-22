@@ -62,11 +62,22 @@ func tendRepo(t *testing.T, config string) (r *Repo, repo, dir string) {
 
 const tendConfig = `{"gate": ["true"], "rounds": 1, "acceptanceTests": "acceptance/{spec}/"}`
 
-// given puts recs in r's book, and writes entries to its ledger.
+// given puts recs in r's book, and writes entries to its ledger. Each session a record names has begun: its stream
+// holds a line, as a session that ran prints one.
 func given(t *testing.T, r *Repo, recs []*record, entries []entry) {
 	t.Helper()
 	if err := r.store.update(func(b *book) error { b.Specs = recs; return nil }); err != nil {
 		t.Fatal(err)
+	}
+
+	for _, rec := range recs {
+		for _, session := range []string{rec.Session, rec.Verify} {
+			if session == "" {
+				continue
+			}
+
+			writeAll(t, r.claude.Dir(session), map[string]string{"stream.jsonl": `{"type":"system"}` + "\n"})
+		}
 	}
 
 	for _, e := range entries {

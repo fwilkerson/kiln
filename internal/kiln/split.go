@@ -97,7 +97,7 @@ func (b *build) splitGoOn(ctx context.Context) error {
 
 	rec := b.now()
 	switch {
-	case rec.Session == "":
+	case !b.r.begun(rec.Session) && !b.r.begun(rec.Verify):
 		b.set(func(r *record) { r.Owed = "" })
 		return b.splitStart(ctx)
 	case rec.Accepted:

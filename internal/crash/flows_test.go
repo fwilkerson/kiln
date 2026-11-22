@@ -76,15 +76,6 @@ const slots = 6
 // defects are the kills known to leave kiln wrong, each with what goes wrong. A row's run fails once its defect is
 // fixed, and then the row goes.
 var defects = map[kill]string{
-	{"lands", "KILL", "11"}:  neverBegun,
-	{"lands", "KILL", "12"}:  neverBegun,
-	{"lands", "INT", "12"}:   neverBegun,
-	{"accept", "KILL", "11"}: neverBegun,
-	{"accept", "KILL", "12"}: neverBegun,
-	{"accept", "INT", "12"}:  neverBegun,
-	{"tend", "KILL", "11"}:   neverBegun,
-	{"tend", "KILL", "12"}:   neverBegun,
-	{"tend", "INT", "12"}:    neverBegun,
 	{"accept", "KILL", "49"}: "kiln accept committed the fold, so the next kiln accept finds no amendments to fold, and refuses.",
 	{"fix", "KILL", "64"}:    fixRetired,
 	{"fix", "KILL", "65"}:    fixRetired,
@@ -97,7 +88,6 @@ var defects = map[kill]string{
 
 // The defects that several kills share.
 const (
-	neverBegun  = "The record names a session that never began, so kiln fire resumes it, which Claude Code refuses."
 	fixRetired  = "The landed fix's record is gone, so nothing removes its worktree and branch."
 	lostDropped = "The cut-short fix's record went first, so its outcome, worktree and branch are left to no record."
 )
