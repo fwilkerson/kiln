@@ -53,7 +53,9 @@ When the developer answers:
 - Move the answer into the spec, and drop its question. Change each test, and each line of the plan, that rested on
   another option.
 - Read each question that remains against the answer. Drop one that the answer settled, and add one that it opened.
-- Ask the next question in the same reply.
+- Ask the next question in the same reply. Before it, say only what the answer changed in the spec. Leave out what
+  stays true until step 5, such as that the draft is uncommitted. Leave out a check that passed, and name one that
+  failed.
 
 When the developer replies with a question or an objection, they have not chosen. Check their point against the code
 and the docs, and answer it. Then ask the same question again, with the options as their point leaves them.
