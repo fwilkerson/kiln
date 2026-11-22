@@ -38,7 +38,7 @@ message, with the inspection's ID in parentheses. Search the file for the line's
   builtin or a package, close a resource on each path, or compare an error with `errors.Is`. Ask for the developer
   before you remove or rename an exported name.
 - When the code reads worse for the fix, leave it. Ask for the developer, with the inspection's ID and why. The
-  developer may tune the profile, or keep the finding in `.kiln/monitors/inspect/kept`, which the gauge leaves out.
+  developer may tune the profile, or keep the finding in `.kiln/monitors/inspect/lib/kept`, which the gauge leaves out.
 - Never suppress an inspection with a comment, and never change `.idea/inspectionProfiles/` or `.idea/scopes/`.
 
 ## How you check the fix
