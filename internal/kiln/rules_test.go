@@ -944,14 +944,15 @@ func TestRecoverLane(t *testing.T) {
 				{Name: "y", State: building, Accepted: true}}}
 			b.requeue(tc.lane)
 			var requeued, dropped, left []Spec
-			for _, r := range b.dropLost(tc.lane) {
+			for _, r := range b.lost(tc.lane) {
 				dropped = append(dropped, r.Name)
 			}
 
 			for _, r := range b.Specs {
-				if r.State == queued {
+				switch {
+				case r.State == queued:
 					requeued = append(requeued, r.Name)
-				} else {
+				case !slices.Contains(dropped, r.Name):
 					left = append(left, r.Name)
 				}
 			}

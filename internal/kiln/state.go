@@ -431,8 +431,8 @@ func (r *record) runsFor(l lane, only Spec) bool {
 const landings Spec = ".landings"
 
 // requeue queues again each record of the lane l, which the caller holds, that a kiln that stopped left building. A
-// build that was building goes on first. In the monitors' lane, it queues a fix's accepted landing again, and leaves
-// any other fix for dropLost.
+// build that was building goes on first. In the monitors' lane, it queues a fix's accepted landing again. kiln
+// monitor run drops any other fix.
 func (b *book) requeue(l lane) {
 	for _, s := range b.Specs {
 		if l.leftBuilding(s) && s.goesOnAfterKiln() {
@@ -449,18 +449,15 @@ func (r *record) goesOnAfterKiln() bool {
 	return !r.Monitor || r.Accepted
 }
 
-// dropLost drops each record of the lane l that a kiln left building, and that does not go on. That is a fix the
-// developer had not accepted. The caller holds l. It answers the fixes dropped. The specs' lane drops none.
-func (b *book) dropLost(l lane) []record {
+// lost answers each record of the lane l that a kiln left building, and that does not go on. That is a fix the
+// developer had not accepted. The caller holds l. The specs' lane has none.
+func (b *book) lost(l lane) []record {
 	var lost []record
-	b.Specs = slices.DeleteFunc(b.Specs, func(s *record) bool {
+	for _, s := range b.Specs {
 		if l.leftBuilding(s) && !s.goesOnAfterKiln() {
 			lost = append(lost, *s)
-			return true
 		}
-
-		return false
-	})
+	}
 
 	return lost
 }

@@ -128,7 +128,7 @@ func (r *Repo) recover(ctx context.Context, out io.Writer) error {
 	var lost []record
 	err := r.store.update(func(b *book) error {
 		b.requeue(monitorsLane)
-		lost = b.dropLost(monitorsLane)
+		lost = b.lost(monitorsLane)
 		return nil
 	})
 	if err != nil {
@@ -144,8 +144,8 @@ func (r *Repo) recover(ctx context.Context, out io.Writer) error {
 	return r.buildEach(ctx, out, inLane{lane: monitorsLane, only: landings, unlock: func() {}})
 }
 
-// dropLost ends the build of rec, a fix a kiln cut short, dropped, and removes its branch and checkouts. A fix
-// whose landing main holds ends landed instead, notifies, and the gauges read it.
+// dropLost ends the build of rec, a fix a kiln cut short, dropped. It removes its branch and checkouts, then its
+// record. A fix whose landing main holds ends landed instead, notifies, and the gauges read it.
 func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 	b := &build{r: r, rec: rec, tree: r.tree(rec.Name), out: out}
 	held, err := b.landedBefore(ctx)
@@ -164,6 +164,11 @@ func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 
 	r.ended(rec.Name, rec.Build, outDropped, out)
 	if err := r.dropCheckouts(ctx, rec.Name); err != nil {
+		return err
+	}
+
+	// The record goes last, so the next kiln monitor run drops a fix whose kiln died before it.
+	if err := r.store.update(func(b *book) error { b.retire(rec.Name); return nil }); err != nil {
 		return err
 	}
 

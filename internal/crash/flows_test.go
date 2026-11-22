@@ -75,16 +75,7 @@ const slots = 6
 
 // defects are the kills known to leave kiln wrong, each with what goes wrong. A row's run fails once its defect is
 // fixed, and then the row goes.
-var defects = map[kill]string{
-	{"fix", "KILL", "14,17"}: lostDropped,
-	{"fix", "KILL", "14,18"}: lostDropped,
-	{"fix", "KILL", "14,19"}: lostDropped,
-}
-
-// The defects that several kills share.
-const (
-	lostDropped = "The cut-short fix's record went first, so its outcome, worktree and branch are left to no record."
-)
+var defects = map[kill]string{}
 
 // kill is one run of a flow, killed by signal at the steps at names, as KILN_CRASH_AT names them. A run with no
 // signal is killed at no step.
