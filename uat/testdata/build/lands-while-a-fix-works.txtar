@@ -4,7 +4,7 @@
 # Given: a spec whose kiln fire was interrupted while its build session worked. The session's first call touches
 # .tmp/building, then waits for a file no step makes.
 exec kiln queue x
-! exec kiln fire &fire&
+exec exits 1 kiln fire &fire&
 exec await .tmp/building
 kill -INT fire
 wait fire

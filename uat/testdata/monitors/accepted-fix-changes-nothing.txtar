@@ -12,7 +12,7 @@ cp stdout .tmp/main-before
 # The fix's session merges main by taking main's side of each conflict.
 
 # When: the developer runs kiln accept with the monitor's name.
-! exec kiln accept stale
+exec exits 1 kiln accept stale
 
 # Then: kiln accept fails, and main is unchanged.
 exec git rev-parse main

@@ -6,7 +6,7 @@ exec kiln queue x
 exec kiln fire
 stdout '^x: waits on kiln/x'
 cp _given/PRODUCT.md PRODUCT.md
-! exec kiln accept x
+exec exits 1 kiln accept x
 cp stdout .tmp/accept
 stdout '^x: stopped: '
 stderr '^kiln accept: the landing of x stopped'
@@ -25,7 +25,7 @@ exec git log --format=%H main -- x.go
 ! stdout .
 
 # When: the developer runs kiln queue on it,
-! exec kiln queue x
+exec exits 1 kiln queue x
 
 # Then: the queue is refused, and kiln status shows the spec stopped, landing accepted amendments.
 stderr '^kiln queue: refused: '

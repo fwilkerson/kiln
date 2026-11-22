@@ -9,9 +9,9 @@ set -eu
 
 rev=${1:?name the commit to compare with, such as main}
 
-# A check is a line of a script, above the files it brings, that asserts: stdout, grep, screen and the like.
+# A check is a line of a script, above the files it brings, that asserts: stdout, grep, screen, exits and the like.
 checks() {
-  awk '/^-- .* --$/ { exit } /^(! )?(stdout|stderr|grep|screen|color|exists|cmp) / { print }'
+  awk '/^-- .* --$/ { exit } /^((! )?(stdout|stderr|grep|screen|color|exists|cmp)|exec exits) / { print }'
 }
 
 # A bare mktemp ignores TMPDIR on macOS, and a session's sandbox lets it write nowhere else.

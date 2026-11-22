@@ -12,7 +12,7 @@ cp stdout .tmp/main-before
 # The fix's session leaves the gate failing in each round kiln.json gives it: its merge drops the fix's word.
 
 # When: the developer runs kiln accept with the monitor's name.
-! exec kiln accept stale
+exec exits 1 kiln accept stale
 
 # Then: kiln accept fails, and main is unchanged.
 exec git rev-parse main
@@ -28,7 +28,7 @@ stdout 'kiln reject stale'
 # A second kiln accept resumes the same session.
 exec sh -c 'ls .claude-calls/fix/1 | wc -l'
 cp stdout .tmp/calls-before
-! exec kiln accept stale
+exec exits 1 kiln accept stale
 ! exists .claude-calls/fix/2
 exec sh -c 'ls .claude-calls/fix/1 | wc -l'
 ! cmp stdout .tmp/calls-before

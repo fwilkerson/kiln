@@ -7,7 +7,7 @@ exec kiln queue x
 exec sh -c 'printf "#!/bin/sh\n\"%s\" \"\$@\" || exit\ncase \" \$* \" in *\" merge \"*\" --ff-only \"*) [ -e \"$WORK/.tmp/killed\" ] || { touch \"$WORK/.tmp/killed\"; kill -9 \$PPID; } ;; esac\n" "$(command -v git)" >.tmp/git && chmod +x .tmp/git'
 
 # When: kiln fire dies once main holds the landing,
-! exec sh -c 'PATH="$PWD/.tmp:$PATH" exec kiln fire'
+exec exits 137 sh -c 'PATH="$PWD/.tmp:$PATH" exec kiln fire'
 exists .tmp/killed
 exec git log -1 --format=%s main
 stdout '^feat\(x\): land the approved spec$'
@@ -18,7 +18,7 @@ stdout '^x: halted\n  its kiln fire is gone: kiln fire takes it up again$'
 ! stdout 'building'
 
 # and kiln queue refuses it with the same words.
-! exec kiln queue x
+exec exits 1 kiln queue x
 stderr 'it is halted, as its kiln fire is gone: kiln fire takes it up again'
 ! stderr 'once its build ends'
 

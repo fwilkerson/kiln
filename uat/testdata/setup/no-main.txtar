@@ -12,26 +12,26 @@ exec kiln init
 stdout '^kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
 
 # while each command that reads main refuses with that one message, and no git error.
-! exec kiln queue x
+exec exits 1 kiln queue x
 stderr '^kiln queue: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
 ! stderr 'fatal'
 
-! exec kiln status
+exec exits 1 kiln status
 stderr '^kiln status: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
 ! stdout 'gauges'
 
-! exec kiln tui
+exec exits 1 kiln tui
 stderr '^kiln tui: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
 
-! exec kiln monitor run bugs
+exec exits 1 kiln monitor run bugs
 stderr '^kiln monitor: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
 
-! exec kiln complete queue
+exec exits 1 kiln complete queue
 stderr '^kiln complete: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
 
 # A branch main with no commit on it is refused the same way.
 exec git checkout --quiet --orphan main
-! exec kiln queue x
+exec exits 1 kiln queue x
 stderr '^kiln queue: refused: kiln builds on the branch main, which this repository lacks: commit to main, or run git branch -m main$'
 
 -- go.mod --

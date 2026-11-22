@@ -6,7 +6,7 @@ exec kiln fire
 stdout '^x: landed on main'
 
 # When: the developer runs kiln queue on it,
-! exec kiln queue x
+exec exits 1 kiln queue x
 
 # Then: the first is refused.
 stderr '^kiln queue: refused: '

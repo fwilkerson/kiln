@@ -3,8 +3,8 @@
 # Given: an approved spec in .kiln/specs/ whose form leaves /shape's template.
 # x lacks the template's Technical Plan. y holds every section, but its first test has no Then.
 # When: the developer queues it.
-! exec kiln queue x
-! exec kiln queue y
+exec exits 1 kiln queue x
+exec exits 1 kiln queue y
 
 # Then: kiln refuses it, and kiln status does not show it queued.
 exec kiln status

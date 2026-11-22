@@ -5,7 +5,7 @@
 # acceptance test has no Then.
 
 # When: the developer runs kiln doctor on x,
-! exec kiln doctor x
+exec exits 1 kiln doctor x
 
 # then it prints each problem on a line of its own, with its fix, and exits 1, naming how many it found.
 stdout '^\.kiln/kiln\.json names the host "https://proxy\.golang\.org/": name a bare host, such as "proxy\.golang\.org", or "\*\.example\.org"$'

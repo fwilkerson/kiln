@@ -3,7 +3,7 @@
 # Given: a project whose kiln.json names a gauge.
 
 # When: the developer runs kiln doctor,
-! exec kiln doctor
+exec exits 1 kiln doctor
 
 # then it refuses kiln.json's gauges, a key kiln does not read.
 stdout '^\.kiln/kiln\.json holds "gauges", a key kiln does not read: remove it, or name one kiln reads: '
@@ -15,7 +15,7 @@ mkdir .kiln/monitors/size
 cp $WORK/_given/size .kiln/monitors/size/gauge
 chmod 755 .kiln/monitors/size/gauge
 cp $WORK/_given/accept.json .kiln/monitors/size/monitor.json
-! exec kiln doctor
+exec exits 1 kiln doctor
 
 # then it refuses mustAccept, since the monitor fixes nothing, and names the fix.
 ! stdout 'holds "gauges"'
@@ -23,7 +23,7 @@ stdout '^\.kiln/monitors/size/ names mustAccept in its monitor\.json, a key that
 
 # When: the developer drops mustAccept, and runs kiln doctor again,
 cp $WORK/_given/line.json .kiln/monitors/size/monitor.json
-! exec kiln doctor
+exec exits 1 kiln doctor
 
 # then it names no problem in the monitor.
 ! stdout 'monitors/size'

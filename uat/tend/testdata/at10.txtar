@@ -7,7 +7,7 @@ exec sh -c 'kiln monitor run || true'
 exec kiln status
 stdout 'docs: waiting on the developer'
 exec sh -c 'touch broken && git add broken && git commit -qm "break the gate"'
-! exec kiln accept docs
+exec exits 1 kiln accept docs
 exec kiln status
 stdout '^docs: stopped'
 exec git log --format=%H main -- docs.txt

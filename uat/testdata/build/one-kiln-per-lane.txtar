@@ -17,13 +17,13 @@ stdout '^x: building'
 stdout '^notes: fix building, '
 
 # When: then kiln fire again,
-! exec kiln fire
+exec exits 1 kiln fire
 
 # Then: it refuses, naming the kiln fire that holds its lane, after the name of the command that refuses.
 stderr ': .*kiln fire'
 
 # When: and kiln monitor run again.
-! exec kiln monitor run
+exec exits 1 kiln monitor run
 
 # Then: it refuses, naming the kiln monitor run that holds its lane, after the name of the command that refuses.
 stderr ': .*kiln monitor run'

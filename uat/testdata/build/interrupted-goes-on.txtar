@@ -3,7 +3,7 @@
 # Given: a build whose gate failed once, and whose kiln fire was interrupted in the session's second turn. That turn
 # touches .tmp/working, then waits for a file no step makes.
 exec kiln queue x
-! exec kiln fire &fire&
+exec exits 1 kiln fire &fire&
 exec await .tmp/working
 kill -INT fire
 wait fire

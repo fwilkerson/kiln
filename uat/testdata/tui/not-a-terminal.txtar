@@ -4,7 +4,7 @@
 exec kiln queue x
 
 # When: something runs kiln tui.
-! exec kiln tui
+exec exits 1 kiln tui
 
 # Then: it draws nothing, says why, and exits with an error.
 ! stdout .

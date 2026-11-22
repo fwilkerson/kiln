@@ -14,9 +14,9 @@ stdout '^x: waiting for UAT$'
 
 # When: the developer runs kiln tend with each name.
 # Then: kiln refuses each, and says where it stands.
-! exec sh -c 'kiln tend tidy 2>&1'
+exec exits 1 sh -c 'kiln tend tidy 2>&1'
 stdout '\btidy: [^\n]*healthy'
-! exec sh -c 'kiln tend x 2>&1'
+exec exits 1 sh -c 'kiln tend x 2>&1'
 stdout '\bx: [^\n]*waiting for UAT'
 
 # No session starts.

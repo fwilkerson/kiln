@@ -45,7 +45,7 @@
 //	$WORK-home/                  HOME, so kiln's worktrees and caches are the script's own; its git config is
 //	                             hometest's, with no automatic maintenance
 //
-//	PATH              kiln, built from cmd/kiln, then claude, the scripted one, and await
+//	PATH              kiln, built from cmd/kiln, then claude, the scripted one, await and exits
 //	KILN_REPO         the checkout of kiln the test runs in, for a script that works on kiln's own repository
 //	GOCACHE           the developer's, with GOMODCACHE and GOPATH; Go runs offline, as GOPROXY=off,
 //	                  GOTOOLCHAIN=local and GOFLAGS=-buildvcs=false say
@@ -63,6 +63,14 @@
 // await looks at its file every 20 ms. A scripted claude has no limit of its own. Every await and scripted claude
 // ends once the test process ends, so none outlives the run. Where kqueue cannot watch the test process, an await
 // or a scripted claude asks once a second whether it runs.
+//
+// A script expects kiln to fail through exits, which passes when its program ends with the status named:
+//
+//	exec exits 2 kiln queue                a usage error
+//	exec exits 1 kiln fire &fire&          a refusal, or a kiln that kill -INT fire cuts short
+//
+// A program that a signal ends has the status sh reports, 128 plus the signal's number. exits passes SIGINT and SIGTERM
+// on to the program. Run and RunAll refuse a script that runs kiln under ! exec or ? exec, which accept any status.
 //
 // The scripted claude speaks as claude -p --output-format stream-json --verbose, and reads its prompt on standard
 // input. A call with no -p is an interactive session, as kiln tend starts one. Its last argument is its first
@@ -111,6 +119,7 @@ func Main(m *testing.M) {
 	testscript.Main(tests{m}, map[string]func(){
 		"claude": func() { os.Exit(claudeMain()) },
 		"await":  func() { os.Exit(awaitMain()) },
+		"exits":  func() { os.Exit(exitsMain()) },
 	})
 }
 
@@ -252,6 +261,7 @@ func run(t *testing.T, scripts testscript.Params) {
 		t.Fatal("scenariotest:", err)
 	}
 
+	refuseUnstated(t, scripts)
 	waits := screenWaits(t)
 	scripts.Setup = func(env *testscript.Env) error { return setUp(env, waits) }
 	scripts.RequireExplicitExec, scripts.Cmds = true, terminalCommands

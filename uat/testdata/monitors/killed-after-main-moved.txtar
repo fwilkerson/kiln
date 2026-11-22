@@ -5,7 +5,7 @@
 exec sh -c 'printf "#!/bin/sh\n\"%s\" \"\$@\" || exit\ncase \" \$* \" in *\" merge \"*\" --ff-only \"*) [ -e \"$WORK/.tmp/killed\" ] || { touch \"$WORK/.tmp/killed\"; kill -9 \$PPID; } ;; esac\n" "$(command -v git)" >.tmp/git && chmod +x .tmp/git'
 
 # When: kiln monitor run dies once main holds the fix, and the developer runs kiln monitor run again.
-! exec sh -c 'PATH="$PWD/.tmp:$PATH" exec kiln monitor run'
+exec exits 137 sh -c 'PATH="$PWD/.tmp:$PATH" exec kiln monitor run'
 exists .tmp/killed
 exec git log -1 --format=%s main
 stdout '^fix\(bump\): land the monitor''s fix$'

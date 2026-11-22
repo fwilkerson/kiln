@@ -2,7 +2,7 @@
 
 # Given: a fix whose kiln monitor run was interrupted while its session worked. The fix's first session touches
 # .tmp/fixing, then waits for a file no step makes.
-! exec kiln monitor run &mon&
+exec exits 1 kiln monitor run &mon&
 exec await .tmp/fixing
 kill -INT mon
 wait mon

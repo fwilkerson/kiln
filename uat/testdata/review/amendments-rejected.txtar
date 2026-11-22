@@ -42,7 +42,7 @@ stdout '(?s)^x: waits on kiln/x, .*^  # Amendments to .kiln/specs/x\.md$\n.*^  -
 stdout '(?s)^x: waits on kiln/x, .*^  next: .*kiln accept x\b.*kiln reject x\b'
 
 # When: the developer runs kiln queue on it.
-! exec kiln queue x
+exec exits 1 kiln queue x
 
 # Then: kiln refuses,
 stderr '^kiln queue: refused: '

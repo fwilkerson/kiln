@@ -17,7 +17,7 @@ stdout 'docs.*waiting'
 exec sh -c 'echo "the docs, written by hand" >docs.txt && git add docs.txt && git commit -qm "docs: write by hand"'
 
 # When: the developer runs kiln accept with the monitor's name,
-! exec kiln accept docs
+exec exits 1 kiln accept docs
 
 # then its summary says main changed what the fix changed. Its output and kiln status name kiln reject docs, since
 # no session resolves a conflict, and never ask to accept again.

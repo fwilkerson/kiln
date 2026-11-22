@@ -9,7 +9,7 @@ stdout '^x: waiting for UAT$'
 exec sh -c 'printf "#!/bin/sh\ncase \" \$* \" in *\" worktree remove \"*) [ -e \"$WORK/.tmp/merged\" ] && [ ! -e \"$WORK/.tmp/killed\" ] && { touch \"$WORK/.tmp/killed\"; kill -INT \$PPID; await \"$WORK/.tmp/never\" </dev/null >/dev/null 2>&1; } ;; esac\n\"%s\" \"\$@\" || exit\ncase \" \$* \" in *\" merge \"*\" --ff-only \"*) touch \"$WORK/.tmp/merged\" ;; esac\n" "$(command -v git)" >.tmp/git && chmod +x .tmp/git'
 
 # When: kiln accept is interrupted once main holds the retired spec, and the developer runs kiln accept again.
-! exec sh -c 'PATH="$PWD/.tmp:$PATH" exec kiln accept x'
+exec exits 1 sh -c 'PATH="$PWD/.tmp:$PATH" exec kiln accept x'
 exists .tmp/killed
 exec git log -1 --format=%s main
 stdout '^docs\(x\): retire the accepted spec$'
