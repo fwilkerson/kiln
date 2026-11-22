@@ -28,5 +28,5 @@ command required each that `go get` took, then tidied go.mod, and the gate faile
 
 ## Your last reply
 
-The developer reads it before accepting the fix. For each update, give what changed in it that reached the project,
+The developer reads it once the fix lands. For each update, give what changed in it that reached the project,
 and each file you changed for it, in one line.

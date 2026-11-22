@@ -42,5 +42,5 @@ contract" and "Mechanical checks". This work rests on the guide's "Docs are the 
 
 ## Your last reply
 
-The developer reads it before `kiln accept docs`. For each package, give each sentence you changed in one line,
+The developer reads it once the fix lands. For each package, give each sentence you changed in one line,
 with what the code does. Then each rule you gave one home, and each place where the code looks wrong.

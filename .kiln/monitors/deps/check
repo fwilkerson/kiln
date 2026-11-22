@@ -3,8 +3,8 @@
 # release at least 7 days old, as lib/updates says. It prints each update, for the monitor's agent. Its last line is the
 # JSON object kiln reads.
 #
-# monitor.json keeps it out of the fix's gate. A release that came of age while the fix waited for kiln accept would
-# fail the fix's landing. It couldn't run when go cannot reach the module proxy, so kiln runs it again next time.
+# monitor.json keeps it out of the fix's gate. A release that came of age while the fix ran would fail its landing.
+# It couldn't run when go cannot reach the module proxy, so kiln runs it again next time.
 set -eu
 
 updates=$(sh "$(dirname "$0")/lib/updates")

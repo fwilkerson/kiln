@@ -29,6 +29,6 @@ project checks its work", which holds for your fix too.
 
 ## Your last reply
 
-The developer reads it before `kiln accept bugs`. Give the bug's file, its cause in two sentences, the new test's
+The developer reads it once the fix lands. Give the bug's file, its cause in two sentences, the new test's
 name with what it printed before the fix, and each file you changed in one line. Then say what you found at each
 second place the bug named.

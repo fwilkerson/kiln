@@ -35,6 +35,6 @@ folder of a spec the developer accepted, or scenarios that bring the same fixtur
 
 ## Your last reply
 
-The developer reads it before `kiln accept uat`. Give a table of each scenario you moved, merged or dropped: where
+The developer reads it once the fix lands. Give a table of each scenario you moved, merged or dropped: where
 it was, and where its checks are now. Then list each check `lost` printed, with the check that took its place,
 or the unit table's row that holds its rule.
