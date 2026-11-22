@@ -76,7 +76,6 @@ const slots = 6
 // defects are the kills known to leave kiln wrong, each with what goes wrong. A row's run fails once its defect is
 // fixed, and then the row goes.
 var defects = map[kill]string{
-	{"accept", "KILL", "49"}: "kiln accept committed the fold, so the next kiln accept finds no amendments to fold, and refuses.",
 	{"fix", "KILL", "64"}:    fixRetired,
 	{"fix", "KILL", "65"}:    fixRetired,
 	{"fix", "KILL", "66"}:    fixRetired,

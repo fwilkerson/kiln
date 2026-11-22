@@ -212,9 +212,10 @@ func (b *build) foldAmendments(ctx context.Context, checkout git.Worktree) (git.
 		return "", err
 	}
 
-	amendments, _, err := b.r.git.Show(ctx, head, name.amendPath())
-	if err != nil {
-		return "", err
+	amendments, found, err := b.r.git.Show(ctx, head, name.amendPath())
+	if err != nil || !found {
+		// A kiln accept that died once it committed the fold left the spec waiting, and its branch folded.
+		return head, err
 	}
 
 	folded, err := foldAmendments(string(spec), string(amendments))
@@ -226,7 +227,9 @@ func (b *build) foldAmendments(ctx context.Context, checkout git.Worktree) (git.
 		return "", err
 	}
 
-	if err := os.Remove(filepath.Join(string(checkout), name.amendPath())); err != nil {
+	// A kiln accept that died before it committed the fold left the file removed.
+	err = os.Remove(filepath.Join(string(checkout), name.amendPath()))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return "", err
 	}
 
