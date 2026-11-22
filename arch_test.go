@@ -18,8 +18,9 @@ import (
 // TestArchitecture keeps kiln's layers apart. It checks these rules:
 //   - Nothing imports cmd or uat.
 //   - A package imports from outside the standard library only the modules that outside lists for it.
+//   - Outside its tests, only internal/proc imports os/exec, so each program kiln runs obeys proc's one policy.
 func TestArchitecture(t *testing.T) {
-	format := `{{.ImportPath}} {{join .Imports " "}} {{join .TestImports " "}} {{join .XTestImports " "}}`
+	format := `{{.ImportPath}} {{join .Imports " "}}|{{join .TestImports " "}} {{join .XTestImports " "}}`
 	cmd := exec.Command("go", "list", "-f", format, "./...")
 	cmd.Stderr = t.Output()
 	out, err := cmd.Output()
@@ -28,25 +29,48 @@ func TestArchitecture(t *testing.T) {
 	}
 
 	for line := range strings.Lines(string(out)) {
-		pkg, imports, _ := strings.Cut(strings.TrimSpace(line), " ")
+		code, tests, _ := strings.Cut(strings.TrimSpace(line), "|")
+		pkg, imports, _ := strings.Cut(code, " ")
 		for imp := range strings.FieldsSeq(imports) {
-			if why := violation(pkg, imp); why != "" {
+			if why := violation(pkg, imp, false); why != "" {
 				t.Errorf("%s imports %s: %s", pkg, imp, why)
+			}
+		}
+
+		for imp := range strings.FieldsSeq(tests) {
+			if why := violation(pkg, imp, true); why != "" {
+				t.Errorf("%s's tests import %s: %s", pkg, imp, why)
 			}
 		}
 	}
 }
 
-func violation(pkg, imp string) string {
+// violation says why pkg may not import imp, or "" when it may. test is true of an import by pkg's tests alone.
+func violation(pkg, imp string, test bool) string {
 	impTop := locate(imp)
 	switch {
 	case foreign(imp) && !allowed(pkg, imp):
 		return "list its module for this package in outside"
 	case impTop == "cmd" || impTop == "uat":
 		return "nothing imports " + impTop
+	case imp == "os/exec" && !mayExec(pkg, test):
+		return "run the program with proc.Run, proc.RunSession or proc.RunAttached, which hold kiln's policy for a " +
+			"child process"
 	}
 
 	return ""
+}
+
+// mayExec reports whether pkg, or its tests when test is true, may import os/exec. internal/proc runs each program for
+// the rest of kiln. A package whose name ends in test serves tests alone, and tools/ builds or installs kiln.
+func mayExec(pkg string, test bool) bool {
+	within := strings.TrimPrefix(pkg, "github.com/fwilkerson/kiln/")
+	switch {
+	case test, within == "internal/proc", strings.HasSuffix(within, "test"), locate(pkg) == "tools":
+		return true
+	}
+
+	return false
 }
 
 // outside lists the modules from outside the standard library that each package may import. A key is a package path
