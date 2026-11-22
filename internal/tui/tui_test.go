@@ -33,7 +33,7 @@ func TestTrend(t *testing.T) {
 			}
 
 			at := now.Add(time.Duration(len(builds)-100) * time.Hour)
-			builds = append(builds, &Build{Spec: "x", Started: at, Size: 2, Outcome: "landed", Steps: []Step{
+			builds = append(builds, &Build{Spec: "x", Started: at, Size: 2, Outcome: "landed", Ended: Landed, Steps: []Step{
 				&Run{Role: "build", Why: "first run", Start: at, End: at.Add(time.Minute),
 					Totals: claude.Totals{CostUSD: cost}},
 			}, Took: new(time.Minute), Cost: cost, Failed: new(0), Rounds: new(0)})
@@ -91,14 +91,14 @@ func TestTrend(t *testing.T) {
 // monitor shows when it last ran and runs next, and its summary. Its fixes open as a spec's builds do.
 func TestMonitors(t *testing.T) {
 	now := time.Now().Truncate(time.Minute)
-	fix := &Build{Spec: "deps", Started: now.Add(-time.Hour), Outcome: "stopped", Fix: true, Steps: []Step{
+	fix := &Build{Spec: "deps", Started: now.Add(-time.Hour), Outcome: "stopped", Ended: Stopped, Fix: true, Steps: []Step{
 		&Gate{Start: now.Add(-time.Hour), End: now.Add(-time.Hour)},
 	}}
 	src := source{specs: []Spec{{Name: "x", State: UAT}}, monitors: []Spec{
 		{Name: "deps", State: Stopped, Builds: []*Build{fix}, Monitor: &Monitor{Result: "stopped",
 			Summary: "3 modules to update", Last: now.Add(-time.Hour), Next: now.Add(22 * time.Hour)}},
 		{Name: "docs", State: Waits, Monitor: &Monitor{Result: "held: waiting on the developer"}},
-		{Name: "vulns", State: "never run", Monitor: &Monitor{Due: true}},
+		{Name: "vulns", State: NeverRun, Monitor: &Monitor{Due: true}},
 	}}
 	// At 80 columns, the specs panel is a third of the width, and each monitor's name still shows.
 	m := drive(t, src, "", sized(80, 30))
@@ -132,7 +132,7 @@ func TestMonitors(t *testing.T) {
 func TestMonitorsPanel(t *testing.T) {
 	now := time.Now()
 	ended := func(spec string, fix bool, size int, cost float64) *Build {
-		return &Build{Spec: spec, Started: now.Add(-time.Hour), Outcome: "landed", Fix: fix, Size: size,
+		return &Build{Spec: spec, Started: now.Add(-time.Hour), Outcome: "landed", Ended: Landed, Fix: fix, Size: size,
 			Steps: []Step{&Run{Role: "build", Why: "first run", Start: now.Add(-time.Hour), End: now,
 				Totals: claude.Totals{CostUSD: &cost}}}}
 	}
@@ -160,7 +160,7 @@ func TestMonitorsPanel(t *testing.T) {
 // cut summary ends in "…".
 func TestMonitorSummaryLines(t *testing.T) {
 	now := time.Now()
-	fix := &Build{Spec: "deps", Started: now.Add(-time.Hour), Outcome: "stopped", Fix: true}
+	fix := &Build{Spec: "deps", Started: now.Add(-time.Hour), Outcome: "stopped", Ended: Stopped, Fix: true}
 	src := source{monitors: []Spec{{Name: "deps", State: Stopped, Builds: []*Build{fix}, Monitor: &Monitor{
 		Result: "stopped", Summary: "the session failed:\nAPI Error: 529 overloaded\nthird\nfourth"}}}}
 	m := drive(t, src, "deps", sized(140, 30))
@@ -190,7 +190,7 @@ func shows(t *testing.T, m model, patterns ...string) {
 // monitor selected. Its running fix shows the monitor's state, and Enter, Enter opens the fix's run.
 func TestMonitorNamedAsSpec(t *testing.T) {
 	now := time.Now()
-	build := &Build{Spec: "deps", Started: now.Add(-2 * time.Hour), Outcome: "accepted", Steps: []Step{
+	build := &Build{Spec: "deps", Started: now.Add(-2 * time.Hour), Outcome: "accepted", Ended: Accepted, Steps: []Step{
 		&Run{Role: "build", Session: "build", Start: now.Add(-2 * time.Hour), End: now.Add(-time.Hour)},
 	}}
 	fix := &Build{Spec: "deps", Started: now.Add(-time.Minute), Fix: true, Steps: []Step{
@@ -215,7 +215,7 @@ func TestMonitorNamedAsSpec(t *testing.T) {
 // builds panel shows its rounds as unknown, never as 0.
 func TestRoundsUnknown(t *testing.T) {
 	now := time.Now()
-	b := &Build{Spec: "x", Started: now, Outcome: "landed", Steps: []Step{&Run{Role: "build", Start: now, End: now}},
+	b := &Build{Spec: "x", Started: now, Outcome: "landed", Ended: Landed, Steps: []Step{&Run{Role: "build", Start: now, End: now}},
 		Took: new(time.Duration(0)), Failed: new(0)}
 	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}}}
 	tiles := `││cost 0/1 known +minutes +failed calls +rounds 0/1 known +size, tests *│\n.*││— +0 +0 +— +0 *│`
@@ -235,7 +235,7 @@ func TestHomeWheel(t *testing.T) {
 	var builds []*Build
 	for i := range 14 {
 		at := now.Add(time.Duration(i-20) * time.Hour)
-		builds = append(builds, &Build{Spec: "x", Started: at, Outcome: "landed", Steps: []Step{
+		builds = append(builds, &Build{Spec: "x", Started: at, Outcome: "landed", Ended: Landed, Steps: []Step{
 			&Run{Role: "build", Why: "first run", Start: at, End: at.Add(time.Minute)},
 		}})
 	}
@@ -666,7 +666,7 @@ func TestGauges(t *testing.T) {
 	now := time.Now()
 	value := func(v float64) *float64 { return &v }
 	landed := func(spec string, at time.Time, readings ...Reading) *Build {
-		return &Build{Spec: spec, Started: at, Outcome: "landed", Readings: readings, Steps: []Step{
+		return &Build{Spec: spec, Started: at, Outcome: "landed", Ended: Landed, Readings: readings, Steps: []Step{
 			&Run{Role: "build", Why: "first run", Start: at, End: at.Add(time.Minute)},
 		}}
 	}
@@ -728,7 +728,7 @@ func TestRepositoryGauge(t *testing.T) {
 		t.Errorf("no row matches %s on the screen\n%s", want, screenOf(alone))
 	}
 
-	landed := &Build{Spec: "languages", Started: now, Outcome: "landed",
+	landed := &Build{Spec: "languages", Started: now, Outcome: "landed", Ended: Landed,
 		Readings: []Reading{read(30*time.Minute, value(9), true)}}
 	src := source{specs: []Spec{{Name: "languages", State: UAT, Builds: []*Build{landed}}}, monitors: monitors}
 	both := drive(t, src, "", sized(120, 30))
@@ -761,7 +761,7 @@ func TestFixOutcomes(t *testing.T) {
 			Builds: []*Build{fix}, Monitor: &Monitor{Result: outcome}}}}
 		// The selected row is reversed, so the specs panel's color is read with x selected.
 		specs, builds := drive(t, src, "", sized(140, 30)), drive(t, src, "deps", sized(140, 30))
-		shows(t, specs, `│`+glyph+` deps +`+string(ended)+` *│`)
+		shows(t, specs, `│`+glyph+` deps +`+ended.String()+` *│`)
 		shows(t, builds, `#1 +`+glyph+` `+outcome)
 		for text, m := range map[string]model{glyph + " deps": specs, glyph + " " + outcome: builds} {
 			if got := colorOf(t, m, text); !sameColor(got, want) {

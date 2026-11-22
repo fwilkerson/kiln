@@ -109,7 +109,7 @@ func scene(now time.Time) source {
 	var ended []*Build
 	for i := range 12 {
 		start := at(time.Duration(40-i) * time.Hour)
-		ended = append(ended, &Build{Spec: "y", Started: start, Size: 3, Outcome: "landed", Steps: []Step{
+		ended = append(ended, &Build{Spec: "y", Started: start, Size: 3, Outcome: "landed", Ended: Landed, Steps: []Step{
 			&Run{Role: "build", Why: "first run", Start: start, End: start.Add(time.Duration(9+i%4) * time.Minute),
 				Totals: cost(1 + float64(i%5)/2)},
 		}, Took: new(time.Duration(9+i%4) * time.Minute), Cost: new(1 + float64(i%5)/2), Turns: new(12),
@@ -119,7 +119,7 @@ func scene(now time.Time) source {
 	worst, best := 61.0, 84.0
 	failing := cost(2.5)
 	failing.Failed = []claude.Failure{{Tool: "Bash", Input: "go test", Cause: "FAIL x"}}
-	landed := &Build{Spec: "x", Approved: "3f9c2ab81d0e", Started: at(3 * time.Hour), Size: 4, Outcome: "landed",
+	landed := &Build{Spec: "x", Approved: "3f9c2ab81d0e", Started: at(3 * time.Hour), Size: 4, Outcome: "landed", Ended: Landed,
 		Readings: []Reading{{Gauge: "mutation score", At: at(2 * time.Hour), Value: &worst, Line: "≥ 80", Crossed: true}},
 		Steps: []Step{
 			&Run{Role: "build", Session: "a", Why: "first run", Start: at(3 * time.Hour), End: at(170 * time.Minute),
@@ -138,7 +138,7 @@ func scene(now time.Time) source {
 		specs: []Spec{
 			{Name: "x", State: Running, Builds: []*Build{landed, running}},
 			{Name: "y", State: Accepted, Builds: ended},
-			{Name: "z", State: UAT, Builds: []*Build{{Spec: "z", Started: at(time.Hour), Outcome: "landed",
+			{Name: "z", State: UAT, Builds: []*Build{{Spec: "z", Started: at(time.Hour), Outcome: "landed", Ended: Landed,
 				Readings: []Reading{{Gauge: "mutation score", At: at(time.Hour), Value: &best, Line: "≥ 80"}},
 				Steps:    []Step{&Run{Role: "build", Start: at(time.Hour), End: at(50 * time.Minute), Totals: cost(1.2)}},
 				Took:     new(10 * time.Minute), Cost: new(1.2), Turns: new(12), Failed: new(0)}}},

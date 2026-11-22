@@ -316,7 +316,7 @@ func (m model) recentTitle() string {
 func (m model) sideWidth() int {
 	need := 0
 	for _, s := range m.specs {
-		need = max(need, ansi.StringWidth(s.Name)+len(s.State)+3)
+		need = max(need, ansi.StringWidth(s.Name)+len(s.State.String())+3)
 	}
 
 	return max(20, min(need+2, 40, m.w/3))
@@ -339,7 +339,7 @@ func (m model) sideRows(p pane, in area) []row {
 		text := all
 		if i > 0 {
 			s := specs[i-1]
-			text = m.theme.marked(s.State) + " " + fit(s.Name, max(1, in.w-3-len(s.State))) + " " +
+			text = m.theme.marked(s.State) + " " + fit(s.Name, max(1, in.w-3-len(s.State.String()))) + " " +
 				m.theme.stated(s.State)
 		}
 
@@ -368,10 +368,10 @@ func (m model) filterRow() string {
 // stated is a state's word. A spec that needs nothing more is dim, so the ones in play stand out.
 func (t theme) stated(s State) string {
 	if s == Accepted || s == Rejected {
-		return t.dim.Render(string(s))
+		return t.dim.Render(s.String())
 	}
 
-	return string(s)
+	return s.String()
 }
 
 // marked is a state's glyph, in its color, a spec's or a monitor's.
@@ -390,7 +390,7 @@ func (t theme) look(s State) (lipgloss.Style, string) {
 		return t.kiln, "‖"
 	case Halted:
 		return t.kiln, "!"
-	case Stopped, Failed, CouldNotRun:
+	case Stopped, Failed, CouldNotRun, Refused:
 		return t.failed, "✗"
 	case UAT, Waits, NeedsYou:
 		return t.you, "◆"
@@ -398,6 +398,7 @@ func (t theme) look(s State) (lipgloss.Style, string) {
 		return t.passed, "✓"
 	case Rejected:
 		return t.dim, "✗"
+	case NotEnded, Queued, CutShort, NeverRun, Unchanged:
 	}
 
 	return lipgloss.NewStyle(), "◌"
@@ -613,36 +614,25 @@ func gauge(v, most float64, w int) string {
 	return strings.TrimRight(strings.Repeat("█", eighths/8)+string([]rune(" ▏▎▍▌▋▊▉")[eighths%8]), " ")
 }
 
-// outcome is how a build ended, in its color and beside its glyph. A build that has not ended shows where it stands.
-// A fix that ended is marked as its monitor would be.
+// outcome is how a build ended, in its color and beside its glyph. A spec's last build, not yet ended, shows where
+// the spec stands. A fix is marked as its monitor would be.
 func (m model) outcome(ref buildRef) string {
-	var said string
-	if b := m.build(ref); b != nil {
-		said = b.Outcome
-		if style, glyph := m.theme.look(b.Ended); glyph != "◌" {
-			return style.Render(glyph + " " + said)
-		}
+	s, said := NotEnded, NotEnded.String()
+	spec := m.spec(ref.specRef)
+	switch b := m.build(ref); {
+	case b != nil && b.Ended != NotEnded:
+		s, said = b.Ended, b.Outcome
+	case ref.build == len(spec.Builds)-1:
+		s = spec.State
+		said = s.String()
 	}
 
-	if said == "" {
-		said = "not ended"
-		if s := m.spec(ref.specRef); ref.build == len(s.Builds)-1 {
-			said = string(s.State)
-		}
+	style, glyph := m.theme.look(s)
+	if glyph == "◌" {
+		return said
 	}
 
-	switch said {
-	case "landed", "accepted":
-		return m.theme.passed.Render("✓ " + said)
-	case string(Stopped):
-		return m.theme.failed.Render("✗ " + said)
-	case string(Running):
-		return m.theme.agent.Render("▶ " + said)
-	case string(Paused):
-		return m.theme.kiln.Render("▶ " + said)
-	}
-
-	return said
+	return style.Render(glyph + " " + said)
 }
 
 // page is a screen's rows: its head, which stays, and its body, which scrolls. sel is the body's selected line, or
@@ -709,7 +699,7 @@ func (m model) buildPage(s *screen) (head, body []row, sel int) {
 		{text: t.dim.Render(cols(m.runCols(), "", "run", "", "took", "turns", "cost", "failed", "context"))},
 	}
 	body, sel = m.stepRows(s, b)
-	if b.Outcome != "" {
+	if b.Ended != NotEnded {
 		body = append(body, row{text: cols(m.runCols()[:1], "", m.outcome(s.buildRef))})
 	}
 

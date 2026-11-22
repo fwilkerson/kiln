@@ -95,41 +95,54 @@ type Monitor struct {
 	Readings []Reading
 }
 
-// State is where a spec stands, in the words the view shows.
-type State string
+// State is where a spec, a build or a monitor stands. The view marks each by a glyph and a color, and shows its
+// word, which String answers.
+type State int
 
 const (
-	Queued  State = "queued"
-	Running State = "running"
-	Paused  State = "paused"
+	// NotEnded is a build that has not ended. It is the zero State.
+	NotEnded State = iota
+	Queued
+	Running
+	Paused
 	// Halted is a build whose kiln stopped mid-build. A spec's build goes on at the next kiln fire. kiln monitor run
 	// drops a fix, or lands an accepted fix.
-	Halted  State = "halted"
-	Stopped State = "stopped"
-	UAT     State = "UAT"
+	Halted
+	Stopped
+	UAT
 	// Waits is a build that waits on its branch, with amendments.
-	Waits    State = "waits"
-	Accepted State = "accepted"
+	Waits
+	Accepted
 	// Rejected is a spec whose amendments the developer turned away. Its last build was dropped, and never landed.
-	Rejected State = "rejected"
+	Rejected
+	Landed
+	// CutShort is a build that kiln dropped before it ended.
+	CutShort
+	// The States below are a monitor's alone. Its last fix may stand at Running, Stopped, Waits, Rejected, Landed or
+	// CutShort too. A held monitor stands where the fix that holds it ended.
+	NeverRun
+	Healthy
+	NeedsYou
+	// Failed is a fix whose session failed.
+	Failed
+	// CouldNotRun is a monitor whose check couldn't run, or whose fix's gated check couldn't.
+	CouldNotRun
+	// Limited is a fix that a usage limit ended.
+	Limited
+	Unchanged
+	// Refused is a monitor that kiln refuses at main's tip, such as for a monitor.json it cannot read.
+	Refused
 )
 
-// A monitor's states, beside Running, Stopped, Waits and Rejected, which its last fix may stand at. A held monitor
-// stands where the fix that holds it ended.
-const (
-	Healthy  State = "healthy"
-	Landed   State = "landed"
-	NeedsYou State = "needs you"
-	// Failed is a fix whose session failed.
-	Failed State = "failed"
-	// CouldNotRun is a monitor whose check couldn't run, or whose fix's gated check couldn't.
-	CouldNotRun State = "couldn't run"
-	// Limited is a fix that a usage limit ended.
-	Limited   State = "usage limit"
-	Unchanged State = "unchanged"
-	// CutShort is a fix that kiln dropped before it ended.
-	CutShort State = "cut short"
-)
+// words are the words the view shows for each State.
+var words = [...]string{NotEnded: "not ended", Queued: "queued", Running: "running", Paused: "paused",
+	Halted: "halted", Stopped: "stopped", UAT: "UAT", Waits: "waits", Accepted: "accepted", Rejected: "rejected",
+	Landed: "landed", CutShort: "cut short", NeverRun: "never run", Healthy: "healthy", NeedsYou: "needs you",
+	Failed: "failed", CouldNotRun: "couldn't run", Limited: "usage limit", Unchanged: "unchanged",
+	Refused: "refused"}
+
+// String is the word the view shows for s.
+func (s State) String() string { return words[s] }
 
 // Build is one build of a spec, from one approval.
 type Build struct {
@@ -138,13 +151,13 @@ type Build struct {
 	Started  time.Time
 	// Size counts the spec's acceptance tests.
 	Size int
-	// Outcome is how the build ended, as its ledger says, or "" while it has not ended.
+	// Outcome is how the build ended, in the ledger's words, or "" while it has not ended. The view shows it as text.
 	Outcome    string
 	Amendments string
 	// Fix is a monitor's fix, whose Spec names the monitor. Its Summary and Report say how it ended.
 	Fix             bool
 	Summary, Report string
-	// Ended is how a fix ended, as its monitor's State would say. It is "" for a spec's build, or a fix not ended.
+	// Ended is how the build ended, which the view marks it by. A fix's is as its monitor's State would say.
 	Ended State
 	// Steps are its session runs and gates, in the order they ran.
 	Steps []Step

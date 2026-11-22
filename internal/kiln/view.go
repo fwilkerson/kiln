@@ -220,29 +220,32 @@ func (e entry) tuiReading() tui.Reading {
 	return tui.Reading{Gauge: e.Gauge, At: e.At, Value: e.Value, Line: e.text(), Crossed: e.crossed(e.Value)}
 }
 
-// fixStates are a monitor's states in the view, by its last fix's outcome. A monitor that fixes nothing may stand
-// needs you too. A fix with no outcome yet is running.
-var fixStates = map[string]tui.State{outLanded: tui.Landed, outStopped: tui.Stopped, outWaits: tui.Waits,
-	outNeedsYou: tui.NeedsYou, outFailed: tui.Failed, outLimit: tui.Limited, outCouldNot: tui.CouldNotRun,
-	outUnchanged: tui.Unchanged, outRejected: tui.Rejected, outDropped: tui.CutShort, "": tui.Running}
+// endedStates are the States of a build in the view, by its outcome line. A monitor stands where its last fix
+// ended, and one that fixes nothing may stand needs you too. A fix with no outcome yet is running.
+var endedStates = map[string]tui.State{outLanded: tui.Landed, outStopped: tui.Stopped, outWaits: tui.Waits,
+	outDropped: tui.CutShort, outAccepted: tui.Accepted, outNeedsYou: tui.NeedsYou, outFailed: tui.Failed,
+	outLimit: tui.Limited, outCouldNot: tui.CouldNotRun, outUnchanged: tui.Unchanged, outRejected: tui.Rejected,
+	"": tui.Running}
 
 // state is where the monitor of s stands, as the view words it. It stands as its last fix ended, as its check found,
 // or as never run. A held monitor stands where the finding that holds it left it: its fix's outcome, or needs you. An
 // accepted landing, or a fix whose kiln is gone, stands as the book holds it.
 func (s standing) state() tui.State {
-	if s.rec != nil {
+	switch {
+	case s.rec != nil:
 		return stateOf(s.rec)
+	case s.fixed || s.outcome != "":
+		return endedStates[s.outcome]
+	case s.result == "":
+		return tui.NeverRun
+	case s.result == foundHealthy:
+		return tui.Healthy
+	case s.result == foundRefused:
+		return tui.Refused
 	}
 
-	if s.fixed || s.outcome != "" {
-		return fixStates[s.outcome]
-	}
-
-	if s.result == "" {
-		return neverRun
-	}
-
-	return tui.State(s.result)
+	// A bare hold is a check or gauge held since it ran past kiln.json's timeout, so it couldn't run either.
+	return tui.CouldNotRun
 }
 
 // stateOf is where a spec stands. A build is building only while the kiln fire that marked it so lives. A kiln fire
@@ -275,8 +278,8 @@ func (s *buildStats) shown() *tui.Build {
 	b := &tui.Build{Spec: string(s.Spec), Approved: string(s.Approved), Started: s.At, Size: s.Size,
 		Outcome: s.outcome, Amendments: s.amendments, Fix: s.Monitor != "", Summary: s.summary, Report: s.report,
 		Took: n.took, Cost: n.cost, Turns: n.turns, Failed: n.failed, Rounds: n.rounds}
-	if b.Fix && s.outcome != "" {
-		b.Ended = fixStates[s.outcome]
+	if s.outcome != "" {
+		b.Ended = endedStates[s.outcome]
 	}
 
 	gates := 0

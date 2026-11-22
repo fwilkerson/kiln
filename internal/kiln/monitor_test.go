@@ -219,12 +219,13 @@ func TestMonitorRunRefused(t *testing.T) {
 	}
 
 	shown, err := view{r}.Monitors(t.Context())
-	var bad tui.Monitor
+	bad := tui.Spec{Monitor: &tui.Monitor{}}
 	if i := slices.IndexFunc(shown, func(s tui.Spec) bool { return s.Name == "bad" }); i >= 0 {
-		bad = *shown[i].Monitor
+		bad = shown[i]
 	}
 
-	if !claim.Holds(err == nil, bad.Result == foundRefused, strings.Contains(bad.Summary, why)) {
+	if !claim.Holds(err == nil, bad.State == tui.Refused, bad.Monitor.Result == foundRefused,
+		strings.Contains(bad.Monitor.Summary, why)) {
 		t.Errorf("kiln tui shows the monitors %+v, %v; want bad refused, saying %q", shown, err, why)
 	}
 
@@ -624,6 +625,32 @@ func TestMonitorStatusLines(t *testing.T) {
 
 			if tc.s.outcome == outNeedsYou && strings.Contains(lines, tc.s.report) {
 				t.Errorf("%q holds the agent's report", lines)
+			}
+		})
+	}
+}
+
+// TestMonitorState holds where kiln tui shows a monitor standing, by its last runs. A hold keeps what held it.
+func TestMonitorState(t *testing.T) {
+	ran := func(found string) entry { return entry{Kind: monitorKind, Monitor: "m", Found: found} }
+	fix, past := ran(foundFix), ran(foundHeld)
+	fix.Build, past.Past = "b", true
+	ended := func(outcome string) entry { return entry{Kind: outcomeKind, Build: "b", Outcome: outcome} }
+	for name, tc := range map[string]struct {
+		lines []entry
+		want  tui.State
+	}{
+		"never ran":                {want: tui.NeverRun},
+		"healthy":                  {lines: []entry{ran(foundHealthy)}, want: tui.Healthy},
+		"its check failed":         {lines: []entry{ran(foundCouldNot)}, want: tui.CouldNotRun},
+		"held past a timeout":      {lines: []entry{past}, want: tui.CouldNotRun},
+		"a fix that needs you":     {lines: []entry{fix, ended(outNeedsYou)}, want: tui.NeedsYou},
+		"held by a fix that waits": {lines: []entry{fix, ended(outWaits), ran(foundHeld)}, want: tui.Waits},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := histories(tc.lines)["m"].standing(monitor{Name: "m"}, nil)
+			if got := s.state(); got != tc.want {
+				t.Errorf("stands %v, as %q; want %v", got, s.result, tc.want)
 			}
 		})
 	}

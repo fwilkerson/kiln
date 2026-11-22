@@ -93,7 +93,7 @@ func trend(specs []Spec) (recent, previous []*Build) {
 	var ended []*Build
 	for _, s := range specs {
 		for _, b := range s.Builds {
-			if b.Outcome != "" {
+			if b.Ended != NotEnded {
 				ended = append(ended, b)
 			}
 		}

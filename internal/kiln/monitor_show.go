@@ -30,9 +30,6 @@ type standing struct {
 	last, next time.Time
 }
 
-// neverRun is the state of a monitor that never ran.
-const neverRun tui.State = "never run"
-
 // standing is where m stands, from its history. rec is the record of its fix, if the book holds one. An accepted
 // landing is worded from rec, since the ledger's last outcome still says the fix waits on its branch.
 func (h *history) standing(m monitor, rec *record) standing {
@@ -56,7 +53,7 @@ func (h *history) standing(m monitor, rec *record) standing {
 
 	switch {
 	case s.fixed && rec.fixHalted():
-		s.result, s.rec = string(tui.Halted), rec
+		s.result, s.rec = tui.Halted.String(), rec
 	case s.fixed && rec.fixLanding():
 		s.result, s.rec = landingResult(rec.State), rec
 		if run, found := h.running[rec.Build]; found && rec.State == building {

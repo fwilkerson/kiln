@@ -83,7 +83,8 @@ organize current work by stories, then reorganize it by functional area. A story
   monitor, in `.kiln/monitors/inspect/`, clears the findings in the files its gauge lists. Where an inspection
   misreads kiln, the developer tunes the profile, or keeps one finding in the monitor's `lib/kept`, with the reason
   above it. No comment suppresses an inspection.
-- `arch_test.go` and `style_test.go`: import rules, modern Go, and doc names.
+- `arch_test.go` and `style_test.go`: import rules, modern Go, doc names, and a switch or table that names each value
+  of an enum `enums` lists.
 - `TestFacts` in a package's `facts_test.go`: each number the package doc states, beside the constant that holds it.
   `repotest.Facts` fails when one moves without the other. A number a doc states gets a row there.
 - The gate in `.kiln/kiln.json`, which the pre-commit hook runs on each commit to main: `go vet ./...`, and

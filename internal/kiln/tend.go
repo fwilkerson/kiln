@@ -16,6 +16,7 @@ import (
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/kiln/internal/tui"
 )
 
 // tendContract is the know-how kiln appends to the system prompt of a kiln tend session. No file of a project changes
@@ -287,7 +288,7 @@ func (r *Repo) monitorTending(ctx context.Context, name Spec, rec *record) (tend
 
 	h := histories(entries)[name]
 	s := h.standing(monitor{Name: name}, rec)
-	t.state, t.why = cmpOr(s.unheld(), string(neverRun)), strings.Join(nonEmpty(checkSummary(h, s), s.summary,
+	t.state, t.why = cmpOr(s.unheld(), tui.NeverRun.String()), strings.Join(nonEmpty(checkSummary(h, s), s.summary,
 		s.report), "\n")
 	switch {
 	case rec != nil:

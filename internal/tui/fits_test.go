@@ -90,14 +90,14 @@ func crowded(now time.Time) source {
 
 	build := func(spec string, i int, running bool) *Build {
 		at := now.Add(time.Duration(i-40) * time.Hour)
-		b := &Build{Spec: spec, Approved: "0123456789abcdef", Started: at, Size: 12, Outcome: "landed",
+		b := &Build{Spec: spec, Approved: "0123456789abcdef", Started: at, Size: 12, Outcome: "landed", Ended: Landed,
 			Amendments: "amended", Took: new(time.Hour), Cost: v(float64(i)), Turns: new(80), Failed: new(3),
 			Rounds: new(2), Steps: []Step{run(spec+"-s", at, false), &Gate{Start: at, End: at.Add(time.Minute),
 				Passed: true, Landing: true}, run(spec+"-s", at, running)},
 			Readings: []Reading{{Gauge: "mutation score with a long name", At: at, Value: v(70.5), Line: "≥ 80",
 				Crossed: true}, {Gauge: "files changed", At: at, Value: v(4), Line: "≤ 9"}}}
 		if running {
-			b.Outcome, b.Took, b.Cost = "", nil, nil
+			b.Outcome, b.Ended, b.Took, b.Cost = "", NotEnded, nil, nil
 		}
 
 		return b

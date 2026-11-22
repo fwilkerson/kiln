@@ -229,3 +229,128 @@ func homeMain(fun ast.Expr) bool {
 	pkg, ok := sel.X.(*ast.Ident)
 	return ok && slices.Contains([]string{"hometest", "scenariotest"}, pkg.Name)
 }
+
+// TestExhaustive holds that each switch on an enum of enums names every value of it. So does each map or array keyed
+// by one. The compiler takes one that misses a value, and that value then falls through unseen.
+func TestExhaustive(t *testing.T) {
+	for dir, typ := range enums {
+		fset, files := parseDir(t, dir)
+		values := enumValues(files, typ)
+		for _, f := range files {
+			ast.Inspect(f, func(n ast.Node) bool {
+				if missing := unlisted(n, values); len(missing) > 0 {
+					t.Errorf("%s: names no %s: name each %s", fset.Position(n.Pos()), strings.Join(missing, ", "), typ)
+				}
+
+				return true
+			})
+		}
+	}
+}
+
+// enums are the enums whose switches and tables TestExhaustive holds, by the directory of the package that declares
+// each. kiln tui draws a State left out as no other.
+var enums = map[string]string{"internal/tui": "State"}
+
+// parseDir parses the Go files in dir, but its tests.
+func parseDir(t *testing.T, dir string) (*token.FileSet, []*ast.File) {
+	names, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fset := token.NewFileSet()
+	var files []*ast.File
+	for _, name := range names {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+
+		f, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		files = append(files, f)
+	}
+
+	return fset, files
+}
+
+// enumValues names the constants of the type typ that files declare.
+func enumValues(files []*ast.File, typ string) []string {
+	var names []string
+	for _, f := range files {
+		for _, decl := range f.Decls {
+			if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.CONST {
+				names = append(names, typedConsts(gen, typ)...)
+			}
+		}
+	}
+
+	return names
+}
+
+// typedConsts names the constants of the type typ in the block gen. A constant with no type and no value takes the
+// type of the one above it, as with iota.
+func typedConsts(gen *ast.GenDecl, typ string) []string {
+	var names []string
+	of := ""
+	for _, spec := range gen.Specs {
+		v := spec.(*ast.ValueSpec)
+		if v.Type != nil || len(v.Values) > 0 {
+			of = ""
+			if id, ok := v.Type.(*ast.Ident); ok {
+				of = id.Name
+			}
+		}
+
+		if of == typ {
+			for _, name := range v.Names {
+				names = append(names, name.Name)
+			}
+		}
+	}
+
+	return names
+}
+
+// unlisted names each of values that n leaves out, where n lists at least one. n lists a value as a switch's case, or
+// as a key of a map or an array literal.
+func unlisted(n ast.Node, values []string) []string {
+	named := listedNames(n)
+	if !slices.ContainsFunc(values, func(v string) bool { return slices.Contains(named, v) }) {
+		return nil
+	}
+
+	return slices.DeleteFunc(slices.Clone(values), func(v string) bool { return slices.Contains(named, v) })
+}
+
+// listedNames names each bare name that n lists. A switch lists its cases, and a map or an array literal its keys.
+func listedNames(n ast.Node) []string {
+	var keys []ast.Expr
+	switch n := n.(type) {
+	case *ast.SwitchStmt:
+		for _, c := range n.Body.List {
+			keys = append(keys, c.(*ast.CaseClause).List...)
+		}
+	case *ast.CompositeLit:
+		switch n.Type.(type) {
+		case *ast.MapType, *ast.ArrayType:
+			for _, e := range n.Elts {
+				if kv, ok := e.(*ast.KeyValueExpr); ok {
+					keys = append(keys, kv.Key)
+				}
+			}
+		}
+	}
+
+	var names []string
+	for _, k := range keys {
+		if id, ok := k.(*ast.Ident); ok {
+			names = append(names, id.Name)
+		}
+	}
+
+	return names
+}
