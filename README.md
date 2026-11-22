@@ -1,13 +1,13 @@
 # kiln
 
-Approve a spec, walk away, and come back to it built, tested and on main.
+kiln is an opinionated way to run [Claude Code](https://claude.com/claude-code) on your project:
 
-A coding agent writes code fast, but only you start its tasks and check its results. So you wait on one agent, or
-start several and effectively manage only a few.
-
-kiln does that checking before the work reaches you. You approve a **spec**: a Markdown file that says what to build,
-and how to tell it is done. kiln then runs [Claude Code](https://claude.com/claude-code) sessions that write the code
-and its tests. The work lands on main only once your project's checks pass.
+- **Verify what an agent delivers.** You approve a **spec**: a Markdown file that says what to build, and acceptance
+  tests that say when the work is done. A build writes each acceptance test as an automated test. Work lands on main
+  only once your checks pass.
+- **Put agents to work without prompting each one.** `kiln fire` builds every spec you queued. On a schedule, kiln
+  finds work for an agent: a bug you filed, code that scores poorly, slow or repeated tests. A check could even read a
+  live service's logs, traces or metrics.
 
 ![You shape and queue a spec; kiln builds, gates, audits and lands it on main.](docs/flow.svg)
 
@@ -66,8 +66,7 @@ or HTTP, and checks what the Then says. For a spec named `answer` in a Go projec
 `acceptance/answer/`.
 
 Those tests stay in your repository, and your checks run them from then on. So each spec you accept adds to an
-end-to-end suite, and a later build that breaks an earlier spec does not land. Your checks take longer with each
-spec.
+end-to-end suite, and a later build that breaks an earlier spec does not land.
 
 An agent wrote those tests, so kiln guards them:
 

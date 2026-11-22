@@ -20,17 +20,17 @@ mark more more
 cell id | One developer, one Mac, many agents
 wordmark kiln
 motto Specs in. Commits out.
-para kiln runs Claude Code in the background, on your Mac. It builds each spec you approve, and does chores on a schedule. Work reaches main only once your checks pass.
+para kiln runs Claude Code on your Mac. It builds each spec you approve, and fixes problems it finds on a schedule. Work reaches main only once your checks pass.
 
-cell problem | How agents get used
-lead **You give an agent a task. Then you wait, or start a second agent.**
-para Either way, no task starts until you prompt it. Only you check the result.
-para Running a second agent means switching between tasks. You can start many agents, but you can effectively manage only a few.
+cell problem | Why kiln
+lead **An agent writes code fast, but checking and starting its work still wait on you.**
+para **Only you check an agent's work.** An agent reports success, but its tests check what it understood, not what you asked for.
+para **No task starts until you prompt it.** So you wait on one agent, or start several and switch between them, prompting and reviewing each.
 cell answer | With kiln
 big You write a @you{spec} and the checks. kiln runs the @agent{agents}, and lands only the work that passes your checks.
 para **Each acceptance test becomes code.** You approve each test as a Given, a When and a Then. A session writes it as a test that runs your program as its user would.
 para **Your checks decide what lands.** They run those tests on every later build too. kiln reads your checks from main, so no build can weaken them.
-para **Chores run without you.** On a schedule, a monitor looks for a problem, such as a filed bug. An agent fixes what the monitor finds.
+para **Work starts without you.** On a schedule, a monitor looks for work: a filed bug, code that scores poorly, slow or repeated tests. A monitor you write could read a live service's logs, traces or metrics. An agent does what the monitor finds.
 
 cell attn | Where your time goes
 item ●1 | **The spec**: what to build next, and how to tell it is done. `/shape` drafts it with you.

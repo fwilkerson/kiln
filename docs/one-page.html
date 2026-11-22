@@ -576,20 +576,20 @@
     <span class="lab">One developer, one Mac, many agents</span>
     <div class="mark">kiln</div>
     <div class="motto">Specs in. Commits out.</div>
-    <p>kiln runs Claude Code in the background, on your Mac. It builds each spec you approve, and does chores on a schedule. Work reaches main only once your checks pass.</p>
+    <p>kiln runs Claude Code on your Mac. It builds each spec you approve, and fixes problems it finds on a schedule. Work reaches main only once your checks pass.</p>
   </div>
   <div class="cell problem">
-    <span class="lab">How agents get used</span>
-    <p class="lead"><b>You give an agent a task. Then you wait, or start a second agent.</b></p>
-    <p>Either way, no task starts until you prompt it. Only you check the result.</p>
-    <p>Running a second agent means switching between tasks. You can start many agents, but you can effectively manage only a few.</p>
+    <span class="lab">Why kiln</span>
+    <p class="lead"><b>An agent writes code fast, but checking and starting its work still wait on you.</b></p>
+    <p><b>Only you check an agent's work.</b> An agent reports success, but its tests check what it understood, not what you asked for.</p>
+    <p><b>No task starts until you prompt it.</b> So you wait on one agent, or start several and switch between them, prompting and reviewing each.</p>
   </div>
   <div class="cell answer">
     <span class="lab">With kiln</span>
     <p class="big">You write a <span class="you">spec</span> and the checks. kiln runs the <span class="agent">agents</span>, and lands only the work that passes your checks.</p>
     <p><b>Each acceptance test becomes code.</b> You approve each test as a Given, a When and a Then. A session writes it as a test that runs your program as its user would.</p>
     <p><b>Your checks decide what lands.</b> They run those tests on every later build too. kiln reads your checks from main, so no build can weaken them.</p>
-    <p><b>Chores run without you.</b> On a schedule, a monitor looks for a problem, such as a filed bug. An agent fixes what the monitor finds.</p>
+    <p><b>Work starts without you.</b> On a schedule, a monitor looks for work: a filed bug, code that scores poorly, slow or repeated tests. A monitor you write could read a live service's logs, traces or metrics. An agent does what the monitor finds.</p>
   </div>
   <div class="cell attn">
     <span class="lab">Where your time goes</span>
