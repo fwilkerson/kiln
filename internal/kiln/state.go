@@ -85,7 +85,7 @@ type record struct {
 	// starts.
 	VerifyFirst string `json:"verify_first,omitempty"`
 	// Tested is the commit of a verify-first fix's tests that the gate last failed on alone, on kiln/<name>.verify. The
-	// fix holds each test file as Tested holds it.
+	// fix holds each test file as main does, with Tested's change applied.
 	Tested git.Rev `json:"tested,omitempty"`
 	// Owed is the message kiln owes each session of a stopped build that kiln tend saw to. kiln resumes each with it.
 	Owed string `json:"owed,omitempty"`

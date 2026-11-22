@@ -338,18 +338,22 @@ func (r *Repo) atCommit(ctx context.Context, spec Spec, head git.Rev, c config) 
 
 // refused says, by path, why the build may not change each path its work changed since it left main. A path under
 // one of without that the work lacks is kiln's removal, not the work's. It judges each file g.tested changed too. So
-// it refuses a fix that puts a test back as main holds it. It answers head, the commit it read at g's place.
+// it refuses a fix that puts a test back as main holds it. It answers the commit it read at g's place, or g.head.
 func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []string) (map[string]string, git.Rev,
 	error) {
-	head := g.head
-	if head == "" {
+	if g.head == "" {
 		var err error
-		if head, err = r.git.Head(ctx, g.place); err != nil {
+		if g.head, err = r.git.Head(ctx, g.place); err != nil {
 			return nil, "", err
 		}
 	}
 
-	changed, err := r.judgedPaths(ctx, g, main, head)
+	changed, err := r.judgedPaths(ctx, g, main)
+	if err != nil {
+		return nil, "", err
+	}
+
+	proved, err := r.proved(ctx, g, main, changed)
 	if err != nil {
 		return nil, "", err
 	}
@@ -361,12 +365,12 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []str
 			continue
 		}
 
-		removed, err := r.removed(ctx, head, p, without)
+		removed, err := r.removed(ctx, g.head, p, without)
 		if err != nil {
 			return nil, "", err
 		}
 
-		kept, err := r.keptTest(ctx, g, head, p)
+		kept, err := r.keptTest(ctx, g, proved, p)
 		if err != nil {
 			return nil, "", err
 		}
@@ -376,12 +380,12 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []str
 		}
 	}
 
-	return refused, head, nil
+	return refused, g.head, nil
 }
 
-// judgedPaths lists, sorted, each path head changed since it left main, and each that g.tested changed.
-func (r *Repo) judgedPaths(ctx context.Context, g guard, main, head git.Rev) ([]string, error) {
-	changed, err := r.git.Branched(ctx, main, head)
+// judgedPaths lists, sorted, each path g.head changed since it left main, and each that g.tested changed.
+func (r *Repo) judgedPaths(ctx context.Context, g guard, main git.Rev) ([]string, error) {
+	changed, err := r.git.Branched(ctx, main, g.head)
 	if err != nil || g.tested == "" {
 		return changed, err
 	}
@@ -390,20 +394,32 @@ func (r *Repo) judgedPaths(ctx context.Context, g guard, main, head git.Rev) ([]
 	return slices.Compact(slices.Sorted(slices.Values(slices.Concat(changed, tests)))), err
 }
 
-// keptTest is whether p is a test file of a verify-first fix, and head holds it as g.tested does. g.tested holds the
-// proved tests.
-// Then the verify session wrote it, or main held it so, and the fix left it as it was.
-func (r *Repo) keptTest(ctx context.Context, g guard, head git.Rev, p string) (bool, error) {
-	if g.tested == "" || !g.side.testFile(fold(p)) {
+// proved reads each of paths as the proved tests hold it. That is main's file where g.head left main, with their
+// change applied. It maps each path that holds a file to the file. So a landing keeps what main changed since the
+// tests. It answers nil where g holds no proved tests, or their change conflicts with main's.
+func (r *Repo) proved(ctx context.Context, g guard, main git.Rev, paths []string) (map[string][]byte, error) {
+	if g.tested == "" {
+		return nil, nil
+	}
+
+	left, err := r.git.MergeBase(ctx, main, g.head)
+	if err != nil {
+		return nil, err
+	}
+
+	files, _, err := r.git.Merged(ctx, left, g.tested, paths...)
+	return files, err
+}
+
+// keptTest is whether p is a test file of a verify-first fix, and g.head holds it as proved does. Repo.proved reads
+// proved. Then the verify session wrote it, or main held it so, and the fix left it as it was.
+func (r *Repo) keptTest(ctx context.Context, g guard, proved map[string][]byte, p string) (bool, error) {
+	if proved == nil || !g.side.testFile(fold(p)) {
 		return false, nil
 	}
 
-	was, wasHeld, err := r.git.Show(ctx, g.tested, p)
-	if err != nil {
-		return false, err
-	}
-
-	is, held, err := r.git.Show(ctx, head, p)
+	was, wasHeld := proved[p]
+	is, held, err := r.git.Show(ctx, g.head, p)
 	return held == wasHeld && bytes.Equal(is, was), err
 }
 

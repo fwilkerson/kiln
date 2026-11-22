@@ -890,6 +890,43 @@ func (g *Git) Show(ctx context.Context, at Rev, path string) ([]byte, bool, erro
 	return content, found, nil
 }
 
+// Merged reads the files at paths where git merge would merge the commits a and b. It makes no commit. It maps
+// each path that holds a file there to the file. A merge that conflicts is answered as a [Conflict].
+func (g *Git) Merged(ctx context.Context, a, b Rev, paths ...string) (map[string][]byte, *Conflict, error) {
+	out, err := g.in(ctx, g.repo, "merge-tree", "--write-tree", "-z", "--name-only", a.commit(), b.commit())
+	fields := strings.Split(out, "\x00")
+	switch {
+	case conflicted(err):
+		return nil, &Conflict{Files: conflicts(fields[1:])}, nil
+	case err != nil:
+		return nil, nil, err
+	}
+
+	var batch strings.Builder
+	for _, p := range paths {
+		batch.WriteString("contents " + fields[0] + ":" + p + "\x00")
+	}
+
+	out, err = g.run(ctx, call{dir: string(g.repo), stdin: batch.String()}, "cat-file", "--batch-command", "-Z")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	answers, files := bufio.NewReader(strings.NewReader(out)), map[string][]byte{}
+	for _, p := range paths {
+		answer, err := contents(answers)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if content, found := blob(answer); found {
+			files[p] = content
+		}
+	}
+
+	return files, nil, nil
+}
+
 // ShowTip reads the files at paths in the commit branch points to, as [Git.Show] reads one, and answers that commit.
 // It maps each path that holds a file there to the file. It answers an [ErrNoBranch] when there is no such branch, or
 // it holds no commit. One git learns the commit, then reads each file there.

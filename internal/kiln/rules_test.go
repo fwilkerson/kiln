@@ -212,32 +212,44 @@ func TestHookArguments(t *testing.T) {
 }
 
 // TestTestFiles holds that the gate refuses a verify-first fix's change to a test file, however made. A test file
-// passes while it stays as the proved tests hold it.
+// passes while it stays as main holds it, with the proved tests' change applied. So a fix lands after main moved.
 func TestTestFiles(t *testing.T) {
 	t.Parallel()
 	r, repo := scratchRepo(t)
-	shell(t, repo, "mkdir testdata && echo in >testdata/in.txt && echo 'package x' >x.go && echo old >x_test.go && "+
-		"git add . && git commit --quiet -m main && git checkout --quiet -b kiln/m && echo 'test' >x_test.go && "+
-		"echo 'new' >y_test.go && git add . && git commit --quiet -m test")
-	tested := git.Rev(strings.TrimSpace(shell(t, repo, "git rev-parse HEAD")))
+	shell(t, repo, "mkdir testdata && echo in >testdata/in.txt && echo 'package x' >x.go && "+
+		"printf 'a\\nb\\nc\\nd\\ne\\n' >x_test.go && git add . && git commit --quiet -m main && "+
+		"git checkout --quiet -b kiln/m && sed -i '' s/b/proved/ x_test.go && echo 'new' >y_test.go && git add . && "+
+		"git commit --quiet -m test && git checkout --quiet -b moved main && sed -i '' s/e/moved/ x_test.go && "+
+		"git commit --quiet -am moved")
+	tested := git.Rev(shell(t, repo, "git rev-parse kiln/m"))
 	g := guard{spec: "m", place: git.Worktree(repo), tested: tested,
 		side: side{role: fixRole, tests: []string{"*_test.go", "testdata"}}}
 	for name, tc := range map[string]struct {
-		change  string
-		refused []string
+		// onto is the branch the work lands on, or "" for work on the proved tests, before main moved.
+		onto, change string
+		refused      []string
 	}{
 		"the fix changes code":            {change: "echo 'package x // fixed' >x.go"},
 		"the fix changes a test":          {change: "echo weaker >x_test.go", refused: []string{"x_test.go"}},
 		"the fix deletes a test":          {change: "rm y_test.go", refused: []string{"y_test.go"}},
-		"the fix puts a test back":        {change: "echo old >x_test.go", refused: []string{"x_test.go"}},
+		"the fix puts a test back":        {change: "git checkout main -- x_test.go", refused: []string{"x_test.go"}},
 		"the fix adds a test that passes": {change: "echo 'func TestMain' >main_test.go", refused: []string{"main_test.go"}},
 		"the fix changes a fixture":       {change: "echo out >testdata/in.txt", refused: []string{"testdata/in.txt"}},
+		"the fix lands after main changed another line of a test": {onto: "moved",
+			change: "echo 'package x // fixed' >x.go"},
+		"the fix lands after main moved, and changes a proved line": {onto: "moved",
+			change: "sed -i '' s/proved/weaker/ x_test.go", refused: []string{"x_test.go"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			shell(t, repo, "git checkout --quiet --detach "+string(tested)+" && "+tc.change+
+			from, main := string(tested), "main"
+			if tc.onto != "" {
+				from, main = tc.onto+" && git cherry-pick --no-commit "+string(tested), tc.onto
+			}
+
+			shell(t, repo, "git checkout --quiet --detach "+from+" && "+tc.change+
 				" && git add -A && git commit --quiet -m fix")
-			g.head = git.Rev(strings.TrimSpace(shell(t, repo, "git rev-parse HEAD")))
-			refused, _, err := r.refused(t.Context(), g, "main", nil)
+			g.head = git.Rev(shell(t, repo, "git rev-parse HEAD"))
+			refused, _, err := r.refused(t.Context(), g, git.Rev(main), nil)
 			if got := slices.Sorted(maps.Keys(refused)); err != nil || !slices.Equal(got, tc.refused) {
 				t.Errorf("the gate refused %q, %v; want %q", got, err, tc.refused)
 			}

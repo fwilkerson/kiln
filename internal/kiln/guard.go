@@ -23,8 +23,8 @@ type guard struct {
 	place git.Worktree
 	// head is the commit kiln made at place, or "" for the gate to read there.
 	head git.Rev
-	// tested is the commit of a verify-first fix's proved tests, or "". The fix holds each test file as tested does.
-	// The hook's command line leaves it out, since the hook refuses each test file.
+	// tested is the commit of a verify-first fix's proved tests, or "". The fix holds each test file as main does,
+	// with tested's change applied. The hook's command line leaves it out, since the hook refuses each test file.
 	tested git.Rev
 	// allowed holds the paths the build may change, though guarded names them. A landing of accepted amendments changes
 	// its spec. The hook's command line leaves them out.

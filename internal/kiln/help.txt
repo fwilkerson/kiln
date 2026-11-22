@@ -428,9 +428,10 @@ A monitor.json that says "workflow": "verify-first" splits the fix between two s
 A test file has an element of its path that a pattern of kiln.json's testFiles matches, by path.Match. So is
 each file under testHelpers, and under each acceptance path's part before {spec}. The verify session writes only
 test files, and the fix session none. So the fix never adds a test that passes, nor edits a fixture a test reads.
-Each session's hook refuses its write outside its own files, and so does each gate on its work. Each gate of the fix,
-its landing's too, fails while a test file differs from the tests kiln last gated. The record keeps that commit
-through kiln accept.
+Each session's hook refuses its write outside its own files, and so does each gate on its work. The proved tests
+are the commit the gate last failed on alone. Each gate of the fix, its landing's too, fails while a test file
+differs from main's with their change applied. So a landing keeps what main changed meanwhile in a test file. The
+record keeps that commit through kiln accept.
 
 The verify session never reads the fix's worktree, nor the fix session's transcripts. Its sandbox denies them, as
 the sandbox of build-and-verify denies each side the other's. A verify session that asks for the developer, fails or
