@@ -576,26 +576,26 @@
     <span class="lab">One developer, one Mac, many agents</span>
     <div class="mark">kiln</div>
     <div class="motto">Specs in. Commits out.</div>
-    <p>kiln runs Claude Code on your Mac. It builds each spec you approve, and fixes problems it finds on a schedule. Work reaches main only once your checks pass.</p>
+    <p>With kiln, agents build the specs you shape, and fix what your checks find on a schedule. kiln runs on your Mac, and commits the work to main.</p>
   </div>
   <div class="cell problem">
     <span class="lab">Why kiln</span>
-    <p class="lead"><b>An agent writes code fast, but checking and starting its work still wait on you.</b></p>
-    <p><b>Only you check an agent's work.</b> An agent reports success, but its tests check what it understood, not what you asked for.</p>
-    <p><b>No task starts until you prompt it.</b> So you wait on one agent, or start several and switch between them, prompting and reviewing each.</p>
+    <p class="lead"><b>A developer's attention is the scarcest resource on a project.</b></p>
+    <p><b>An agent's tests check what it understood.</b> Its report of success does not say whether it built what you asked for.</p>
+    <p><b>An agent waits for a person.</b> A task starts when someone types it, and a question stops the work until someone answers.</p>
   </div>
   <div class="cell answer">
     <span class="lab">With kiln</span>
-    <p class="big">You write a <span class="you">spec</span> and the checks. kiln runs the <span class="agent">agents</span>, and lands only the work that passes your checks.</p>
-    <p><b>Each acceptance test becomes code.</b> You approve each test as a Given, a When and a Then. A session writes it as a test that runs your program as its user would.</p>
-    <p><b>Your checks decide what lands.</b> They run those tests on every later build too. kiln reads your checks from main, so no build can weaken them.</p>
-    <p><b>Work starts without you.</b> On a schedule, a monitor looks for work: a filed bug, code that scores poorly, slow or repeated tests. A monitor you write could read a live service's logs, traces or metrics. An agent does what the monitor finds.</p>
+    <p class="big">When an <span class="agent">agent</span> gets something wrong, you add a <span class="you">test</span> or edit its <span class="you">instruction file</span>.</p>
+    <p><b>You approve each acceptance test as a Given, a When and a Then.</b> A build writes it as a test that runs your program as its user would.</p>
+    <p><b>A build cannot change the commands it must pass.</b> The gate is that list of commands, and kiln reads it from main. It runs every earlier spec's acceptance tests on each later build.</p>
+    <p><b>Checks run on a schedule too.</b> A check can find tests that got slower, an outdated dependency, a CVE, docs that no longer match the code, or new errors in a service's logs. An agent fixes what the check finds, and each bug you file.</p>
   </div>
   <div class="cell attn">
-    <span class="lab">Where your time goes</span>
+    <span class="lab">Where your attention goes</span>
     <ol>
-      <li><span class="disc" data-n="1"></span><span><b>The spec</b>: what to build next, and how to tell it is done. <code>/shape</code> drafts it with you.</span></li>
-      <li><span class="disc" data-n="2"></span><span><b>The checks</b>: when a build gets something wrong, change the gate or an agent's instructions. The next build starts from that change.</span></li>
+      <li><span class="disc" data-n="1"></span><span><b>The spec</b>: what to build next, and how to tell it is done. <code>/shape</code> asks its questions while it drafts the spec with you.</span></li>
+      <li><span class="disc" data-n="2"></span><span><b>The checks and instructions</b>: the gate in <code>kiln.json</code>, the checks on a schedule, and each agent's instruction file.</span></li>
       <li><span class="disc" data-n="3"></span><span><b>The result</b>: try what landed, then accept it or revise the spec.</span></li>
     </ol>
   </div>
@@ -612,7 +612,7 @@
     <span class="sym"><svg width="36" height="10"><line x1="1" y1="5" x2="35" y2="5" class="ph kiln"/></svg>planned</span>
     <span class="k">MARKS</span>
     <span class="sym"><span class="bal">1</span>part</span>
-    <span class="sym"><span class="disc" data-n="1"></span>your time</span>
+    <span class="sym"><span class="disc" data-n="1"></span>your attention</span>
     <span class="sym"><span class="more-mk"></span>more</span>
   </div>
 </header>

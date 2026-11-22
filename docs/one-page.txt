@@ -13,28 +13,28 @@ actor repo   repo   git, on main
 line arrow work moves
 line planned @kiln planned
 mark balloon part
-mark dot @you your time
+mark dot @you your attention
 mark more more
 
 ::: titleblock
 cell id | One developer, one Mac, many agents
 wordmark kiln
 motto Specs in. Commits out.
-para kiln runs Claude Code on your Mac. It builds each spec you approve, and fixes problems it finds on a schedule. Work reaches main only once your checks pass.
+para With kiln, agents build the specs you shape, and fix what your checks find on a schedule. kiln runs on your Mac, and commits the work to main.
 
 cell problem | Why kiln
-lead **An agent writes code fast, but checking and starting its work still wait on you.**
-para **Only you check an agent's work.** An agent reports success, but its tests check what it understood, not what you asked for.
-para **No task starts until you prompt it.** So you wait on one agent, or start several and switch between them, prompting and reviewing each.
+lead **A developer's attention is the scarcest resource on a project.**
+para **An agent's tests check what it understood.** Its report of success does not say whether it built what you asked for.
+para **An agent waits for a person.** A task starts when someone types it, and a question stops the work until someone answers.
 cell answer | With kiln
-big You write a @you{spec} and the checks. kiln runs the @agent{agents}, and lands only the work that passes your checks.
-para **Each acceptance test becomes code.** You approve each test as a Given, a When and a Then. A session writes it as a test that runs your program as its user would.
-para **Your checks decide what lands.** They run those tests on every later build too. kiln reads your checks from main, so no build can weaken them.
-para **Work starts without you.** On a schedule, a monitor looks for work: a filed bug, code that scores poorly, slow or repeated tests. A monitor you write could read a live service's logs, traces or metrics. An agent does what the monitor finds.
+big When an @agent{agent} gets something wrong, you add a @you{test} or edit its @you{instruction file}.
+para **You approve each acceptance test as a Given, a When and a Then.** A build writes it as a test that runs your program as its user would.
+para **A build cannot change the commands it must pass.** The gate is that list of commands, and kiln reads it from main. It runs every earlier spec's acceptance tests on each later build.
+para **Checks run on a schedule too.** A check can find tests that got slower, an outdated dependency, a CVE, docs that no longer match the code, or new errors in a service's logs. An agent fixes what the check finds, and each bug you file.
 
-cell attn | Where your time goes
-item ●1 | **The spec**: what to build next, and how to tell it is done. `/shape` drafts it with you.
-item ●2 | **The checks**: when a build gets something wrong, change the gate or an agent's instructions. The next build starts from that change.
+cell attn | Where your attention goes
+item ●1 | **The spec**: what to build next, and how to tell it is done. `/shape` asks its questions while it drafts the spec with you.
+item ●2 | **The checks and instructions**: the gate in `kiln.json`, the checks on a schedule, and each agent's instruction file.
 item ●3 | **The result**: try what landed, then accept it or revise the spec.
 :::
 

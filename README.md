@@ -1,13 +1,9 @@
 # kiln
 
-kiln is an opinionated way to run [Claude Code](https://claude.com/claude-code) on your project:
-
-- **Verify what an agent delivers.** You approve a **spec**: a Markdown file that says what to build, and acceptance
-  tests that say when the work is done. A build writes each acceptance test as an automated test. Work lands on main
-  only once your checks pass.
-- **Put agents to work without prompting each one.** `kiln fire` builds every spec you queued. On a schedule, kiln
-  finds work for an agent: a bug you filed, code that scores poorly, slow or repeated tests. A check could even read a
-  live service's logs, traces or metrics.
+With kiln, agents build the specs you shape, and fix what your checks find on a schedule. When an agent gets
+something wrong, you add a test or edit its instruction file. A check can find tests that got slower, an outdated
+dependency, a CVE, docs that no longer match the code, or new errors in a service's logs. An agent can fix a bug you
+file.
 
 ![You shape and queue a spec; kiln builds, gates, audits and lands it on main.](docs/flow.svg)
 
