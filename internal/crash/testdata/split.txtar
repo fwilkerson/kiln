@@ -28,6 +28,6 @@ V answers 5.
  ],
  "audit": [
   {"tool": {"name": "Bash", "input": {"command": "echo stray >audit-stray.txt"}}},
-  {"result": {"result": "read 2 directories, found 0"}}
+  {"result": {"audit": {"read": 2}}}
  ]
 }
