@@ -29,8 +29,8 @@ para Nothing but you checks the work, so you cannot walk away. A second agent on
 
 cell answer | With kiln
 big You write the @you{spec} and the checks. kiln runs the @agent{agents}, and lands only work that passes.
-para **The spec says what done means.** You approve its acceptance tests, each a Given, a When and a Then, before any code exists.
-para **Your checks decide what lands.** kiln reads them from main, so no build can weaken them. A session that wrote none of the work then audits it.
+para **Each acceptance test becomes code.** You approve each test as a Given, a When and a Then. A session writes it as a test that runs your program as its user would.
+para **Your checks decide what lands.** They run those tests on every later build too. kiln reads your checks from main, so no build can weaken them.
 para **Chores run without you.** On a schedule, a monitor looks for a problem, such as a filed bug. An agent fixes what the monitor finds.
 
 cell attn | Where your time goes
@@ -58,8 +58,8 @@ box spec @repo 1.1-2 | 📄 SPEC | approved, on main
 arrow shape spec
 
 box build @agent 2.1 | BUILD | the code
-box verify @agent 2.1 | VERIFY | the tests, from | the spec alone
-more With `verifySession` on, two sessions work in two clones. One writes the code, and the other writes the acceptance tests. Neither session reads the other's work. With `verifySession` off, one session writes both.
+box verify @agent 2.1 | VERIFY | a test for each | acceptance test
+more Each acceptance test becomes an automated test, which runs your program as its user would. With `verifySession` on in `kiln.json`, a second session writes those tests from the spec alone, and neither session reads the other's work. With `verifySession` off, one session writes the code and the tests.
 box gate @kiln 2.2 | GATE ●2 | your checks, | read from main
 more kiln reads the gate's commands from main, never from the build's checkout, so a build cannot weaken the checks it is held to.
 box audit @agent 2.3 | AUDIT | a second session | reads the work
@@ -72,7 +72,8 @@ arrow gate audit
 detail A | build gate audit
 
 box land @kiln 3.1 | LAND | one commit
-box main @repo 3.1 | MAIN
+box main @repo 3.1 | MAIN | code and tests
+more The acceptance tests land with the code, and the gate runs them on every later build. A later build that breaks an earlier spec does not land.
 box try @you 3.2 | **try it** ●3 | `kiln accept x`
 arrow audit land
 arrow land main
@@ -110,18 +111,17 @@ part 4 @kiln | Docs | a check finds packages whose code changed | Reads their do
 part 5 @agent | A fix | a build with no spec | Gated, audited and landed like any build.
 :::
 
-view 4 START | what you type | what kiln prints, shortened
+view 4 START | what you type | to set a project up, build a spec, and add a monitor
 
 ::: spec
 column
 howto 4.1 | Set a project up | `kiln init` @you
 ```term
 $ kiln init
-wrote .kiln/kiln.json
-linked .claude/skills/shape
-{q:commit .kiln/ on main: kiln reads it there}
+$ git add .kiln .claude
+$ git commit -m "chore: set up kiln"
 ```
-caption The preset follows your files: `go`, `python` for uv, or `typescript` for npm.
+caption `kiln init` writes your checks and the agents' instructions into `.kiln/`, and links `/shape` into `.claude/`. It picks defaults for Go, Python with uv, or TypeScript with npm, by your files.
 column
 howto 4.2 | Build a spec | `/shape` @you then `kiln fire` @you
 ```term
@@ -135,10 +135,9 @@ column
 howto 4.3 | Add a monitor | `kiln monitor add bugs` @you then `kiln monitor install` @you
 ```term
 $ kiln monitor add bugs
-wrote .kiln/monitors/bugs/agent.md
-wrote .kiln/monitors/bugs/check
-wrote .kiln/monitors/bugs/monitor.json
-{q:commit .kiln/monitors/bugs/ on main: kiln reads it there}
+$ git add .kiln/monitors
+$ git commit -m "chore: add the bugs monitor"
+$ kiln monitor install
 ```
 caption kiln ships `bugs`, `go/deps`, `go/docs` and `go/gate-time`. A monitor is a directory: a check, an agent and `monitor.json`.
 :::

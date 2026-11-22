@@ -324,9 +324,18 @@ printf '%s\n' "$builds" | jq -s 'map(select(.outcome != null and .cost_usd != nu
   | if length > 0 then (.[(length - 1) / 2 | floor] + .[length / 2 | floor]) / 2 else empty end'
 ```
 
-The README's [`gate-seconds`](../README.md#making-kiln-your-own) gauge reads the slowest of the last twenty gates that
-passed on a build's work, in seconds. Each takes its output whole first, so a failed `kiln ledger` fails the gauge,
-rather than reading no number.
+This gauge is `.kiln/monitors/gate-seconds/gauge`, beside a `monitor.json` of `{"atMost": 300}`. The gauge reads the
+slowest of the last twenty gates that passed on a build's work, in seconds. The gauge skips each landing's gate, the
+one run on the work rebased onto main:
+
+```sh
+#!/bin/sh
+set -eu
+gates=$("$KILN" ledger --kind gate)
+printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seconds) | .[-20:] | max // empty'
+```
+
+Each gauge takes its output whole first, so a failed `kiln ledger` fails the gauge, rather than reading no number.
 
 ## Agents
 
