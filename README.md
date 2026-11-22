@@ -114,8 +114,8 @@ A build runs with no one watching, so kiln limits what a build can do:
 | waits on its branch       | The build asks to amend the spec.      | `kiln accept <name>` or `kiln reject <name>` |
 | stopped                   | Usually, the last round's gate failed. | `kiln tend <name>`                           |
 
-`kiln tend` opens a Claude Code session of your own, which already knows why the build stopped. Have it make the
-repair, and exit: the build goes on where it stopped.
+`kiln tend` opens a Claude Code session of your own, which already knows why the build stopped. Repair the
+cause there, and exit: the build goes on where it stopped.
 
 `kiln accept` deletes the spec, and adds a line to `PRODUCT.md` with the `git show` command that prints the spec.
 If the work is wrong, do not accept it: revise the spec with `/shape`, which queues the spec again.

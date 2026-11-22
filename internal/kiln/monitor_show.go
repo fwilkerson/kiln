@@ -209,7 +209,7 @@ func (s standing) waitsOnRepair() bool {
 	return slices.Contains(repairs, s.unheld())
 }
 
-// unheld is the monitor's result as kiln status words it, without "held: ".
+// unheld is the monitor result as kiln status words it, without the held prefix.
 func (s standing) unheld() string {
 	return strings.TrimPrefix(s.result, foundHeld+": ")
 }

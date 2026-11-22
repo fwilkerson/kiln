@@ -29,7 +29,8 @@ func (r *Repo) Fire(ctx context.Context, out io.Writer) error {
 }
 
 // run builds the queued records of in's lane, or only the one in names. kiln accept and kiln tend start a run for a
-// name, and kiln fire one for each spec. It first recovers what a dead kiln left in the lane. in's unlock is unused.
+// name, and kiln fire starts one for each spec. It first recovers what a dead kiln left in the lane. The unlock field
+// of in is unused.
 func (r *Repo) run(ctx context.Context, out io.Writer, in inLane) error {
 	unlock, err := r.lockLane(in.lane, in.holder)
 	if err != nil {

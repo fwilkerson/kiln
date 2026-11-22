@@ -50,7 +50,7 @@ When kiln refuses that, make the fix the refusal names, or tell the developer wh
 When the developer exits, kiln goes on at once, and asks nothing:
 
 - a stopped build goes on in its own sessions, on its own branch, with the note;
-- a stopped landing lands again, as `kiln accept <name>` would;
+- a stopped landing is retried, as `kiln accept <name>` would do;
 - a monitor runs again, as `kiln monitor run <name>` would.
 
 So never run `kiln fire`, `kiln queue`, `kiln accept` or `kiln monitor run` yourself, unless the developer asks.

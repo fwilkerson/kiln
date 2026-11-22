@@ -359,7 +359,7 @@ func tend(ctx context.Context, r *kiln.Repo, args []string, out *os.File) error 
 	return r.Tend(ctx, kiln.Spec(names[0]), kiln.Terminal{In: os.Stdin, Out: out, Err: os.Stderr})
 }
 
-// landedFlag is kiln tend's flag that records a stopped build's work as landed on main.
+// landedFlag is the flag of the tend command. It records the work of a stopped build as landed on main.
 const landedFlag = "--landed"
 
 // tui is kiln tui, which takes a spec's name or none.
