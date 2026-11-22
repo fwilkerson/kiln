@@ -2,14 +2,31 @@
 
 Approve a spec, walk away, and come back to it built, tested and on main.
 
-kiln is one Go binary, for macOS. It builds each spec you approve with headless
-[Claude Code](https://claude.com/claude-code) sessions, in a sandbox. A spec is a Markdown file that says what to
-build, and how to test it. A session is one run of Claude Code. The gate is your project's list of checks, such as
-`go test ./...`. kiln runs the gate on each build's work. Then the audit, a second session, reads the work and sends
-its findings back to the build session. kiln lands the finished work on main as one commit. A build asks you
-nothing while it runs.
+A coding agent writes code fast, but someone has to check that code, and today that is you. You prompt, wait, read
+the diff, run the tests, and prompt again. Nothing but you checks the work, so you cannot walk away. A second agent
+only gives you more to check.
+
+kiln does that checking before the work reaches you. You say what done means before the work starts. A spec holds
+one feature's acceptance tests, and your project's checks, such as `go test ./...`, must pass too. kiln then runs
+[Claude Code](https://claude.com/claude-code) sessions with no one at the keyboard. A failed check goes back to the
+session, and only work that passes lands on main. A build asks you nothing while it runs.
+
+When a build still gets something wrong, you change what kiln held the build to: the spec, the gate in
+`.kiln/kiln.json`, or an agent's instructions in `.kiln/agents/`. The next build starts from that change, so you
+correct a mistake once.
 
 ![You shape and queue a spec; kiln builds, gates, audits and lands it on main.](docs/flow.svg)
+
+kiln is one Go binary, for macOS. The docs use these words:
+
+- A **spec** is a Markdown file that says what to build, and how to test it. You approve the spec before any code
+  exists.
+- A **session** is one run of Claude Code. kiln runs each session headless, in a sandbox.
+- The **gate** is your project's list of checks. kiln runs the gate on each build's work.
+- The **audit** is a session that wrote none of the work. The audit reads the work once the gate passes, and sends
+  its findings back to be fixed.
+- A **monitor** is a job kiln runs on a schedule. A monitor's check looks for a problem, such as a filed bug, and a
+  session fixes what the check finds.
 
 ## Install
 
@@ -65,19 +82,6 @@ installed /path/to/my-project/.git/hooks/pre-commit
 $ git add .kiln .claude && git commit -m "chore: set up kiln"
 ```
 
-Run `kiln init` again after you upgrade kiln, and whenever `kiln status` says `.kiln/` is behind. `kiln init` merges
-kiln's new agents and `/shape` into your edited copies. It never merges a change into your `kiln.json`:
-
-```console
-$ kiln init
-updated .kiln/agents/audit.md
-merged .kiln/agents/build.md
-merged .kiln/agents/verify.md, with conflicts: resolve them before you commit it
-wrote .kiln/generated/init.json
-...
-$ git diff .kiln                     # read what changed, resolve each conflict, then commit
-```
-
 Read `.kiln/kiln.json` once. Here is the go preset's `kiln.json`, without its two sandbox keys, `"allowedHosts"` and
 `"writablePathCommands"`:
 
@@ -94,17 +98,6 @@ Read `.kiln/kiln.json` once. Here is the go preset's `kiln.json`, without its tw
 each time is a round. `rounds` is how many rounds a build gets before it stops. `"acceptanceTests"` is where the
 acceptance tests go. `$schema` names a schema in `.kiln/generated/`, so an editor completes each key. [The
 reference](docs/reference.md#kilnjson) explains every key.
-
-After you change a file under `.kiln/`, run `kiln doctor` before you commit. `kiln doctor` prints each problem that
-would make kiln refuse or fail later, with its fix. A line that starts `note:` is no problem:
-
-```console
-$ kiln doctor
-.kiln/kiln.json names the host "https://proxy.golang.org/": name a bare host, such as "proxy.golang.org", or "*.example.org"
-the working tree holds .kiln/monitors/deps/check without the executable bit, so kiln cannot run it: run chmod +x .kiln/monitors/deps/check, and commit it
-note: .kiln/kiln.json differs from main's in hosts: kiln acts on main's, so commit it to main to act on yours
-kiln doctor: found 2 problems
-```
 
 **2. Write a spec.** In an interactive Claude Code session, run `/shape` and say what you want. `/shape` asks you
 questions, has the project's reviewers read the draft, and writes `.kiln/specs/<name>.md`. A reviewer is an agent
@@ -150,68 +143,9 @@ notice shows in the terminal, or goes to the `notify` program that `kiln.json` n
 `git show` command that prints the spec. If UAT finds a problem, revise the spec with `/shape`. `/shape` commits the
 revision and queues the spec again. The new build starts from main, so the build revises the landed work.
 
-## Making kiln your own
-
-A project can change kiln in five places. Each is a file or a directory, and [the reference](docs/reference.md)
-covers each in full.
-
-**A preset** of a team's own is a directory, laid out as kiln's [built-in presets](internal/kiln/presets/) are.
-`kiln help presets` says what each file holds:
-
-```console
-$ ls ../presets/web
-audit-tests.md  build-checks.md  kiln.json  verify-tests.md
-$ kiln init --preset ../presets/web
-```
-
-**A monitor** is a job kiln runs on a schedule, as [Monitors](#monitors) below shows. A team can keep a monitor in a
-directory, and add the monitor to each project, as [the reference](docs/reference.md#monitors) shows:
-
-```console
-$ ls ../monitors/deps
-agent.md  check  monitor.json
-$ kiln monitor add ../monitors/deps
-```
-
-**A reviewer** is a file in `.kiln/reviewers/`. After you add a reviewer, run `kiln init`, which links the file into
-`.claude/agents/` for Claude Code, as [Reviewers](docs/reference.md#reviewers) shows:
-
-```markdown
----
-name: upgrade
-description: Reports each stored record a spec's plan would read wrong. Give it the spec's path.
-tools: Read, Grep, Glob
----
-
-Report each record already written that the spec's Technical Plan would refuse or read wrong.
-```
-
-**The notify program** receives a notice when a build or a monitor's fix needs you. `{"notify": ".kiln/notify"}` in
-`kiln.json` names the program. kiln passes the notice in `$KILN_NOTICE`, as [notify](docs/reference.md#notify) shows:
-
-```sh
-#!/bin/sh
-# .kiln/notify: show each notice in macOS's Notification Center.
-set -eu
-said=$(printf '%s' "$KILN_NOTICE" | jq -r '"\(.name) \(.state)"')
-osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title "kiln"' -e 'end run' "$said"
-```
-
-**A gauge** is a monitor's script that prints one number, as [Gauges](#gauges) below shows. A gauge can read kiln's
-own numbers from `kiln ledger`. This gauge prints the slowest of the last twenty gates that passed on a build's work.
-It skips each landing's gate, the one run on the work rebased onto main. The gauge lives in
-`.kiln/monitors/gate-seconds/`, beside a `monitor.json` of `{"atMost": 300}`, as [gauges](docs/reference.md#gauges)
-shows:
-
-```sh
-#!/bin/sh
-# .kiln/monitors/gate-seconds/gauge
-set -eu
-gates=$("$KILN" ledger --kind gate)
-printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seconds) | .[-20:] | max // empty'
-```
-
 ## What kiln holds a build to
+
+A build runs with no one watching, so kiln holds each build to these:
 
 - **Your gate.** kiln reads `kiln.json` from main, never from the build's checkout, so no build weakens its own
   gate. A test that also fails on main does not fail the build.
@@ -237,9 +171,10 @@ gate:
 
 ## Monitors
 
-kiln runs a monitor with no terminal open, under the sign-in that `claude` has on the Mac. A monitor's check looks
-for a problem. When the check finds one, the monitor's agent fixes it. kiln gates, audits and lands the fix like any
-build. kiln ships four monitors:
+A monitor does work that otherwise waits for a free hour, such as fixing a filed bug or a stale doc. kiln runs a
+monitor with no terminal open, under the sign-in that `claude` has on the Mac. A monitor's check looks for a
+problem. When the check finds one, the monitor's agent fixes it. kiln gates, audits and lands the fix like any build.
+kiln ships four monitors:
 
 | Monitor        | What it fixes                                                                        |
 |----------------|--------------------------------------------------------------------------------------|
@@ -288,6 +223,94 @@ A gauge suits a number you watch across landings, such as test time or a mutatio
 every landing. `kiln status` shows the latest reading, and `kiln tui` shows the reading at each landing. A gauge
 never blocks a landing. A monitor that holds only a gauge and its `monitor.json`, as `gate-seconds` above does,
 watches the number and fixes nothing. [Gauges](docs/reference.md#gauges) says the rest.
+
+## Making kiln your own
+
+A project can change kiln in five places. Each is a file or a directory, and [the reference](docs/reference.md)
+covers each in full.
+
+**A preset** of a team's own is a directory, laid out as kiln's [built-in presets](internal/kiln/presets/) are.
+`kiln help presets` says what each file holds:
+
+```console
+$ ls ../presets/web
+audit-tests.md  build-checks.md  kiln.json  verify-tests.md
+$ kiln init --preset ../presets/web
+```
+
+**A monitor** is a job kiln runs on a schedule, as [Monitors](#monitors) above shows. A team can keep a monitor in a
+directory, and add the monitor to each project, as [the reference](docs/reference.md#monitors) shows:
+
+```console
+$ ls ../monitors/deps
+agent.md  check  monitor.json
+$ kiln monitor add ../monitors/deps
+```
+
+**A reviewer** is a file in `.kiln/reviewers/`. After you add a reviewer, run `kiln init`, which links the file into
+`.claude/agents/` for Claude Code, as [Reviewers](docs/reference.md#reviewers) shows:
+
+```markdown
+---
+name: upgrade
+description: Reports each stored record a spec's plan would read wrong. Give it the spec's path.
+tools: Read, Grep, Glob
+---
+
+Report each record already written that the spec's Technical Plan would refuse or read wrong.
+```
+
+**The notify program** receives a notice when a build or a monitor's fix needs you. `{"notify": ".kiln/notify"}` in
+`kiln.json` names the program. kiln passes the notice in `$KILN_NOTICE`, as [notify](docs/reference.md#notify) shows:
+
+```sh
+#!/bin/sh
+# .kiln/notify: show each notice in macOS's Notification Center.
+set -eu
+said=$(printf '%s' "$KILN_NOTICE" | jq -r '"\(.name) \(.state)"')
+osascript -e 'on run argv' -e 'display notification (item 1 of argv) with title "kiln"' -e 'end run' "$said"
+```
+
+**A gauge** is a monitor's script that prints one number, as [Gauges](#gauges) above shows. A gauge can read kiln's
+own numbers from `kiln ledger`. This gauge prints the slowest of the last twenty gates that passed on a build's work.
+It skips each landing's gate, the one run on the work rebased onto main. The gauge lives in
+`.kiln/monitors/gate-seconds/`, beside a `monitor.json` of `{"atMost": 300}`, as [gauges](docs/reference.md#gauges)
+shows:
+
+```sh
+#!/bin/sh
+# .kiln/monitors/gate-seconds/gauge
+set -eu
+gates=$("$KILN" ledger --kind gate)
+printf '%s\n' "$gates" | jq -s 'map(select(.passed and (.landing | not)) | .seconds) | .[-20:] | max // empty'
+```
+
+## After an upgrade, or a change to `.kiln/`
+
+Run `kiln init` again after you upgrade kiln, and whenever `kiln status` says `.kiln/` is behind. `kiln init` merges
+kiln's new agents and `/shape` into your edited copies. In your `kiln.json`, `kiln init` only adds `$schema` or `rounds`
+when either is missing:
+
+```console
+$ kiln init
+updated .kiln/agents/audit.md
+merged .kiln/agents/build.md
+merged .kiln/agents/verify.md, with conflicts: resolve them before you commit it
+wrote .kiln/generated/init.json
+...
+$ git diff .kiln                     # read what changed, resolve each conflict, then commit
+```
+
+After you change a file under `.kiln/`, run `kiln doctor` before you commit. `kiln doctor` prints each problem that
+would make kiln refuse or fail later, with its fix. A line that starts `note:` does not count as a problem:
+
+```console
+$ kiln doctor
+.kiln/kiln.json names the host "https://proxy.golang.org/": name a bare host, such as "proxy.golang.org", or "*.example.org"
+the working tree holds .kiln/monitors/deps/check without the executable bit, so kiln cannot run it: run chmod +x .kiln/monitors/deps/check, and commit it
+note: .kiln/kiln.json differs from main's in allowedHosts: kiln acts on main's, so commit it to main to act on yours
+kiln doctor: found 2 problems
+```
 
 ## Commands
 

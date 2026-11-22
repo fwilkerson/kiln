@@ -575,28 +575,28 @@
   <div class="cell id">
     <span class="lab">One developer, one Mac, many agents</span>
     <div class="mark">kiln</div>
-    <div class="motto">Tooling in. Commits out.</div>
-    <p>kiln runs Claude Code in the background, on your Mac. It builds the specs you approve, and runs chores on a schedule. So one developer can keep a whole repository moving.</p>
+    <div class="motto">Specs in. Commits out.</div>
+    <p>kiln runs Claude Code in the background, on your Mac. It builds each spec you approve, and does chores on a schedule. Work reaches main only once your checks pass.</p>
   </div>
   <div class="cell problem">
     <span class="lab">How agents get used</span>
-    <p class="lead"><b>You take each task to an agent.</b></p>
-    <p>You give the agent the work, watch it run, check the result, and give it the next task.</p>
-    <p>What if you built the system instead, and the agents worked inside that system?</p>
+    <p class="lead"><b>You hand an agent a task.</b></p>
+    <p>Then you stay. You wait, read the diff, run the tests, say what is wrong, and wait again.</p>
+    <p>Nothing but you checks the work, so you cannot walk away. A second agent only gives you more to check.</p>
   </div>
   <div class="cell answer">
     <span class="lab">With kiln</span>
-    <p class="big">You shape the <span class="you">specs</span> and build the tooling; kiln runs the <span class="agent">agents</span> inside that tooling.</p>
-    <p><b>Specs become commits.</b> One session can write the code, and another the tests, from the spec alone. Work that passes your checks and an audit lands on main.</p>
-    <p><b>Your checks decide.</b> kiln reads them from main, so no build can weaken them.</p>
-    <p><b>kiln runs on itself.</b> Monitors do kiln's own chores on a schedule. View 3 shows four of them.</p>
+    <p class="big">You write the <span class="you">spec</span> and the checks. kiln runs the <span class="agent">agents</span>, and lands only work that passes.</p>
+    <p><b>The spec says what done means.</b> You approve its acceptance tests, each a Given, a When and a Then, before any code exists.</p>
+    <p><b>Your checks decide what lands.</b> kiln reads them from main, so no build can weaken them. A session that wrote none of the work then audits it.</p>
+    <p><b>Chores run without you.</b> On a schedule, a monitor looks for a problem, such as a filed bug. An agent fixes what the monitor finds.</p>
   </div>
   <div class="cell attn">
     <span class="lab">Where your time goes</span>
     <ol>
-      <li><span class="disc" data-n="1"></span><span><b>Ideas</b>: what to build next, shaped into a spec with <code>/shape</code>.</span></li>
-      <li><span class="disc" data-n="2"></span><span><b>The system</b>: the gate, the monitors and the agents' instructions that every build follows.</span></li>
-      <li><span class="disc" data-n="3"></span><span><b>The product</b>: try what landed, and decide what comes next.</span></li>
+      <li><span class="disc" data-n="1"></span><span><b>The spec</b>: what to build next, and how to tell it is done. <code>/shape</code> drafts it with you.</span></li>
+      <li><span class="disc" data-n="2"></span><span><b>The checks</b>: when a build gets something wrong, change the gate or an agent's instructions. The next build starts from that change.</span></li>
+      <li><span class="disc" data-n="3"></span><span><b>The result</b>: try what landed, then accept it or revise the spec.</span></li>
     </ol>
   </div>
   <div class="legend">
@@ -617,7 +617,7 @@
   </div>
 </header>
 
-<h2 class="sh"><span class="n">2</span><span class="t">BUILD<small>one spec, from a draft to main</small></span><span class="rule"></span><span class="note">after you approve it, no one waits at the keyboard</span></h2>
+<h2 class="sh"><span class="n">2</span><span class="t">BUILD<small>one spec, from a draft to main</small></span><span class="rule"></span><span class="note">after you approve the spec, a build asks you nothing while it runs</span></h2>
 
 <svg class="swimlane" width="1500" height="415" viewBox="0 0 1500 415">
   <rect x="0" y="30" width="1500" height="80" class="lane you"/>
@@ -711,7 +711,7 @@
   </div>
 </div>
 
-<h2 class="sh"><span class="n">3</span><span class="t">AUTOMATE<small>what monitors and gauges could do</small></span><span class="rule"></span><span class="note">four of the monitors kiln runs on its own repository</span></h2>
+<h2 class="sh"><span class="n">3</span><span class="t">AUTOMATE<small>problems found on a schedule, each fixed by an agent</small></span><span class="rule"></span><span class="note">four of the monitors kiln runs on its own repository</span></h2>
 
 <div class="system">
 <svg class="assembly" width="960" height="392" viewBox="0 0 960 392">

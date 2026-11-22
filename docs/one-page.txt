@@ -19,27 +19,27 @@ mark more more
 ::: titleblock
 cell id | One developer, one Mac, many agents
 wordmark kiln
-motto Tooling in. Commits out.
-para kiln runs Claude Code in the background, on your Mac. It builds the specs you approve, and runs chores on a schedule. So one developer can keep a whole repository moving.
+motto Specs in. Commits out.
+para kiln runs Claude Code in the background, on your Mac. It builds each spec you approve, and does chores on a schedule. Work reaches main only once your checks pass.
 
 cell problem | How agents get used
-lead **You take each task to an agent.**
-para You give the agent the work, watch it run, check the result, and give it the next task.
-para What if you built the system instead, and the agents worked inside that system?
+lead **You hand an agent a task.**
+para Then you stay. You wait, read the diff, run the tests, say what is wrong, and wait again.
+para Nothing but you checks the work, so you cannot walk away. A second agent only gives you more to check.
 
 cell answer | With kiln
-big You shape the @you{specs} and build the tooling; kiln runs the @agent{agents} inside that tooling.
-para **Specs become commits.** One session can write the code, and another the tests, from the spec alone. Work that passes your checks and an audit lands on main.
-para **Your checks decide.** kiln reads them from main, so no build can weaken them.
-para **kiln runs on itself.** Monitors do kiln's own chores on a schedule. View 3 shows four of them.
+big You write the @you{spec} and the checks. kiln runs the @agent{agents}, and lands only work that passes.
+para **The spec says what done means.** You approve its acceptance tests, each a Given, a When and a Then, before any code exists.
+para **Your checks decide what lands.** kiln reads them from main, so no build can weaken them. A session that wrote none of the work then audits it.
+para **Chores run without you.** On a schedule, a monitor looks for a problem, such as a filed bug. An agent fixes what the monitor finds.
 
 cell attn | Where your time goes
-item ●1 | **Ideas**: what to build next, shaped into a spec with `/shape`.
-item ●2 | **The system**: the gate, the monitors and the agents' instructions that every build follows.
-item ●3 | **The product**: try what landed, and decide what comes next.
+item ●1 | **The spec**: what to build next, and how to tell it is done. `/shape` drafts it with you.
+item ●2 | **The checks**: when a build gets something wrong, change the gate or an agent's instructions. The next build starts from that change.
+item ●3 | **The result**: try what landed, then accept it or revise the spec.
 :::
 
-view 2 BUILD | one spec, from a draft to main | after you approve it, no one waits at the keyboard
+view 2 BUILD | one spec, from a draft to main | after you approve the spec, a build asks you nothing while it runs
 
 ::: swimlane
 lane @you | the developer
@@ -86,7 +86,7 @@ rung @agent | 2 · Amend | the build | A build that finds the spec wrong writes 
 rung @you | 3 · Decide | you ●3 | Accept or reject the amendment. Or fix main or the spec, and queue the spec again.
 :::
 
-view 3 AUTOMATE | what monitors and gauges could do | four of the monitors kiln runs on its own repository
+view 3 AUTOMATE | problems found on a schedule, each fixed by an agent | four of the monitors kiln runs on its own repository
 
 ::: assembly
 box launchd @kiln A2-A3 | LAUNCHD | `kiln monitor run`, | each hour
