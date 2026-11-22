@@ -49,7 +49,7 @@ func (b *build) writeTests(ctx context.Context) (git.Rev, error) {
 
 	b.set(func(r *record) { r.VerifyFirst = claude.NewID() })
 	b.say("writing the tests on %s, in %s", name.sideBranch(verifyRole), clone)
-	tested, report, err := b.verifyTurns(ctx, false, b.fix.verifyPrompt(), reason{Why: whyFirst})
+	tested, report, err := b.verifyTurns(ctx, b.fix.verifyPrompt(), reason{Why: whyFirst})
 	if err != nil || tested == "" {
 		return "", err
 	}
@@ -61,13 +61,13 @@ func (b *build) writeTests(ctx context.Context) (git.Rev, error) {
 	return tested, err
 }
 
-// verifyTurns tells the verify session prompt, for why, in its clone, and resumes it when resume is true. kiln commits
-// each turn's work, and gates it, until the gate fails on tests alone. It answers that commit, and the gate's report.
+// verifyTurns tells the verify session prompt, for why, in its clone. kiln commits each turn's work, and gates it,
+// until the gate fails on tests alone. It answers that commit, and the gate's report.
 // It answers "" once the session ended the fix. Work that leaves the tests kiln proved needs no gate.
-func (b *build) verifyTurns(ctx context.Context, resume bool, prompt string, why reason) (git.Rev, string, error) {
+func (b *build) verifyTurns(ctx context.Context, prompt string, why reason) (git.Rev, string, error) {
 	b.fix.side.role = verifyRole
-	for ; ; resume = true {
-		l, err := b.verifyLaunch(ctx, resume, prompt)
+	for {
+		l, err := b.verifyLaunch(ctx, prompt)
 		if err != nil {
 			return "", "", err
 		}
@@ -126,11 +126,11 @@ func (b *build) verifyGuard() guard {
 	return guard{spec: b.rec.Name, place: b.r.clone(b.rec.Name, verifyRole), side: b.fix.side}
 }
 
-// verifyLaunch is a run of the verify session, in its clone. Its sandbox denies it reads of the fix's worktree, and of
-// the fix session's transcripts.
-func (b *build) verifyLaunch(ctx context.Context, resume bool, prompt string) (claude.Launch, error) {
+// verifyLaunch is a run of the verify session, in its clone, told prompt. A session that never began is told what
+// the check found. Its sandbox denies it reads of the fix's worktree, and of the fix session's transcripts.
+func (b *build) verifyLaunch(ctx context.Context, prompt string) (claude.Launch, error) {
 	g := b.verifyGuard()
-	l := claude.Launch{Session: b.now().VerifyFirst, Resume: resume, Prompt: prompt,
+	l := claude.Launch{Session: b.now().VerifyFirst, Prompt: prompt, First: b.fix.verifyPrompt(),
 		System: fmt.Sprintf(monitorVerifyContract, b.rec.Name, b.fix.side.testWords())}
 	l.DenyRead, l.AllowRead, l.Deny = b.r.blinds(b.rec.Name, g.place, b.tree)
 	return b.monitorLaunch(ctx, verifyAgent, g, l)
@@ -144,7 +144,7 @@ func (b *build) sendFindings(ctx context.Context, findings string, why reason) (
 		return fmt.Sprintf(fixAudited, findings), why, nil
 	}
 
-	tested, _, err := b.verifyTurns(ctx, true, fmt.Sprintf(testsAudited, findings), why)
+	tested, _, err := b.verifyTurns(ctx, fmt.Sprintf(testsAudited, findings), why)
 	if err != nil || tested == "" {
 		return "", reason{}, err
 	}

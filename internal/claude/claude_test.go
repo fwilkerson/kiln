@@ -153,3 +153,29 @@ func TestTalkingSession(t *testing.T) {
 		t.Errorf("Run answered %+v, %v; want the session's result", ended, err)
 	}
 }
+
+// echoing stands in for a claude that answers how it ran: its first flag, then its prompt.
+const echoing = `#!/bin/sh
+printf '{"type":"result","is_error":false,"result":"%s %s"}\n' "$2" "$(cat)"
+`
+
+// TestBegun holds that Run starts a session with First while its stream holds no line. Run resumes it once the stream
+// holds one. A kiln killed before a session's first line leaves a session Claude Code never held.
+func TestBegun(t *testing.T) {
+	t.Parallel()
+	const session = "0b8e6c1e-2f4d-4f6a-9b1c-3d5e7f9a1b2f"
+	dir := t.TempDir()
+	program := filepath.Join(dir, "claude")
+	if err := os.WriteFile(program, []byte(echoing), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	c := claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: filepath.Join(dir, "sessions")})
+	l := claude.Launch{Session: session, Role: "build", Prompt: "Go on.", First: "Build x.", Dir: dir,
+		Silence: time.Hour}
+	for _, want := range []string{"--session-id Build x.", "--resume Go on."} {
+		if ended, err := c.Run(t.Context(), l); err != nil || ended.Text != want {
+			t.Errorf("Run answered %q, %v; want %q", ended.Text, err, want)
+		}
+	}
+}

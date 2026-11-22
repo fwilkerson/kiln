@@ -269,7 +269,7 @@ func (b *build) untilDone(ctx context.Context) error {
 			return err
 		}
 
-		if err := b.tell(ctx, true, next, why); err != nil {
+		if err := b.tell(ctx, next, why); err != nil {
 			return err
 		}
 	}
@@ -283,24 +283,18 @@ func (b *build) goOn(ctx context.Context) error {
 		return err
 	}
 
+	// A kiln that died before the session's first line left its ID in the record, and no session.
 	switch {
-	case !b.r.begun(b.rec.Session):
+	case !b.r.claude.Begun(b.rec.Session):
 		b.set(func(r *record) { r.Owed = "" })
 		return b.start(ctx)
 	case b.rec.Owed != "":
 		return b.payOwed(ctx)
 	case !b.rec.Accepted:
-		return b.tell(ctx, true, interrupted, reason{Why: whyInterrupted, Round: b.rec.Rounds})
+		return b.tell(ctx, interrupted, reason{Why: whyInterrupted, Round: b.rec.Rounds})
 	}
 
 	return nil
-}
-
-// begun is whether session printed a line, so Claude Code holds it to resume. A kiln that died before the session's
-// first run left its ID in the record, and no session. A stream kiln cannot measure counts as begun.
-func (r *Repo) begun(session string) bool {
-	streamed, err := r.claude.Streamed(session)
-	return session != "" && (err != nil || streamed > 0)
 }
 
 // payOwed resumes the build's session with the message kiln owes it, once kiln tend saw to the stopped build. It
@@ -321,7 +315,7 @@ func (b *build) payOwed(ctx context.Context) error {
 		prompt += "\n\n" + fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n"))
 	}
 
-	if err := b.tell(ctx, true, prompt, reason{Why: whyTended}); err != nil {
+	if err := b.tell(ctx, prompt, reason{Why: whyTended}); err != nil {
 		return err
 	}
 
@@ -593,17 +587,20 @@ func (b *build) start(ctx context.Context) error {
 	session := claude.NewID()
 	b.set(func(r *record) { r.Session = session })
 	b.say("building on %s, in %s", b.rec.Name.branch(), b.tree)
-	prompt := fmt.Sprintf(starting, b.rec.Name.file(), short(b.rec.Approved), b.rec.Name.branch())
-	return b.tell(ctx, false, prompt, reason{Why: whyFirst})
+	return b.tell(ctx, b.startPrompt(), reason{Why: whyFirst})
 }
 
-// tell runs the build agent's session on prompt, for why, until its turn ends, as talk does. resume says it resumes
-// the session.
-func (b *build) tell(ctx context.Context, resume bool, prompt string, why reason) error {
+// startPrompt is what the build agent's session is told as it starts.
+func (b *build) startPrompt() string {
+	return fmt.Sprintf(starting, b.rec.Name.file(), short(b.rec.Approved), b.rec.Name.branch())
+}
+
+// tell runs the build agent's session on prompt, for why, until its turn ends, as talk does.
+func (b *build) tell(ctx context.Context, prompt string, why reason) error {
 	l, err := b.agentLaunch(ctx, buildRole, claude.Launch{
 		Session: b.rec.Session,
-		Resume:  resume,
 		Prompt:  prompt,
+		First:   b.startPrompt(),
 		Dir:     string(b.tree),
 		Hook:    b.treeGuard().hookCommand(b.r.exe),
 	})
@@ -639,7 +636,7 @@ func (b *build) talk(ctx context.Context, l claude.Launch, why reason) (claude.E
 			return ended, err
 		}
 
-		l.Resume, l.Prompt, why.Why = true, limitReset, whyLimit
+		l.Prompt, why.Why = limitReset, whyLimit
 	}
 }
 
@@ -654,6 +651,11 @@ func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claud
 	var read git.Rev
 	if l.Role == auditRole {
 		read = b.auditing
+	}
+
+	if l.First != "" && !b.r.claude.Begun(l.Session) {
+		// Run tells a session that never began its first prompt, whatever kiln cut short.
+		why = reason{Why: whyFirst}
 	}
 
 	b.record(entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed, PID: os.Getpid(),

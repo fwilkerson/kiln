@@ -6,13 +6,13 @@
 //	ended, err := c.Run(ctx, l)
 //	for err == nil && ended.Limit != nil {
 //		time.Sleep(time.Until(ended.Limit.Resets))
-//		l.Resume, l.Prompt = true, "Go on."
+//		l.Prompt = "Go on."
 //		ended, err = c.Run(ctx, l)
 //	}
 //
 // Run starts claude in Launch.Dir, with Launch.Prompt on its standard input:
 //
-//	claude -p --session-id <Session>                        or --resume <Session>, when Resume
+//	claude -p --session-id <Session>                        or --resume <Session>, once Begun
 //	       --append-system-prompt-file <dir>/<Role>.md
 //	       --tools <Tools> --model <Model> --effort <Effort>  each only when set
 //	       --permission-mode auto --setting-sources project --settings <dir>/settings.json
@@ -99,16 +99,18 @@ func New(c Config) Claude {
 	return Claude{c: c}
 }
 
-// Launch is one start or resume of a session.
+// Launch is one run of a session. Run resumes a session that Begun reports, and starts any other. So it never
+// resumes a session Claude Code does not hold.
 type Launch struct {
-	// Session is the session's ID, a UUID. When Resume is true, Session names the session to resume.
+	// Session is the session's ID, a UUID.
 	Session string
-	Resume  bool
 	// Role names the kind of session, such as "build". The file that holds System is named for it.
 	Role string
 	// System is appended to Claude Code's system prompt.
 	System string
-	Prompt string
+	// Prompt is what the run tells a session that began. First takes its place for a session that never began, or
+	// is "" to tell that session Prompt too.
+	Prompt, First string
 	// Dir is the absolute directory the session works in.
 	Dir string
 	// Tools are the only tools the session has, or nil for all of them.
@@ -179,6 +181,11 @@ var uuid = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-
 // from being read. It is a *Silent for a session Run killed as hung. Any other session that failed is an Ended,
 // not an error.
 func (c Claude) Run(ctx context.Context, l Launch) (Ended, error) {
+	begun := c.Begun(l.Session)
+	if !begun && l.First != "" {
+		l.Prompt = l.First
+	}
+
 	if err := c.check(l); err != nil {
 		return Ended{}, err
 	}
@@ -200,7 +207,7 @@ func (c Claude) Run(ctx context.Context, l Launch) (Ended, error) {
 
 	defer stream.Close()
 
-	session := proc.Command{Path: program, Args: arguments(l, dir), Dir: l.Dir, Env: sessionEnv(c.c.Env),
+	session := proc.Command{Path: program, Args: arguments(l, dir, begun), Dir: l.Dir, Env: sessionEnv(c.c.Env),
 		Stdin: strings.NewReader(l.Prompt)}
 	ended, stderr, err := run(ctx, session, stream, l.Silence)
 	return ended, errors.Join(err, os.WriteFile(filepath.Join(dir, stderrFile), []byte(stderr), 0o600))
@@ -249,9 +256,9 @@ func write(dir string, l Launch) error {
 	return nil
 }
 
-func arguments(l Launch, dir string) []string {
+func arguments(l Launch, dir string, begun bool) []string {
 	args := []string{"-p"}
-	if l.Resume {
+	if begun {
 		args = append(args, "--resume", l.Session)
 	} else {
 		args = append(args, "--session-id", l.Session)

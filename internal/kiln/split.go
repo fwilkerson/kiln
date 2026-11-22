@@ -59,8 +59,6 @@ func (r *Repo) dropCheckouts(ctx context.Context, name Spec) error {
 type turn struct {
 	build, verify string
 	why           reason
-	// first starts each session, where every other turn resumes it.
-	first bool
 }
 
 // none is whether t tells neither session anything, and gives no reason.
@@ -97,7 +95,7 @@ func (b *build) splitGoOn(ctx context.Context) error {
 
 	rec := b.now()
 	switch {
-	case !b.r.begun(rec.Session) && !b.r.begun(rec.Verify):
+	case !b.r.claude.Begun(rec.Session) && !b.r.claude.Begun(rec.Verify):
 		b.set(func(r *record) { r.Owed = "" })
 		return b.splitStart(ctx)
 	case rec.Accepted:
@@ -184,12 +182,15 @@ func (b *build) splitStart(ctx context.Context) error {
 
 	b.say("building on %s, in %s, and verifying on %s, in %s", name.sideBranch(buildRole),
 		b.r.clone(name, buildRole), name.sideBranch(verifyRole), b.r.clone(name, verifyRole))
-	return b.both(ctx, turn{
-		build:  fmt.Sprintf(startingSplit, name.file(), short(b.rec.Approved), name.sideBranch(buildRole)),
-		verify: fmt.Sprintf(verifying, name.file(), short(b.rec.Approved), name.sideBranch(verifyRole)),
-		why:    reason{Why: whyFirst},
-		first:  true,
-	})
+	t := turn{build: b.sidePrompt(buildRole), verify: b.sidePrompt(verifyRole), why: reason{Why: whyFirst}}
+	return b.both(ctx, t)
+}
+
+// sidePrompt is what role's session of build-and-verify is told as it starts.
+func (b *build) sidePrompt(role string) string {
+	name := b.rec.Name
+	prompt := map[string]string{buildRole: startingSplit, verifyRole: verifying}[role]
+	return fmt.Sprintf(prompt, name.file(), short(b.rec.Approved), name.sideBranch(role))
 }
 
 // cloneSides makes each session's clone from main's tip, on its side's branch.
@@ -546,16 +547,12 @@ func (b *build) both(ctx context.Context, t turn) error {
 func (b *build) launches(ctx context.Context, t turn) ([]claude.Launch, error) {
 	var launches []claude.Launch
 	for _, role := range []string{buildRole, verifyRole} {
-		prompt, err := b.promptOf(ctx, t, role)
-		if err != nil {
-			return nil, err
-		}
-
+		prompt := map[string]string{buildRole: t.build, verifyRole: t.verify}[role]
 		if prompt == "" {
 			continue
 		}
 
-		l, err := b.sessionLaunch(ctx, role, !t.first, prompt)
+		l, err := b.sessionLaunch(ctx, role, prompt)
 		if err != nil {
 			return nil, err
 		}
@@ -566,35 +563,25 @@ func (b *build) launches(ctx context.Context, t turn) ([]claude.Launch, error) {
 	return launches, nil
 }
 
-// promptOf is what t tells role's session, or "" for nothing. The build session's prompt adds what told adds.
-func (b *build) promptOf(ctx context.Context, t turn, role string) (string, error) {
-	prompt := map[string]string{buildRole: t.build, verifyRole: t.verify}[role]
-	if prompt == "" || role != buildRole {
-		return prompt, nil
-	}
-
-	return b.told(ctx, prompt)
-}
-
-// told adds to prompt, for the build session, the verify session's amendments, when they changed since kiln last
-// told it.
-func (b *build) told(ctx context.Context, prompt string) (string, error) {
+// told is the note that tells the build session the verify session's amendments. It is "" while they stand as the
+// session was last told.
+func (b *build) told(ctx context.Context) (string, error) {
 	tip, err := b.r.git.Tip(ctx, b.rec.Name.sideBranch(verifyRole))
 	switch {
 	case errors.Is(err, git.ErrNoBranch):
 		// Before the first fetch of the sides, the verify session has amended nothing.
-		return prompt, nil
+		return "", nil
 	case err != nil:
-		return prompt, err
+		return "", err
 	}
 
 	spec, err := b.amendedSpec(ctx, tip)
 	if err != nil || spec == b.now().Told {
-		return prompt, err
+		return "", err
 	}
 
 	b.set(func(r *record) { r.Told = spec })
-	return prompt + "\n\n" + fmt.Sprintf(amendedNote, spec), nil
+	return "\n\n" + fmt.Sprintf(amendedNote, spec), nil
 }
 
 // amendedSpec is the spec as the commit at holds it, with any amendments there folded in. A fold the developer
@@ -618,17 +605,26 @@ func (b *build) amendedSpec(ctx context.Context, at git.Rev) (string, error) {
 	return folded, nil
 }
 
-// sessionLaunch is a run of role's session of build-and-verify, in its own clone. Its hook keeps it to its side. Its
-// settings deny it reads of every checkout but its own, and of the other session's transcripts.
-func (b *build) sessionLaunch(ctx context.Context, role string, resume bool, prompt string) (claude.Launch, error) {
+// sessionLaunch is a run of role's session of build-and-verify, in its own clone, told prompt. A session that never
+// began is told its first prompt instead, as Run says. The build session's prompt adds what told adds. Its hook
+// keeps it to its side. Its settings deny it reads of every checkout but its own, and of the other session's
+// transcripts.
+func (b *build) sessionLaunch(ctx context.Context, role, prompt string) (claude.Launch, error) {
 	g, err := b.sideGuard(ctx, role)
 	if err != nil {
 		return claude.Launch{}, err
 	}
 
+	first, note := b.sidePrompt(role), ""
+	if role == buildRole {
+		if note, err = b.told(ctx); err != nil {
+			return claude.Launch{}, err
+		}
+	}
+
 	rec := b.now()
 	session := map[string]string{buildRole: rec.Session, verifyRole: rec.Verify}[role]
-	l := claude.Launch{Session: session, Resume: resume, Prompt: prompt, Dir: string(g.place),
+	l := claude.Launch{Session: session, Prompt: prompt + note, First: first + note, Dir: string(g.place),
 		Hook: g.hookCommand(b.r.exe)}
 	l.DenyRead, l.AllowRead, l.Deny = b.r.blinds(b.rec.Name, g.place, b.r.clone(b.rec.Name, other(role)))
 	return b.agentLaunch(ctx, role, l)
@@ -691,7 +687,6 @@ func (b *build) converse(ctx context.Context, l claude.Launch, why reason) error
 		return err
 	}
 
-	l.Resume = true
 	if err := b.rerun(ctx, l, ended); err != nil {
 		return err
 	}

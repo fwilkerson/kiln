@@ -157,6 +157,22 @@ var flows = []flow{
 		},
 	},
 	{
+		name:    "split",
+		subject: "v",
+		landed:  []string{`^feat\(v\): land the approved spec$`},
+		outcome: "landed",
+		next: func(s *scratch) []string {
+			switch s.shown(s.subject) {
+			case "":
+				return []string{"queue", "v"}
+			case "waiting for UAT":
+				return nil
+			}
+
+			return []string{"fire"}
+		},
+	},
+	{
 		name:    "tend",
 		subject: "z",
 		landed:  []string{`^feat\(z\): land the approved spec$`},
@@ -228,6 +244,17 @@ func restore(snapshot, root string) error {
 	}
 
 	return unix.Clonefile(snapshot, root, unix.CLONE_NOFOLLOW)
+}
+
+// envValue is the value env gives the variable key, or "".
+func envValue(env []string, key string) string {
+	for _, v := range env {
+		if value, ok := strings.CutPrefix(v, key+"="); ok {
+			return value
+		}
+	}
+
+	return ""
 }
 
 // labels reads the label of each step the log at path holds, in order.
@@ -308,6 +335,22 @@ func (s *scratch) between() []string {
 
 	if branches := s.read("git", "branch", "--list", "kiln/"+string(s.subject)+"*"); branches != "" {
 		found = append(found, "the book holds no record of "+string(s.subject)+", yet its branch is left: "+branches)
+	}
+
+	for _, clone := range s.clones(string(s.subject)) {
+		found = append(found, "the book holds no record of "+string(s.subject)+", yet its clone is left: "+clone)
+	}
+
+	return found
+}
+
+// clones lists each session's clone of a build of name that kiln's cache holds. A name of "*" matches every build.
+func (s *scratch) clones(name string) []string {
+	cache := filepath.Join(envValue(s.env, "HOME"), "Library", "Caches", "kiln")
+	var found []string
+	for _, role := range []string{"build", "verify"} {
+		matched, _ := filepath.Glob(filepath.Join(cache, "*", "."+role+"-"+name))
+		found = append(found, matched...)
 	}
 
 	return found
@@ -461,6 +504,10 @@ func (s *scratch) problems(f flow) []string {
 
 	if branches := s.read("git", "branch", "--list", "kiln/*"); branches != "" {
 		found = append(found, "a branch is left behind: "+branches)
+	}
+
+	for _, clone := range s.clones("*") {
+		found = append(found, "a clone is left behind: "+clone)
 	}
 
 	if strings.Contains(s.read("git", "ls-tree", "-r", "--name-only", "main"), "audit-stray.txt") {

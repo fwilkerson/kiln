@@ -206,14 +206,14 @@ func lastLines(text string, n int) string {
 // fixAgent runs the monitor's agent until the fix ends. gateReport is what the gate printed after the command, or "".
 func (b *build) fixAgent(ctx context.Context, gateReport string) error {
 	b.set(func(r *record) { r.Session = claude.NewID() })
-	return b.fixTurns(ctx, false, b.fix.prompt(gateReport), reason{Why: whyFirst})
+	return b.fixTurns(ctx, b.fix.prompt(gateReport), reason{Why: whyFirst})
 }
 
-// fixTurns tells the agent's session prompt, for why, and resumes it when resume is true. kiln commits and gates each
-// turn's work, and tells the session what goes back, until nothing does. A prompt of "" tells it nothing.
-func (b *build) fixTurns(ctx context.Context, resume bool, prompt string, why reason) error {
-	for ; prompt != ""; resume = true {
-		l, err := b.fixLaunch(ctx, resume, prompt)
+// fixTurns tells the agent's session prompt, for why. kiln commits and gates each turn's work, and tells the session
+// what goes back, until nothing does. A prompt of "" tells it nothing.
+func (b *build) fixTurns(ctx context.Context, prompt string, why reason) error {
+	for prompt != "" {
+		l, err := b.fixLaunch(ctx, prompt)
 		if err != nil {
 			return err
 		}
@@ -555,7 +555,7 @@ func (b *build) landFix(ctx context.Context) error {
 	rec := b.now()
 	if rec.Session != "" && len(rec.Running) > 0 {
 		// A turn kiln cut short may have left a merge half done. kiln never commits that as the session's work.
-		return b.fixTurns(ctx, true, interrupted, reason{Why: whyInterrupted, Round: rec.Rounds})
+		return b.fixTurns(ctx, interrupted, reason{Why: whyInterrupted, Round: rec.Rounds})
 	}
 
 	next, why, err := b.fixLanding(ctx)
@@ -563,7 +563,7 @@ func (b *build) landFix(ctx context.Context) error {
 		return err
 	}
 
-	return b.fixTurns(ctx, true, next, why)
+	return b.fixTurns(ctx, next, why)
 }
 
 // acceptedBefore gives an accepted commit to a landing that stopped before kiln kept one. It takes the branch's tip,
@@ -704,8 +704,8 @@ func (b *build) fixEnded(ctx context.Context) error {
 
 // fixLaunch is a run of the monitor's agent's session, in the fix's worktree. Its hook keeps it off .kiln/, and off
 // the tests the monitor's fix may not write.
-func (b *build) fixLaunch(ctx context.Context, resume bool, prompt string) (claude.Launch, error) {
-	l := claude.Launch{Session: b.now().Session, Resume: resume, Prompt: prompt, System: b.fix.contract(b.rec.Name)}
+func (b *build) fixLaunch(ctx context.Context, prompt string) (claude.Launch, error) {
+	l := claude.Launch{Session: b.now().Session, Prompt: prompt, System: b.fix.contract(b.rec.Name)}
 	return b.monitorLaunch(ctx, monitorAgent, b.treeGuard(), l)
 }
 

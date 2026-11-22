@@ -28,7 +28,7 @@ func TestMCP(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			args := arguments(l, dir)
+			args := arguments(l, dir, false)
 			at := slices.Index(args, "--mcp-config")
 			if at < 0 || !slices.Contains(args, "--strict-mcp-config") {
 				t.Fatalf("the session is not held to its own servers: %q", args)

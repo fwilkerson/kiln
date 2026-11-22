@@ -89,6 +89,13 @@ func (c Claude) Streamed(session string) (int64, error) {
 	return info.Size(), nil
 }
 
+// Begun reports whether the session printed a line, so Claude Code holds it to resume. A stream Begun cannot measure
+// counts as begun.
+func (c Claude) Begun(session string) bool {
+	streamed, err := c.Streamed(session)
+	return err != nil || streamed > 0
+}
+
 // Recounted is a stretch of a session's stream, counted again.
 type Recounted struct {
 	Totals Totals
