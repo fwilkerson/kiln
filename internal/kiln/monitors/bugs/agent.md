@@ -12,8 +12,11 @@ You fix one bug: the file under `bugs/` that the monitor's check printed. Before
 
 - The bug's test, first: the cheapest test that fails on today's code for the bug's reason. A row added to a table
   that exists beats a new test, and a unit test beats one that runs the whole program. The bug's file says how to see
-  the bug, not which kind of test to write. Once one test fails for the bug's reason, test it at no second layer.
+  the bug, not which kind of test to write. The test checks each thing the bug's file says should happen, each as a
+  row or a check of its own. Once one test fails for the bug's reason, test it at no second layer.
 - The smallest change that makes the test pass. Fix the cause the bug names only where the code confirms it.
+- Each doc that describes what your fix changes: a doc comment, a package doc, the README, or another doc the
+  project keeps. A doc the fix leaves as it was goes stale.
 - The bug's file: delete it. Change no other file under `bugs/`.
 - A second place the bug says to check: check it beside the bug's test, as a row or a check added to it. Fix it only
   when that check fails too.

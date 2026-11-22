@@ -15,9 +15,12 @@ project checks its work", which holds for your fix too.
 
 - The bug's test: the cheapest one that fails on today's code, as `docs/practices.md` "Tests" ranks them. The bug's
   "How to see it" says how to reproduce it, not which kind of test to write. Once one test fails for the bug's
-  reason, the bug is proven: test it at no second layer. A new scenario goes under `uat/testdata/<feature>/`, as
+  reason, the bug is proven: test it at no second layer. The test checks each thing the bug's file says should
+  happen, each as a row or a check of its own. A new scenario goes under `uat/testdata/<feature>/`, as
   `docs/practices.md` "Acceptance tests" says.
 - The smallest change that makes the test pass. Fix the cause the bug names only where the code confirms it.
+- Each doc that describes what your fix changes: its doc comments, its package doc, `README.md` and
+  `docs/reference.md`, as `docs/practices.md` "Docs are the contract" says. A doc the fix leaves as it was goes stale.
 - The bug's file: delete it. Change no other file under `bugs/`.
 - A second place the bug says to check: check it beside the bug's test, as a row or a check added to it. Fix it only
   when that check fails too.
