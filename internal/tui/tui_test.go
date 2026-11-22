@@ -808,7 +808,7 @@ func TestGaugeRowCost(t *testing.T) {
 	}
 }
 
-// TestNarrowGauge holds that a terminal narrower than the specs panel still draws a monitor's newest reading.
+// TestNarrowGauge holds that the narrowest home still draws a row of a monitor's gauge.
 func TestNarrowGauge(t *testing.T) {
 	v := 9.0
 	rs := make([]Reading, 5)
@@ -818,8 +818,8 @@ func TestNarrowGauge(t *testing.T) {
 
 	src := source{specs: []Spec{{Name: "x", State: UAT}},
 		monitors: []Spec{{Name: "code-health", Monitor: &Monitor{Readings: rs}}}}
-	for _, w := range []int{20, 21} {
-		if m := drive(t, src, "", sized(w, 30)); !strings.Contains(screenOf(m), "health") {
+	for _, w := range []int{homeW, homeW + 1} {
+		if m := drive(t, src, "", sized(w, 30)); !strings.Contains(screenOf(m), "✓ health, reposit") {
 			t.Errorf("at %d columns, no gauge row is on the screen\n%s", w, screenOf(m))
 		}
 	}

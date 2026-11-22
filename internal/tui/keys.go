@@ -232,12 +232,12 @@ var keyNames = map[string]string{"up": "↑", "down": "↓", "left": "←", "rig
 // keyList is a box that lists every key the screen of kind k takes, and what each does.
 func (m model) keyList(k kind) *lipgloss.Layer {
 	lines := keyLines(k)
-	list, closes := m.theme.columns(lines, m.keyRows()), "? or esc closes this"
+	list, closes := m.theme.columns(lines, m.keyRows()), keysClose
 	if top, scrolls := m.keyTop(k, m.keysTop); scrolls {
 		shown := lines[top:min(len(lines), top+m.keyRows())]
 		list = m.theme.column(shown)
 		if top+len(shown) < len(lines) {
-			closes = "↓ more · " + closes
+			closes = keysMore + closes
 		}
 	}
 
@@ -297,6 +297,17 @@ func (m model) keyRows() int { return max(1, m.h-4) }
 
 // keyListFrame is how many columns the key list's border and padding take.
 const keyListFrame = 4
+
+// keysClose ends the key list. keysMore goes before it while keys below the list's last row are hidden.
+const (
+	keysClose = "? or esc closes this"
+	keysMore  = "↓ more · "
+)
+
+// keysW is how many columns the key list of kind k takes as one column that scrolls. No key list is narrower.
+func (t theme) keysW(k kind) int {
+	return keyListFrame + max(lipgloss.Width(t.column(keyLines(k))), ansi.StringWidth(keysMore+keysClose))
+}
 
 // keyDown and keyUp scroll a key list too wide for the terminal by a key.
 var (

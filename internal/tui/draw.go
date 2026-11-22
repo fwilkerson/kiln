@@ -69,11 +69,15 @@ type row struct {
 func (t theme) dotted(parts ...string) string { return strings.Join(parts, t.dim.Render(" · ")) }
 
 // layout places every row of the top screen in a terminal of m.w by m.h cells. The view draws it, and a click asks it
-// which row it hit.
+// which row it hit. A terminal too small for the top screen gets one line that says so.
 func (m model) layout() *lipgloss.Compositor {
+	s := m.top()
+	if w := m.minW(s.kind); m.w < w || m.h < minH {
+		return lipgloss.NewCompositor(lipgloss.NewLayer(fit(fmt.Sprintf("needs %d×%d cells", w, minH), m.w)))
+	}
+
 	layers := []*lipgloss.Layer{lipgloss.NewLayer(strings.Repeat(strings.Repeat(" ", m.w)+"\n", m.h-1) +
 		strings.Repeat(" ", m.w))}
-	s := m.top()
 	if m.keysShown {
 		layers = append(layers, m.keyList(s.kind))
 	}
@@ -94,6 +98,21 @@ func (m model) layout() *lipgloss.Compositor {
 	layers = append(layers, m.place(append(head, shown...))...)
 	return lipgloss.NewCompositor(append(layers, m.foot(s.kind))...)
 }
+
+// minW is the narrowest terminal a screen of kind k draws in. That is its key list as one column, and homeW on home.
+func (m model) minW(k kind) int {
+	if k == homeScreen {
+		return max(homeW, m.theme.keysW(k))
+	}
+
+	return m.theme.keysW(k)
+}
+
+// homeW is the narrowest home: its side panel and its right column take 20 columns each.
+const homeW = 40
+
+// minH is the shortest terminal the view draws in: a run's head, a row of its body, and the footer.
+const minH = 5
 
 // place makes a layer of each row, one below the other, each cut or padded to the terminal's width.
 func (m model) place(rows []row) []*lipgloss.Layer {
@@ -178,6 +197,17 @@ type panel struct {
 // area is a size in cells: w columns by h rows.
 type area struct{ w, h int }
 
+// budget is the cells left to give out along one side of the screen. Each panel takes its size from one, so the
+// panels never add up to more than the screen.
+type budget int
+
+// take gives want cells, or as many as are left, and leaves the rest.
+func (b *budget) take(want int) int {
+	n := max(0, min(want, int(*b)))
+	*b -= budget(n)
+	return n
+}
+
 // inside is the area within the panel's border.
 func (p panel) inside() area { return area{p.w - 2, p.h - 2} }
 
@@ -216,20 +246,23 @@ func (p panel) box(t theme, rows []row) *lipgloss.Layer {
 }
 
 func (m model) home() []*lipgloss.Layer {
-	sideW := m.sideWidth()
-	rightW, h := m.w-sideW, m.h-1
+	across, h := budget(m.w), m.h-1
+	sideW := across.take(m.sideWidth())
+	rightW := across.take(m.w)
 	now := m.nowRows()
 	tiles := m.trendRows(rightW - 2)
 	recentBuilds, previous := trend(m.shown())
 	gauges := m.gaugeRows(rightW - 2)
-	nowH := len(now) + 2
-	trendH := min(len(tiles)+2, max(3, h-nowH-5))
+	// The trend and the gauges each leave the builds 5 rows, but keep 3 rows while any are left.
+	down := budget(h)
+	nowH := down.take(len(now) + 2)
+	trendH := down.take(min(len(tiles)+2, max(3, int(down)-5)))
 	gaugesH := 0
 	if len(gauges) > 0 {
-		gaugesH = min(len(gauges)+2, max(3, h-nowH-trendH-5))
+		gaugesH = down.take(min(len(gauges)+2, max(3, int(down)-5)))
 	}
 
-	recentH := max(0, h-nowH-trendH-gaugesH)
+	recentH := down.take(h)
 	monitorsH := 0
 	if n := m.items(monitorsPane); n > 0 {
 		monitorsH = min(n+2, h/2)
