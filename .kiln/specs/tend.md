@@ -399,8 +399,8 @@ expect `claude --resume`, or a step that ends in `kiln monitor run`.
 
 - **Pros**: the session holds all the build read and tried, and no note is needed.
 - **Cons**: kiln holds that session to its worktree, by its sandbox, its hook and the gate. It cannot change main, the
-  spec or `.kiln/`. Of Eidos's 28 parks with options, 24 were plumbing outside the change, as `docs/later.md` counts
-  them. A split build has two such sessions, each blind to the other.
+  spec or `.kiln/`. Of Eidos's 28 parks with options, 24 were plumbing outside the change, as
+  `git show d619d1f48596:docs/later.md` counts them. A split build has two such sessions, each blind to the other.
 - **Reason for Rejection**: the developer asked for a session with the tools to correct what went wrong, whatever
   stopped. The build's session still does the build's work, once kiln goes on.
 

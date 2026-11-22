@@ -2,8 +2,7 @@
 
 Question: What should a TUI for kiln's build stats be built on, and how can an agent verify how it behaves? Asked
 2026-11-08.
-Feeds: `docs/later.md` "Build stats in a TUI", [spec 2](../../../specs/build-stats.md), and the future spec that builds
-the first slice.
+Feeds: [spec 2](../../../specs/build-stats.md), and the future spec that builds the first slice.
 
 This research read each library's repository, releases and module on 2026-11-08. The sources are in two notes:
 [libraries](notes/libraries.md) and [verification](notes/verification.md). Three prototypes drew the same screen from
