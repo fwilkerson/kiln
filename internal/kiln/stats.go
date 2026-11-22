@@ -460,12 +460,12 @@ func fixStep(rec record) string {
 
 // conflicted reports whether rec is an accepted fix with no session, whose landing stopped on a conflict with main.
 func conflicted(rec record) bool {
-	return rec.Monitor && rec.Accepted && rec.Session == "" && strings.HasPrefix(rec.Why, fixConflicts)
+	return rec.Monitor && rec.Accepted && rec.Session == "" && rec.Kind == stopConflict
 }
 
 // byKiln reports whether the build of rec stopped for an error of kiln's, not its gate's.
 func byKiln(rec record) bool {
-	return rec.State == stopped && strings.HasPrefix(rec.Why, couldNotGoOn)
+	return rec.State == stopped && rec.Kind == stopKiln
 }
 
 // sideClone is the clone of role's session of a split build of name, beside the build's worktree, tree.

@@ -140,7 +140,7 @@ func (b *build) fixWork(ctx context.Context) error {
 		_, _, err := b.fixAfter(ctx)
 		return err
 	case !m.agent:
-		return &outOfRounds{why: "the gate failed after the monitor's command:\n" + v.report, failing: v.failing}
+		return &outOfRounds{stop{Why: "the gate failed after the monitor's command:\n" + v.report, Failing: v.failing}}
 	}
 
 	return b.fixAgent(ctx, v.report)
@@ -328,7 +328,7 @@ func (b *build) fixGate(ctx context.Context) (string, reason, error) {
 
 	if b.rec.Accepted {
 		if _, changed, err := b.fixChanged(ctx); err != nil || !changed {
-			return "", reason{}, cmpOr(err, error(&outOfRounds{why: nothingToLand}))
+			return "", reason{}, cmpOr(err, error(&outOfRounds{stop{Why: nothingToLand}}))
 		}
 	}
 
@@ -441,7 +441,7 @@ func (b *build) fixLand(ctx context.Context, head git.Rev) (string, reason, erro
 	case b.rec.Session == "":
 		return "", reason{}, aloneStops(back)
 	case back.why == whyUnchanged && b.rec.Accepted:
-		return "", reason{}, &outOfRounds{why: nothingToLand}
+		return "", reason{}, &outOfRounds{stop{Why: nothingToLand}}
 	case back.why == whyLanding:
 		if back, err = b.fixMergeMain(ctx, back); err != nil {
 			return "", reason{}, err
@@ -455,10 +455,11 @@ func (b *build) fixLand(ctx context.Context, head git.Rev) (string, reason, erro
 // aloneStops is the stop of a fix with no session, which back kept from landing. No session resolves a conflict.
 func aloneStops(back setback) error {
 	if back.why == whyConflict {
-		return &outOfRounds{why: fixConflicts + strings.Join(back.failing, "\n"), failing: back.failing}
+		return &outOfRounds{stop{Why: fixConflicts + strings.Join(back.failing, "\n"), Failing: back.failing,
+			Kind: stopConflict}}
 	}
 
-	return &outOfRounds{why: "the landing failed:\n" + back.report, failing: back.failing}
+	return &outOfRounds{stop{Why: "the landing failed:\n" + back.report, Failing: back.failing}}
 }
 
 // fixMergeMain merges main into the fix's branch, before back, a failed landing gate, goes back to the session. land
@@ -584,7 +585,7 @@ func (b *build) fixSettle(ctx context.Context, err error) error {
 	switch {
 	case isStop:
 		f.end(outStopped, "", "")
-		b.set(func(r *record) { r.Why, r.Failing = stopped.why, stopped.failing })
+		b.set(func(r *record) { r.stop = stopped.stop })
 	case ctx.Err() != nil:
 		return ctx.Err()
 	case errors.Is(err, errLimitEnded):
@@ -593,7 +594,7 @@ func (b *build) fixSettle(ctx context.Context, err error) error {
 		f.end(outCouldNot, failed.line, "")
 	case err != nil:
 		f.end(outStopped, "", "")
-		b.set(func(r *record) { r.Why, r.Failing = couldNotGoOn+err.Error(), nil })
+		b.set(func(r *record) { r.stop = kilnStop(err) })
 	}
 
 	return b.fixEnded(ctx)
@@ -612,9 +613,9 @@ func (b *build) landingStops(ctx context.Context, err error) error {
 	case isStop:
 		return err
 	case err != nil:
-		return &outOfRounds{why: "the landing failed: " + err.Error()}
+		return &outOfRounds{stop{Why: "the landing failed: " + err.Error()}}
 	case b.fix.sessionEnded():
-		return &outOfRounds{why: strings.TrimSpace(b.fix.summary + "\n" + b.fix.report)}
+		return &outOfRounds{stop{Why: strings.TrimSpace(b.fix.summary + "\n" + b.fix.report)}}
 	}
 
 	return nil

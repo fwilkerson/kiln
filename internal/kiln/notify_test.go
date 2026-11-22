@@ -45,7 +45,7 @@ func TestNotify(t *testing.T) {
 				commitConfig(t, repo, tc.config)
 			}
 
-			b.stop("the gate still failed after its last round:\nFAIL TestX", nil)
+			b.stop(stop{Why: "the gate still failed after its last round:\nFAIL TestX"})
 			var out strings.Builder
 			b.out = &out
 			ctx := t.Context()
@@ -72,7 +72,7 @@ func TestNotify(t *testing.T) {
 func TestNotice(t *testing.T) {
 	b, repo, _ := landingBuild(t)
 	commitConfig(t, repo, withNotify(`printf %s "$KILN_NOTICE" >.git/notice && printf %s "$KILN" >.git/kiln-path`))
-	b.stop("the gate still failed after its last round:\nFAIL TestX", []string{"TestX"})
+	b.stop(stop{Why: "the gate still failed after its last round:\nFAIL TestX", Failing: []string{"TestX"}})
 	b.waits(t.Context())
 	raw, err := os.ReadFile(filepath.Join(repo, ".git", "notice"))
 	var n map[string]any

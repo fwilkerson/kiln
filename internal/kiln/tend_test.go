@@ -122,7 +122,8 @@ func TestTendMessage(t *testing.T) {
 				"round:\nFAIL\nfailing: TestAT1\nIts sessions: build s4, in "},
 			lack: []string{"A note for the build", "Its directory", "Its work"}},
 		"a split build that stopped": {name: "x",
-			recs: []*record{{Name: "x", State: stopped, Session: "s5", Verify: "v5", Why: couldNotGoOn + "no disk"}},
+			recs: []*record{{Name: "x", State: stopped, Session: "s5", Verify: "v5", Why: couldNotGoOn + "no disk",
+				Kind: stopKiln}},
 			want: []string{"The spec x: stopped\n" + couldNotGoOn + "no disk\nIts sessions: build s5, in ",
 				"/.build-x; verify v5, in ", "/.verify-x\nA note for the build: "}},
 	} {

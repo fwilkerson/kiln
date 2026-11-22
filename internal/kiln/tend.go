@@ -451,7 +451,7 @@ func (r *Repo) TendLanded(ctx context.Context, name Spec, out io.Writer) error {
 
 	b := &build{r: r, rec: *rec, tree: r.tree(name), out: out}
 	b.set(func(r *record) {
-		r.Why, r.Failing, r.Owed, r.ForBuild, r.ForVerify, r.Asked, r.Running = "", nil, "", "", "", false, nil
+		r.stop, r.Owed, r.ForBuild, r.ForVerify, r.Asked, r.Running = stop{}, "", "", "", false, nil
 		r.Before, r.Landing, r.Onto = "", "", ""
 	})
 

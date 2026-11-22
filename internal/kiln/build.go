@@ -109,7 +109,7 @@ func (b *build) settle(ctx context.Context, err error) error {
 	}
 
 	if s, ok := errors.AsType[*outOfRounds](err); ok {
-		b.stop(s.why, s.failing)
+		b.stop(s.stop)
 		return nil
 	}
 
@@ -118,13 +118,16 @@ func (b *build) settle(ctx context.Context, err error) error {
 	}
 
 	if err != nil {
-		b.stop(couldNotGoOn+err.Error(), nil)
+		b.stop(kilnStop(err))
 	}
 
 	return nil
 }
 
-// couldNotGoOn starts the Why of a build stopped for an error of kiln's, not its gate's.
+// kilnStop is the stop of a build for err, an error of kiln's, not its gate's.
+func kilnStop(err error) stop { return stop{Why: couldNotGoOn + err.Error(), Kind: stopKiln} }
+
+// couldNotGoOn starts the Why of a build stopped for an error of kiln's.
 const couldNotGoOn = "kiln could not go on with the build: "
 
 // waits tells the developer when the build ended waiting on them: stopped, waiting for UAT, or waiting on its branch.
@@ -186,13 +189,10 @@ func (b *build) now() record {
 	return b.rec
 }
 
-// outOfRounds is a build that met a setback past its last round. failing names what failed.
-type outOfRounds struct {
-	why     string
-	failing []string
-}
+// outOfRounds is a build that met a setback past its last round, or that no session can resolve.
+type outOfRounds struct{ stop }
 
-func (s *outOfRounds) Error() string { return s.why }
+func (s *outOfRounds) Error() string { return s.Why }
 
 func (b *build) run(ctx context.Context) error {
 	if done, err := b.landedBefore(ctx); err != nil || done {
@@ -410,7 +410,7 @@ func (b *build) findings(ctx context.Context) (string, reason, error) {
 func (b *build) reauditRound() (reason, error) {
 	rounds := b.limit()
 	if b.rec.Rounds >= rounds {
-		return reason{}, &outOfRounds{why: "the work changed a path the audit must read, after its last round"}
+		return reason{}, &outOfRounds{stop{Why: "the work changed a path the audit must read, after its last round"}}
 	}
 
 	b.set(func(r *record) { r.Rounds++ })
@@ -559,7 +559,8 @@ func (b *build) round(back setback) (string, reason, error) {
 	goesBack, stops, prompt := back.said()
 	rounds := b.limit()
 	if b.rec.Rounds >= rounds {
-		return "", reason{}, &outOfRounds{why: stops + " after its last round:\n" + back.report, failing: back.failing}
+		return "", reason{}, &outOfRounds{stop{Why: stops + " after its last round:\n" + back.report,
+			Failing: back.failing}}
 	}
 
 	b.set(func(r *record) { r.Rounds++ })
@@ -726,11 +727,11 @@ func (b *build) set(change func(*record)) {
 	}
 }
 
-// stop records the build as stopped, why, and what failed. It leaves the worktree and the session in place.
-func (b *build) stop(why string, failing []string) {
-	b.set(func(r *record) { r.State, r.Why, r.Failing, r.Paused = stopped, why, failing, time.Time{} })
+// stop records the build as stopped, for s. It leaves the worktree and the session in place.
+func (b *build) stop(s stop) {
+	b.set(func(r *record) { r.State, r.stop, r.Paused = stopped, s, time.Time{} })
 	b.record(entry{Kind: outcomeKind, Outcome: outStopped})
-	b.say("stopped: %s", strings.SplitN(why, "\n", 2)[0])
+	b.say("stopped: %s", strings.SplitN(s.Why, "\n", 2)[0])
 }
 
 func (b *build) say(format string, args ...any) {

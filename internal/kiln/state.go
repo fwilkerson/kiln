@@ -70,11 +70,7 @@ type record struct {
 	// main holds Landing, the next kiln records the landing, though kiln died first.
 	Landing git.Rev `json:"landing,omitempty"`
 	Onto    git.Rev `json:"onto,omitempty"`
-	// Why says why the build stopped, with the gate's output.
-	Why string `json:"why,omitempty"`
-	// Failing names what failed a build stopped past its last round. It names tests, commands and refused paths, or
-	// the files in conflict with main.
-	Failing []string `json:"failing,omitempty"`
+	stop
 	// FailingAtMain names the tests that failed at main before the build.
 	FailingAtMain []string `json:"failing_at_main,omitempty"`
 	// Amendments is the text of the amendment file the build left on its branch.
@@ -92,6 +88,26 @@ type record struct {
 	LandedAt git.Rev `json:"landed_at,omitempty"`
 	runner
 }
+
+// stop is why a build stopped. Its kind, not its prose, decides what the developer runs next.
+type stop struct {
+	// Why says why the build stopped, with the gate's output.
+	Why string `json:"why,omitempty"`
+	// Failing names what failed a build stopped past its last round. It names tests, commands and refused paths, or
+	// the files in conflict with main.
+	Failing []string `json:"failing,omitempty"`
+	Kind    stopKind `json:"stop,omitempty"`
+}
+
+// stopKind is what stopped a build. The zero kind is a setback the work met past its last round.
+type stopKind string
+
+const (
+	// stopConflict is an accepted fix with no session, whose landing conflicts with main.
+	stopConflict stopKind = "conflict"
+	// stopKiln is an error of kiln's, not the work's, such as a full disk.
+	stopKiln stopKind = "kiln"
+)
 
 // runner is what the kiln fire that builds a spec holds of it. next replaces it whole, so no kiln fire inherits it.
 type runner struct {
@@ -353,7 +369,7 @@ func (b *book) resume(name Spec, note string) error {
 	}
 
 	r.Owed, r.Tended = owedMessage(r.Why, note), true
-	r.State, r.Rounds, r.Why, r.Failing, r.runner = queued, 0, "", nil, runner{}
+	r.State, r.Rounds, r.stop, r.runner = queued, 0, stop{}, runner{}
 	return nil
 }
 

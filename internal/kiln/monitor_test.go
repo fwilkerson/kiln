@@ -583,7 +583,7 @@ func TestAcceptedLandingStops(t *testing.T) {
 			stop, stops := errors.AsType[*outOfRounds](b.landingStops(t.Context(), tc.err))
 			why := ""
 			if stops {
-				why = stop.why
+				why = stop.Why
 			}
 
 			if stops != (tc.why != "") || !strings.HasSuffix(why, tc.why) {

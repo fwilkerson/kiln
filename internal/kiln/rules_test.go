@@ -953,7 +953,8 @@ func TestNextStep(t *testing.T) {
 			says: "kiln queue x, which builds anew",
 		},
 		"stopped for a kiln error": {
-			rec: record{State: stopped, Session: "s", Why: couldNotGoOn + "no disk"}, commands: []string{"queue", "tend"},
+			rec:      record{State: stopped, Session: "s", Why: couldNotGoOn + "no disk", Kind: stopKiln},
+			commands: []string{"queue", "tend"},
 		},
 		"a split build stopped": {
 			rec: record{State: stopped, Session: "s", Verify: "v", Why: why}, commands: []string{"queue", "tend"},
@@ -964,7 +965,8 @@ func TestNextStep(t *testing.T) {
 			commands: []string{"accept", "reject", "tend"},
 		},
 		"a landing of accepted amendments stopped for a kiln error": {
-			rec:      record{State: stopped, Accepted: true, Session: "s", Why: couldNotGoOn + "main's checkout"},
+			rec: record{State: stopped, Accepted: true, Session: "s", Why: couldNotGoOn + "main's checkout",
+				Kind: stopKiln},
 			commands: []string{"accept", "reject", "tend"},
 		},
 		"a fix waiting on its branch": {
@@ -1029,7 +1031,7 @@ func TestFixStep(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			rec := record{Name: "x", State: stopped, Accepted: true, Monitor: true, Session: tc.session,
-				Why: fixConflicts + "docs.txt"}
+				Why: fixConflicts + "docs.txt", Kind: stopConflict}
 			next := fixStep(rec)
 			named := namedIn(t, next, &rec)
 			slices.Sort(named)
@@ -1134,7 +1136,7 @@ func TestSetbackSays(t *testing.T) {
 			_, err = sendBack(io.Discard)
 			stop, _ := errors.AsType[*outOfRounds](err)
 			if !claim.Holds(out.String() == said, strings.HasPrefix(prompt, tc.opens), stop != nil &&
-				strings.HasPrefix(stop.why, tc.stops)) {
+				strings.HasPrefix(stop.Why, tc.stops)) {
 				t.Errorf("kiln said %q, told the session %q, and stopped for %v; want %q, a prompt opening %q, "+
 					"and a stop for %q", out.String(), prompt, err, said, tc.opens, tc.stops)
 			}
