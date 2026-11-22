@@ -22,10 +22,10 @@ commands in use.
 ```
 
 `kiln init` writes these from a preset, all but the monitors, and links `/shape` and each reviewer into `.claude/`. The
-project owns each from then on, except the files in `generated/`. Run `kiln init` again once you upgrade kiln: it merges
-kiln's new defaults with your edits, in the working tree, for you to read and commit. `kiln status` says when `.kiln/`
-on main is behind. `kiln.json` stays yours: kiln init adds only `$schema` and `rounds`, where the file lacks them. `kiln
-help presets` says how it merges each file. `kiln monitor add` writes a monitor, as Monitors says.
+project owns each from then on, except the files in `generated/`. After an upgrade, `kiln init` merges kiln's new
+defaults into your edits, for you to read and commit. `kiln status` says when `.kiln/` on main is behind. `kiln.json`
+stays yours: kiln init adds only `$schema` and `rounds`, where the file lacks them. `kiln help presets` says how `kiln
+init` merges each file. `kiln monitor add` writes a monitor, as Monitors says.
 
 A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
 as a new agent, is yours to commit: a build names it in its last reply instead of writing it.
@@ -76,9 +76,9 @@ refuses a `kiln.json` with a key it does not know. `kiln doctor` reads the worki
 commit it, and prints each refusal any kiln command would make of it.
 
 `"$schema": "./generated/kiln.schema.json"` points an editor, such as GoLand or VS Code, at the schema `kiln init`
-writes in `.kiln/generated/`. The editor then completes each key, shows its doc, and marks a key kiln does not know or a
-value of the wrong type. The schema holds each key's type, not the rules `kiln doctor` checks, such as a host written as
-a bare name.
+writes in `.kiln/generated/`. The editor then completes each key and shows its doc. The editor also marks a key kiln
+does not know, and a value of the wrong type. The schema holds each key's type, not the rules `kiln doctor` checks, such
+as a host written as a bare name.
 
 ### gate and rounds
 
@@ -213,9 +213,8 @@ main, where kiln reads it. The project owns it from then on. It makes each scrip
 `kiln monitor add` with neither lists the monitors kiln ships, and the preset each fits. `kiln help monitors` says what
 `kiln monitor add` refuses.
 
-`kiln monitor add` records what it wrote in `.kiln/generated/init.json`, with where it came from. When kiln ships a
-newer `bugs`, or your team changes `../monitors/deps`, `kiln status` says the monitor is behind. `kiln init` then merges
-the new version with your edits, as it merges the defaults. A monitor you deleted stays deleted.
+When kiln ships a newer `bugs`, or your team changes `../monitors/deps`, `kiln status` says the monitor is behind. `kiln
+init` then merges the new version with your edits, as it merges the defaults. A monitor you deleted stays deleted.
 
 ```text
 .kiln/monitors/bugs/
@@ -233,7 +232,7 @@ the new version with your edits, as it merges the defaults. A monitor you delete
 | `"hours"`       | How often it runs, in whole hours. Its range and default: `kiln help monitors`.                   |
 | `"recheck"`     | `false` keeps the check or gauge out of the fix's gate. Absent, the gate runs it again.           |
 | `"mustAccept"`  | `true` keeps each fix on its branch until `kiln accept <name>`. Absent, a passing fix lands.      |
-| `"writesTests"` | `true` lets a fix write under each `"acceptanceTests"` path's part before `{spec}`.               |
+| `"writesTests"` | `true` lets a fix write every spec's acceptance tests, as the list below says.                    |
 | `"atLeast"`     | Beside a gauge, its line: a reading below it crossed. Name `"atLeast"` or `"atMost"`, never both. |
 | `"atMost"`      | Beside a gauge, its line: a reading above it crossed.                                             |
 
