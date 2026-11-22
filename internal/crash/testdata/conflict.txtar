@@ -1,0 +1,27 @@
+A monitor's fix waits for kiln accept, and main changes doc.txt in the line the fix changed. Its session merges main.
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "rounds": 3}
+-- .kiln/monitors/stale/check --
+if grep -q fixed doc.txt; then
+  echo '{"fix": false, "summary": "doc.txt is fixed"}'
+else
+  echo '{"fix": true, "summary": "doc.txt is stale"}'
+fi
+-- .kiln/monitors/stale/agent.md --
+Mark the doc fixed.
+-- .kiln/monitors/stale/monitor.json --
+{"mustAccept": true}
+-- doc.txt --
+title
+stale
+-- _given/steps.json --
+{
+ "fix": [
+  {"tool": {"name": "Bash", "input": {"command": "git merge main >/dev/null 2>&1; printf 'title\\nfixed\\n' >doc.txt && git add doc.txt && git commit -qm 'fix(doc): mark the doc fixed' >/dev/null 2>&1; true"}}},
+  {"result": {"result": "Marked the doc fixed.\n{\"title\": \"fix(doc): mark the doc fixed\"}"}}
+ ],
+ "audit": [
+  {"result": {"audit": {"read": 1}}}
+ ]
+}

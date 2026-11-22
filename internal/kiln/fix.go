@@ -241,16 +241,17 @@ func (b *build) fixTurns(ctx context.Context, prompt string, why reason) error {
 }
 
 // fixTalk runs the session l launches, as talk does. In a landing, the record marks the session's turn running
-// until the turn ends. An interrupt, a killed kiln or a usage limit leaves the mark, for landFix.
+// until the turn ends, with what l tells it. An interrupt, a killed kiln or a usage limit leaves the mark, for landFix.
 func (b *build) fixTalk(ctx context.Context, l claude.Launch, why reason) (claude.Ended, error) {
 	if !b.rec.Accepted {
 		return b.talk(ctx, l, why)
 	}
 
-	b.set(func(r *record) { r.Running = []string{l.Role} })
+	from, _ := b.r.claude.Streamed(l.Session)
+	b.set(func(r *record) { r.Running, r.Telling, r.From = []string{l.Role}, l.Prompt, from })
 	ended, err := b.talk(ctx, l, why)
 	if err == nil {
-		b.set(func(r *record) { r.Running = nil })
+		b.set(func(r *record) { r.Running, r.Telling, r.From = nil, "", 0 })
 	}
 
 	return ended, err
@@ -559,7 +560,7 @@ func (b *build) landFix(ctx context.Context) error {
 	rec := b.now()
 	if rec.Session != "" && len(rec.Running) > 0 {
 		// A turn kiln cut short may have left a merge half done. kiln never commits that as the session's work.
-		return b.fixTurns(ctx, interrupted, reason{Why: whyInterrupted, Round: rec.Rounds})
+		return b.fixTurns(ctx, b.cutShort(rec), reason{Why: whyInterrupted, Round: rec.Rounds})
 	}
 
 	next, why, err := b.fixLanding(ctx)
@@ -568,6 +569,17 @@ func (b *build) landFix(ctx context.Context) error {
 	}
 
 	return b.fixTurns(ctx, next, why)
+}
+
+// cutShort is what kiln tells the session of rec, a landing whose turn kiln cut short. A turn that never began gets
+// the message it was told, since the session never read it. Any other goes on where it stopped.
+func (b *build) cutShort(rec record) string {
+	streamed, err := b.r.claude.Streamed(rec.Session)
+	if err == nil && streamed == rec.From {
+		return rec.Telling
+	}
+
+	return interrupted
 }
 
 // acceptedBefore gives an accepted commit to a landing that stopped before kiln kept one. It takes the branch's tip,

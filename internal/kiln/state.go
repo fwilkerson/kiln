@@ -54,6 +54,10 @@ type record struct {
 	// Running names the roles of the sessions whose turn has not ended. They are build-and-verify's sides, or a
 	// fix's landing session. kiln resumes only these.
 	Running []string `json:"running,omitempty"`
+	// Telling is what kiln told a fix's landing session in the turn Running marks. From is the length of the
+	// session's stream before that turn. A turn whose stream is still From long never began.
+	Telling string `json:"telling,omitempty"`
+	From    int64  `json:"from,omitempty"`
 	// Rounds counts the failed gates sent back to the session.
 	Rounds int `json:"rounds,omitempty"`
 	// Limit is how many rounds kiln.json gave the build's last gate. It is nil until a gate has run.
@@ -375,7 +379,8 @@ func (b *book) accept(name Spec) (record, error) {
 	was := *r
 	if r.Accepted {
 		*r = record{Name: name, State: queued, Approved: r.Approved, Build: r.Build, Session: r.Session,
-			Verify: r.Verify, OldTests: r.OldTests, Told: r.Told, Running: r.Running, Limit: r.Limit,
+			Verify: r.Verify, OldTests: r.OldTests, Told: r.Told, Running: r.Running, Telling: r.Telling, From: r.From,
+			Limit:   r.Limit,
 			Audited: r.Audited, Accepted: true, AcceptedAt: r.AcceptedAt, Before: r.Before, Monitor: r.Monitor,
 			Title: r.Title, VerifyFirst: r.VerifyFirst, Tested: r.Tested}
 	}
