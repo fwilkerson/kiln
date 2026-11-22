@@ -43,6 +43,33 @@ func TestReadme(t *testing.T) {
 	}
 }
 
+// TestCommands holds the Commands list of docs/reference.md to kiln's usage in cmd/kiln, line for line.
+func TestCommands(t *testing.T) {
+	src, err := os.ReadFile("cmd/kiln/main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reference, err := os.ReadFile("docs/reference.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, usage, _ := strings.Cut(string(src), "const usage = `usage:\n")
+	usage, _, _ = strings.Cut(usage, "`")
+	var want strings.Builder
+	for line := range strings.Lines(usage) {
+		want.WriteString(strings.TrimPrefix(line, "  "))
+	}
+
+	_, list, _ := strings.Cut(string(reference), "## Commands\n\n`kiln help` prints this list:\n\n```text\n")
+	list, _, _ = strings.Cut(list, "```")
+	if usage == "" || list != want.String() {
+		t.Errorf("the Commands of docs/reference.md differ from the usage in cmd/kiln/main.go. Copy the usage "+
+			"there, without its indent:\n%s", want.String())
+	}
+}
+
 // fence matches a line that opens or closes a fenced code block.
 var fence = regexp.MustCompile("(?m)^```.*$")
 
