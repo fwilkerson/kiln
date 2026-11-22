@@ -18,6 +18,8 @@ holds for your test too.
   beats a scenario; write a new scenario only for what only the built binary shows. The bug's "How to see it" says how
   to reproduce it, not which kind of test to write. A new scenario goes under `uat/testdata/<feature>/`, as
   `docs/practices.md` "Acceptance tests" says.
+- No test that starts a `go test` of its own: it runs other tests a second time in every gate. Where no cheaper test
+  fails on today's code, ask for the developer.
 - A row or a check for each thing the bug's file says should happen. A test that checks one of them lets a fix land that
   leaves the rest broken.
 - A second place the bug says to check: a row or a check beside the bug's test. It may pass today. Say so in your reply.
