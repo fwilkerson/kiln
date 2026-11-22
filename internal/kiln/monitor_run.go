@@ -291,10 +291,6 @@ func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec
 	}
 
 	line.Build = newBuild()
-	if err := run.write(line); err != nil {
-		return false, err
-	}
-
 	landed, err := run.fix(ctx, newFixing(run.c, m, found), line, h)
 	return landed && found.drain, err
 }
@@ -337,8 +333,18 @@ func (run *monitorRunning) checkMain(ctx context.Context, m monitor) (git.Rev, c
 // fix runs the fix f that the monitor line started. It notifies when the developer should see how it ended. h
 // is the monitor's history before this run. It answers whether the fix landed.
 func (run *monitorRunning) fix(ctx context.Context, f *fixing, line entry, h *history) (landed bool, err error) {
-	b, err := run.r.startFix(ctx, run.out, f, line)
-	if b == nil || ctx.Err() != nil {
+	b, err := run.r.startFix(run.out, f, line)
+	if err != nil {
+		return false, err
+	}
+
+	// The book holds the fix before the line names it, so kiln status never shows a fix no record holds.
+	if err := run.write(line); err != nil {
+		return false, err
+	}
+
+	err = b.fixRun(ctx)
+	if ctx.Err() != nil {
 		return false, err
 	}
 

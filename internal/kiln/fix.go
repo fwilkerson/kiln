@@ -106,9 +106,9 @@ func (c *checkFailed) Error() string { return "the monitor's check couldn't run:
 // hold the monitors' lane until then.
 var errLimitEnded = errors.New("a usage limit ended the session")
 
-// startFix starts the fix f, from main's tip as the monitor line says, and runs it until it ends. A stopped fix of
-// its monitor gives way to it.
-func (r *Repo) startFix(ctx context.Context, out io.Writer, f *fixing, line entry) (*build, error) {
+// startFix keeps the record of the fix f, and answers its build. The fix builds from main's tip, as the monitor line
+// says. A stopped fix of its monitor gives way to it.
+func (r *Repo) startFix(out io.Writer, f *fixing, line entry) (*build, error) {
 	m := f.monitor
 	rec := record{Name: m.Name, State: building, Approved: line.Main, Build: line.Build, Monitor: true,
 		PID: os.Getpid()}
@@ -121,9 +121,14 @@ func (r *Repo) startFix(ctx context.Context, out io.Writer, f *fixing, line entr
 		return nil, err
 	}
 
-	b := &build{r: r, rec: rec, tree: r.tree(m.Name), out: out, fix: f}
-	b.record(entry{Kind: builtKind, Spec: m.Name, Approved: line.Main, Monitor: m.Name})
-	return b, b.fixSettle(ctx, b.fixWork(ctx))
+	return &build{r: r, rec: rec, tree: r.tree(m.Name), out: out, fix: f}, nil
+}
+
+// fixRun runs the fix of b, whose record the book holds, until it ends.
+func (b *build) fixRun(ctx context.Context) error {
+	m := b.fix.monitor
+	b.record(entry{Kind: builtKind, Spec: m.Name, Approved: b.rec.Approved, Monitor: m.Name})
+	return b.fixSettle(ctx, b.fixWork(ctx))
 }
 
 // fixWork runs the fix: the command first, then the agent when the command left the gate failing. A verify-first fix
