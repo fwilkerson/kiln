@@ -43,19 +43,20 @@ func TestKilledAtEachStep(t *testing.T) {
 		t.Run(f.name, func(t *testing.T) {
 			t.Parallel()
 			// A run that no kill cuts short labels the flow's steps.
-			taken := f.killed(t, kill{flow: f.name})
-			for slot := 1; slot <= slots; slot++ {
-				t.Run(fmt.Sprintf("KILL/%d+%d", slot, slots), func(t *testing.T) {
+			taken, from := f.killed(t, kill{flow: f.name})
+			for at := from; at < from+slots; at++ {
+				t.Run(fmt.Sprintf("KILL/%d+%d", at, slots), func(t *testing.T) {
 					t.Parallel()
-					f.fromSnapshots(t, slot)
+					f.fromSnapshots(t, at)
 				})
 			}
 
-			for i, what := range taken {
+			for i, what := range taken[from-1:] {
+				at := strconv.Itoa(from + i)
 				if strings.HasPrefix(what, "session ") || strings.HasPrefix(what, "attached ") {
-					t.Run(fmt.Sprintf("INT/%d", i+1), func(t *testing.T) {
+					t.Run("INT/"+at, func(t *testing.T) {
 						t.Parallel()
-						f.killed(t, kill{f.name, "INT", strconv.Itoa(i + 1)})
+						f.killed(t, kill{f.name, "INT", at})
 					})
 				}
 			}
@@ -87,14 +88,17 @@ type kill struct {
 
 // flow is one of kiln's main flows, from the developer's first command to its end.
 type flow struct {
-	// name names the flow's Given, testdata/<name>.txtar. Its _given/steps.json holds each role's steps, which every
-	// call of that role takes.
-	name string
+	// name names the flow's Given, testdata/<name>.txtar, unless given names another. Its _given/steps.json holds
+	// each role's steps, which every call of that role takes.
+	name, given string
 	// subject is the spec or monitor the flow builds, by its name.
 	subject Spec
 	// recovering labels the step whose kill leaves work for the next command to recover. Each step of that recovery
 	// gets a kill of its own too. "" kills no recovering kiln.
 	recovering string
+	// from names the command whose first step starts the flow's kills, or is "" to kill at every step. The steps
+	// before it are another flow's.
+	from string
 	// next is the kiln command the developer runs next in s, or nil once the flow reached its end.
 	next func(s *scratch) []string
 	// landed match the subject of each commit the flow lands on main, in order.
@@ -173,6 +177,43 @@ var flows = []flow{
 		},
 	},
 	{
+		name:    "reject",
+		given:   "accept",
+		subject: "y",
+		from:    "reject",
+		outcome: "dropped",
+		next: func(s *scratch) []string {
+			shown := s.shown(s.subject)
+			switch {
+			case shown == "" && s.ended("dropped"):
+				return nil
+			case shown == "":
+				return []string{"queue", "y"}
+			case strings.HasPrefix(shown, "waiting on its branch"):
+				return []string{"reject", "y"}
+			}
+
+			return []string{"fire"}
+		},
+	},
+	{
+		name:    "drop",
+		subject: "bump",
+		landed:  []string{`by hand`},
+		outcome: "dropped",
+		next: func(s *scratch) []string {
+			// Once the fix stopped, the developer makes state.txt current, and the check finds nothing to fix.
+			switch shown := s.shown(s.subject); {
+			case strings.HasPrefix(shown, "healthy"):
+				return nil
+			case strings.HasPrefix(shown, "stopped"):
+				s.fixByHand()
+			}
+
+			return []string{"monitor", "run", "bump"}
+		},
+	},
+	{
 		name:    "tend",
 		subject: "z",
 		landed:  []string{`^feat\(z\): land the approved spec$`},
@@ -194,28 +235,28 @@ var flows = []flow{
 }
 
 // killed runs the flow f to its end in a scratch repository of its own. kiln is killed as k says. killed answers
-// the label of each step the run took.
-func (f flow) killed(t *testing.T, k kill) []string {
+// the label of each step the run took. It answers from, the step that starts f's command from, or 1.
+func (f flow) killed(t *testing.T, k kill) (taken []string, from int) {
 	s := newScratch(t, f)
 	steps := filepath.Join(t.TempDir(), "steps")
 	env := append(slices.Clone(s.env), "KILN_CRASH_LOG="+steps, "KILN_CRASH_AT="+k.at, "KILN_CRASH_SIGNAL="+k.signal)
 
 	problems := f.drive(s, env)
-	taken := labels(steps)
+	taken = labels(steps)
 	s.judge(k, problems, taken)
-	return taken
+	return taken, max(s.from, 1)
 }
 
-// fromSnapshots runs the flow f once, with a snapshot at each slots-th step from slot. Then it restores each snapshot
-// in turn, and drives the flow from there to its end.
-func (f flow) fromSnapshots(t *testing.T, slot int) {
+// fromSnapshots runs the flow f once, with a snapshot at each slots-th step from first. Then it restores each
+// snapshot in turn, and drives the flow from there to its end.
+func (f flow) fromSnapshots(t *testing.T, first int) {
 	s := newScratch(t, f)
 	steps, snapshots, root := filepath.Join(t.TempDir(), "steps"), t.TempDir(), filepath.Dir(s.work)
 	env := append(slices.Clone(s.env), "KILN_CRASH_LOG="+steps, "KILN_CRASH_SNAPSHOTS="+snapshots,
-		"KILN_CRASH_ROOT="+root, fmt.Sprintf("KILN_CRASH_AT=%d+%d", slot, slots))
+		"KILN_CRASH_ROOT="+root, fmt.Sprintf("KILN_CRASH_AT=%d+%d", first, slots))
 	s.judge(kill{flow: f.name}, f.drive(s, env), labels(steps))
 	taken := labels(steps)
-	for at := slot; at <= len(taken); at += slots {
+	for at := first; at <= len(taken); at += slots {
 		s.said.Reset()
 		if err := restore(filepath.Join(snapshots, strconv.Itoa(at)), root); err != nil {
 			t.Fatal(err)
@@ -228,7 +269,7 @@ func (f flow) fromSnapshots(t *testing.T, slot int) {
 // killRecovering kills kiln at the step at of the flow f. Then it kills the next command at each step of its recovery,
 // up to its next monitor line.
 func (f flow) killRecovering(t *testing.T, at int) {
-	taken := f.killed(t, kill{f.name, "KILL", strconv.Itoa(at)})
+	taken, _ := f.killed(t, kill{f.name, "KILL", strconv.Itoa(at)})
 	for i := at; i < len(taken) && taken[i] != "ledger.jsonl monitor"; i++ {
 		t.Run(strconv.Itoa(i+1), func(t *testing.T) {
 			t.Parallel()
@@ -278,6 +319,10 @@ func (f flow) drive(s *scratch, env []string) []string {
 		next := f.next(s)
 		if next == nil {
 			break
+		}
+
+		if next[0] == f.from && s.from == 0 {
+			s.from = len(labels(envValue(env, "KILN_CRASH_LOG"))) + 1
 		}
 
 		s.run(env, "kiln", next...)
@@ -398,12 +443,14 @@ type scratch struct {
 	env     []string
 	subject Spec
 	said    strings.Builder
+	// from is the step that starts the flow's command from, once a run reached it.
+	from int
 }
 
 // newScratch makes the scratch repository of the flow f. Its scripted claude answers each call of a role with the
 // role's steps.
 func newScratch(t *testing.T, f flow) *scratch {
-	work, env := scenariotest.Repo(t, filepath.Join("testdata", f.name+".txtar"))
+	work, env := scenariotest.Repo(t, filepath.Join("testdata", cmp.Or(f.given, f.name)+".txtar"))
 	raw, err := os.ReadFile(filepath.Join(work, "_given", "steps.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -468,6 +515,25 @@ func (s *scratch) shown(name Spec) string {
 	}
 
 	return m[1]
+}
+
+// ended is whether the ledger holds a build that ended with outcome.
+func (s *scratch) ended(outcome string) bool {
+	return strings.Contains(s.read("kiln", "ledger", "--kind", "build"), `"outcome":"`+outcome+`"`)
+}
+
+// fixByHand makes state.txt current in a commit on main, as the developer would, unless main holds it so.
+func (s *scratch) fixByHand() {
+	path := filepath.Join(s.work, "state.txt")
+	if raw, _ := os.ReadFile(path); string(raw) == "current\n" {
+		return
+	}
+
+	if err := os.WriteFile(path, []byte("current\n"), 0o644); err != nil {
+		s.t.Fatal(err)
+	}
+
+	s.run(s.env, "git", "commit", "-qam", "fix(bump): make state.txt current by hand")
 }
 
 // retired is whether main no longer holds the spec of the flow's subject.

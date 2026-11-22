@@ -453,17 +453,13 @@ func (r *Repo) TendLanded(ctx context.Context, name Spec, out io.Writer) error {
 		return err
 	}
 
-	if err := r.dropCheckouts(ctx, name); err != nil {
-		return err
-	}
-
 	b := &build{r: r, rec: *rec, tree: r.tree(name), out: out}
 	b.set(func(r *record) {
 		r.stop, r.Owed, r.ForBuild, r.ForVerify, r.Asked, r.Running = stop{}, "", "", "", false, nil
 		r.Before, r.Landing, r.Onto = "", "", ""
 	})
 
-	return b.onMain(main)
+	return b.onMain(ctx, main)
 }
 
 // workShown refuses the work of rec as landed on main, at main, while nothing shows it there. That is while main

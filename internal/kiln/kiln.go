@@ -993,7 +993,7 @@ func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
 	}
 
 	if dropped != "" {
-		r.ended(name, dropped, outDropped, out)
+		r.ended(name, entry{Build: dropped, Outcome: outDropped}, out)
 	}
 
 	if drop {
@@ -1169,32 +1169,49 @@ func (r *Repo) specAt(ctx context.Context, at git.Rev, name Spec) (spec []byte, 
 	return r.git.Show(ctx, at, name.oldFile())
 }
 
-// ended writes to the ledger that the build of name ended with outcome.
-func (r *Repo) ended(name Spec, build, outcome string, out io.Writer) {
-	if err := r.store.write(entry{Kind: outcomeKind, Build: build, Outcome: outcome}); err != nil {
+// ended writes e to the ledger, as the outcome of the build of name.
+func (r *Repo) ended(name Spec, e entry, out io.Writer) {
+	e.Kind = outcomeKind
+	if err := r.store.write(e); err != nil {
 		fmt.Fprintf(out, "%s: kiln could not write its ledger: %v\n", name, err)
 	}
+}
+
+// end ends the build of rec for good. It removes the build's checkouts and branches, writes e as the build's outcome,
+// then retires rec. The record goes last, so a kiln interrupted or killed first leaves it for the next command to end.
+// No other function takes a record out of the book.
+func (r *Repo) end(ctx context.Context, rec record, e entry, out io.Writer) error {
+	if err := r.dropCheckouts(ctx, rec.Name); err != nil {
+		return err
+	}
+
+	e.Build = rec.Build
+	r.ended(rec.Name, e, out)
+	return r.store.update(func(b *book) error {
+		b.Specs = slices.DeleteFunc(b.Specs, func(s *record) bool { return s.Name == rec.Name })
+		return nil
+	})
 }
 
 // Reject turns away the amendments of a spec waiting on its branch, or of its stopped landing. It drops the build, its
 // worktree and its branch, and kiln holds no record of the spec. Main is as it was.
 func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
-	var rec record
-	err := r.store.update(func(b *book) (err error) {
-		rec, err = b.reject(name)
-		return err
-	})
+	k, err := r.store.read()
 	if err != nil {
 		return err
 	}
 
-	if rec.Monitor {
-		r.ended(name, rec.Build, outRejected, out)
-	} else {
-		r.ended(name, rec.Build, outDropped, out)
+	if err := k.may(rejectCommand, name, nil); err != nil {
+		return err
 	}
 
-	if err := r.dropCheckouts(ctx, name); err != nil {
+	rec := *k.find(name)
+	outcome := outDropped
+	if rec.Monitor {
+		outcome = outRejected
+	}
+
+	if err := r.end(ctx, rec, entry{Outcome: outcome}, out); err != nil {
 		return err
 	}
 
@@ -1494,15 +1511,10 @@ func (r *Repo) acceptLanded(ctx context.Context, b *build) error {
 		return errors.Join(err, r.dropCheckouts(context.WithoutCancel(ctx), name))
 	}
 
-	if err := r.dropCheckouts(ctx, name); err != nil {
+	if err := r.end(ctx, b.now(), entry{Outcome: outAccepted}, b.out); err != nil {
 		return err
 	}
 
-	if err := r.store.update(func(b *book) error { b.retire(name); return nil }); err != nil {
-		return err
-	}
-
-	b.record(entry{Kind: outcomeKind, Outcome: outAccepted})
 	fmt.Fprintf(b.out, "%s: accepted, and main is at %s\n", name, short(landed))
 	return nil
 }

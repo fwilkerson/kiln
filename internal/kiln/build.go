@@ -239,11 +239,7 @@ func (b *build) landedBefore(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 
-	if err := b.r.dropCheckouts(ctx, b.rec.Name); err != nil {
-		return true, err
-	}
-
-	return true, b.onMain(b.rec.Landing)
+	return true, b.onMain(ctx, b.rec.Landing)
 }
 
 // holdsLanding is whether main holds rec.Landing: the commit the landing moved main to, or was moving it to.
@@ -475,25 +471,28 @@ func (b *build) waitOrLand(ctx context.Context) (setback, error) {
 		return back, err
 	}
 
-	if err := b.r.dropCheckouts(ctx, b.rec.Name); err != nil {
-		return setback{}, err
-	}
-
-	return setback{}, b.onMain(onMain)
+	return setback{}, b.onMain(ctx, onMain)
 }
 
-// onMain records the build's work on main, at the commit at. An accepted spec is retired, and any other waits for UAT.
-func (b *build) onMain(at git.Rev) error {
+// onMain records the build's work on main, at the commit at, and drops its checkouts. An accepted spec is retired, as
+// end retires it. Any other waits for UAT.
+func (b *build) onMain(ctx context.Context, at git.Rev) error {
+	b.landed = at
 	if b.rec.Accepted {
-		b.record(entry{Kind: outcomeKind, Outcome: outAccepted})
-		b.landed = at
+		if err := b.r.end(ctx, b.now(), entry{Outcome: outAccepted}, b.out); err != nil {
+			return err
+		}
+
 		b.say("accepted, and main is at %s", short(at))
-		return b.r.store.update(func(k *book) error { k.retire(b.rec.Name); return nil })
+		return nil
+	}
+
+	if err := b.r.dropCheckouts(ctx, b.rec.Name); err != nil {
+		return err
 	}
 
 	b.record(entry{Kind: outcomeKind, Outcome: outLanded})
 	b.set(func(r *record) { r.State, r.Before, r.Landing, r.Onto, r.LandedAt = landed, "", "", "", at })
-	b.landed = at
 	b.say("landed on main at %s, and waits for UAT", short(at))
 	return nil
 }

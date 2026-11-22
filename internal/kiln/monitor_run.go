@@ -144,8 +144,8 @@ func (r *Repo) recover(ctx context.Context, out io.Writer) error {
 	return r.buildEach(ctx, out, inLane{lane: monitorsLane, only: landings, unlock: func() {}})
 }
 
-// dropLost ends the build of rec, a fix a kiln cut short, dropped. It removes its branch and checkouts, then its
-// record. A fix whose landing main holds ends landed instead, notifies, and the gauges read it.
+// dropLost ends the build of rec, a fix a kiln cut short, dropped, as end ends it. A fix whose landing main holds
+// ends landed instead, notifies, and the gauges read it.
 func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 	b := &build{r: r, rec: rec, tree: r.tree(rec.Name), out: out}
 	held, err := b.landedBefore(ctx)
@@ -162,13 +162,7 @@ func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 		return b.readGauges(ctx)
 	}
 
-	r.ended(rec.Name, rec.Build, outDropped, out)
-	if err := r.dropCheckouts(ctx, rec.Name); err != nil {
-		return err
-	}
-
-	// The record goes last, so the next kiln monitor run drops a fix whose kiln died before it.
-	if err := r.store.update(func(b *book) error { b.retire(rec.Name); return nil }); err != nil {
+	if err := r.end(ctx, rec, entry{Outcome: outDropped}, out); err != nil {
 		return err
 	}
 
@@ -179,12 +173,7 @@ func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 // dropStopped drops rec, the monitor's stopped fix the developer had not accepted, with its branch and checkouts. A
 // run that found nothing to fix calls it, while it holds the monitors' lane.
 func (r *Repo) dropStopped(ctx context.Context, rec record, out io.Writer) error {
-	if err := r.store.update(func(b *book) error { b.retire(rec.Name); return nil }); err != nil {
-		return err
-	}
-
-	r.ended(rec.Name, rec.Build, outDropped, out)
-	if err := r.dropCheckouts(ctx, rec.Name); err != nil {
+	if err := r.end(ctx, rec, entry{Outcome: outDropped}, out); err != nil {
 		return err
 	}
 
@@ -303,15 +292,19 @@ func (run *monitorRunning) check(ctx context.Context, m monitor, h *history, rec
 // noFix writes the monitor line of a run that starts no fix. A watching monitor that needs the developer notifies. A
 // healthy run drops the monitor's stopped fix, rec, unless the developer accepted it.
 func (run *monitorRunning) noFix(ctx context.Context, line entry, rec *record) error {
+	// kiln status shows the healthy line over the fix, so a kiln that dies mid-drop must not have written it.
+	if line.Found == foundHealthy && rec.unacceptedStop() {
+		if err := run.r.dropStopped(ctx, *rec, run.out); err != nil {
+			return err
+		}
+	}
+
 	if err := run.write(line); err != nil {
 		return err
 	}
 
-	switch {
-	case line.Found == outNeedsYou:
+	if line.Found == outNeedsYou {
 		run.r.notifyFix(ctx, line.Monitor, "", run.out)
-	case line.Found == foundHealthy && rec.unacceptedStop():
-		return run.r.dropStopped(ctx, *rec, run.out)
 	}
 
 	return nil

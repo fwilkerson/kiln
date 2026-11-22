@@ -567,10 +567,10 @@ var specStates = map[string]specState{
 	"reject a building spec":                   {given: "building", command: "reject"},
 	"reject a stopped spec":                    {given: "stopped", command: "reject"},
 	"reject a spec waiting for UAT":            {given: "waiting for UAT", command: "reject"},
-	"reject a spec with amendments":            {given: "waiting on its branch with amendments", command: "reject", then: none},
+	"reject a spec with amendments":            {given: "waiting on its branch with amendments", command: "reject", then: "waiting on its branch with amendments"},
 	"reject a queued landing":                  {given: "queued landing", command: "reject"},
 	"reject a building landing":                {given: "building landing", command: "reject"},
-	"reject a stopped landing":                 {given: "stopped landing", command: "reject", then: none},
+	"reject a stopped landing":                 {given: "stopped landing", command: "reject", then: "stopped landing"},
 	"queue a monitor's fix":                    {given: "fix waiting on its branch", command: "queue"},
 	"queue a monitor's stopped fix":            {given: "fix stopped", command: "queue"},
 	"accept a building fix":                    {given: "fix building", command: "accept"},
@@ -580,8 +580,8 @@ var specStates = map[string]specState{
 	"accept a fix's stopped landing":           {given: "fix stopped landing", command: "accept", then: "fix queued landing"},
 	"reject a building fix":                    {given: "fix building", command: "reject"},
 	"reject a stopped fix":                     {given: "fix stopped", command: "reject"},
-	"reject a waiting fix":                     {given: "fix waiting on its branch", command: "reject", then: none},
-	"reject a fix's stopped landing":           {given: "fix stopped landing", command: "reject", then: none},
+	"reject a waiting fix":                     {given: "fix waiting on its branch", command: "reject", then: "fix waiting on its branch"},
+	"reject a fix's stopped landing":           {given: "fix stopped landing", command: "reject", then: "fix stopped landing"},
 	"tend a spec with no record":               {given: "", command: "tend"},
 	"tend a queued spec":                       {given: "queued", command: "tend"},
 	"tend a halted spec":                       {given: "building", command: "tend"},
@@ -666,7 +666,7 @@ func (tc specState) apply(t *testing.T, b *book) (commanded, *record) {
 	case "accept":
 		_, err = b.accept("x")
 	case "reject":
-		_, err = b.reject("x")
+		err = b.may(rejectCommand, "x", nil)
 	case "tend":
 		err = b.may(tendCommand, "x", nil)
 	case "resume":

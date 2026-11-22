@@ -113,7 +113,11 @@ func (r *Repo) startFix(out io.Writer, f *fixing, line entry) (*build, error) {
 	rec := record{Name: m.Name, State: building, Approved: line.Main, Build: line.Build, Monitor: true,
 		PID: os.Getpid()}
 	err := r.store.update(func(b *book) error {
-		b.retire(m.Name)
+		if stopped := b.find(m.Name); stopped != nil {
+			*stopped = rec
+			return nil
+		}
+
 		b.Specs = append(b.Specs, &rec)
 		return nil
 	})
@@ -681,25 +685,23 @@ func (b *build) fixEnded(ctx context.Context) error {
 		}
 	}
 
-	b.record(entry{Kind: outcomeKind, Outcome: f.outcome, Summary: f.summary, Report: f.report})
+	e := entry{Kind: outcomeKind, Outcome: f.outcome, Summary: f.summary, Report: f.report}
+	var err error
+	switch f.outcome {
+	case outStopped:
+		b.record(e)
+		b.set(func(r *record) { r.State, r.runner = stopped, runner{} })
+	case outWaits:
+		b.record(e)
+		b.set(func(r *record) { r.State, r.runner = waiting, runner{} })
+	default:
+		err = b.r.end(ctx, b.now(), e, b.out)
+	}
+
 	b.say("%s", cmpOr(strings.TrimSuffix(f.outcome+": "+f.summary, ": "), "ended"))
 	// A spec's build prints the same line once it ends, so a fix's time and cost read alike.
 	fmt.Fprintln(b.out, indent(b.r.summary(b.rec.Build)))
-	switch f.outcome {
-	case outStopped:
-		b.set(func(r *record) { r.State, r.runner = stopped, runner{} })
-		return nil
-	case outWaits:
-		b.set(func(r *record) { r.State, r.runner = waiting, runner{} })
-		return nil
-	}
-
-	// The record goes last, so the next kiln monitor run ends a fix whose kiln died before it.
-	if err := b.r.dropCheckouts(context.WithoutCancel(ctx), b.rec.Name); err != nil {
-		return err
-	}
-
-	return b.r.store.update(func(k *book) error { k.retire(b.rec.Name); return nil })
+	return err
 }
 
 // fixLaunch is a run of the monitor's agent's session, in the fix's worktree. Its hook keeps it off .kiln/, and off

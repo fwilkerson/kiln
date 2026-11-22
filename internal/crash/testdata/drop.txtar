@@ -1,0 +1,22 @@
+A monitor's fix stops. The developer fixes what its check found by hand, and kiln drops the stopped fix.
+
+-- .kiln/kiln.json --
+{"gate": ["true"]}
+-- .kiln/monitors/bump/check --
+if grep -qx current state.txt; then
+  echo '{"fix": false, "summary": "state.txt is current"}'
+else
+  echo '{"fix": true, "summary": "state.txt is stale"}'
+fi
+-- .kiln/monitors/bump/agent.md --
+Make state.txt current.
+-- .kiln/monitors/bump/monitor.json --
+{"hours": 1}
+-- state.txt --
+stale
+-- _given/steps.json --
+{
+ "fix": [
+  {"result": {"result": "state.txt stays stale."}}
+ ]
+}

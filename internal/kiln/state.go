@@ -382,21 +382,6 @@ func (b *book) resume(name Spec, note string) error {
 	return nil
 }
 
-// reject removes the record of a spec whose amendments the developer turns away, and answers it.
-func (b *book) reject(name Spec) (record, error) {
-	if err := b.may(rejectCommand, name, nil); err != nil {
-		return record{}, err
-	}
-
-	r := *b.find(name)
-	b.retire(name)
-	return r, nil
-}
-
-func (b *book) retire(name Spec) {
-	b.Specs = slices.DeleteFunc(b.Specs, func(r *record) bool { return r.Name == name })
-}
-
 // next takes the first queued record of the lane l, which the caller holds. It marks it building by the kiln pid. In
 // the specs' lane, with only, it takes the spec named only, or a landing of accepted amendments. A kiln accept leaves
 // such a landing for the kiln that holds the lane. In the monitors' lane, it takes only a fix's accepted landing. The
