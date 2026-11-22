@@ -17,3 +17,4 @@ Each spec the developer accepted, and the command that shows it in the commit th
 - Spec 8: Projects in other languages: `git show 3189d8772be3:.kiln/specs/languages.md`
 - Spec 14: An accepted fix that main moved past still lands: `git show 44a445bd1032:.kiln/specs/resolve.md`
 - Spec 15: spec builds and monitor fixes run side by side: `git show 50042db153a2:.kiln/specs/lanes.md`
+- Spec 16: Tend what stopped in a session of your own, then kiln goes on: `git show 817f404fbd7c:.kiln/specs/tend.md`
