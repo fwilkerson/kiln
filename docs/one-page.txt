@@ -25,8 +25,7 @@ para kiln runs Claude Code in the background, on your Mac. It builds each spec y
 cell problem | How agents get used
 lead **You give an agent a task. Then you wait, or start a second agent.**
 para Either way, no task starts until you prompt it. Only you check the result.
-para Running a second agent means switching between tasks. So you run only as many agents as you can manage.
-
+para Running a second agent means switching between tasks. You can start many agents, but you can effectively manage only a few.
 cell answer | With kiln
 big You write a @you{spec} and the checks. kiln runs the @agent{agents}, and lands only the work that passes your checks.
 para **Each acceptance test becomes code.** You approve each test as a Given, a When and a Then. A session writes it as a test that runs your program as its user would.
