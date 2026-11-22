@@ -224,6 +224,7 @@ func Run(t *testing.T, file string) {
 }
 
 // RunAll runs each script at dir/<feature>/<scenario>.txtar as the test <feature>/<scenario>, beside the others.
+// As with go, a feature whose name starts with . or _ is skipped, such as the .claude a session's shell leaves.
 func RunAll(t *testing.T, dir string) {
 	features, err := os.ReadDir(dir)
 	if err != nil {
@@ -231,6 +232,10 @@ func RunAll(t *testing.T, dir string) {
 	}
 
 	for _, feature := range features {
+		if strings.HasPrefix(feature.Name(), ".") || strings.HasPrefix(feature.Name(), "_") {
+			continue
+		}
+
 		t.Run(feature.Name(), func(t *testing.T) {
 			run(t, testscript.Params{Dir: filepath.Join(dir, feature.Name())})
 		})
