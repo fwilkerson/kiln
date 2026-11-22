@@ -40,6 +40,11 @@ type config struct {
 	// ["proxy.golang.org", "*.example.org"]. Write each as a bare host name, with no scheme, port or path. Absent,
 	// a session's shell commands connect to no host.
 	AllowedHosts []string `json:"allowedHosts,omitempty"`
+	// AllowUnixSockets lets a session's shell commands connect to and listen on any Unix socket, when true. Set it
+	// for a tool that opens a Unix socket, such as GoLand, which opens one as it starts. A Unix socket can reach a
+	// local service outside Claude Code's sandbox, such as Docker. Absent or false, the sandbox refuses each Unix
+	// socket.
+	AllowUnixSockets bool `json:"allowUnixSockets,omitempty"`
 	// WritablePathCommands lists shell commands that print paths, such as ["go env GOCACHE GOMODCACHE"]. A
 	// session's shell commands may write to each printed path, as well as to the session's checkout. kiln runs each
 	// listed command with sh -c. kiln reads each word that the command prints as one absolute path. No session

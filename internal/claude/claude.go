@@ -32,7 +32,8 @@
 //	autoMode.environment    no one is at the keyboard, and nothing is pushed to any remote
 //	sandbox                 on, with no unsandboxed command, and failing when it cannot start; writes in Dir and
 //	                        Writable alone
-//	sandbox.network         Domains alone, a listener on a local port, and trustd to check a TLS certificate
+//	sandbox.network         Domains alone, a listener on a local port, and trustd to check a TLS certificate; each
+//	                        Unix socket, when UnixSockets
 //	sandbox.filesystem      denyRead from DenyRead, allowRead from AllowRead
 //	advisorModel            Advisor, when set
 //	hooks.PreToolUse        Hook, before each Edit, Write, MultiEdit and NotebookEdit, when set
@@ -121,6 +122,8 @@ type Launch struct {
 	Writable []string
 	// Domains are the hosts a command may reach.
 	Domains []string
+	// UnixSockets lets a command connect to and listen on any Unix socket.
+	UnixSockets bool
 	// MCP holds the only MCP servers the session calls, by name, each as Claude Code's mcpServers holds one.
 	MCP map[string]json.RawMessage
 	// DenyRead are absolute paths no command may read, but those under AllowRead, which reopens what it names. The

@@ -43,8 +43,8 @@ func TestConfigWords(t *testing.T) {
 			said: `.kiln/kiln.json holds "Gate", a key kiln does not read: name it "gate"`},
 		"a key near none": {config: `{"gate": ["true"], "colour": "red"}`,
 			said: `.kiln/kiln.json holds "colour", a key kiln does not read: remove it, or name one kiln reads: ` +
-				`$schema, gate, rounds, allowedHosts, writablePathCommands, mcpServers, verifySession, ` +
-				`acceptanceTests, testHelpers, reaudit, notify, timeout`},
+				`$schema, gate, rounds, allowedHosts, allowUnixSockets, writablePathCommands, mcpServers, ` +
+				`verifySession, acceptanceTests, testHelpers, reaudit, notify, timeout`},
 		"a trailing comma": {config: "{\n  \"gate\": [\"true\"],\n}",
 			said: ".kiln/kiln.json is no JSON at line 2, column 19: a comma with nothing after it: fix its JSON there"},
 		"a number as a string": {config: `{"gate": ["true"], "rounds": "3"}`,

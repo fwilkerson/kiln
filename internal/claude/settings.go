@@ -36,7 +36,7 @@ func settings(l Launch) ([]byte, error) {
 			"failIfUnavailable": true,
 			// Without this key, the sandbox refuses a listener, so no session runs a test that starts a server.
 			"network": map[string]any{"allowedDomains": nonNil(l.Domains), "allowLocalBinding": true,
-				"allowMachLookup": []string{trustd}},
+				"allowMachLookup": []string{trustd}, "allowAllUnixSockets": l.UnixSockets},
 			"filesystem": map[string]any{"allowWrite": nonNil(l.Writable), "denyRead": nonNil(l.DenyRead),
 				"allowRead": nonNil(l.AllowRead)},
 		},

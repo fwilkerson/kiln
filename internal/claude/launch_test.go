@@ -42,10 +42,10 @@ func TestMCP(t *testing.T) {
 }
 
 // TestSandbox holds the rules that a session's commands may listen on a local port, and never run unsandboxed.
-// Without the first, the sandbox refuses each test that starts a server.
+// Without the first, the sandbox refuses each test that starts a server. They reach Unix sockets when UnixSockets.
 func TestSandbox(t *testing.T) {
 	dir := t.TempDir()
-	if err := write(dir, Launch{Session: "s", Role: "build"}); err != nil {
+	if err := write(dir, Launch{Session: "s", Role: "build", UnixSockets: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -58,7 +58,8 @@ func TestSandbox(t *testing.T) {
 		Sandbox struct {
 			FailIfUnavailable bool `json:"failIfUnavailable"`
 			Network           struct {
-				AllowLocalBinding bool `json:"allowLocalBinding"`
+				AllowLocalBinding   bool `json:"allowLocalBinding"`
+				AllowAllUnixSockets bool `json:"allowAllUnixSockets"`
 			} `json:"network"`
 		} `json:"sandbox"`
 	}
@@ -68,5 +69,9 @@ func TestSandbox(t *testing.T) {
 
 	if !got.Sandbox.FailIfUnavailable {
 		t.Fatalf("%s runs commands unsandboxed when the sandbox cannot start:\n%s", settingsFile, raw)
+	}
+
+	if !got.Sandbox.Network.AllowAllUnixSockets {
+		t.Fatalf("%s refuses each Unix socket, though the Launch allows them:\n%s", settingsFile, raw)
 	}
 }

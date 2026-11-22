@@ -72,6 +72,7 @@ kiln help [<topic>]      print this usage and the topics of kiln's docs, as kiln
   "gate": ["go vet ./...", "go test ./..."],
   "rounds": 3,
   "allowedHosts": ["proxy.golang.org", "sum.golang.org"],
+  "allowUnixSockets": true,
   "writablePathCommands": ["go env GOCACHE GOMODCACHE"],
   "mcpServers": {"docs": {"command": "docs-mcp"}},
   "acceptanceTests": "acceptance/{spec}/",
@@ -89,6 +90,7 @@ kiln help [<topic>]      print this usage and the topics of kiln's docs, as kiln
 | `"gate"`                 | Commands that must pass before work lands, each run with `sh -c`             | kiln refuses the file             |
 | `"rounds"`               | How many times a build goes back to its session before the build stops       | the first failing gate stops it   |
 | `"allowedHosts"`         | The only hosts a session's shell commands reach                              | a session's commands reach none   |
+| `"allowUnixSockets"`     | `true`: a session's commands may connect to, and listen on, any Unix socket  | the sandbox refuses each one      |
 | `"writablePathCommands"` | Commands that print the paths a session may write, besides its checkout      | a session writes in its checkout  |
 | `"mcpServers"`           | The only MCP servers a session calls, as Claude Code's settings hold one     | a session calls none              |
 | `"acceptanceTests"`      | Where a spec's acceptance tests go, with `{spec}` for the spec's name        | `kiln queue` refuses every spec   |
@@ -182,7 +184,7 @@ kiln fire ─▶ main ─────┤                                        
 - `"reaudit"` lists paths that never land unread, such as test helpers or migrations. When the work's change to one
   differs from what the audit last read, the audit reads the work again. That second reading spends a round.
 
-### allowedHosts, writablePathCommands and mcpServers
+### allowedHosts, allowUnixSockets, writablePathCommands and mcpServers
 
 - A session's shell commands run in Claude Code's sandbox. They write only in the session's checkout, and in the
   paths that the commands of `"writablePathCommands"` print. They reach only the hosts in `"allowedHosts"`. A
@@ -190,6 +192,9 @@ kiln fire ─▶ main ─────┤                                        
 - Each host is a bare host name, such as `proxy.golang.org` or `*.example.org`, with no scheme, port or path. Each
   command of `"writablePathCommands"` prints only absolute paths, or no session starts.
 - A session's shell commands may listen on a local port, so a test that starts a server runs in a session.
+- With `"allowUnixSockets": true`, a session's shell commands may connect to and listen on any Unix socket. Set it
+  for a tool that opens a Unix socket, such as GoLand, which `go tool inspect` starts. A Unix socket can reach a local
+  service outside the sandbox, such as Docker.
 - These run outside the sandbox, with the environment kiln has: an MCP server, the gate's commands, the commands of
   `"writablePathCommands"`, a monitor's scripts and the `notify` program. The gate runs the code a session wrote,
   so that code runs outside the sandbox too. `$KILN` holds the path of the kiln that runs each script.

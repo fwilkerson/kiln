@@ -48,7 +48,8 @@ func (b *build) kept(s sides, role string) string {
 }
 
 // reached adds to l what kiln.json at main's tip says a session reaches. Those are the hosts its commands reach, the
-// paths beside its worktree they write, and the MCP servers it calls. It adds how long the session may print nothing.
+// paths beside its worktree they write, and the MCP servers it calls. Its commands may reach Unix sockets
+// too. It adds how long the session may print nothing.
 func (r *Repo) reached(ctx context.Context, l claude.Launch) (claude.Launch, error) {
 	_, c, err := r.mainConfig(ctx)
 	if err != nil {
@@ -64,7 +65,7 @@ func (r *Repo) reached(ctx context.Context, l claude.Launch) (claude.Launch, err
 		l.Writable = append(l.Writable, paths...)
 	}
 
-	l.Domains, l.MCP, l.Silence = c.AllowedHosts, c.MCPServers, c.killAfter()
+	l.Domains, l.UnixSockets, l.MCP, l.Silence = c.AllowedHosts, c.AllowUnixSockets, c.MCPServers, c.killAfter()
 	return l, nil
 }
 
