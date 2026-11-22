@@ -1,13 +1,12 @@
-# A kiln.json that still names gauges is refused, with where they moved, and a monitor that holds a gauge alone takes
-# their place.
+# A kiln.json that names gauges is refused, and a monitor that holds a gauge alone takes their place.
 
-# Given: a project whose kiln.json names a gauge, as kiln once read one there.
+# Given: a project whose kiln.json names a gauge.
 
 # When: the developer runs kiln doctor,
 ! exec kiln doctor
 
-# then it refuses kiln.json's gauges, and says where they moved.
-stdout '^\.kiln/kiln\.json holds "gauges", a key kiln no longer reads: each gauge is a monitor now, \.kiln/monitors/<name>/ with its gauge script, and its line in monitor\.json: move each there, as kiln help gauges shows$'
+# then it refuses kiln.json's gauges, a key kiln does not read.
+stdout '^\.kiln/kiln\.json holds "gauges", a key kiln does not read: remove it, or name one kiln reads: '
 
 # When: the developer moves the gauge into a monitor's directory, with its line and mustAccept, a key that steers a fix,
 # and runs kiln doctor again,

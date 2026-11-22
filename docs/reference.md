@@ -236,7 +236,7 @@ the new version with your edits, as it merges the defaults. A monitor you delete
 | `"atMost"`      | Beside a gauge, its line: a reading above it crossed.                                             |
 
 `kiln monitor add` gives a monitor.json it writes the `$schema` key when it lacks one, and `kiln init` writes the
-schema. kiln refuses a key it once read, `gates`, `accept`, `tests`, `min` or `max`, and names the key in its place.
+schema.
 
 ```text
 kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ─────────────────────────▶ healthy

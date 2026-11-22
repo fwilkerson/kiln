@@ -73,9 +73,7 @@
 //	.kiln/monitors/<name>/      a monitor: its scripts, its agent and its settings, out of a fix's reach
 //
 // A command that refuses kiln.json, an agent's file or a spec prints each problem on a line, with its fix. kiln
-// doctor names each in the working tree, before a commit, as Doctor says. Each command refuses a key of kiln.json or a
-// monitor.json that kiln once read, naming its new key. Work an older kiln queued or started reads that commit's
-// settings, each old key as its new one.
+// doctor names each in the working tree, before a commit, as Doctor says.
 //
 // kiln keeps its own files out of the working tree. Main is the branch named main:
 //

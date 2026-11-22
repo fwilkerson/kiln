@@ -67,6 +67,9 @@ for macOS.
   72 characters. The body says why. `go test ./...` passes at each commit. In a session the developer runs, commit each
   change to main as soon as it passes, without asking. A session kiln runs commits on its branch, as kiln's
   contract says. Never push.
+- Compatibility: none, until the developer declares 1.0. Rename or remove a key, a file or a format outright, and
+  change this repository's own files with it. Never add a migration, a reader for the old form, or a refusal that
+  names the new one.
 - A change the developer asks for in a session they run: make it there, by direct commit. A starter spec is for work
   the developer defers, or asks to shape. Never write one in place of a change they asked for.
 

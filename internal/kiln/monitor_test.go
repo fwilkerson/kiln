@@ -138,24 +138,6 @@ func TestMonitorDirs(t *testing.T) {
 	}
 }
 
-// TestPastKeys holds that work an older kiln queued or started still reads its settings at that commit. There, each
-// key that kiln read reads as the key in its place, though main's kiln.json refuses it.
-func TestPastKeys(t *testing.T) {
-	r, repo := scratchRepo(t)
-	shell(t, repo, `mkdir .kiln && echo '{"gate": ["true"], "acceptance": "uat/{spec}/", "workflow": "split", `+
-		`"harness": ["h/"], "gauges": []}' >.kiln/kiln.json`)
-	writeMonitor(t, repo, "a", map[string]string{"check": "true", "agent.md": "Fix it.",
-		"monitor.json": `{"gates": false, "accept": true, "tests": true}`})
-	shell(t, repo, "git add . && git commit --quiet -m start")
-	c, reads, err := r.monitors(t.Context(), "main")
-	m, _, refused := monitorNamed(reads, "a")
-	if !claim.Holds(err == nil, refused == nil, c.VerifySession, slices.Equal(c.TestHelpers, []string{"h/"}),
-		len(c.AcceptanceTests) == 1, m.MustAccept, m.WritesTests, !m.gated()) {
-		t.Errorf("the commit reads as %+v and %+v, %v, %v; want verifySession, testHelpers, acceptanceTests, "+
-			"mustAccept, writesTests, and recheck false", c, m.settings, err, refused)
-	}
-}
-
 // TestContractGauge holds that a fix's contract says the gate reads the monitor's gauge only where the gate does.
 func TestContractGauge(t *testing.T) {
 	for name, tc := range map[string]struct {

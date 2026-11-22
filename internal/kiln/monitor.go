@@ -137,14 +137,14 @@ func hashOf(text string) string {
 }
 
 // monitors reads kiln.json at the commit at, where work was queued or started, and the monitors there. It reads each
-// file as pastFiles does, and each monitor as monitorsIn does.
+// monitor as monitorsIn does.
 func (r *Repo) monitors(ctx context.Context, at git.Rev) (config, []monitorRead, error) {
 	c, err := r.config(ctx, at)
 	if err != nil {
 		return c, nil, err
 	}
 
-	reads, err := r.monitorsIn(ctx, c, r.pastFiles(at), at)
+	reads, err := r.monitorsIn(ctx, c, r.filesAt(at), at)
 	return c, reads, err
 }
 
@@ -311,10 +311,6 @@ func (c config) readMonitor(name Spec, dir string, files []string, raw []byte) (
 		// A monitor.json that is no object fails the strict read below, which words why.
 		_ = jsonv2.Unmarshal(raw, &keys)
 		file := path.Join(dir, settingsFile)
-		if renamed := oldKeys(file, keys, renamedSetting); len(renamed) > 0 {
-			return m, renamed
-		}
-
 		// json/v2 matches a key's case exactly, as kiln.json is read.
 		if err := jsonv2.Unmarshal(raw, &m.settings, jsonv2.RejectUnknownMembers(true)); err != nil {
 			return m, refusals{{fmt.Sprintf("%s: %v", file, err),
@@ -329,32 +325,6 @@ func (c config) readMonitor(name Spec, dir string, files []string, raw []byte) (
 	}
 
 	return m, c.monitorRefusals(m, files, slices.Sorted(maps.Keys(keys))).about(dir + "/")
-}
-
-// renamedSettings are the keys of monitor.json that kiln once read, each with the key that took its place.
-var renamedSettings = map[string]string{"gates": "recheck", "accept": "mustAccept", "tests": "writesTests",
-	"min": "atLeast", "max": "atMost"}
-
-// oldKeys refuse each of keys, those of file, that kiln once read there. went answers the fix for such a key, and ""
-// for any other.
-func oldKeys(file string, keys map[string]jsontext.Value, went func(key string) string) refusals {
-	var refused refusals
-	for _, key := range slices.Sorted(maps.Keys(keys)) {
-		if fix := went(key); fix != "" {
-			refused = append(refused, refusal{fmt.Sprintf("%s holds %q, a key kiln no longer reads", file, key), fix})
-		}
-	}
-
-	return refused
-}
-
-// renamedSetting is the fix for key of a monitor.json, where kiln renamed it, or "".
-func renamedSetting(key string) string {
-	if now, ok := renamedSettings[key]; ok {
-		return fmt.Sprintf("name it %q", now)
-	}
-
-	return ""
 }
 
 // fixKeys are the keys of monitor.json that steer a fix, which a monitor that fixes nothing may not name.
