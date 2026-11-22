@@ -543,7 +543,7 @@ and for the spec names each command would not refuse.
 
 ```text
 .git/kiln/
-  ledger.jsonl                    each build, session run, gate, outcome, gauge reading and monitor run
+  ledger.jsonl                    each build, session run, gate, outcome, gauge reading, audit finding and monitor run
   sessions/<id>/stream.jsonl      each session's stream, for why a number is what it is
   sessions/<id>/tend.md           what a kiln tend session knows of kiln
   sessions/<id>/note.md           the note a kiln tend session leaves for the stopped build
@@ -570,6 +570,15 @@ $ kiln ledger --kind build --last 1 | jq .
   "audits": 1,
   "findings": 1
 }
+```
+
+An audit's run line counts, in `found` and `reported`, the findings its reply found and listed. Each finding listed
+gets a `finding` line, with its place, category and fields. A reply kiln cannot parse gets one finding line, whose
+`parsed` is false and whose `reply` holds the whole reply. This prints the findings of the builds of `x`:
+
+```console
+$ kiln ledger --kind finding --name x | jq -c '{category, path, line, design}'
+{"category":"false comment","path":"x.go","line":3,"design":"none"}
 ```
 
 A landed build's commit message holds its time, cost, turns and failed calls too. `kiln help kiln-ledger` lists each

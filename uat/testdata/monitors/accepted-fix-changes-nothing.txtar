@@ -61,7 +61,7 @@ stale
   "4": [{"result": {"result": "Nothing more to do."}}]
  }},
  "audit": {
-  "1": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
-  "2": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}
+  "1": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]},
+  "2": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]}
  }
 }

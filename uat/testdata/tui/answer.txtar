@@ -37,7 +37,7 @@ keys space
 screen '^## Findings$'
 screen '^None\. Each line of this answer is shown in the view\.$'
 screen '^The answer ends with its count\.$'
-screen '^read 1 package, found 0$'
+screen '^read 1 package, found 0, reported 0$'
 ! color none '## Findings'
 
 -- .kiln/kiln.json --
@@ -56,7 +56,7 @@ screen '^read 1 package, found 0$'
       {"result": {"result": "Built x.", "cost_usd": 0.50}}
     ]
   }},
-  "audit": {"1": {"1": [{"result": {"result": "# Audit of x\n\nI read package `scratch` and the code of acceptance test 1.\n\n## What I checked\n\n- `X` answers 42, as test 1's Then says.\n- The test calls `scratch.X` through the package's API.\n- No exported name lacks a doc comment.\n\n## What I did not check\n\n- The gate's own commands, which kiln runs.\n- Any package the build did not change.\n\n## Findings\n\nNone. Each line of this answer is shown in the view.\n\nThe answer ends with its count.\n\nread 1 package, found 0", "cost_usd": 0.25}}]}}
+  "audit": {"1": {"1": [{"result": {"result": "# Audit of x\n\nI read package `scratch` and the code of acceptance test 1.\n\n## What I checked\n\n- `X` answers 42, as test 1's Then says.\n- The test calls `scratch.X` through the package's API.\n- No exported name lacks a doc comment.\n\n## What I did not check\n\n- The gate's own commands, which kiln runs.\n- Any package the build did not change.\n\n## Findings\n\nNone. Each line of this answer is shown in the view.\n\nThe answer ends with its count.\n\nread 1 package, found 0, reported 0", "cost_usd": 0.25}}]}}
 }
 -- _given/right/x.go --
 // Package scratch is where kiln's builds land.

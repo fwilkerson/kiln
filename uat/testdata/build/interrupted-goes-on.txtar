@@ -43,7 +43,7 @@ stdout '^x: landed on main'
    {"result": {"result": "Fixed x."}}
   ]
  }},
- "audit": {"1": {"1": [{"result": {"result": "read 2 directories, found 0"}}]}}
+ "audit": {"1": {"1": [{"result": {"result": "read 2 directories, found 0, reported 0"}}]}}
 }
 -- _given/wrong/x.go --
 // Package scratch is where kiln's builds land.

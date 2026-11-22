@@ -35,7 +35,10 @@ func ledgerRepo(t *testing.T) *Repo {
 		{Kind: endKind, Build: "b1", At: at(5), Session: "s1", Ended: endedResult, Totals: totals(1, 0.25, 0)},
 		{Kind: gateKind, Build: "b1", At: at(5), End: at(6), Passed: true, RanMain: new(false)},
 		{Kind: startKind, Build: "b1", At: at(6), Role: auditRole, Session: "s2", Why: whyAudit, Try: 1},
-		{Kind: endKind, Build: "b1", At: at(7), Session: "s2", Ended: endedResult, Totals: totals(1, 0.125, 0)},
+		{Kind: endKind, Build: "b1", At: at(7), Session: "s2", Ended: endedResult, Totals: totals(1, 0.125, 0),
+			Tally: &tally{Found: 2, Reported: 1}},
+		{Kind: findingKind, Build: "b1", At: at(7), Session: "s2",
+			Rank: 1, Path: "x.go", Line: 3, Category: "bug", Reaches: "X answers 41"},
 		{Kind: startKind, Build: "b1", At: at(7), Role: buildRole, Session: "s1", Why: whyFindings},
 		{Kind: startKind, Build: "b1", At: at(7), Role: verifyRole, Session: "s4", Why: whyFindings},
 		{Kind: endKind, Build: "b1", At: at(8), Session: "s1", Ended: endedResult, Totals: totals(1, 0.125, 0)},
@@ -51,6 +54,7 @@ func ledgerRepo(t *testing.T) *Repo {
 		{Kind: monitorKind, Build: "b3", At: at(20), Monitor: "gate-time", Main: "abc123", Found: foundFix,
 			Summary: "the gate slowed 60%"},
 		{Kind: builtKind, Build: "b3", At: at(20.5), Spec: "gate-time", Monitor: "gate-time"},
+		{Kind: findingKind, Build: "b3", At: at(20.75), Session: "s5", Reply: "It reads fine."},
 		{Kind: gateKind, Build: "b3", At: at(22), End: at(23), Passed: true},
 		{Kind: builtKind, Build: "b2", At: at(21), Spec: "y", Size: 1},
 		{Kind: startKind, Build: "b2", At: at(21), Role: buildRole, Session: "s3"},
@@ -70,9 +74,14 @@ const (
 		`"outcome":null,"seconds":null,"cost_usd":null,"turns":null,"failed_calls":null,"rounds":null,"audits":0,` +
 		`"findings":0}`
 	runY = `{"kind":"run","build":"b2","name":"y","role":"build","session":"s3","at":"2026-11-18T05:21:00Z",` +
-		`"end":null,"seconds":null,"ended":null,"cost_usd":null,"turns":null,"failed_calls":null}`
+		`"end":null,"seconds":null,"ended":null,"cost_usd":null,"turns":null,"failed_calls":null,"found":null,` +
+		`"reported":null}`
 	landingX = `{"kind":"gate","build":"b1","name":"x","at":"2026-11-18T05:08:00Z","end":"2026-11-18T05:09:00Z",` +
 		`"seconds":60,"passed":true,"landing":true,"ran_main":false}`
+	fixFinding = `{"kind":"finding","build":"b3","name":"gate-time","fix":true,"session":"s5",` +
+		`"at":"2026-11-18T05:20:45Z","parsed":false,"rank":null,"path":null,"line":null,"category":null,` +
+		`"reaches":null,"chance":null,"harm":null,"design":null,"patch":null,"proof":null,` +
+		`"reply":"It reads fine."}`
 	fixGate = `{"kind":"gate","build":"b3","name":"gate-time","at":"2026-11-18T05:22:00Z",` +
 		`"end":"2026-11-18T05:23:00Z","seconds":60,"passed":true,"landing":false,"ran_main":null}`
 )
@@ -96,7 +105,23 @@ func TestLedger(t *testing.T) {
 			LedgerOptions{Kind: "build", Name: "y"}, buildY},
 		{"a run that ended", LedgerOptions{Kind: "run", Name: "x", Last: 1},
 			`{"kind":"run","build":"b1","name":"x","role":"verify","session":"s4","at":"2026-11-18T05:07:00Z",` +
-				`"end":"2026-11-18T05:08:00Z","seconds":60,"ended":"result","cost_usd":0,"turns":1,"failed_calls":0}`},
+				`"end":"2026-11-18T05:08:00Z","seconds":60,"ended":"result","cost_usd":0,"turns":1,"failed_calls":0,` +
+				`"found":null,"reported":null}`},
+		{"an audit's run counts what its reply found and listed", LedgerOptions{Kind: "run", Name: "x", Last: 3},
+			`{"kind":"run","build":"b1","name":"x","role":"audit","session":"s2",` +
+				`"at":"2026-11-18T05:06:00Z","end":"2026-11-18T05:07:00Z","seconds":60,"ended":"result",` +
+				`"cost_usd":0.125,"turns":1,"failed_calls":0,"found":2,"reported":1}` + "\n" +
+				`{"kind":"run","build":"b1","name":"x","role":"build","session":"s1",` +
+				`"at":"2026-11-18T05:07:00Z","end":"2026-11-18T05:08:00Z","seconds":60,"ended":"result",` +
+				`"cost_usd":0.125,"turns":1,"failed_calls":0,"found":null,"reported":null}` + "\n" +
+				`{"kind":"run","build":"b1","name":"x","role":"verify","session":"s4",` +
+				`"at":"2026-11-18T05:07:00Z","end":"2026-11-18T05:08:00Z","seconds":60,"ended":"result",` +
+				`"cost_usd":0,"turns":1,"failed_calls":0,"found":null,"reported":null}`},
+		{"a finding in its fields, and a fix's audit reply kiln could not parse", LedgerOptions{Kind: "finding"},
+			`{"kind":"finding","build":"b1","name":"x","fix":false,"session":"s2",` +
+				`"at":"2026-11-18T05:07:00Z","parsed":true,"rank":1,"path":"x.go","line":3,"category":"bug",` +
+				`"reaches":"X answers 41","chance":null,"harm":null,"design":null,"patch":null,"proof":null,` +
+				`"reply":null}` + "\n" + fixFinding},
 		{"a run that has not ended", LedgerOptions{Kind: "run", Name: "y"}, runY},
 		{"each gate says whether it ran the commands at main", LedgerOptions{Kind: "gate", Name: "x"},
 			`{"kind":"gate","build":"b1","name":"x","at":"2026-11-18T05:03:00Z","end":"2026-11-18T05:04:00Z",` +
@@ -119,7 +144,7 @@ func TestLedger(t *testing.T) {
 				`"crossed":false}` + "\n" +
 				`{"kind":"build","build":"b3","name":"gate-time","fix":true,"at":"2026-11-18T05:20:30Z","size":0,` +
 				`"outcome":null,"seconds":60,"cost_usd":0,"turns":0,"failed_calls":0,"rounds":0,"audits":0,` +
-				`"findings":0}` + "\n" + fixGate},
+				`"findings":0}` + "\n" + fixFinding + "\n" + fixGate},
 		{"lines come by when each started, not by when kiln wrote them", LedgerOptions{Last: 3},
 			buildY + "\n" + runY + "\n" + fixGate},
 	} {
@@ -178,7 +203,7 @@ func TestLedgerDoc(t *testing.T) {
 	}
 
 	printedLines := map[string]any{"build": printedBuild{}, "run": printedRun{}, "gate": printedGate{},
-		"reading": printedReading{}, "monitor": printedMonitor{}}
+		"reading": printedReading{}, "finding": printedFinding{}, "monitor": printedMonitor{}}
 	if len(printedLines) != len(printedKinds) || len(documented) != len(printedKinds) {
 		t.Errorf("the doc lists %d kinds of line, this test %d, and kiln ledger prints %d: %s", len(documented),
 			len(printedLines), len(printedKinds), printedKinds)

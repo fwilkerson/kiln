@@ -218,6 +218,9 @@ var (
 	verifyContract string
 	//go:embed contract/audit.md
 	auditContract string
+	// auditReply follows the audit's contract, in a spec's build and in a fix's.
+	//go:embed contract/audit-reply.md
+	auditReply string
 )
 
 // contract is kiln's contract with role's agent, in the build's workflow. No agent's file holds it, so no project
@@ -269,6 +272,10 @@ func (b *build) agentLaunch(ctx context.Context, role string, l claude.Launch) (
 	contract := s.contract(role, b.rec.Name)
 	if b.fix != nil {
 		contract = fmt.Sprintf(monitorAuditContract, b.rec.Name)
+	}
+
+	if role == auditRole {
+		contract += "\n" + auditReply
 	}
 
 	l.Role = role

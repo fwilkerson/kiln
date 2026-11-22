@@ -936,6 +936,67 @@ func TestAuditDid(t *testing.T) {
 
 // TestNextStep holds the next step to spec 4's table: each command it names is a command the book takes. Each state
 // kiln tend takes names it, and no step resumes a session itself.
+// TestAuditReply holds how kiln reads an audit's reply, in the form of kiln's contract. It holds what goes back to the
+// build, the tally, and the finding lines the ledger gets.
+func TestAuditReply(t *testing.T) {
+	const tallied = "\n\nread 2 directories, found 1, reported 1"
+	const head = "1. x.go:3  bug\n"
+	unparsed := func(text string) []finding { return []finding{{Reply: text}} }
+	for name, tc := range map[string]struct {
+		text  string
+		back  bool
+		tally *tally
+		lines []finding
+	}{
+		"a reply that found nothing": {text: "All good.\n\nread 2 directories, found 0, reported 0",
+			tally: &tally{}},
+		"a finding in the contract's form, between prose": {
+			text: "I read x.\n\n" + head + "reaches    X answers\n  41\nproof      TestX\n\nThat is all." + tallied,
+			back: true, tally: &tally{1, 1},
+			lines: []finding{{Rank: 1, Path: "x.go", Line: 3, Category: "bug", Reaches: "X answers 41", Proof: "TestX"}}},
+		"findings in a fence, of a whole file and a range": {
+			text: "```text\n1. `doc.txt`  false comment\nharm  none\n\n2. y.go:4-9 weak test\ndesign  a table\n```" +
+				"\n\nread 2 directories, found 2, reported 2",
+			back: true, tally: &tally{2, 2},
+			lines: []finding{{Rank: 1, Path: "doc.txt", Category: "false comment", Harm: "none"},
+				{Rank: 2, Path: "y.go", Line: 4, Category: "weak test", Design: "a table"}}},
+		"a cap that cut some": {text: head + "harm  a lost row\n\nread 2 directories, found 7, reported 1",
+			back: true, tally: &tally{7, 1},
+			lines: []finding{{Rank: 1, Path: "x.go", Line: 3, Category: "bug", Harm: "a lost row"}}},
+		"a reply with no tally": {text: head + "harm  a lost row", back: true,
+			lines: unparsed(head + "harm  a lost row")},
+		"fewer findings than it reported": {text: head + "harm  h" + "\n\nread 2 directories, found 2, reported 2",
+			back: true, tally: &tally{2, 2}, lines: unparsed(head + "harm  h\n\nread 2 directories, found 2, reported 2")},
+		"more reported than found": {text: head + "harm  h\n\nread 2 directories, found 0, reported 1",
+			tally: &tally{0, 1}, lines: unparsed(head + "harm  h\n\nread 2 directories, found 0, reported 1")},
+		"a finding numbered out of turn": {text: "2. x.go:3  bug\nharm  h" + tallied, back: true, tally: &tally{1, 1},
+			lines: unparsed("2. x.go:3  bug\nharm  h" + tallied)},
+		"a kind the contract does not name": {text: "1. x.go:3  style\nharm  h" + tallied, back: true,
+			tally: &tally{1, 1}, lines: unparsed("1. x.go:3  style\nharm  h" + tallied)},
+		"a finding with no field": {text: head + "\nharm  h" + tallied, back: true, tally: &tally{1, 1},
+			lines: unparsed(head + "\nharm  h" + tallied)},
+		"a field given twice": {text: head + "harm  h\nharm  i" + tallied, back: true, tally: &tally{1, 1},
+			lines: unparsed(head + "harm  h\nharm  i" + tallied)},
+		"prose under a finding's head": {text: head + "It breaks.\nharm  h" + tallied, back: true, tally: &tally{1, 1},
+			lines: unparsed(head + "It breaks.\nharm  h" + tallied)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := readReply(tc.text)
+			back := ""
+			if tc.back {
+				back = tc.text
+			}
+
+			lines := r.lines()
+			same := reflect.DeepEqual(r.tally, tc.tally) && reflect.DeepEqual(lines, tc.lines)
+			if r.back() != back || !same {
+				t.Errorf("back %q, tally %+v, lines %+v\nwant back %q, tally %+v, lines %+v", r.back(), r.tally, lines,
+					back, tc.tally, tc.lines)
+			}
+		})
+	}
+}
+
 func TestNextStep(t *testing.T) {
 	const why = "the gate still failed after its last round:\nreport"
 	for name, tc := range map[string]struct {

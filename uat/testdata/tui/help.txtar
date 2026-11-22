@@ -119,7 +119,7 @@ screen '^- \*\*Given\*\*: nothing\.$'
       {"result": {"result": "Built x.", "cost_usd": 0.50}}
     ]
   }},
-  "audit": {"1": {"1": [{"result": {"result": "read 1 package, found 0", "cost_usd": 0.25}}]}}
+  "audit": {"1": {"1": [{"result": {"result": "read 1 package, found 0, reported 0", "cost_usd": 0.25}}]}}
 }
 -- _given/right/x.go --
 // Package scratch is where kiln's builds land.

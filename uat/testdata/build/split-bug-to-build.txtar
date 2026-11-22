@@ -94,7 +94,7 @@ stdout 'return 42'
    "1": [
     {
      "result": {
-      "result": "read 2 directories, found 0"
+      "result": "read 2 directories, found 0, reported 0"
      }
     }
    ]

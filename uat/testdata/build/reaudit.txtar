@@ -85,7 +85,7 @@ stdout 'Checked = true'
    "1": [
     {
      "result": {
-      "result": "1. harness/h.go:5 weak test\n\nread 3 directories, found 1"
+      "result": "1. harness/h.go:5 weak test\n\nread 3 directories, found 1, reported 1"
      }
     }
    ]
@@ -94,7 +94,7 @@ stdout 'Checked = true'
    "1": [
     {
      "result": {
-      "result": "read 3 directories, found 0"
+      "result": "read 3 directories, found 0, reported 0"
      }
     }
    ]

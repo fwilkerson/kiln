@@ -32,7 +32,7 @@ stderr '^  kiln monitor install +set up a launchd job'
 stderr '^  kiln monitor run \[<name>\]\n +run each monitor that is due'
 stderr '^  kiln monitor show <name> show how'
 exec exits 2 kiln ledger --kind gates
-stderr '\Akiln ledger: usage: kiln ledger prints no kind gates, only build, run, gate, reading, monitor\nusage:\n  kiln ledger \[--kind <kind>\].*\n +print what kiln''s ledger holds.*\nrun kiln help for every command\n\z'
+stderr '\Akiln ledger: usage: kiln ledger prints no kind gates, only build, run, gate, reading, finding, monitor\nusage:\n  kiln ledger \[--kind <kind>\].*\n +print what kiln''s ledger holds.*\nrun kiln help for every command\n\z'
 exec exits 2 kiln hook --spec x
 stderr '\Akiln hook: usage: kiln never writes the arguments \["--spec" "x"\]\n\z'
 exec exits 2 kiln ledger --last 0

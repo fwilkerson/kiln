@@ -70,7 +70,7 @@ Status: Proposed
     {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/a/.\" ."}}},
     {"result": {"result": "Built a."}}
   ]}},
-  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0, reported 0"}}]}}
 }
 -- _given/a/a.go --
 // Package scratch is where kiln's builds land.

@@ -45,7 +45,7 @@ screen '^1 +build +first run +\S+ +2 +\$0\.50 +1 .*\n +gate +✗ failed +\S+\n2 
   }},
   "audit": {"1": {"1": [
     {"tool": {"name": "Read", "input": {"file_path": "x.go"}}},
-    {"result": {"result": "X has no doc comment.\n\nread 1 package, found 1", "cost_usd": 0.75}}
+    {"result": {"result": "X has no doc comment.\n\nread 1 package, found 1, reported 1", "cost_usd": 0.75}}
   ]}}
 }
 -- _given/wrong/x.go --

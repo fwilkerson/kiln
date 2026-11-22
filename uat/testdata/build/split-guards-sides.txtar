@@ -116,7 +116,7 @@ grep '`integration/x/`' .claude-calls/verify/1/1/system
    "1": [
     {
      "result": {
-      "result": "read 3 directories, found 0"
+      "result": "read 3 directories, found 0, reported 0"
      }
     }
    ]

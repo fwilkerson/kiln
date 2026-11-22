@@ -14,9 +14,9 @@ grep 'You are building `\.kiln/specs/x\.md`, a spec the developer approved' .cla
 grep '^`\.kiln/specs/x\.amend\.md`\.' .claude-calls/build/1/1/system
 grep 'Never push, and never move or reset main: kiln lands your work\.' .claude-calls/build/1/1/system
 
-# The audit is told its file's body, then its own contract, whose last line findingsOf reads.
+# The audit is told its file's body, then its own contract, which sets the form of its reply.
 grep '\AAudit the packages\.\n\n## kiln''s contract\n' .claude-calls/audit/1/1/system
-grep 'End your reply with one line: `read N directories, found M`' .claude-calls/audit/1/1/system
+grep 'End your reply with one line: `read N directories, found M, reported K`' .claude-calls/audit/1/1/system
 
 -- .kiln/agents/build.md --
 ---
@@ -32,7 +32,7 @@ Audit the packages.
     {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
     {"result": {"result": "Built x."}}
   ]}},
-  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0, reported 0"}}]}}
 }
 -- .kiln/specs/x.md --
 ### 1. X answers

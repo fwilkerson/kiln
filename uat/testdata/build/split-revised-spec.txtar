@@ -125,7 +125,7 @@ stdout 'return 43'
    "1": [
     {
      "result": {
-      "result": "read 3 directories, found 0"
+      "result": "read 3 directories, found 0, reported 0"
      }
     }
    ]
@@ -134,7 +134,7 @@ stdout 'return 43'
    "1": [
     {
      "result": {
-      "result": "read 3 directories, found 0"
+      "result": "read 3 directories, found 0, reported 0"
      }
     }
    ]

@@ -7,13 +7,12 @@ import (
 	"path"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
 )
-
-var tally = regexp.MustCompile(`found (\d+)\s*$`)
 
 // audit runs the audit agent on the directories the build changed, and its acceptance tests. It answers the findings,
 // or "" for none. An audit that names no finding count is all findings. An audit that ends with no result runs again,
@@ -93,7 +92,12 @@ func (b *build) auditTry(ctx context.Context, l claude.Launch, head git.Rev, try
 	case err != nil:
 		return "", err
 	case !ended.Failed:
-		return findingsOf(ended.Text), nil
+		rep := readReply(ended.Text)
+		if !rep.parsed {
+			b.say("kiln could not parse the audit's reply, so its ledger holds the reply whole")
+		}
+
+		return rep.back(), nil
 	case try < auditTries:
 		return "", errNoResult
 	}
@@ -101,15 +105,162 @@ func (b *build) auditTry(ctx context.Context, l claude.Launch, head git.Rev, try
 	return "", fmt.Errorf("the audit ended with no result %d times", auditTries)
 }
 
-// findingsOf is the findings an audit's text names, or "" for none. A text that names no finding count is all
-// findings.
-func findingsOf(text string) string {
-	text = strings.TrimSpace(text)
-	if m := tally.FindStringSubmatch(text); m != nil && m[1] == "0" {
+// reply is an audit's reply, read in the form kiln's contract with the audit sets, which no agent's file changes.
+type reply struct {
+	text string
+	// tally is nil for a reply whose last line names no tally.
+	tally *tally
+	// findings are those the reply lists, when parsed.
+	findings []finding
+	// parsed is whether the reply names a tally, and lists in the contract's form the findings it reports.
+	parsed bool
+}
+
+// tally counts an audit's findings: those it found, and those it listed, which a cap may cut.
+type tally struct {
+	Found    int `json:"found"`
+	Reported int `json:"reported"`
+}
+
+// finding is one finding an audit's reply lists, as a finding line of the ledger holds it. A line for a reply kiln
+// could not parse holds that reply in Reply alone.
+type finding struct {
+	// Rank is the finding's number in the reply, from 1.
+	Rank int    `json:"rank,omitempty"`
+	Path string `json:"path,omitempty"`
+	// Line is 0 for a finding that names a whole file.
+	Line     int    `json:"line,omitempty"`
+	Category string `json:"category,omitempty"`
+	Reaches  string `json:"reaches,omitempty"`
+	Chance   string `json:"chance,omitempty"`
+	Harm     string `json:"harm,omitempty"`
+	Design   string `json:"design,omitempty"`
+	Patch    string `json:"patch,omitempty"`
+	Proof    string `json:"proof,omitempty"`
+	Reply    string `json:"reply,omitempty"`
+}
+
+var (
+	tallyLine   = regexp.MustCompile(`(?m)^.*found (\d+), reported (\d+)\s*\z`)
+	findingHead = regexp.MustCompile("^(\\d+)\\.\\s+`?([^`\\s]+?)(?::(\\d+)(?:-\\d+)?)?`?\\s+" +
+		"(bug|impossible by design|weak test|false comment|test-only export)$")
+	findingField = regexp.MustCompile(`^(reaches|chance|harm|design|patch|proof)\s+(\S.*)$`)
+)
+
+// readReply reads an audit's reply text.
+func readReply(text string) reply {
+	r := reply{text: strings.TrimSpace(text)}
+	body := r.text
+	if m := tallyLine.FindStringSubmatchIndex(r.text); m != nil {
+		found, _ := strconv.Atoi(r.text[m[2]:m[3]])
+		reported, _ := strconv.Atoi(r.text[m[4]:m[5]])
+		r.tally, body = &tally{Found: found, Reported: reported}, r.text[:m[0]]
+	}
+
+	findings, listed := listed(body)
+	r.parsed = listed && r.tally != nil && r.tally.Reported <= r.tally.Found && len(findings) == r.tally.Reported
+	if r.parsed {
+		r.findings = findings
+	}
+
+	return r
+}
+
+// listed answers the findings body lists, and whether each is in the contract's form, numbered from 1 in turn. A
+// finding is its head line, then its fields up to a blank line or a fence. A line that starts no field runs on from
+// the field above it. Lines outside a finding are the reply's own prose.
+func listed(body string) ([]finding, bool) {
+	var findings []finding
+	var open *finding
+	var field *string
+	for line := range strings.Lines(body) {
+		line = strings.TrimSpace(line)
+		head := findingHead.FindStringSubmatch(line)
+		switch {
+		case head != nil:
+			if open != nil && !held(open) {
+				return nil, false
+			}
+
+			findings = append(findings, finding{Path: head[2], Category: head[4]})
+			open, field = &findings[len(findings)-1], nil
+			open.Rank, _ = strconv.Atoi(head[1])
+			open.Line, _ = strconv.Atoi(head[3])
+			if open.Rank != len(findings) {
+				return nil, false
+			}
+		case open == nil:
+		case line == "" || strings.HasPrefix(line, "```"):
+			if !held(open) {
+				return nil, false
+			}
+
+			open = nil
+		default:
+			if field = fieldOf(open, line, field); field == nil {
+				return nil, false
+			}
+		}
+	}
+
+	return findings, open == nil || held(open)
+}
+
+// held is whether f holds a field, which a finding in the contract's form does.
+func held(f *finding) bool {
+	return f.Reaches+f.Chance+f.Harm+f.Design+f.Patch+f.Proof != ""
+}
+
+// fieldOf adds line to f, and answers the field it went in. A line that names a field starts it, unless f holds it
+// already. Any other line runs on from last, the field before it. It answers nil for a line it can't place.
+func fieldOf(f *finding, line string, last *string) *string {
+	m := findingField.FindStringSubmatch(line)
+	if m == nil {
+		if last != nil {
+			*last += " " + line
+		}
+
+		return last
+	}
+
+	field := map[string]*string{"reaches": &f.Reaches, "chance": &f.Chance, "harm": &f.Harm, "design": &f.Design,
+		"patch": &f.Patch, "proof": &f.Proof}[m[1]]
+	if *field != "" {
+		return nil
+	}
+
+	*field = m[2]
+	return field
+}
+
+// heardAudit answers the tally an audit run's reply ends with, and its finding lines. A run that ended with no result
+// has neither.
+func heardAudit(ended claude.Ended) (*tally, []finding) {
+	if ended.Failed {
+		return nil, nil
+	}
+
+	r := readReply(ended.Text)
+	return r.tally, r.lines()
+}
+
+// back is what goes back to the build: "" when r's tally found nothing, or else the whole reply. A reply that names
+// no tally is all findings.
+func (r reply) back() string {
+	if r.tally != nil && r.tally.Found == 0 {
 		return ""
 	}
 
-	return text
+	return r.text
+}
+
+// lines are r's finding lines for the ledger. A parsed reply has one per finding. Another has one that holds it whole.
+func (r reply) lines() []finding {
+	if r.parsed {
+		return r.findings
+	}
+
+	return []finding{{Reply: r.text}}
 }
 
 // changedFiles answers the build's commit, and the files its work changed since it left main, outside .kiln/. In

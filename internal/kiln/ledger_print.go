@@ -55,7 +55,7 @@ func (opt LedgerOptions) keeps(p printed) bool {
 }
 
 // printedKinds are the kinds of line kiln ledger prints, as the package doc lists them.
-var printedKinds = []string{"build", "run", "gate", "reading", "monitor"}
+var printedKinds = []string{"build", "run", "gate", "reading", "finding", "monitor"}
 
 // printed is one line kiln ledger prints: its JSON object, and what LedgerOptions and the order read.
 type printed struct {
@@ -83,7 +83,7 @@ func printable(entries []entry) []printed {
 	return lines
 }
 
-// printed is the build's lines: the build, then its runs, gates and readings.
+// printed is the build's lines: the build, then its runs, gates, readings and findings.
 func (s *buildStats) printed() []printed {
 	lines := []printed{{"build", s.Spec, s.At, s.printedBuild()}}
 	for _, r := range s.runs {
@@ -100,6 +100,10 @@ func (s *buildStats) printed() []printed {
 		lines = append(lines, printed{"reading", s.Spec, e.At, printedReading{Kind: "reading", Build: s.Build,
 			Name: s.Spec, Gauge: e.Gauge, At: stamp(e.At), Landed: e.Landed, Value: e.Value,
 			Crossed: e.crossed(e.Value)}})
+	}
+
+	for _, e := range s.findings {
+		lines = append(lines, printed{"finding", s.Spec, e.At, s.printedFinding(e)})
 	}
 
 	return lines
@@ -145,6 +149,8 @@ type printedRun struct {
 	CostUSD     *float64 `json:"cost_usd"`
 	Turns       *int     `json:"turns"`
 	FailedCalls *int     `json:"failed_calls"`
+	Found       *int     `json:"found"`
+	Reported    *int     `json:"reported"`
 }
 
 // printedRun is r, a run of the build, as kiln ledger prints it. Its numbers add up as a build's do.
@@ -154,6 +160,10 @@ func (s *buildStats) printedRun(r run) printedRun {
 		Seconds: secondsOf(n.took), Ended: orNull(r.ended), CostUSD: n.cost, Turns: n.turns, FailedCalls: n.failed}
 	if !r.end.IsZero() {
 		p.End = new(stamp(r.end))
+	}
+
+	if r.tally != nil {
+		p.Found, p.Reported = &r.tally.Found, &r.tally.Reported
 	}
 
 	return p
@@ -182,6 +192,46 @@ type printedReading struct {
 	Landed  git.Rev  `json:"landed"`
 	Value   *float64 `json:"value"`
 	Crossed bool     `json:"crossed"`
+}
+
+// printedFinding is a finding an audit reported, or an audit's reply kiln could not parse, as kiln ledger prints it.
+type printedFinding struct {
+	Kind     string  `json:"kind"`
+	Build    string  `json:"build"`
+	Name     Spec    `json:"name"`
+	Fix      bool    `json:"fix"`
+	Session  string  `json:"session"`
+	At       stamp   `json:"at"`
+	Parsed   bool    `json:"parsed"`
+	Rank     *int    `json:"rank"`
+	Path     *string `json:"path"`
+	Line     *int    `json:"line"`
+	Category *string `json:"category"`
+	Reaches  *string `json:"reaches"`
+	Chance   *string `json:"chance"`
+	Harm     *string `json:"harm"`
+	Design   *string `json:"design"`
+	Patch    *string `json:"patch"`
+	Proof    *string `json:"proof"`
+	Reply    *string `json:"reply"`
+}
+
+// printedFinding is e, a finding line of the build, as kiln ledger prints it.
+func (s *buildStats) printedFinding(e entry) printedFinding {
+	f := e.finding
+	p := printedFinding{Kind: "finding", Build: s.Build, Name: s.Spec, Fix: s.Monitor != "", Session: e.Session,
+		At: stamp(e.At), Parsed: f.Reply == "", Path: orNull(f.Path), Category: orNull(f.Category),
+		Reaches: orNull(f.Reaches), Chance: orNull(f.Chance), Harm: orNull(f.Harm), Design: orNull(f.Design),
+		Patch: orNull(f.Patch), Proof: orNull(f.Proof), Reply: orNull(f.Reply)}
+	if p.Parsed {
+		p.Rank = &f.Rank
+	}
+
+	if f.Line > 0 {
+		p.Line = &f.Line
+	}
+
+	return p
 }
 
 // printedMonitor is a run of a monitor, as kiln ledger prints it.

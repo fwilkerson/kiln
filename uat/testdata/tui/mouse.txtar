@@ -54,7 +54,7 @@ screen '^mouse-spec · build 1 · '
       {"result": {"result": "Fixed x."}}
     ]
   }},
-  "audit": {"1": {"1": [{"result": {"result": "read 1 package, found 0"}}]}}
+  "audit": {"1": {"1": [{"result": {"result": "read 1 package, found 0, reported 0"}}]}}
 }
 -- _given/wrong/x.go --
 // Package scratch is where kiln's builds land.

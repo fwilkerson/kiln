@@ -86,7 +86,7 @@ const Base = 41
   "3": [{"result": {"result": "Went on, as the developer said.\nbugs: none"}}],
   "4": [{"result": {"result": "Went on.\nbugs: none"}}]
  }},
- "audit": {"1": {"1": [{"result": {"result": "read 2 directories, found 0"}}]}},
+ "audit": {"1": {"1": [{"result": {"result": "read 2 directories, found 0, reported 0"}}]}},
  "tend": {"1": {"1": [
   {"tool": {"name": "Bash", "input": {"command": "cp \"$WORK/_given/base.go\" base.go && git add base.go && git commit -q -m 'fix: set Base to 41'"}}},
   {"exit": 0}

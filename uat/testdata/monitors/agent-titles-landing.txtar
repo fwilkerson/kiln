@@ -49,7 +49,7 @@ Write the note.
    "1": [
     {
      "result": {
-      "result": "read 1 directories, found 0"
+      "result": "read 1 directories, found 0, reported 0"
      }
     }
    ]

@@ -58,7 +58,7 @@ Find nothing.
   ]}},
   "audit": {"1": {"1": [
     {"tool": {"name": "Read", "input": {"file_path": "x.go"}}},
-    {"result": {"result": "read 2 packages, found 0"}}
+    {"result": {"result": "read 2 packages, found 0, reported 0"}}
   ]}}
 }
 -- .kiln/specs/x.md --

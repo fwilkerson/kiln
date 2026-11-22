@@ -25,7 +25,10 @@ import (
 //	build     when kiln fire starts a build: its spec, the commit it was approved at, its size
 //	start     before each session run: its role, its session, the length of the session's stream, why it started,
 //	          the process ID of the kiln fire that started it, and the commit an audit run read
-//	end       after each session run: how it ended, its totals, the stream's length, and what an audit changed
+//	end       after each session run: how it ended, its totals, the stream's length, and what an audit changed. An
+//	          audit's adds the tally its reply ends with
+//	finding   after an audit's end line, one per finding its reply lists: its rank, place, category and fields.
+//	          A reply kiln could not parse gets one line, which holds it whole
 //	gate      after each gate: when it ended, whether it passed, whether it gated a landing, and whether it ran the
 //	          commands at main too
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
@@ -55,6 +58,7 @@ const (
 	outcomeKind kind = "outcome"
 	gaugeKind   kind = "gauge"
 	monitorKind kind = "monitor"
+	findingKind kind = "finding"
 )
 
 // How a session run ended, in an end line.
@@ -108,9 +112,13 @@ type entry struct {
 	// Streamed is the length of the session's stream. A start line holds it before the run, and an end line after.
 	Streamed int64 `json:"streamed,omitempty"`
 	// An end line's. Changed names the paths an audit run changed in the build's tree, which kiln then put back.
+	// Tally is the one an audit's reply ends with.
 	Ended   string         `json:"ended,omitempty"`
 	Totals  *claude.Totals `json:"totals,omitempty"`
 	Changed []string       `json:"changed,omitempty"`
+	Tally   *tally         `json:"tally,omitempty"`
+	// A finding line's, and Session the audit's.
+	finding
 	// A gate line's. At is when it started. Landing is the gate on the work rebased onto main. RanMain is whether it
 	// ran the commands at main too. A line from before kiln wrote it holds none.
 	End     time.Time `json:"end,omitzero"`

@@ -90,7 +90,7 @@ kiln keeps its own files out of the working tree. Main is the branch named main:
 	  tend-<name>.lock             held by the one kiln tend at work on a spec or monitor, until it exits
 	  commands.lock                held while kiln runs what judges the work or moves main, as Lanes says
 	  worktrees.lock               held while git adds or removes a worktree, which writes the shared config
-	  ledger.jsonl                 every build, session run, gate, outcome, gauge reading and monitor run
+	  ledger.jsonl                 each build, run, gate, outcome, gauge reading, audit finding and monitor run
 	  monitor.log                  what the launchd job of kiln monitor install printed
 	  sessions/<id>/               each session's files, as go doc ./internal/claude lists them; a kiln tend
 	                               session's tend.md, and the note.md it leaves for the build
@@ -195,7 +195,12 @@ Each gate waits for commands.lock, as Lanes says. A landing's try holds it from 
 moves, or the work goes back. Its gate takes none of its own.
 
 The audit reads each directory holding a file the build changed outside .kiln/. For a directory it emptied, it reads
-the nearest above. Nothing the audit writes reaches the build, and kiln removes its worktree once it ends. A
+the nearest above. Nothing the audit writes reaches the build, and kiln removes its worktree once it ends.
+
+The contract that ends the audit's system prompt sets the form of the audit's reply. Each finding listed is a block
+of named fields. The reply's last line is "read N directories, found M, reported K". While M is 0, nothing goes back
+to the build. Otherwise the whole reply goes back, as does a reply without that line. The ledger holds each finding
+listed. A reply in another form gets one ledger line, which holds the whole reply. A
 landing that doesn't move main leaves the branch as it stood before the landing began. Should kiln die once main
 holds the landing, the next kiln fire records it landed, and starts no session. kiln accept lands a commit that
 retires the spec. A spec that waited on its branch lands its work first, with the amendments folded in.
@@ -502,6 +507,8 @@ second, as jq's fromdate reads it. A field whose type allows null holds null whi
 	  cost_usd      number|null    its cost
 	  turns         number|null    its turns
 	  failed_calls  number|null    its failed calls
+	  found         number|null    findings found, by the last line of an audit run's reply; null without that line
+	  reported      number|null    findings listed, by that line; fewer than found when the audit's file caps the list
 	gate                           a run of the gate
 	  build         string         its build's ID
 	  name          string         its build's name
@@ -519,6 +526,24 @@ second, as jq's fromdate reads it. A field whose type allows null holds null whi
 	  landed        string         the commit it read
 	  value         number|null    the reading
 	  crossed       bool           whether it crossed its line
+	finding                        a finding an audit's reply listed, or a reply kiln could not parse
+	  build         string         its build's ID
+	  name          string         its build's name
+	  fix           bool           whether its build is a monitor's fix
+	  session       string         the audit's session
+	  at            time           when the audit's run ended
+	  parsed        bool           whether kiln parsed the reply; when not, reply alone holds it
+	  rank          number|null    its number in the reply, from 1
+	  path          string|null    the file it names
+	  line          number|null    the line it names; null for a whole file
+	  category      string|null    bug, impossible by design, weak test, false comment or test-only export
+	  reaches       string|null    each of these six as the reply gives it; null when it gives none
+	  chance        string|null
+	  harm          string|null
+	  design        string|null
+	  patch         string|null
+	  proof         string|null
+	  reply         string|null    the whole reply kiln could not parse
 	monitor                        a monitor's run
 	  name          string         the monitor's name
 	  at            time           when kiln wrote it, once its check or gauge ended

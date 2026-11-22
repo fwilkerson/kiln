@@ -22,7 +22,7 @@
 //	    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
 //	    {"result": {"result": "Built x."}}
 //	  ]}},
-//	  "audit": {"1": {"1": [{"result": {"result": "read 1 directory, found 0"}}]}}
+//	  "audit": {"1": {"1": [{"result": {"result": "read 1 directory, found 0, reported 0"}}]}}
 //	}
 //	-- .kiln/specs/x.md --
 //	### 1. X answers

@@ -58,7 +58,7 @@ grep '"allowRead": \[\s*"[^"]*/\.build-x"\s*\]' .claude-calls/build/1/1/settings
     ],
     "3": [{"result": {"result": "The finding is wrong."}}]
   }},
-  "audit": {"1": {"1": [{"result": {"result": "1. x.go:5 false comment\n\nread 2 directories, found 1"}}]}}
+  "audit": {"1": {"1": [{"result": {"result": "1. x.go:5 false comment\n\nread 2 directories, found 1, reported 1"}}]}}
 }
 -- .kiln/specs/x.md --
 ### 1. X answers

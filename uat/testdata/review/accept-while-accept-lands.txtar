@@ -45,7 +45,7 @@ stdout '^kiln holds no approved spec$'
       {"result": {"result": "Built y, under an amendment."}}
     ]}
   },
-  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}, "2": {"1": [{"result": {"result": "read 2 packages, found 0"}}]}}
+  "audit": {"1": {"1": [{"result": {"result": "read 2 packages, found 0, reported 0"}}]}, "2": {"1": [{"result": {"result": "read 2 packages, found 0, reported 0"}}]}}
 }
 -- _given/x/.kiln/specs/x.amend.md --
 # Amendments to .kiln/specs/x.md

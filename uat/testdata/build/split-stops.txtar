@@ -75,7 +75,7 @@ grep 'next: run kiln tend x, ' .claude-calls/run.out
    "1": [
     {
      "result": {
-      "result": "read 2 directories, found 0"
+      "result": "read 2 directories, found 0, reported 0"
      }
     }
    ]

@@ -74,7 +74,7 @@ stdout '^x: landed on main'
       {"result": {"result": "Built x.", "cost_usd": 0.50}}
     ]
   }},
-  "audit": {"1": {"1": [{"result": {"result": "read 1 package, found 0"}}]}}
+  "audit": {"1": {"1": [{"result": {"result": "read 1 package, found 0, reported 0"}}]}}
 }
 -- _given/right/x.go --
 // Package scratch is where kiln's builds land.

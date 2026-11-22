@@ -47,17 +47,3 @@ false. A sentence in `README.md` that the code you read contradicts is a false c
   after the five, since none counts among them.
 - Missing comments, style and naming are not findings.
 - Report at most five findings, ranked by how likely each is to happen in use.
-
-## Your reply
-
-List the findings in rank order.
-
-```text
-1. path:line  bug | impossible by design | weak test | false comment | test-only export
-reaches    the command or call, the state, and what goes wrong
-chance     what must happen in the program's wiring for the path to run, and how often that is
-harm       what a user or the data ends with, and what heals it
-design     the change that makes it impossible to build, or "none"
-patch      the smallest fix, only when design is "none"
-proof      the test or check that fails today, or "none" when no test can fail today
-```

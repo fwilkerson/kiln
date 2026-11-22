@@ -81,7 +81,7 @@ grep 'h\.go:3 weak test' .claude-calls/verify/1/2/prompt
    "1": [
     {
      "result": {
-      "result": "1. harness/h.go:3 weak test\n\nread 3 directories, found 1"
+      "result": "1. harness/h.go:3 weak test\n\nread 3 directories, found 1, reported 1"
      }
     }
    ]

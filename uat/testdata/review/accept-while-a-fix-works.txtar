@@ -78,8 +78,8 @@ x.txt holds one line.
   {"result": {"result": "Built x, under an amendment."}}
  ]}},
  "audit": {
-  "1": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
-  "2": {"1": [{"result": {"result": "read 1 directories, found 0"}}]},
-  "3": {"1": [{"result": {"result": "read 1 directories, found 0"}}]}
+  "1": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]},
+  "2": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]},
+  "3": {"1": [{"result": {"result": "read 1 directories, found 0, reported 0"}}]}
  }
 }

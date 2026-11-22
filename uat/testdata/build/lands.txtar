@@ -37,6 +37,16 @@ exec kiln ledger --kind build --name x
 stdout -count=1 '^\{'
 stdout '^\{"kind":"build","build":"[a-z0-9]{12}","name":"x","fix":false,.*"outcome":"landed","seconds":[0-9.]+,"cost_usd":0\.42,"turns":3,"failed_calls":1,"rounds":0,"audits":1,"findings":1\}$'
 
+# The audit's reply lists its finding in the form of kiln's contract, so the ledger holds it, field by field. The
+# reply says the audit found two, and listed one: the audit's run holds both counts. The first try, with no result,
+# holds neither.
+exec kiln ledger --kind finding --name x
+stdout -count=1 '^\{'
+stdout '^\{"kind":"finding","build":"[a-z0-9]{12}","name":"x","fix":false,"session":"[^"]+","at":"[^"]+","parsed":true,"rank":1,"path":"x\.go","line":3,"category":"false comment","reaches":"the doc says 41","chance":null,"harm":null,"design":"none","patch":"say 42","proof":null,"reply":null\}$'
+exec kiln ledger --kind run --name x
+stdout -count=1 '"role":"audit",.*"found":2,"reported":1\}$'
+stdout -count=1 '"role":"audit",.*"found":null,"reported":null\}$'
+
 # Its first gate ran the gate's commands at main too. Its landing's gate read the checks kept there.
 exec kiln ledger --kind gate --name x
 stdout '\A\{"kind":"gate",[^\n]*"landing":false,"ran_main":true\}\n'
@@ -99,7 +109,7 @@ exec git branch --list 'kiln/*'
   "audit": {
     "1": {"1": [{"result": {"is_error": true, "api_error_status": 529, "result": "API Error: 529 Overloaded"}}]},
     "2": {"1": [
-      {"result": {"result": "1. x.go:3  false comment\nreaches    the doc says 41\n\nread 2 packages, found 1", "cost_usd": 0.12}}
+      {"result": {"result": "1. x.go:3  false comment\nreaches    the doc says 41\ndesign     none\npatch      say\n  42\n\nread 2 packages, found 2, reported 1", "cost_usd": 0.12}}
     ]}
   }
 }
