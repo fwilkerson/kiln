@@ -684,11 +684,12 @@ func (b *build) fixEnded(ctx context.Context) error {
 		return nil
 	}
 
-	if err := b.r.store.update(func(k *book) error { k.retire(b.rec.Name); return nil }); err != nil {
+	// The record goes last, so the next kiln monitor run ends a fix whose kiln died before it.
+	if err := b.r.dropCheckouts(context.WithoutCancel(ctx), b.rec.Name); err != nil {
 		return err
 	}
 
-	return b.r.dropCheckouts(context.WithoutCancel(ctx), b.rec.Name)
+	return b.r.store.update(func(k *book) error { k.retire(b.rec.Name); return nil })
 }
 
 // fixLaunch is a run of the monitor's agent's session, in the fix's worktree. Its hook keeps it off .kiln/, and off

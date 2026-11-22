@@ -76,9 +76,6 @@ const slots = 6
 // defects are the kills known to leave kiln wrong, each with what goes wrong. A row's run fails once its defect is
 // fixed, and then the row goes.
 var defects = map[kill]string{
-	{"fix", "KILL", "64"}:    fixRetired,
-	{"fix", "KILL", "65"}:    fixRetired,
-	{"fix", "KILL", "66"}:    fixRetired,
 	{"fix", "KILL", "7"}:     "The ledger names a fix the book never held, so kiln status shows it building with no kiln.",
 	{"fix", "KILL", "14,17"}: lostDropped,
 	{"fix", "KILL", "14,18"}: lostDropped,
@@ -87,7 +84,6 @@ var defects = map[kill]string{
 
 // The defects that several kills share.
 const (
-	fixRetired  = "The landed fix's record is gone, so nothing removes its worktree and branch."
 	lostDropped = "The cut-short fix's record went first, so its outcome, worktree and branch are left to no record."
 )
 
