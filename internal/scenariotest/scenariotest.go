@@ -339,6 +339,10 @@ func ready(work string, setenv func(name, value string), vars func() []string) e
 		return err
 	}
 
+	if err := checkScript(work); err != nil {
+		return err
+	}
+
 	excluded := strings.Join([]string{"/" + ClaudeScriptFile, "/" + ClaudeCallsDir + "/", "/" + givenDir + "/"}, `\n`)
 	script := "git init --quiet -b main && git config user.name kiln-test && " +
 		"git config user.email kiln-test@example.com && printf '" + excluded + `\n' >>.git/info/exclude && ` +

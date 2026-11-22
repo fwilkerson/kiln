@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -245,8 +247,8 @@ func (s ClaudeStep) check(role string) error {
 	return nil
 }
 
-func loadClaudeScript(work string, c ClaudeCall) ([]ClaudeStep, error) {
-	role, attempt, call := c.Role, c.Attempt, c.Call
+// readClaudeScript decodes the script in work, and refuses a field the scripted claude does not know.
+func readClaudeScript(work string) (ClaudeScript, error) {
 	raw, err := readFile(filepath.Join(work, ClaudeScriptFile))
 	if err != nil {
 		return nil, err
@@ -257,6 +259,49 @@ func loadClaudeScript(work string, c ClaudeCall) ([]ClaudeStep, error) {
 	var script ClaudeScript
 	if err := dec.Decode(&script); err != nil {
 		return nil, fmt.Errorf("%s: %w", ClaudeScriptFile, err)
+	}
+
+	return script, nil
+}
+
+// Check answers the first step of s that the scripted claude would refuse. A test that calls it first fails on that
+// step's error, not on a session that ended with no result.
+func (s ClaudeScript) Check() error {
+	for role, attempts := range s {
+		for attempt, calls := range attempts {
+			for call, steps := range calls {
+				for i, step := range steps {
+					if err := step.check(role); err != nil {
+						return fmt.Errorf("%s: role %q, attempt %d, call %d, step %d: %w", ClaudeScriptFile, role,
+							attempt, call, i+1, err)
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// checkScript refuses the script in work, when work holds one, before a scenario runs a bad step.
+func checkScript(work string) error {
+	if _, err := os.Stat(filepath.Join(work, ClaudeScriptFile)); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+
+	script, err := readClaudeScript(work)
+	if err != nil {
+		return err
+	}
+
+	return script.Check()
+}
+
+func loadClaudeScript(work string, c ClaudeCall) ([]ClaudeStep, error) {
+	role, attempt, call := c.Role, c.Attempt, c.Call
+	script, err := readClaudeScript(work)
+	if err != nil {
+		return nil, err
 	}
 
 	steps, ok := script[role][attempt][call]

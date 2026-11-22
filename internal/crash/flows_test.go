@@ -473,6 +473,10 @@ func newScratch(t *testing.T, f flow) *scratch {
 		}
 	}
 
+	if err := script.Check(); err != nil {
+		t.Fatal(err)
+	}
+
 	raw, err = json.Marshal(script)
 	if err != nil {
 		t.Fatal(err)
