@@ -17,7 +17,8 @@ import (
 // Totals is what one run of a session printed, counted. A run is one start or resume of the session. A nil field is
 // a number the run printed nothing to read it from: unknown, not zero.
 type Totals struct {
-	// Turns and CostUSD sum the run's result events. A resume's result counts the turns and cost of the run alone.
+	// Turns and CostUSD sum the run's result events. When a run resumes the session, the run's result event
+	// counts the turns and cost of that run alone.
 	Turns   *int     `json:"turns,omitempty"`
 	CostUSD *float64 `json:"cost_usd,omitempty"`
 	// Context is the input tokens of the run's top-level messages.
@@ -489,7 +490,7 @@ func (t *tally) totals() Totals {
 
 // Cause is the failed calls of one cause: how many, and the tool and input of the first.
 type Cause struct {
-	// Text names the cause. A refusal's starts "refused: ".
+	// Text names the cause. For a refusal, Text begins with "refused:" and a space.
 	Text        string
 	Tool, Input string
 	Count       int
@@ -581,7 +582,7 @@ var (
 	position      = regexp.MustCompile(`^[^\s:]+:\d+:(\d+:)?\s*`)
 )
 
-// cause is the first line of an error's output that says something. It skips an exit status and a Go package's
+// cause is the first line of an error's output that says something. It skips an exit status and a Go package
 // header, and drops a leading path:line: or path:line:col:.
 func cause(output string) string {
 	for line := range strings.Lines(output) {
@@ -594,7 +595,7 @@ func cause(output string) string {
 	return ""
 }
 
-// says is false of a blank line, an exit status and a Go package's header.
+// says is false of a blank line, an exit status and a Go package header.
 func says(line string) bool {
 	return line != "" && !exitStatus.MatchString(line) && !packageHeader.MatchString(line)
 }

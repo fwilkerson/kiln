@@ -13,8 +13,8 @@ import (
 )
 
 // TestCheckout holds the wiring a build's links into .claude/ rest on. A build's worktree holds a link as a plain
-// file. Claude Code's sandbox then lets a session's shell write where the link points. A commit there keeps it a
-// link.
+// file. Claude Code's sandbox then lets a session's shell commands write where the link points. A commit made there
+// still records the link.
 func TestCheckout(t *testing.T) {
 	t.Parallel()
 	repo := t.TempDir()

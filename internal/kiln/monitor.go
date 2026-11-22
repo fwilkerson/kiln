@@ -114,7 +114,8 @@ func (m monitor) finds() bool {
 	return m.finder != ""
 }
 
-// fixes is whether m fixes what it finds, with its command or its agent. One that does not watches its gauge.
+// fixes is whether m fixes what it finds, with its command or its agent. A monitor that fixes nothing watches its
+// gauge.
 func (m monitor) fixes() bool {
 	return m.command || m.agent
 }

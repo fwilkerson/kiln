@@ -184,7 +184,7 @@ func lastLines(text string, n int) string {
 
 // fixAgent runs the monitor's agent until the fix ends. gateReport is what the gate printed after the command, or "".
 func (b *build) fixAgent(ctx context.Context, gateReport string) error {
-	b.set(func(r *record) { r.Session = newSession() })
+	b.set(func(r *record) { r.Session = claude.NewID() })
 	return b.fixTurns(ctx, false, b.fix.prompt(gateReport), reason{Why: whyFirst})
 }
 

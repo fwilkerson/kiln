@@ -170,7 +170,7 @@ var sgr = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 func unclosed(s string) string {
 	var open []string
 	for _, seq := range sgr.FindAllString(s, -1) {
-		if seq == ansi.ResetStyle || seq == "\x1b[m" {
+		if seq == ansi.ResetStyle || seq == "\x1b[0m" {
 			open = nil
 		} else {
 			open = append(open, seq)

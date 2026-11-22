@@ -20,7 +20,7 @@ const (
 	monitorsLane
 )
 
-// laneOf is the lane of the record r: a fix's is the monitors', and a spec's the specs'.
+// laneOf is the lane of the record r: monitorsLane for a fix, and specsLane for a spec.
 func laneOf(r *record) lane {
 	if r.Monitor {
 		return monitorsLane

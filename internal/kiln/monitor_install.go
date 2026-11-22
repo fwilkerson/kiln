@@ -92,7 +92,7 @@ func (r *Repo) launchdJob(label string, minute int) []byte {
 	return []byte(b.String())
 }
 
-// jobEnv names the variables the launchd job keeps from kiln monitor install's environment. launchd gives a job
+// jobEnv names the variables the launchd job keeps from the environment of kiln monitor install. launchd gives a job
 // neither. TMPDIR is where the gate's tests write, which a developer may keep on a volume Spotlight never reads.
 var jobEnv = []string{"PATH", "TMPDIR"}
 

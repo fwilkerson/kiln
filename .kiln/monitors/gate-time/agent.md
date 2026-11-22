@@ -39,7 +39,7 @@ This work rests on the guide's "Tests", which `CLAUDE.md` loads from `docs/guide
 ## How you check the fix
 
 - Run `go vet ./...` and `go test ./...`. Format each Go file with `gofmt`, and run `go tool style -l .`.
-- Run `sh .kiln/monitors/uat/lib/lost main`. It prints each check no scenario holds any more, and must print nothing.
+- Run `sh .kiln/monitors/uat/lib/lost main`. It prints each check no scenario holds anymore, and must print nothing.
 - No fewer tests pass, no more skip, and no package's coverage falls, against your run before.
 - For each test whose setup you changed, plant a bug in the rule it checks, run it, and undo the plant. A plant
   that passes names a check your change lost: restore it.

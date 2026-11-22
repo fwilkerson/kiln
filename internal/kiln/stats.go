@@ -283,7 +283,7 @@ func (r *Repo) sumUp(ctx context.Context, rec record, tree git.Worktree, landedA
 	return append(lines, "next: "+nextStep(rec, tree, landedAt))
 }
 
-// auditOf says what the audit of rec's build did, as the ledger holds it.
+// auditOf says what the audit did on the build of rec, as the ledger holds it.
 func (r *Repo) auditOf(rec record) string {
 	s, err := r.stats(rec.Build)
 	var runs []run

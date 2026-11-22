@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"time"
+
+	"github.com/fwilkerson/kiln/internal/claude"
 )
 
-// A session's transcript is where Claude Code keeps it, under $HOME, so a resume finds it as Claude Code would.
+// Each transcript sits where Claude Code keeps it, under $HOME, so a resumed session finds it as Claude Code would.
 var nonAlphanumeric = regexp.MustCompile(`[^A-Za-z0-9]`)
 
 func claudeProjects() string {
@@ -59,7 +61,7 @@ func (s *claudeSession) keepTranscript() error {
 
 	line, err := marshalJSON(jsonObject{
 		{"type", "user"}, {"message", jsonObject{{"role", "user"}, {"content", string(s.prompt)}}},
-		{"sessionId", s.call.SessionID}, {"cwd", s.call.Dir}, {"uuid", newUUID()},
+		{"sessionId", s.call.SessionID}, {"cwd", s.call.Dir}, {"uuid", claude.NewID()},
 		{"timestamp", time.Now().UTC().Format(time.RFC3339Nano)},
 	})
 	if err != nil {

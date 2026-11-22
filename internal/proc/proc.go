@@ -27,7 +27,7 @@
 // variables that name who commits: GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME and GIT_COMMITTER_EMAIL.
 //
 // kiln runs on macOS alone. The process table is read with sysctl(3), not /bin/ps, which is setuid and which a
-// session's sandbox refuses to exec. [WorkingDirs] asks lsof, which it gives 5 s. [Run] gives a group 10 s to close a
+// session's sandbox refuses to exec. [WorkingDirs] runs lsof, which it gives 5 s. [Run] gives a group 10 s to close a
 // command's output, once the command exits within its limit.
 package proc
 

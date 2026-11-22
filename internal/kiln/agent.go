@@ -67,8 +67,8 @@ func parseAgent(raw string) (agent, error) {
 	return a, append(refused, a.badEffort()...).err()
 }
 
-// read reads one line of the frontmatter into a, and refuses the line kiln cannot read. It skips a # line, and a line
-// with no colon.
+// read reads one line of the frontmatter into a, and refuses the line kiln cannot read. It skips a line whose key
+// starts with #, and a line with no colon.
 func (a *agent) read(line string) refusals {
 	key, value, ok := field(line)
 	// A YAML list would read as no tools, which gives every tool: the opposite of what its writer meant.

@@ -32,7 +32,7 @@ decided and why.
 <!-- Tailor this: the commands that check this project's work, and what each needs. -->
 
 - Run `go vet ./...` and `go test ./...` before you end your turn. The gate runs them too.
-- `go test ./...` holds each Go file's score from `go tool health .`, and `TestHealth` fails when one moves. A file
+- `go test ./...` holds the score of each Go file from `go tool health .`, and `TestHealth` fails when one moves. A file
   you add scores 10. When a file you change scores lower, fix the code. When a file listed in `held`, in
   `style_test.go`, reaches 10, delete its line. Never add a line to `held`, and never lower one.
 - Format each Go file with `gofmt`.

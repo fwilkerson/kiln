@@ -23,9 +23,9 @@ type check struct {
 	Output string `json:"output,omitempty"`
 	// Cut is how many bytes the command printed before Output, which the check dropped.
 	Cut int `json:"cut,omitempty"`
-	// Failed names each test that failed, as go test's output or the command's JUnit XML names it.
+	// Failed names each test that failed, as the output of go test or the command's JUnit XML names it.
 	Failed tests `json:"failed,omitempty"`
-	// Ran names each test the command's JUnit XML lists. go test's output lists none.
+	// Ran names each test the command's JUnit XML lists. The output of go test lists none.
 	Ran tests `json:"ran,omitempty"`
 	// Broken is true when the command failed in a way no test names. A Go package that fails to build does that. So do
 	// JUnit XML that will not parse, and a test module that will not import.
@@ -86,9 +86,9 @@ func runCheck(ctx context.Context, dir git.Worktree, command string, s projectSh
 	return c, nil
 }
 
-// failedTests reads go test's output for the top-level tests that failed, each named with its package. cutShort names
-// each package that named a failed test, but whose test binary ended before it reported. broken is true when a package
-// failed with no test named, or is cut short.
+// failedTests reads the output of go test for the top-level tests that failed, each named with its package. cutShort
+// names each package that named a failed test, but whose test binary ended before it reported. broken is true when a
+// package failed with no test named, or is cut short.
 func failedTests(output string) (failed, cutShort []string, broken bool) {
 	var f failures
 	for line := range strings.Lines(output) {
@@ -98,7 +98,7 @@ func failedTests(output string) (failed, cutShort []string, broken bool) {
 	return append(f.failed, f.pending...), f.cutShort, f.broken || len(f.cutShort) > 0
 }
 
-// failures is what go test's output says failed, so far. pending names the tests that failed in a package whose
+// failures holds what the output of go test says failed, so far. pending names the tests that failed in a package whose
 // FAIL line is still to come. finished is whether a lone FAIL line followed the last failed test's line. A test binary
 // prints that line when it reports.
 type failures struct {
@@ -106,7 +106,7 @@ type failures struct {
 	broken, finished          bool
 }
 
-// read reads one line of go test's output.
+// read reads one line of the output of go test.
 func (f *failures) read(line string) {
 	if line == "FAIL" {
 		f.finished = true
@@ -180,7 +180,7 @@ func judge(tip, main []check, refused map[string]string) verdict {
 	return v
 }
 
-// failedAt reads the checks at main, as go test's output and JUnit XML name their tests. It answers each check by
+// failedAt reads the checks at main, as the output of go test and JUnit XML name their tests. It answers each check by
 // command. It answers the names of the tests that failed too, sorted, each once. A command run twice answers one
 // check, which holds what both failed and ran.
 func failedAt(main []check) (byCommand map[string]check, names []string) {

@@ -6,7 +6,7 @@ model: opus
 ---
 
 You keep the project's modules current. The monitor's check printed each update, a release at least 7 days old. Its
-command required each that `go get` took, then tidied go.mod, and the gate failed on that work.
+command required each that `go get` took, then tidied `go.mod`, and the gate failed on that work.
 
 ## What you change
 
@@ -14,7 +14,7 @@ command required each that `go get` took, then tidied go.mod, and the gate faile
   changelog in the module cache, `go env GOMODCACHE`, where it ships one.
 - A file a tool writes from a module, such as one `go generate` or a `go tool` writes: run that tool again, rather
   than editing the file.
-- Never require a version the check did not print, and never edit go.mod or go.sum by hand.
+- Never require a version the check did not print, and never edit `go.mod` or `go.sum` by hand.
 - Each check stays: loosen, skip or delete no test.
 
 ## How you check the fix
@@ -24,7 +24,7 @@ command required each that `go get` took, then tidied go.mod, and the gate faile
 ## When to ask for the developer
 
 - An update changes what the project does for its users, such as a changed default, and no test says which is right.
-- The gate passes only with another version than the check printed, or with a module go.mod does not require.
+- The gate passes only with another version than the check printed, or with a module `go.mod` does not require.
 
 ## Your last reply
 

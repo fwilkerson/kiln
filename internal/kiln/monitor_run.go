@@ -211,8 +211,8 @@ func (run *monitorRunning) pass(ctx context.Context, m monitor, dueOrNot bool) (
 	return run.check(ctx, m, h, k.find(m.Name))
 }
 
-// heldStuck holds m while main's tip and m's directory are those its check or gauge ran past the timeout at. It writes
-// m's monitor line then. A run due or not, as one by name, holds none. It answers whether it held m.
+// heldStuck holds m while main's tip and m's directory stay as they were when m's check or gauge timed out. It
+// writes m's monitor line then. A run due or not, as one by name, holds none. It answers whether it held m.
 func (run *monitorRunning) heldStuck(ctx context.Context, m monitor, h *history, dueOrNot bool) (bool, error) {
 	if dueOrNot {
 		return false, nil

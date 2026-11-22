@@ -50,9 +50,9 @@ type InitOptions struct {
 	Preset string
 }
 
-// Init brings .kiln/ in the checkout up to date with kiln's defaults, as opt's preset fills them. The package doc
-// says how, under Presets. Init adds the keys a preset's kiln.json lacks as sharedDefaults holds them. Last, it
-// installs the hook, or says why it installed none, as installHook says.
+// Init brings .kiln/ in the checkout up to date with kiln's defaults, as the preset that opt names fills them. The
+// package doc says how, under Presets. Init adds the keys a preset's kiln.json lacks as sharedDefaults holds them.
+// Last, it installs the hook, or says why it installed none, as installHook says.
 func (r *Repo) Init(ctx context.Context, out io.Writer, opt InitOptions) error {
 	last, err := r.lastInit()
 	if err != nil {

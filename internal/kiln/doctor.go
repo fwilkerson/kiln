@@ -26,11 +26,11 @@ import (
 // audit agents as kiln queue reads them. It reads the reviewers as kiln init does, with each reviewer's link in
 // .claude/agents/. It reads each file kiln init recorded, for a conflict it left there. It reads each monitor under
 // .kiln/monitors/ as kiln monitor run reads it at main's tip. It reads the files git would commit there, and agent.md
-// as the fix's session reads it. Where a command of kiln.json starts with a path, such as notify's, Doctor reads the
-// script there. It needs the branch main, a claude on the PATH, and a pre-commit hook that runs kiln precommit. With a
-// monitor, it notes when no launchd job runs in a checkout of the repository. With a name, it reads that spec as kiln
-// queue would, but not its Status. It notes each key of kiln.json that differs from main's, which kiln acts on. Doctor
-// writes nothing, and calls no model and no network. It fails when it found a problem.
+// as the fix's session reads it. Where a command of kiln.json starts with a path, such as the notify command, Doctor
+// reads the script there. It needs the branch main, a claude on the PATH, and a pre-commit hook that runs kiln
+// precommit. With a monitor, it notes when no launchd job runs in a checkout of the repository. With a name, it reads
+// that spec as kiln queue would, but not its Status. It notes each key of kiln.json that differs from main's, which
+// kiln acts on. Doctor writes nothing, and calls no model and no network. It fails when it found a problem.
 func (r *Repo) Doctor(ctx context.Context, name Spec, out io.Writer) error {
 	d, err := r.diagnose(ctx, name)
 	if err != nil {

@@ -7,7 +7,7 @@ import (
 	"github.com/alecthomas/chroma/v2"
 )
 
-// theme is the view's styles, each named for what it marks. As on kiln's one-page sheet, a hue says who acts: the
+// theme is the view's styles, each named for what it marks. As on kiln's one-page sheet, a hue marks the actor: the
 // developer, an agent, or kiln. Red marks what failed, and green what passed. Text that marks nothing keeps the
 // terminal's own color.
 //

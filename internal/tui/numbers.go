@@ -30,7 +30,8 @@ func known[N any](n *N) (N, bool) {
 	return *n, true
 }
 
-// failed counts its failed calls, and how many of them were refused. Both are unknown while Failed is.
+// failed counts the build's failed calls, and how many of those calls were refused. Both are unknown while Failed
+// is nil.
 func (b *Build) failed() (failed, refused int, known bool) {
 	if b.Failed == nil {
 		return 0, 0, false

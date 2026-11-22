@@ -78,9 +78,9 @@
 //     /shape's template, empty, and Status Approved. It is spec N, by its name's place among the script's specs.
 //   - Each check, gauge and command under .kiln/monitors/ gets the executable bit, as kiln runs each by its path.
 //
-// A script drives a full-screen program in a pseudo-terminal, such as kiln tui. Its commands are term, keys, click,
-// wheel, screen and color. No sandboxed session can open a pseudo-terminal, so term skips such a script inside one.
-// It skips only where SANDBOX_RUNTIME is set, as Claude Code's sandbox sets it. Elsewhere the script fails.
+// A script drives a full-screen program in a pseudo-terminal, such as kiln's terminal UI. Its commands are term, keys,
+// click, wheel, screen and color. No sandboxed session can open a pseudo-terminal, so term skips such a script inside
+// one. It skips only where SANDBOX_RUNTIME is set, as Claude Code's sandbox sets it. Elsewhere the script fails.
 package scenariotest
 
 import (
@@ -201,7 +201,8 @@ func sourceOf(pkg string) ([]string, error) {
 }
 
 // readSource reads kilnSource once. go test caches a test by its binary, and by the files it opens while it runs.
-// The scripts run a kiln built apart. Reading its source lets a change to kiln end the cached result.
+// The scripts run a kiln built apart. Since the test reads kiln's source, go test drops the cached result when kiln
+// changes.
 var readSource = sync.OnceValue(func() error {
 	for _, p := range kilnSource {
 		if _, err := os.ReadFile(p); err != nil {

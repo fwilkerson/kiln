@@ -353,8 +353,8 @@ func helpers(p string) string {
 	return `sed -i '' 's|"acceptanceTests": |"testHelpers": ["` + p + `"], "acceptanceTests": |' .kiln/kiln.json`
 }
 
-// TestAuditedDirs holds which directories the audit reads. A file at the top, in any language, names ".". A directory
-// whose every file the work deleted names the nearest directory above it. A file under .kiln/ names none.
+// TestAuditedDirs holds which directories the audit reads. A file at the top, in any language, names "." for the top.
+// A directory that the work emptied of files names the nearest directory above it. A file under .kiln/ names none.
 func TestAuditedDirs(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct{ work, want string }{

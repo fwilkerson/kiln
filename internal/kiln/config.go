@@ -221,7 +221,8 @@ func pathRefusal(p string) (refusals, bool) {
 	case strings.HasPrefix(p, specVar):
 		return refusals{{"which starts with " + specVar + ", so a spec's name would decide where it is",
 			"put a directory of its own before " + specVar + ", " + example}}, true
-	// fs.ValidPath refuses a leading slash, an unclean form, and ".." that would climb out of the repository.
+	// fs.ValidPath refuses a leading slash, an unclean form, and a parent-directory element that would climb out of the
+	// repository.
 	case !fs.ValidPath(strings.TrimSuffix(p, "/")):
 		return refusals{{"which is not a clean path from the repository's top",
 			"write it as path.Clean does, " + example}}, true
@@ -233,7 +234,7 @@ func pathRefusal(p string) (refusals, bool) {
 const configFile = kilnDir + "/kiln.json"
 
 // parseConfig reads kiln.json. A file that is no JSON object of the keys kiln reads fails as unreadable, as
-// configRefusals words it. Otherwise the error holds each of its refusals, and c is what the file holds.
+// configRefusals words it. Otherwise, the error holds each of its refusals, and c is what the file holds.
 func parseConfig(raw []byte) (c config, err error) {
 	// json/v2 matches a key's case exactly, as the schema does, where v1 would take "Gate" for gate.
 	if err := jsonv2.Unmarshal(raw, &c, jsonv2.RejectUnknownMembers(true)); err != nil {
@@ -327,7 +328,7 @@ func nearest(key string, keys []string) string {
 	return best
 }
 
-// editCost is how many letters to insert, delete or replace to turn a into b.
+// editCost is how many letters to insert, delete or replace so that a becomes b.
 func editCost(a, b string) int {
 	row := make([]int, len(b)+1)
 	for j := range row {

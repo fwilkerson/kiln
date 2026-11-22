@@ -465,9 +465,9 @@ On its first run, `kiln init` picks one by the files your repository holds. A la
 | `python`     | `pyproject.toml` and `uv.lock`          |
 | `typescript` | `tsconfig.json` and `package-lock.json` |
 
-When no preset matches, or more than one does, `kiln init` refuses and asks for `--preset`. A preset of your own is
-a directory, as kiln's are in [`internal/kiln/presets/`](../internal/kiln/presets/). Name it by a path that starts
-with `.` or `/`, as in `kiln init --preset ../presets/rust`. Keep it in a repository of its own, so each project
+When no preset matches, or more than one does, `kiln init` refuses and asks for `--preset`. A preset of your own is a
+directory, like each preset kiln ships in [`internal/kiln/presets/`](../internal/kiln/presets/). Name it by a path that
+starts with `.` or `/`, as in `kiln init --preset ../presets/rust`. Keep it in a repository of its own, so each project
 takes the same one:
 
 ```text

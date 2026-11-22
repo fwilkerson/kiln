@@ -44,7 +44,7 @@ import (
 // gate started. A run is the bytes of its session's stream from its start line's length to its end line's.
 const ledgerFile = "ledger.jsonl"
 
-// kind is the kind of a ledger's line.
+// kind classifies each line of the ledger.
 type kind string
 
 const (

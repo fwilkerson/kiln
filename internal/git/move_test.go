@@ -186,14 +186,14 @@ func TestMoveInterrupted(t *testing.T) {
 
 // announcing is a git of repo whose command touches file before it runs, when its arguments hold word.
 func announcing(t *testing.T, repo, word, file string) *git.Git {
-	real, err := exec.LookPath("git")
+	gitPath, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	bin := t.TempDir()
 	script := fmt.Sprintf("#!/bin/sh\ncase \" $* \" in *\" %s \"*) touch '%s' ;; esac\nexec '%s' \"$@\"\n",
-		word, file, real)
+		word, file, gitPath)
 	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}

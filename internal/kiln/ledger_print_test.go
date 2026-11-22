@@ -205,7 +205,7 @@ func jsonFields(line any) []string {
 	return fields
 }
 
-// jsonType is how the package doc names the JSON type of a field of Go type typ.
+// jsonType is the name the package doc gives the JSON type for a field whose Go type is typ.
 func jsonType(typ reflect.Type) string {
 	switch {
 	case typ.Kind() == reflect.Pointer:

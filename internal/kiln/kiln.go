@@ -11,7 +11,7 @@
 //	err = r.MonitorAdd("bugs", os.Stdout)     // copies the bugs monitor kiln ships into .kiln/monitors/bugs/
 //	err = r.MonitorRun(ctx, "", os.Stdout)    // runs each monitor in .kiln/monitors/ that is due
 //	err = r.Doctor(ctx, "", os.Stdout)        // each problem in the working tree's setup, with its fix
-//	names, err := r.Takes(ctx, "queue")       // the specs kiln queue would not refuse
+//	names, err := r.Takes(ctx, "queue")       // the specs that kiln queue takes without a refusal
 //	err = r.Ledger(os.Stdout, kiln.LedgerOptions{Kind: "gate"}) // each gate, one JSON object a line
 //
 // # Specs
@@ -216,11 +216,11 @@
 // # The gate
 //
 // The gate runs kiln.json's commands, read from main's tip, with sh -c at the build's commit and at main. It passes
-// when every command exits 0, but for tests that fail at main too. A command names its failed tests in go test's
-// output. Or it writes them as JUnit XML, to the path kiln gives it in $KILN_JUNIT. A failure that names no test is
-// never excused. With JUnit XML, a run cut short fails too: each test run at main must run at the build's commit. kiln
-// keeps the last 16 KiB of each command's output. It runs them at main again only once main, the commands, or the paths
-// a split build removes there change. The gate holds commands.lock, with the check or gauge it reads, so no gate runs
+// when every command exits 0, but for tests that fail at main too. A command names its failed tests in the output of go
+// test. Or it writes them as JUnit XML, to the path kiln gives it in $KILN_JUNIT. A failure that names no test is never
+// excused. With JUnit XML, a run cut short fails too: each test run at main must run at the build's commit. kiln keeps
+// the last 16 KiB of each command's output. It runs them at main again only once main, the commands, or the paths a
+// split build removes there change. The gate holds commands.lock, with the check or gauge it reads, so no gate runs
 // beside another. Its line in the ledger starts once it holds the lock, so a build's time counts no wait.
 //
 // The gate also fails on a change to a guarded path, however the path was written. A session's hook refuses an Edit
@@ -290,8 +290,8 @@
 //	  gauges   read after a landing, as after a build's
 //	  again    when the check asked to drain, after a fix that landed: from check, due or not, until no fix lands
 //
-// A monitor is due when it never ran, or its check or gauge couldn't run but did not hang. It is due when a usage
-// limit ended its fix, its fix was cut short, or kiln refused it. Otherwise it is due once its last run started its
+// A monitor is due when it never ran, or its check or gauge couldn't run but did not hang. It is due when a usage limit
+// ended its fix, its fix was cut short, or kiln refused it. Otherwise, it is due once its last run started its
 // interval, less 30 minutes, ago. $KILN_NOW, as RFC 3339, stands for the clock. A monitor with neither check nor gauge
 // starts a fix each run it is due.
 //
@@ -333,7 +333,7 @@
 //	last fix                                held until a change to
 //	stopped, or rejected                    main's tip, any file in the monitor's directory, or what it printed
 //	needs you, with a check or a gauge      its directory, or what it printed
-//	needs you, with neither                 main's tip, or its directory
+//	needs you, with no check or gauge       main's tip, or its directory
 //	unchanged, with a check or a gauge      its directory, or what it printed
 //	landed, with a gauge                    its directory, or what its gauge printed
 //	landed, with a check out of the gate    what its check printed
@@ -388,7 +388,7 @@
 // the setting:
 //
 //	what ran past                                          ends in
-//	a gate's command, one that prints paths, a monitor's   a stopped build or fix, with those words as its why
+//	a gate's command, one that prints paths, a monitor's   a stopped build or fix, with those words as why
 //	command, a gauge in a fix's gate, or a session
 //	a monitor's check, or its gauge at main's tip          couldn't run, with those words as its summary
 //	a gauge read after a landing                           unknown, with those words as why
@@ -518,11 +518,11 @@
 //
 // kiln notifies the developer when a spec's build or a monitor's fix needs them. A spec's build notifies once it ends
 // stopped, waiting for UAT, or waiting on its branch, whichever kiln built it. A fix notifies once kiln monitor run
-// ends it landed, waiting on its branch, stopped, needs you, or session failed. A session that failed as the
-// monitor's last run did notifies nothing, so an expired sign-in notifies once per monitor. A monitor that fixes
-// nothing notifies when its run ends needs you, as Monitors says. kiln monitor run notifies
-// each landing it takes up as it starts, or finds on main. A fix's landing that kiln accept makes notifies nothing,
-// since the developer reads its output.
+// ends it landed, waiting on its branch, stopped, needs you, or session failed. kiln notifies nothing of a session that
+// failed the same way as the monitor's last run. So an expired sign-in notifies once per monitor. A monitor that fixes
+// nothing notifies when its run ends needs you, as Monitors says. kiln monitor run notifies each landing it takes up as
+// it starts, or finds on main. A landing of a fix by kiln accept notifies nothing, since the developer reads the output
+// of kiln accept.
 //
 // kiln.json's notify names the program that receives each notification. kiln reads it at main's tip:
 //
@@ -549,7 +549,7 @@
 // that fails, runs past that, or is missing changes no build's or fix's result. kiln says why in its output.
 //
 // Without notify, kiln prints each notification in its output as OSC 9, which a terminal such as Ghostty shows. Its
-// body is "kiln: <name> <state>". kiln prints it whether or not the output is a terminal. It prints it too when kiln
+// body is "kiln: <name> <state>". kiln prints it whether the output is a terminal or not. It prints it too when kiln
 // cannot read kiln.json at main's tip, or the program fails. So no notification is lost. The job of kiln monitor
 // install writes kiln's output to monitor.log, where no terminal shows OSC 9.
 //
@@ -570,7 +570,6 @@ package kiln
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -713,8 +712,8 @@ func cacheDir() (string, error) {
 }
 
 // HoldBuilds keeps every kiln on the machine from starting to drive a build session, until release. It refuses while
-// one drives one: a kiln fire, a kiln monitor run, or a kiln accept that lands. A build's session runs kiln hook by
-// its path, so the reinstall holds it while it swaps the binary.
+// one drives one: a kiln fire, a kiln monitor run, or a kiln accept that lands. A build's session runs kiln hook by its
+// path, so the installer holds it while swapping the binary.
 func HoldBuilds() (release func(), err error) {
 	release, err = lockBuilds(syscall.LOCK_EX | syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
@@ -725,8 +724,8 @@ func HoldBuilds() (release func(), err error) {
 	return release, err
 }
 
-// shareBuilds takes build.lock shared, as every kiln that drives a build session does. The reinstall then swaps no
-// binary under one. It refuses while the reinstall holds it.
+// shareBuilds takes build.lock shared, as every kiln that drives a build session does. The installer then swaps no
+// binary under one. It refuses while the installer holds it.
 func shareBuilds() (release func(), err error) {
 	release, err = lockBuilds(syscall.LOCK_SH | syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
@@ -749,7 +748,7 @@ func lockBuilds(how int) (release func(), err error) {
 // hookMark marks a pre-commit hook as kiln's own, which kiln init may write over.
 const hookMark = "# kiln's pre-commit hook"
 
-// installHook installs the pre-commit hook in the repository's own hooks directory. Where core.hooksPath is set, or
+// installHook installs the pre-commit hook in the repository's own directory of hooks. Where core.hooksPath is set, or
 // another pre-commit hook is there, it writes none. It then says why, and the line to add to the developer's own hook.
 func (r *Repo) installHook(ctx context.Context, out io.Writer) error {
 	set, err := plainGit(ctx, r.top, proc.Git.Env(r.env), "config", "--default", "", "--get", "core.hooksPath")
@@ -1314,11 +1313,12 @@ const queuedLands = "the kiln at work on specs lands it, or the next kiln fire"
 // A monitor's fix waiting on its branch is rebased onto main, and gated again, check included. Then main moves onto
 // it if main hasn't moved. It retires nothing. It lands in the monitors' lane, which Accept holds through the whole
 // landing. While another kiln holds that lane, the next kiln monitor run lands it. A conflict or a failing gate goes
-// back to the fix's session, as a round, and Accept runs that session. A landing that stops waits for kiln accept
-// again, or kiln reject. One with no session that conflicts with main waits for kiln reject. A stopped landing lands
-// again afresh, its rounds at 0, with no second fold. An accepted landing that stops fails Accept.
+// back to the fix's session, as a round, and Accept runs that session. A stopped landing waits for kiln accept
+// again, or kiln reject. One with no session that conflicts with main waits for kiln reject. kiln lands a stopped
+// landing again afresh, its rounds at 0, with no second fold. An accepted landing that stops fails Accept.
 func (r *Repo) Accept(ctx context.Context, name Spec, out io.Writer) error {
-	// Accept takes build.lock before it changes anything, so a reinstall that refuses it leaves the spec as it was.
+	// Accept takes build.lock before it changes anything. While the installer holds it, Accept leaves the spec as it
+	// was.
 	unshare, err := shareBuilds()
 	if err != nil {
 		return err
@@ -1497,15 +1497,6 @@ func short(commit git.Rev) string { return string(commit[:min(12, len(commit))])
 
 func indent(text string) string {
 	return "  " + strings.ReplaceAll(strings.TrimRight(text, "\n"), "\n", "\n  ")
-}
-
-// newSession returns a new session ID, a random UUID.
-func newSession() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 // shellQuote quotes s for /bin/sh, with which Claude Code and git run a hook's command.

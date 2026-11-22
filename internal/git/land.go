@@ -14,7 +14,7 @@ import (
 )
 
 // InTheWay says why [Git.Move] did not move a branch, by the one field it sets. Tip is where the branch was, when it
-// was not at the commit expected. Busy is the worktree where a rebase, a bisect or another git holding the index
+// was not at the commit expected. Busy is the worktree where a rebase, a git bisect or another git holding the index
 // works on the branch. Files are the developer's changed, untracked or ignored files that the move would overwrite.
 type InTheWay struct {
 	Tip   Rev
@@ -22,9 +22,9 @@ type InTheWay struct {
 	Files []string
 }
 
-// Move moves branch from expected to to, a commit that descends from it. A branch checked out in a worktree moves
-// with it, by a fast-forward merge. Move refuses with an [InTheWay], which says why, and moves nothing. When git
-// refuses for no reason Move can name, Move tries once more after 500 ms.
+// Move moves branch from the commit expected to the commit to, which descends from expected. A branch checked out in a
+// worktree moves with it, by a fast-forward merge. Move refuses with an [InTheWay], which says why, and moves nothing.
+// When git refuses for no reason Move can name, Move tries once more after 500 ms.
 func (g *Git) Move(ctx context.Context, branch Branch, to, expected Rev) (*InTheWay, error) {
 	way, again, err := g.moveOnce(ctx, branch, to, expected)
 	if !again {
@@ -191,8 +191,8 @@ func (g *Git) moved(ctx context.Context, ref string, to Rev) error {
 	return nil
 }
 
-// busy names the worktree where a rebase or a bisect is working on the branch. While it does, git lists that worktree
-// as detached, and the branch looks free to move by update-ref. The rebase's abort would then put it back.
+// busy names the worktree where a rebase or a git bisect is working on the branch. While it does, git lists that
+// worktree as detached, and the branch looks free to move by update-ref. The rebase's abort would then put it back.
 func (g *Git) busy(ctx context.Context, branch Branch) (Worktree, error) {
 	gitDirs, err := g.gitDirs(ctx)
 	if err != nil {

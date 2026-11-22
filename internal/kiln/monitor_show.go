@@ -201,7 +201,7 @@ func (s standing) step(name Spec, rec *record, tree git.Worktree) string {
 	return fixNext(name, s.outcome)
 }
 
-// when says when the monitor last ran, and when it runs next. due is whether it is due now.
+// when says when the monitor last ran, and when it runs next. The monitor is due now when due is true.
 func (s standing) when(due bool) string {
 	last := "never ran"
 	if !s.last.IsZero() {
@@ -238,7 +238,7 @@ func fixNext(name Spec, outcome string) string {
 // an OSC 9 sequence first, so a terminal such as Ghostty notifies from that tab. The result follows, with its
 // summary, report or error, and the command to run next. Then it waits for return on in. It refuses a monitor the
 // ledger holds no run of.
-func (r *Repo) MonitorShow(ctx context.Context, name Spec, in io.Reader, out io.Writer) error {
+func (r *Repo) MonitorShow(name Spec, in io.Reader, out io.Writer) error {
 	s, next, err := r.lastStanding(name)
 	if err != nil {
 		return err

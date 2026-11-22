@@ -118,8 +118,8 @@ func (p preset) fill(raw []byte) ([]byte, error) {
 	return filled, failed
 }
 
-// ErrUsage is the kind of a command kiln refuses for its arguments. Init returns it for a preset it does not know.
-// Hook returns it for arguments kiln never writes. MonitorAdd returns it for a monitor kiln does not ship.
+// ErrUsage is the error kind for a command that kiln refuses for its arguments. Init returns it for a preset it does
+// not know. Hook returns it for arguments kiln never writes. MonitorAdd returns it for a monitor kiln does not ship.
 var ErrUsage = errors.New("usage")
 
 // presetNamed is the preset name names: a built-in one's name, or a directory laid out as one. isDir says which paths
@@ -128,12 +128,12 @@ func presetNamed(name, dir string) (preset, error) {
 	switch {
 	case filepath.IsAbs(name):
 		// The checkout's top has its links resolved, so a path recorded from it needs them resolved too.
-		real, err := filepath.EvalSymlinks(name)
+		resolved, err := filepath.EvalSymlinks(name)
 		if err != nil {
 			return preset{}, fmt.Errorf("preset %s: %w", name, err)
 		}
 
-		return preset{name: real, files: os.DirFS(real)}, nil
+		return preset{name: resolved, files: os.DirFS(resolved)}, nil
 	case isDir(name):
 		return presetNamed(filepath.Join(dir, name), dir)
 	case slices.Contains(builtIns, name):

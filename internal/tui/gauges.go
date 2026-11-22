@@ -23,9 +23,9 @@ func (g gaugeReads) add(r Reading, spec string) {
 	g[r.Gauge] = append(g[r.Gauge], landingRead{r, spec})
 }
 
-// readings are the readings by gauge: the specs' of their landings, and the monitors' of the whole repository. Each
-// gauge's are in the order kiln wrote them. names lists the gauges, sorted. Of a monitor's, it keeps the newest keep,
-// and always the newest.
+// readings are the readings by gauge: the specs' of their landings, and the monitors' of the whole repository. The
+// readings of each gauge are in the order kiln wrote them. names lists the gauges, sorted. Of a monitor's readings, it
+// keeps the newest keep, and always the newest.
 func readings(specs []Spec, keep int) (names []string, landings, repository gaugeReads) {
 	landings, repository = gaugeReads{}, gaugeReads{}
 	for _, s := range specs {

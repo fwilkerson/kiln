@@ -44,8 +44,8 @@ choice that blocks its work, with these parts:
 - your lean, and the fact that decides it
 
 An Open Question holds what only the developer can decide. Rank the questions in the spec, and ask them in that
-order. A question comes before each question that its answer could change or drop. Among the rest, the question
-whose answer changes more of the spec comes first. The developer may answer with a letter. They may also answer a
+order. A question comes before each question that its answer could change or drop. Among the rest, the question with an
+answer that changes more of the spec comes first. The developer may answer with a letter. They may also answer a
 question you have named but not yet asked.
 
 When the developer answers:

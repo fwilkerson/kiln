@@ -190,7 +190,7 @@ func (m *model) do(k tea.KeyPressMsg) tea.Cmd {
 }
 
 // footer names the keys the screen's footer names, in at most w cells. It names whole bindings only. Where all do not
-// fit, ? and esc come first, then the rest in order, and the key list names the ones left out.
+// fit, the footer puts esc and ? first, then the rest in order, and the key list names the bindings left out.
 func (t theme) footer(k kind, w int) string {
 	foot := keyMaps[k].foot
 	first := func(b key.Binding) bool {

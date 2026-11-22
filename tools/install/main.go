@@ -1,11 +1,12 @@
-// Command install reinstalls kiln from main's tip, with its zsh completion. Run it in kiln's repository:
+// This command rebuilds kiln from the tip of main, and installs kiln with the zsh completion for kiln. Run it in the
+// repository of kiln:
 //
 //	go run ./tools/install
 //
-// It builds main's tip, never the working tree, in a worktree of its own that it removes after. So neither an edit in
-// progress nor a build's worktree reaches the binary. go install puts kiln in GOBIN, or else in the first GOPATH's
-// bin. It copies cmd/kiln/_kiln, from the same commit, into $XDG_DATA_HOME/zsh/completions. XDG_DATA_HOME is
-// ~/.local/share when unset.
+// It builds the tip of main, never the working tree, in a worktree of its own that it removes after. So neither an
+// edit in progress nor a build's worktree reaches the binary. go install puts kiln in GOBIN, or else in the first
+// GOPATH's bin. It copies cmd/kiln/_kiln, from the same commit, into $XDG_DATA_HOME/zsh/completions. XDG_DATA_HOME
+// is ~/.local/share when unset.
 //
 // It refuses while any kiln on the machine drives a build session, in this repository or another. It holds every kiln
 // off from starting one until the new binary is in place.

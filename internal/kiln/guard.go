@@ -23,7 +23,7 @@ type guard struct {
 	place git.Worktree
 	// head is the commit kiln made at place, or "" for the gate to read there.
 	head git.Rev
-	// allowed are paths the build may change, though guarded names them. A landing of accepted amendments changes
+	// allowed holds the paths the build may change, though guarded names them. A landing of accepted amendments changes
 	// its spec. The hook's command line leaves them out.
 	allowed []string
 	// side is what one session may write, or the zero side where the build has one session.
@@ -264,7 +264,8 @@ func resolve(base, target string) string {
 }
 
 // followLinks is p with each link in its existing part followed. A link whose target does not exist yet is followed
-// too, since a write creates that target. It gives up after 40 links, as a loop of links would never end.
+// too, since writing through the link creates that target. It gives up after 40 links, as a loop of links would never
+// end.
 func followLinks(p string) string {
 	for range 40 {
 		next, done := followLink(p)
@@ -281,8 +282,8 @@ func followLinks(p string) string {
 // followLink is p with its existing part's links followed, and done, or p with one dangling link followed.
 func followLink(p string) (next string, done bool) {
 	for dir, rest := p, ""; ; dir, rest = filepath.Dir(dir), filepath.Join(filepath.Base(dir), rest) {
-		if real, err := filepath.EvalSymlinks(dir); err == nil {
-			return filepath.Join(real, rest), true
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(resolved, rest), true
 		}
 
 		if to, err := os.Readlink(dir); err == nil {

@@ -117,7 +117,7 @@ func watchExit(pid int) error {
 		case n == 1 && events[0].Flags&syscall.EV_ERROR != 0:
 			// kevent reports a failed watch as an event, when its list has room for one. ESRCH means the process
 			// has ended.
-			if errno := syscall.Errno(events[0].Data); errno != syscall.ESRCH {
+			if errno := syscall.Errno(events[0].Data); !errors.Is(errno, syscall.ESRCH) {
 				return errno
 			}
 		}

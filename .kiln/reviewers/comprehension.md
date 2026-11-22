@@ -5,7 +5,7 @@ name: comprehension
 description: Reads a spec in .kiln/specs/ as a developer new to the repository, before it is approved, and reports where they could not follow it. It changes nothing. Give it the spec's path.
 tools: Read, Grep, Glob
 model: opus
-# /shape never contests a gap: when a fresh reader could not follow the spec, the spec lacks context.
+# /shape never contests a gap: a spec that a fresh reader could not follow lacks context.
 uncontested: all
 ---
 

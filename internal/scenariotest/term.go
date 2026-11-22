@@ -26,7 +26,7 @@ import (
 //	term <cols> <rows> <program> [args...]  start the program in a terminal of that size, one per script
 //	keys <key or text>...                   press each named key, or type each other word as text
 //	click <text>                            wait until text is on screen once, then click its first cell
-//	wheel up|down <turns>                   turn the wheel over the middle of the screen
+//	wheel up|down <turns>                   turn the wheel over the screen's middle
 //	screen <regexp>                         wait until the screen matches; with !, until it does not
 //	color [background] <color> <text>       wait until text is on screen once, its first cell in that color
 //

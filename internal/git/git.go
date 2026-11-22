@@ -5,11 +5,11 @@
 //	_, err = g.Commit(ctx, tree, "a session's work")    // whatever the session left uncommitted
 //	onto, err := g.Tip(ctx, "main")
 //	landed, conflict, err := g.Rebase(ctx, tree, onto, "feat(x): land the approved spec")
-//	// conflict != nil: git could not merge the branch onto onto alone, and nothing changed
+//	// conflict != nil: git could not put the branch on top of onto by itself, and nothing changed
 //	// ... gate landed ...
 //	way, err := g.Move(ctx, "main", landed, onto)
 //	// way.Tip:   main moved meanwhile, as another landing moves it
-//	// way.Busy:  a rebase, a bisect or another git is busy with main, in that worktree
+//	// way.Busy:  a rebase, a git bisect or another git is busy with main, in that worktree
 //	// way.Files: the developer's files that moving main would overwrite
 //	err = g.Remove(ctx, []git.Worktree{tree}, "kiln/x")
 //
@@ -30,8 +30,8 @@
 // kiln needs git 2.55 or later, whose hook.<event>.enabled turns off a hook that config defines. kiln asks xcrun once
 // for the git behind /usr/bin/git, since that shim near doubles each call's time.
 //
-// A call that adds or removes a worktree waits for every other such call, in this process or another kiln's. Meanwhile
-// it holds the lock of <git common dir>/kiln/worktrees.lock, since each such call writes the shared config.
+// A call that adds or removes a worktree waits for every other such call, in this process or another kiln's.
+// Meanwhile, it holds the lock of <git common dir>/kiln/worktrees.lock, since each such call writes the shared config.
 //
 // A worktree or clone kiln makes holds each symbolic link as a plain file that holds its target. Claude Code's sandbox
 // refuses a shell's write through a link under .claude/. The main checkout keeps its links, and so does each commit.
@@ -242,7 +242,7 @@ func (f *failed) Error() string {
 	return fmt.Sprintf("git %s: exit %d: %s", strings.Join(f.Args, " "), f.Exit, strings.TrimSpace(f.Stderr))
 }
 
-// unsigned is err, from a git that could not sign the commit it made.
+// unsigned wraps err, from a git that could not sign its commit, with the steps that let git sign.
 func unsigned(err error) error {
 	return fmt.Errorf("%w: git could not sign the commit, as the git config asks: load the signing key into "+
 		"ssh-agent with ssh-add, or turn commit.gpgSign off", err)
@@ -362,8 +362,8 @@ func (g *Git) Checkout(ctx context.Context, path Worktree, branch Branch, at Rev
 const worktreesLock = "kiln/worktrees.lock"
 
 // lockWorktrees holds g's worktrees mutex, and the file lock worktreesLock, until unlock. Each call that adds or
-// removes a worktree writes the repository's shared config. git fails a write that finds the config locked. The
-// mutex holds for one process, and the file lock for each kiln of the repository.
+// removes a worktree writes the repository's shared config. git fails to write a config that another git holds locked.
+// The mutex holds for one process, and the file lock for each kiln of the repository.
 func (g *Git) lockWorktrees(ctx context.Context) (unlock func(), err error) {
 	g.worktrees.Lock()
 	f, err := g.flockWorktrees(ctx)

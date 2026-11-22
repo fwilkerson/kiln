@@ -29,8 +29,8 @@ const (
 )
 
 // ClaudeScript holds each call's steps, by its role, its attempt and its call. The role is the base name of the
-// file given to --append-system-prompt-file, such as "build". An attempt is one session; a resume of it is its next
-// call.
+// file given to --append-system-prompt-file, such as "build". An attempt is one session, and resuming the session
+// starts the attempt's next call.
 type ClaudeScript map[string]map[int]map[int][]ClaudeStep
 
 // ClaudeStep is one thing the scripted claude does. It names exactly one of its fields.

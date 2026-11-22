@@ -180,7 +180,7 @@ var monitorCommands = map[string]func(context.Context, *kiln.Repo, string, *os.F
 	"run/1": monitorRun,
 	"run/2": monitorRun,
 	"show/2": func(ctx context.Context, r *kiln.Repo, name string, out *os.File) error {
-		return r.MonitorShow(ctx, kiln.Spec(name), os.Stdin, out)
+		return r.MonitorShow(kiln.Spec(name), os.Stdin, out)
 	},
 }
 
@@ -223,8 +223,8 @@ func run(args []string, stdin io.Reader, stdout, stderr *os.File) int {
 	return exit("kiln "+command, listed, err, stderr)
 }
 
-// exit reports err on stderr, after who, and returns the status kiln exits with. A usage error prints its hint, for
-// command, under err.
+// exit reports err on stderr, prefixed by the string who, and returns the status kiln exits with. A usage error
+// prints its hint, for command, under err.
 func exit(who, command string, err error, stderr io.Writer) int {
 	switch {
 	case errors.Is(err, errUsage):

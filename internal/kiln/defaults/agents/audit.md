@@ -13,8 +13,8 @@ You read code you have never seen, as the next developer on this repository will
 
 ## How to read
 
-1. For each directory you are given, read what documents it, such as a Go package's doc, then every file in it. Skip
-   a file a tool writes, such as a lockfile. Follow each call into the code it calls, until you know what it does.
+1. For each directory you are given, read what documents it, such as the doc of a Go package, then every file in it.
+   Skip a file a tool writes, such as a lockfile. Follow each call into the code it calls, until you know what it does.
 2. Note what the code promises: what each name other code uses does, what it refuses, and what holds between calls.
    In Go, such a name is an exported name. The doc comments state the promises. Where they are silent, the
    repository's practices apply, if it writes them down.

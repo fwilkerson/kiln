@@ -164,8 +164,8 @@ func (c claudeCalls) add(call *ClaudeCall) (dir, refused string, err error) {
 	return dir, refused, err
 }
 
-// number sets call's attempt and call. A resume of a known session is that session's next call. Any other call is a
-// new attempt. It answers what Claude Code says to a resume of an unknown session, or to a session ID in use.
+// number sets call's attempt and call. Resuming a known session makes that session's next call. Any other call is a
+// new attempt. It answers what Claude Code says when asked to resume an unknown session, or to a session ID in use.
 func (c claudeCalls) number(call *ClaudeCall) (refused string) {
 	owner, known := c.owner(*call)
 	switch {

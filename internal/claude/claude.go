@@ -17,7 +17,7 @@
 //	       --permission-mode auto --setting-sources project --settings <dir>/settings.json
 //	       --mcp-config <dir>/mcp.json --strict-mcp-config --output-format stream-json --verbose
 //
-// <dir> is Config.Sessions/<Session>, which holds the session's files across every resume:
+// <dir> is Config.Sessions/<Session>, which keeps the session's files when the session is resumed:
 //
 //	<Role>.md      System, which Claude Code appends to its system prompt
 //	settings.json  the settings below, which Claude Code lays over the project's own
@@ -33,7 +33,7 @@
 //	sandbox                 on, with no unsandboxed command, and failing when it cannot start; writes in Dir and
 //	                        Writable alone
 //	sandbox.network         Domains alone, a listener on a local port, and trustd to check a TLS certificate
-//	sandbox.filesystem      denyRead DenyRead, allowRead AllowRead
+//	sandbox.filesystem      denyRead from DenyRead, allowRead from AllowRead
 //	advisorModel            Advisor, when set
 //	hooks.PreToolUse        Hook, before each Edit, Write, MultiEdit and NotebookEdit, when set
 //
@@ -57,6 +57,7 @@ package claude
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -94,7 +95,7 @@ func New(c Config) Claude {
 
 // Launch is one start or resume of a session.
 type Launch struct {
-	// Session is the session's ID, a UUID. A resume names the session it resumes.
+	// Session is the session's ID, a UUID. When Resume is true, Session names the session to resume.
 	Session string
 	Resume  bool
 	// Role names the kind of session, such as "build". The file that holds System is named for it.
@@ -123,13 +124,15 @@ type Launch struct {
 	// MCP holds the only MCP servers the session calls, by name, each as Claude Code's mcpServers holds one.
 	MCP map[string]json.RawMessage
 	// DenyRead are absolute paths no command may read, but those under AllowRead, which reopens what it names. The
-	// sandbox holds them for a command. Deny's Read rules hold the Read tool, and Grep and Glob on a best effort.
+	// sandbox holds them for a command. Deny's Read rules hold the Read tool, and hold Grep and Glob on a best-effort
+	// basis.
 	DenyRead, AllowRead []string
 	// Silence is how long the session may print nothing before Run kills it as hung. Run refuses a Launch without one.
 	Silence time.Duration
 }
 
-// Silent is Run's error for a session that printed nothing for For. Run killed it, with each process it started.
+// Silent is Run's error for a session that printed nothing for too long. For is how long the session printed nothing.
+// Run killed the session, with each process the session started.
 type Silent struct {
 	For time.Duration
 }
@@ -408,4 +411,13 @@ func (r *reading) ended() Ended {
 	}
 
 	return e
+}
+
+// NewID returns a random UUID, the form of a session ID and of each event's uuid in a session's stream.
+func NewID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = b[6]&0x0f | 0x40
+	b[8] = b[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }

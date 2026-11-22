@@ -14,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/fwilkerson/kiln/internal/claude"
 )
 
 const (
@@ -107,7 +109,7 @@ func admitClaude(args []string) (*claudeSession, error) {
 	}
 
 	s := &claudeSession{work: work, flags: flags, call: call, calls: claudeCalls{filepath.Join(work, ClaudeCallsDir)},
-		prompt: prompt, promptID: newUUID()}
+		prompt: prompt, promptID: claude.NewID()}
 	if err := s.keepRecord(); err != nil {
 		return nil, fmt.Errorf("scripted claude: recording the call: %w", err)
 	}
@@ -122,7 +124,7 @@ func admitClaude(args []string) (*claudeSession, error) {
 // newCall is the call that flags and args make, from the working directory, before the call is numbered.
 func (f *claudeFlags) newCall(args []string) (ClaudeCall, error) {
 	dir, err := os.Getwd()
-	call := ClaudeCall{SessionID: cmp.Or(f.sessionID, newUUID()), Dir: dir, Args: args, Role: f.role()}
+	call := ClaudeCall{SessionID: cmp.Or(f.sessionID, claude.NewID()), Dir: dir, Args: args, Role: f.role()}
 	if f.resume != "" {
 		call.SessionID, call.Role, call.Resume = f.resume, "unknown", true
 	}
@@ -217,7 +219,7 @@ func (s *claudeSession) run(steps []ClaudeStep) (int, error) {
 	slices.Sort(tools)
 	s.emit(jsonObject{{"type", "system"}, {"subtype", "init"}, {"cwd", s.call.Dir}, {"session_id", s.call.SessionID},
 		{"tools", tools}, {"model", claudeModel}, {"permissionMode", s.flags.permissionMode},
-		{"claude_code_version", claudeVersion}, {"uuid", newUUID()}})
+		{"claude_code_version", claudeVersion}, {"uuid", claude.NewID()}})
 	for i, step := range steps {
 		code, done, err := s.do(step)
 		if err != nil {
@@ -307,7 +309,7 @@ func (s *claudeSession) limitLine(l *ClaudeLimit) jsonObject {
 		{"status", status}, {"resetsAt", resets}, {"rateLimitType", "five_hour"},
 		{"isUsingOverage", l.UsingOverage}, {"unifiedWindows", windows},
 	}
-	return jsonObject{{"type", "rate_limit_event"}, {"rate_limit_info", info}, {"uuid", newUUID()},
+	return jsonObject{{"type", "rate_limit_event"}, {"rate_limit_info", info}, {"uuid", claude.NewID()},
 		{"session_id", s.call.SessionID}}
 }
 
@@ -328,7 +330,7 @@ func (s *claudeSession) resultLine(r *ClaudeResult) jsonObject {
 		{"type", "result"}, {"subtype", subtype}, {"is_error", r.IsError}, {"duration_ms", 1000},
 		{"num_turns", s.turns}, {"result", text}, {"session_id", s.call.SessionID},
 		{"permission_denials", append([]jsonObject{}, s.denials...)}, {"terminal_reason", "completed"},
-		{"uuid", newUUID()}, {"result_index", s.results},
+		{"uuid", claude.NewID()}, {"result_index", s.results},
 		{"model_usage_since_last_result", jsonObject{{claudeModel, jsonObject{{"costUSD", r.CostUSD}}}}},
 	}
 	if r.APIErrorStatus != nil {

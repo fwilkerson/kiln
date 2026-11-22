@@ -188,8 +188,8 @@ func (m measure) bars(t theme, builds []*Build, w int) (top, bottom string) {
 	return strings.Join(tops, gap), strings.Join(bottoms, gap)
 }
 
-// bar is a bar's two cells, the top then the bottom, for v's share of most, in 16 steps. A zero draws the lowest
-// step, so its build still shows.
+// bar is a bar's two cells, the top then the bottom, for v's share of most, in 16 steps. When v is zero, bar draws
+// the lowest step, so the build still shows.
 func bar(v, most float64) (top, bottom string) {
 	steps := []rune(" ▁▂▃▄▅▆▇█")
 	level := 1

@@ -23,7 +23,7 @@
 // developer's yellow. Keys and the mouse both work. A click opens the row it hits, and the wheel scrolls what it is
 // over, 3 lines a notch.
 //
-// Its colors are those of kiln's one-page sheet, where a hue says who acts. The developer's yellow marks where the
+// Its colors are those of kiln's one-page sheet, where a hue marks the actor. The developer's yellow marks where the
 // keys go, each key's name, and what waits on them, beside ◆. A session's blue marks what runs, beside ▶. Kiln's
 // orange marks a gate, a pause and a stop. Red marks what failed and green what passed, beside ✗ and ✓. On a terminal
 // that says its background is light, each hue is darker.

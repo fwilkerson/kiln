@@ -10,7 +10,8 @@ import (
 	"github.com/fwilkerson/kiln/internal/claude"
 )
 
-// fake stands in for claude: it reads the prompt, and prints one result event, as claude -p's stream-json does.
+// fake stands in for the claude command. It reads the prompt and prints one result event, in the stream-json format of
+// claude -p.
 const fake = `#!/bin/sh
 cat >/dev/null
 echo '{"type":"result","is_error":false,"result":"Built.","num_turns":3}'

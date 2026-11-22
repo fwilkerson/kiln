@@ -55,7 +55,7 @@ func (b *build) land(ctx context.Context, from git.Rev, retire retiring, allowed
 }
 
 // heldAnyway answers the record's landing, and no error, when main holds it though the move answered err. An
-// interrupt can cut the move short once main has moved. Otherwise it answers err.
+// interrupt can cut the move short once main has moved. Otherwise, it answers err.
 func (b *build) heldAnyway(ctx context.Context, err error) (git.Rev, error) {
 	held, found := b.r.holdsLanding(ctx, b.now())
 	switch {
@@ -112,7 +112,7 @@ func (b *build) landOnce(ctx context.Context, from git.Rev, retire retiring, all
 // retires it.
 type retiring func(ctx context.Context, held git.Rev) (git.Rev, error)
 
-// prepare puts the work from from onto onto, and retires the spec if retire is set. It
+// prepare puts the work at from onto the commit onto, and retires the spec if retire is set. It
 // answers the commit that would land. Or it answers what kept the work from landing: a conflict, or no change.
 //
 // Each step answers the commit it leaves checked out. Only kiln writes the build's worktree while it lands, so none
@@ -137,8 +137,8 @@ func (b *build) prepare(ctx context.Context, from, onto git.Rev, retire retiring
 	return b.changes(ctx, onto, head)
 }
 
-// rebase rebases the work at start onto onto, as the one commit that lands, unless start is onto already. It answers
-// the commit checked out then.
+// rebase rebases the work at start onto the commit onto, as one landing commit, unless start is onto already. It
+// answers the commit checked out then.
 func (b *build) rebase(ctx context.Context, start, onto git.Rev) (git.Rev, setback, error) {
 	if start == onto {
 		return start, setback{}, nil

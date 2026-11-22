@@ -2,7 +2,6 @@ package termtest
 
 import (
 	"image"
-	"image/color"
 	"image/draw"
 	"image/png"
 	"io"
@@ -36,6 +35,7 @@ func (term *Term) PNG(w io.Writer) error {
 		return err
 	}
 
+	defer face.Close()
 	img := image.NewRGBA(image.Rect(0, 0, term.emu.Width()*cellW, term.emu.Height()*cellH))
 	draw.Draw(img, img.Bounds(), image.NewUniform(term.emu.BackgroundColor()), image.Point{}, draw.Src)
 	for y := 0; y < term.emu.Height(); y++ {
@@ -51,7 +51,7 @@ func (term *Term) PNG(w io.Writer) error {
 
 func (term *Term) drawCell(img *image.RGBA, face font.Face, at Pos, c *uv.Cell) {
 	x, y := at.X, at.Y
-	fg, bg := color.Color(term.emu.ForegroundColor()), color.Color(term.emu.BackgroundColor())
+	fg, bg := term.emu.ForegroundColor(), term.emu.BackgroundColor()
 	if c.Style.Fg != nil {
 		fg = c.Style.Fg
 	}

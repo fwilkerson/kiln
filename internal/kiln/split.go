@@ -148,7 +148,10 @@ func (b *build) splitStart(ctx context.Context) error {
 		return err
 	}
 
-	b.set(func(r *record) { r.Session, r.Verify, r.OldTests, r.Told = newSession(), newSession(), old, told })
+	b.set(func(r *record) {
+		r.Session, r.Verify, r.OldTests, r.Told = claude.NewID(), claude.NewID(), old, told
+	})
+
 	if err := b.fetchSides(ctx); err != nil {
 		return err
 	}
@@ -282,7 +285,7 @@ func (b *build) splitStep(ctx context.Context) (turn, error) {
 
 // splitAfter takes a split build on once its stack passed its gate: to the audit, its branch, or main. Findings go
 // to both sessions. A landing's setback goes back as a round. Work that changes nothing goes to the build session.
-// Otherwise main moved, so kiln merges it into both clones where the merge is clean. A conflict goes to the session
+// Otherwise, main moved, so kiln merges it into both clones where the merge is clean. A conflict goes to the session
 // whose side holds the file.
 func (b *build) splitAfter(ctx context.Context) (turn, error) {
 	findings, why, err := b.findings(ctx)
@@ -465,7 +468,7 @@ func (b *build) mergeMains(ctx context.Context, why reason) (turn, error) {
 	return turn{build: build, verify: verify, why: why}, nil
 }
 
-// mergeMain fetches main into role's clone, and merges it in a commit of kiln's when the merge is clean. On a
+// mergeMain fetches main into role's clone, and merges it in a commit kiln makes when the merge is clean. On a
 // conflict, kiln makes no commit: it answers the prompt that has the session merge. Then the gate reads what the
 // session staged as its own write.
 func (b *build) mergeMain(ctx context.Context, role string) (string, error) {
@@ -836,7 +839,7 @@ func (b *build) harnessChanged(ctx context.Context) ([]string, error) {
 	}), err
 }
 
-// Why a split build's session run started, beside the whys every build shares.
+// Why a split build's session run started, beside the reasons every build shares.
 const (
 	whyStack         = "stack"
 	whyStackConflict = "stack conflict"

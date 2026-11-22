@@ -23,7 +23,7 @@ type model struct {
 	err   error
 	// now is when the source was last read. Every time shown is counted to it.
 	now time.Time
-	// live is each running run's stretch of its stream, for its now line, by the run.
+	// live maps each run in progress to a stretch of the run's stream, for the run's now line.
 	live map[runRef]*claude.Recounted
 	w, h int
 	// theme is the dark one until the terminal says its background is light.
@@ -147,7 +147,7 @@ func (m model) tick() tea.Cmd {
 	return tea.Tick(m.every, func(time.Time) tea.Msg { return tick{} })
 }
 
-// load reads the source, the running run's stream, and the stream of the run the top screen shows.
+// load reads the source, the stream of each run in progress, and the stream of the top screen's run.
 func (m model) load() tea.Cmd {
 	src, opened, open := m.src, runRef{}, false
 	if s := m.top(); s.kind == runScreen {

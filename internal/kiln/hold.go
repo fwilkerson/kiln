@@ -81,9 +81,9 @@ func (h *history) fixSummary(e entry) string {
 // in launchd's hourly tick, which lands a few seconds either side of the hour. It takes in a run a long fix held up.
 const slack = 30 * time.Minute
 
-// due is whether m is due at now. It is due when it never ran, or its last run couldn't run its check. It is due when
-// that run met a usage limit, refused m, or cut its fix short. Otherwise, it is due once its interval less slack has
-// passed.
+// due is whether m is due at the time now. It is due when it never ran, or its last run couldn't run its check. It is
+// due when that run met a usage limit, refused m, or cut its fix short. Otherwise, it is due once its interval, minus
+// the slack, has passed.
 func (h *history) due(m monitor, now time.Time) bool {
 	if h == nil || h.last.Kind == "" {
 		return true
@@ -122,7 +122,7 @@ func (h *history) stuckAt(now entry) bool {
 	return h.stuck.Main == now.Main && h.stuck.Entry == now.Entry
 }
 
-// next is when m is due again, once its last run's interval less slack has passed.
+// next is when m is due again, once its last run's interval, minus the slack, has passed.
 func (h *history) next(m monitor) time.Time {
 	return h.last.At.Add(m.interval() - slack)
 }

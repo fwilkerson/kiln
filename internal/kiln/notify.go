@@ -119,7 +119,8 @@ func isEmpty(s string) bool { return s == "" }
 var notified = []string{outLanded, outStopped, outWaits, outNeedsYou, outFailed}
 
 // notifies is whether a fix that ended with outcome notifies. h is its monitor's history before this run. A session
-// that failed as the monitor's last run did notifies nothing. An expired sign-in then notifies once per monitor.
+// that failed the same way as the monitor's last run notifies nothing. An expired sign-in then notifies once per
+// monitor.
 func notifies(outcome string, h *history) bool {
 	if !slices.Contains(notified, outcome) {
 		return false

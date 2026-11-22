@@ -20,7 +20,7 @@ signed in.
 go install github.com/fwilkerson/kiln/cmd/kiln@latest        # with Go 1.27 or newer
 ```
 
-Or take a built binary, for Apple silicon (`arm64`) or Intel (`amd64`):
+Or take a built binary, for an Apple M-series Mac (`arm64`) or an Intel Mac (`amd64`):
 
 ```sh
 curl -fsSL https://github.com/fwilkerson/kiln/releases/latest/download/kiln_darwin_arm64.tar.gz | tar -xz

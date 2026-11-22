@@ -279,7 +279,7 @@ func writeAll(t *testing.T, dir string, files map[string]string) {
 }
 
 // TestDue holds when a monitor is due. It is when it never ran, its check couldn't run, or a usage limit ended its
-// fix. It is when its fix was cut short. Otherwise it is due once its interval, less half an hour, has passed.
+// fix. It is when its fix was cut short. Otherwise, it is due once its interval, less half an hour, has passed.
 func TestDue(t *testing.T) {
 	ran := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
 	daily := monitor{Name: "deps", Hours: defaultHours}

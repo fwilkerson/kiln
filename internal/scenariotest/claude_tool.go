@@ -16,6 +16,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/fwilkerson/kiln/internal/claude"
 )
 
 type claudeHookGroup struct {
@@ -323,7 +325,7 @@ func (s *claudeSession) assistant(content jsonObject, usage json.RawMessage) {
 			{"model", claudeModel}, {"id", newID("msg_")}, {"type", "message"}, {"role", "assistant"},
 			{"content", []jsonObject{content}}, {"stop_reason", nil}, {"stop_sequence", nil}, {"usage", usage},
 		}},
-		{"parent_tool_use_id", nil}, {"session_id", s.call.SessionID}, {"uuid", newUUID()}, {"timestamp", timestamp()},
+		{"parent_tool_use_id", nil}, {"session_id", s.call.SessionID}, {"uuid", claude.NewID()}, {"timestamp", timestamp()},
 	})
 }
 
@@ -337,7 +339,7 @@ func (s *claudeSession) toolResult(use toolUse, out toolOutcome, meta ...jsonObj
 		{"message", jsonObject{{"role", "user"}, {"content", []jsonObject{{
 			{"tool_use_id", use.id}, {"type", "tool_result"}, {"content", out.content}, {"is_error", out.isError},
 		}}}}},
-		{"parent_tool_use_id", nil}, {"session_id", s.call.SessionID}, {"uuid", newUUID()}, {"timestamp", timestamp()},
+		{"parent_tool_use_id", nil}, {"session_id", s.call.SessionID}, {"uuid", claude.NewID()}, {"timestamp", timestamp()},
 		{"tool_use_result", out.result()},
 	}
 	if len(meta) > 0 {
@@ -350,7 +352,7 @@ func (s *claudeSession) toolResult(use toolUse, out toolOutcome, meta ...jsonObj
 func (s *claudeSession) hookRefusal(use toolUse, text string) {
 	s.emit(jsonObject{{"type", "system"}, {"subtype", "permission_denied"}, {"tool_name", use.name},
 		{"tool_use_id", use.id}, {"decision_reason_type", "hook"}, {"decision_reason", text}, {"message", text},
-		{"uuid", newUUID()}, {"session_id", s.call.SessionID}})
+		{"uuid", claude.NewID()}, {"session_id", s.call.SessionID}})
 	s.toolResult(use, toolOutcome{content: text, isError: true}, jsonObject{{"id", use.id},
 		{"non_execution_kind", "permission-rule"}, {"permission_decision", jsonObject{
 			{"decision", "reject"}, {"source", "hook"}, {"reason_type", "hook"}}}})

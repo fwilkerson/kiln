@@ -145,7 +145,7 @@ func streamed(t *testing.T, session, stream string) Claude {
 	return New(Config{Sessions: dir})
 }
 
-// describe is one line for a, as a row of TestRecountCalls states it.
+// describe writes an Action as one line, the form a row of TestRecountCalls uses.
 func describe(a Action) string {
 	said := fmt.Sprintf("%s %s %s", cmp.Or(a.Tool, "said"), a.Input, a.Took)
 	switch {

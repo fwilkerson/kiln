@@ -80,7 +80,7 @@ func formOf(spec string) refusals {
 	return refused
 }
 
-// placeOf says where the template's section i goes, by the section before it.
+// placeOf says where to put section i of the template, by the section before it.
 func placeOf(i int) string {
 	if i == 0 {
 		return "first, under the title"

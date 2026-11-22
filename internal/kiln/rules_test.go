@@ -120,8 +120,8 @@ func TestFixRefusal(t *testing.T) {
 	}
 }
 
-// TestGuardLinks holds that the hook judges a write by where it lands, after each link in its path. The links are
-// real, in the worktree x, which w links to.
+// TestGuardLinks holds that the hook judges each written file by where it lands, after each link in its path. The links
+// are real, in the worktree x, which w links to.
 func TestGuardLinks(t *testing.T) {
 	top := t.TempDir()
 	shell(t, top, `mkdir -p main/.kiln main/.git/hooks x/.claude x/sub && ln -s x w && cd x && `+
@@ -287,7 +287,7 @@ func TestReportNamesLostFailure(t *testing.T) {
 
 // TestCommandLeavesChild holds that a command which leaves a child behind ends once its shell exits. The child gets
 // 10 s to close the command's output. kiln then kills the command's group, and keeps what the command printed. A
-// limit that passes while the child holds the output is no run past it: the command ended in time. The
+// limit passing while the child holds the output is not a run past it: the command ended in time. The
 // child would hold the output for an hour, so a command that ends at all was cut short.
 func TestCommandLeavesChild(t *testing.T) {
 	// The limit passes within the child's 10 s, and the shell exits long before it, however loaded the machine.
@@ -395,7 +395,7 @@ func judgmentOf(v verdict, mentions string) judgment {
 }
 
 // readOutputs reads each check's output for the Go tests that failed, as runChecks does, and answers checks. It reads
-// only go test's output, and keeps what a row says its JUnit XML named.
+// only the output of go test, and keeps what a row says its JUnit XML named.
 func readOutputs(checks []check) []check {
 	for i := range checks {
 		failed, cutShort, broken := failedTests(checks[i].Output)
@@ -678,7 +678,7 @@ func TestLanes(t *testing.T) {
 			t.Fatalf("%s could not take the %s' lane beside the other: %v", holder, l, err)
 		}
 
-		defer unlock()
+		t.Cleanup(unlock)
 	}
 
 	for l, holder := range map[lane]string{specsLane: runHolder, monitorsLane: monitorHolder} {
@@ -829,7 +829,7 @@ func TestAcceptSaysItGates(t *testing.T) {
 	}
 }
 
-// TestAcceptDuringReinstall holds that an accept the reinstall refuses changes nothing.
+// TestAcceptDuringReinstall holds that kiln accept, refused while kiln is being reinstalled, changes nothing.
 func TestAcceptDuringReinstall(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	release, err := HoldBuilds()
@@ -884,7 +884,7 @@ func TestAuditDid(t *testing.T) {
 	}
 }
 
-// TestNextStep holds the next step to spec 4's table: each command it names is one the book takes.
+// TestNextStep holds the next step to spec 4's table: each command it names is a command the book takes.
 func TestNextStep(t *testing.T) {
 	const why = "the gate still failed after its last round:\nreport"
 	for name, tc := range map[string]struct {
@@ -1059,7 +1059,7 @@ func TestSetbackSays(t *testing.T) {
 	t.Parallel()
 	const x = "echo %d >x.txt && git add x.txt && git commit --quiet -m x"
 	for name, tc := range map[string]struct {
-		// split stacks the sides of a split build, whose files conflict. Otherwise the build lands its work.
+		// split stacks the sides of a split build, whose files conflict. Otherwise, the build lands its work.
 		split bool
 		// work is what the session committed, and main what main gained since the build began.
 		work, main string

@@ -87,7 +87,7 @@ func (b *build) auditTry(ctx context.Context, l claude.Launch, head git.Rev, try
 	}
 
 	b.auditing = head
-	l.Session = newSession()
+	l.Session = claude.NewID()
 	ended, err := b.talk(ctx, l, reason{Why: whyAudit, Try: try})
 	switch {
 	case err != nil:

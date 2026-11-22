@@ -247,7 +247,7 @@ func (b *build) landedBefore(ctx context.Context) (bool, error) {
 	return true, b.onMain(b.rec.Landing)
 }
 
-// holdsLanding is whether main holds rec's landing, the commit its landing moved main to, or was moving it to.
+// holdsLanding is whether main holds rec.Landing: the commit the landing moved main to, or was moving it to.
 func (r *Repo) holdsLanding(ctx context.Context, rec record) (bool, error) {
 	if rec.Landing == "" {
 		return false, nil
@@ -423,7 +423,7 @@ func (b *build) waitsOnBranch(ctx context.Context, head git.Rev) (bool, error) {
 }
 
 // waitOrLand takes a spec's build, split or not, to its branch or to main, once the audit sends nothing back.
-// The build waits on its branch while its commit holds amendments the developer has not accepted. Otherwise it lands,
+// The build waits on its branch while its commit holds amendments the developer has not accepted. Otherwise, it lands,
 // and an accepted spec is retired in the landing. It answers what kept the work from landing, for the build to send
 // back.
 func (b *build) waitOrLand(ctx context.Context) (setback, error) {
@@ -469,7 +469,7 @@ func (b *build) onMain(at git.Rev) error {
 	return nil
 }
 
-// allowed are the paths under .kiln/ that an accepted spec's landing changes: it folds the amendments, and retires
+// allowed returns the paths under .kiln/ that an accepted spec's landing changes: it folds the amendments, and retires
 // the spec. A fix changes none.
 func (b *build) allowed() []string {
 	if b.rec.Accepted && !b.rec.Monitor {
@@ -527,7 +527,7 @@ func (s setback) said() (goesBack, stops, prompt string) {
 }
 
 // round sends a setback back to the session, as said words it, or stops the build past its last round. It answers
-// the prompt, and the round it starts. The rounds it allows are those kiln.json gave the build's last gate.
+// the prompt, and the round it starts. It allows as many rounds as kiln.json gave the build's last gate.
 func (b *build) round(back setback) (string, reason, error) {
 	goesBack, stops, prompt := back.said()
 	rounds := b.limit()
@@ -552,7 +552,7 @@ func (b *build) start(ctx context.Context) error {
 		return err
 	}
 
-	session := newSession()
+	session := claude.NewID()
 	b.set(func(r *record) { r.Session = session })
 	b.say("building on %s, in %s", b.rec.Name.branch(), b.tree)
 	prompt := fmt.Sprintf(starting, b.rec.Name.file(), short(b.rec.Approved), b.rec.Name.branch())

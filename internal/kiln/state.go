@@ -102,7 +102,7 @@ type book struct {
 	Main map[string][]check `json:"main,omitempty"`
 }
 
-// errRefused is the kind of a command kiln refuses for the state a spec is in.
+// errRefused is the error kind for a command that kiln refuses for the state a spec is in.
 var errRefused = errors.New("refused")
 
 func (b *book) find(name Spec) *record {
@@ -346,8 +346,8 @@ func (r *record) runsFor(l lane, only Spec) bool {
 	return only == "" || r.Name == only || r.Accepted
 }
 
-// landings is the only of a run started for the accepted landings alone, as kiln monitor run starts one. No spec's
-// name starts with a dot.
+// landings, as a run's field only, starts the run for the accepted landings alone, as kiln monitor run does. No
+// spec's name starts with a dot.
 const landings Spec = ".landings"
 
 // requeue queues again each record of the lane l, which the caller holds, that a kiln that stopped left building. A
@@ -402,11 +402,11 @@ const (
 	bookFile = "state.json"
 	lockFile = "lock"
 	// buildLock is the lock every kiln that drives a build session shares, in kiln's directory under the user's cache
-	// directory. The reinstall takes it alone.
+	// directory. Reinstalling kiln takes the lock alone.
 	buildLock = "build.lock"
 )
 
-// update applies change to the book, holding the store's lock from the read to the write.
+// update applies change to the book, holding the store's lock from reading the book to writing it.
 func (s store) update(change func(*book) error) error {
 	unlock, err := s.lock(lockFile, syscall.LOCK_EX)
 	if err != nil {

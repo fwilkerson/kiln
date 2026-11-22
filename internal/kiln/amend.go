@@ -29,8 +29,9 @@ const (
 	reasonHeading = "### Reason"
 )
 
-// foldAmendments returns the spec with each amendment's old wording replaced by its new. It refuses an amendment that
-// lacks its old wording, its new or its reason. It refuses one whose old wording the spec does not hold once.
+// foldAmendments returns the spec with each amendment's old wording replaced by its new wording. It refuses an
+// amendment that lacks its old wording, its new wording or its reason. It refuses one whose old wording the spec does
+// not hold once.
 func foldAmendments(spec, amendments string) (string, error) {
 	sections := strings.Split("\n"+amendments, "\n## ")[1:]
 	if len(sections) == 0 {
@@ -53,7 +54,7 @@ func foldAmendments(spec, amendments string) (string, error) {
 	return spec, nil
 }
 
-// amendment is one section of an amendment file: the acceptance test it names, its old wording and its new.
+// amendment is one section of an amendment file: the acceptance test it names, its old wording and its new wording.
 type amendment struct {
 	title, old, replacement string
 }

@@ -264,7 +264,7 @@ func (m model) home() []*lipgloss.Layer {
 	return layers
 }
 
-// recentTitle names the builds the builds panel lists: every spec's, every monitor's, or the selected one's.
+// recentTitle names what the builds panel lists: the builds of every spec, of every monitor, or of the selected one.
 func (m model) recentTitle() string {
 	s, ok := m.picked()
 	switch {
@@ -398,7 +398,7 @@ func (m model) runRows(ref runRef, i int) []row {
 		"running "+span(m.now.Sub(r.Start)))
 	second := t.dim.Render("reading its stream")
 	if live := m.live[ref]; live != nil {
-		second = strings.Join(m.liveFacts(r, live), t.dim.Render("  ·  "))
+		second = strings.Join(m.liveFacts(live), t.dim.Render("  ·  "))
 	}
 
 	to := target{toNow, i}
@@ -406,9 +406,9 @@ func (m model) runRows(ref runRef, i int) []row {
 	return []row{{t.pick(first, picked), to}, {second, to}}
 }
 
-// liveFacts are what a running run's stream says. They are how long since it was written, the call open, its
-// refusals, and its context.
-func (m model) liveFacts(r *Run, c *claude.Recounted) []string {
+// liveFacts are what the stream of a run in progress says. They are the time since the stream was last written, the
+// open call, the run's refusals, and the run's context.
+func (m model) liveFacts(c *claude.Recounted) []string {
 	idle := m.now.Sub(c.Written)
 	open := slices.IndexFunc(c.Actions, func(a claude.Action) bool { return a.Open })
 	said := "idle " + clock(idle)
@@ -553,12 +553,12 @@ const costBar = 13
 // recentCells are a build's cells in the builds panel. Its last is its cost as a bar, its share of most.
 func (m model) recentCells(l listed, most float64) []string {
 	took, tookKnown := known(l.b.Took)
-	time := "?"
+	elapsed := "?"
 	switch {
 	case tookKnown:
-		time = span(took)
+		elapsed = span(took)
 	case slices.ContainsFunc(l.b.runs(), (*Run).running):
-		time = span(m.now.Sub(l.b.Started))
+		elapsed = span(m.now.Sub(l.b.Started))
 	}
 
 	cost, costKnown := known(l.b.Cost)
@@ -566,7 +566,7 @@ func (m model) recentCells(l listed, most float64) []string {
 	failed, _, failedKnown := l.b.failed()
 	dim := m.theme.dim
 	return []string{dim.Render(l.b.Started.Local().Format("Jan 02 15:04")), l.spec, m.outcome(l.buildRef),
-		plural(l.b.Size, "test"), time, dollars(cost, costKnown), count(turns, turnsKnown), count(failed, failedKnown),
+		plural(l.b.Size, "test"), elapsed, dollars(cost, costKnown), count(turns, turnsKnown), count(failed, failedKnown),
 		count(known(l.b.Rounds)), dim.Render(gauge(cost, most, costBar-1))}
 }
 
@@ -777,9 +777,9 @@ func (m model) summary(b *Build) string {
 		}
 	}
 
-	time := "time ?"
+	elapsed := "time ?"
 	if tookKnown {
-		time = "time " + span(took)
+		elapsed = "time " + span(took)
 	}
 
 	cost, costKnown := known(b.Cost)
@@ -790,8 +790,8 @@ func (m model) summary(b *Build) string {
 
 	turns, turnsKnown := known(b.Turns)
 	failed, refused, failedKnown := b.failed()
-	return m.theme.dotted(fmt.Sprintf("%s: %s in gates, %s waiting on tools", time, span(gates), span(waiting)), price,
-		count(turns, turnsKnown)+" turns",
+	return m.theme.dotted(fmt.Sprintf("%s: %s in gates, %s waiting on tools", elapsed, span(gates), span(waiting)),
+		price, count(turns, turnsKnown)+" turns",
 		fmt.Sprintf("%s failed, %s refused", count(failed, failedKnown), count(refused, failedKnown)))
 }
 

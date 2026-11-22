@@ -448,7 +448,7 @@ func TestMarkdown(t *testing.T) {
 	}
 }
 
-// TestLiveRun holds how a running run's screen takes what its session writes while the developer reads it. At the
+// TestLiveRun holds how the screen of a run in progress takes what its session writes while the developer reads. At the
 // top, the view stays there, where a new call comes in. Scrolled down, the call at the top stays there, even for a
 // read that arrives late. An answer that arrives is drawn above the calls.
 func TestLiveRun(t *testing.T) {
@@ -557,7 +557,7 @@ func TestSpecsPanel(t *testing.T) {
 }
 
 // TestKeyList holds that while the key list shows, only a key that closes it or quits does anything. The wheel does
-// nothing. A click closes it, and opens nothing. On home, while the filter takes text, ? is text.
+// nothing. A click closes it, and opens nothing. On home, the ? key types a question mark while the filter takes text.
 func TestKeyList(t *testing.T) {
 	now := time.Now()
 	b := &Build{Spec: "x", Started: now, Steps: []Step{&Run{Role: "build", Session: "s", Why: "first run", Start: now,
