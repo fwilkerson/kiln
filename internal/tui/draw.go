@@ -742,18 +742,21 @@ func (t theme) runNotes(r *Run) []row {
 	return notes
 }
 
-// verdict says whether a gate passed, and whether it was the landing's.
+// verdict says whether a gate passed, and whether it was the landing's. Its mark and color say whether the gate went
+// as kiln wanted.
 func (t theme) verdict(g *Gate) string {
-	said := t.failed.Render("✗ failed")
-	if g.Passed {
-		said = t.passed.Render("✓ passed")
+	said := map[bool]string{true: "passed", false: "failed"}[g.Passed]
+	if g.Passed == g.MustFail {
+		said = t.failed.Render("✗ " + said)
+	} else {
+		said = t.passed.Render("✓ " + said)
 	}
 
 	if g.Landing {
 		said += " · landing"
 	}
 
-	if g.BeforeFix {
+	if g.MustFail {
 		said += " · before the fix"
 	}
 

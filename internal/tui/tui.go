@@ -190,8 +190,9 @@ type Gate struct {
 	Passed     bool
 	// Landing is the gate on the work rebased onto main.
 	Landing bool
-	// BeforeFix is the gate on a verify-first fix's tests, before the fix: it fails when the tests show the problem.
-	BeforeFix bool
+	// MustFail is whether kiln wanted the gate to fail. The gate on a verify-first fix's tests, before the fix, must
+	// fail to show the problem. kiln tui marks each gate by whether it went as kiln wanted.
+	MustFail bool
 }
 
 // Run is one session run: one start or resume of a session.

@@ -312,7 +312,7 @@ func (r run) tuiRun() *tui.Run {
 func gateSteps(gates []entry) []tui.Step {
 	steps := make([]tui.Step, len(gates))
 	for i, e := range gates {
-		steps[i] = &tui.Gate{Start: e.At, End: e.End, Passed: e.Passed, Landing: e.Landing, BeforeFix: e.BeforeFix}
+		steps[i] = &tui.Gate{Start: e.At, End: e.End, Passed: e.Passed, Landing: e.Landing, MustFail: e.BeforeFix}
 	}
 
 	return steps

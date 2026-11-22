@@ -297,6 +297,36 @@ func TestRunScreen(t *testing.T) {
 	}
 }
 
+// TestGateMarks holds that a gate is marked by whether it went as kiln wanted. The gate on a verify-first fix's tests
+// before the fix must fail.
+func TestGateMarks(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		gate  Gate
+		shows string
+		color color.Color
+	}{
+		{"a gate that passed", Gate{Passed: true}, "✓ passed", dark.passed.GetForeground()},
+		{"a gate that failed", Gate{}, "✗ failed", dark.failed.GetForeground()},
+		{"tests that failed before the fix", Gate{MustFail: true}, "✓ failed · before the fix",
+			dark.passed.GetForeground()},
+		{"tests that passed before the fix", Gate{Passed: true, MustFail: true}, "✗ passed · before the fix",
+			dark.failed.GetForeground()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			g := tc.gate
+			g.Start, g.End = now.Add(-time.Minute), now
+			b := &Build{Spec: "x", Started: g.Start, Steps: []Step{&g}}
+			src := source{specs: []Spec{{Name: "x", State: Running, Builds: []*Build{b}}}}
+			m := drive(t, src, "x", sized(100, 20), press(tea.KeyEnter))
+			if got := colorOf(t, m, tc.shows); !sameColor(got, tc.color) {
+				t.Errorf("%q is drawn in %v, want %v:\n%s", tc.shows, got, tc.color, screenOf(m))
+			}
+		})
+	}
+}
+
 // TestSpecText holds that s opens the spec as its build's approval held it. It does so from a run as from a build.
 func TestSpecText(t *testing.T) {
 	now := time.Now()
