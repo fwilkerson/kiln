@@ -14,7 +14,8 @@ that writes only into your worktree, then delete that test.
 
 Background: an audit agent reads each kiln build's work and reports findings. A review of the findings recorded in
 kiln's ledger found recurring kinds of defect. Your task removes one kind by design or with a mechanical check, so a
-future build can't repeat it.
+future build can't repeat it. Fix every code path of that kind, not only the sites the findings name: the first
+review's fixes covered two of four paths that ended a record, and the audit after them found the other two.
 
 Your last reply, under 300 words: the branch, each commit's hash and subject, what the check or design now refuses,
 each live defect it found and how you fixed it, and anything you chose not to do, with why.
