@@ -11,7 +11,8 @@
 //	defer stop()
 //	err = proc.RunSession(ctx, c) // errHung, once the session ran an hour: kiln killed what it started
 //
-// No other package of kiln imports os/exec. A caller picks how its program runs by the func it calls:
+// Outside tests, packages that serve tests and tools/, no other package of kiln imports os/exec. A caller picks how its
+// program runs by the func it calls:
 //
 //	func         group     when ctx ends while it runs    once it exits
 //	Run          its own   kills its group                kills its group, if it failed or a child holds its output

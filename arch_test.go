@@ -18,7 +18,8 @@ import (
 // TestArchitecture keeps kiln's layers apart. It checks these rules:
 //   - Nothing imports cmd or uat.
 //   - A package imports from outside the standard library only the modules that outside lists for it.
-//   - Outside its tests, only internal/proc imports os/exec, so each program kiln runs obeys proc's one policy.
+//   - Only internal/proc imports os/exec, but for tests, a package whose name ends in test, and tools/. So each
+//     program kiln runs obeys proc's one policy.
 func TestArchitecture(t *testing.T) {
 	format := `{{.ImportPath}} {{join .Imports " "}}|{{join .TestImports " "}} {{join .XTestImports " "}}`
 	cmd := exec.Command("go", "list", "-f", format, "./...")
