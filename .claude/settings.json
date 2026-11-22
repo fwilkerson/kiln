@@ -1,24 +1,13 @@
 {
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write|Bash|REPL|mcp__goland__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/style.sh"
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write|Bash|REPL|mcp__goland__.*",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/style.sh",
-            "statusMessage": "Running go tool style"
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && go tool agentcheck",
+            "statusMessage": "Checking the Go files the call changed"
           }
         ]
       }
@@ -29,8 +18,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/style.sh",
-            "statusMessage": "Running go tool style"
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && go tool agentcheck",
+            "statusMessage": "Checking the Go files the call changed"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|Bash|REPL|mcp__goland__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && go tool agentcheck"
           }
         ]
       }
@@ -40,8 +40,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/style.sh",
-            "statusMessage": "Running go tool style"
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && go tool agentcheck",
+            "statusMessage": "Checking the repository's Go files"
           }
         ]
       }

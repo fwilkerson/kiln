@@ -26,6 +26,10 @@ func TestModern(t *testing.T) { repotest.Modern(t) }
 // must score 10.
 func TestHealth(t *testing.T) { repotest.Health(t, held) }
 
+// TestAgent fails while .claude/settings.json lacks the hooks that run go tool agentcheck. After each tool call, it
+// tells the agent which style rules the Go files that call changed now break.
+func TestAgent(t *testing.T) { repotest.AgentCheck(t) }
+
 // held is the score of each file under 10. The code-health monitor refactors them, and a line goes once its file
 // scores 10. A comment above a line keeps that file's finding, by the developer's choice.
 var held = map[string]string{}
