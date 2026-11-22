@@ -1,6 +1,7 @@
 package git_test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -38,15 +39,15 @@ func TestShow(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			content, found, err := g.Show(t.Context(), tc.at, tc.path)
-			failed := map[bool]string{false: "no error", true: "an error"}[err != nil]
-			if got := fmt.Sprintf("%q %v, %s", content, found, failed); got != tc.want {
+			if got := fmt.Sprintf("%q %v, %s", content, found, failure(err)); got != tc.want {
 				t.Errorf("Show(%s, %q) answered %s (%v); want %s", tc.at, tc.path, got, err, tc.want)
 			}
 		})
 	}
 }
 
-// TestShowTip holds what ShowTip answers: a branch's commit and the files there. A branch git lacks has no commit.
+// TestShowTip holds what ShowTip answers: a branch's commit and the files there. A branch git lacks is an ErrNoBranch,
+// from Tip too.
 func TestShowTip(t *testing.T) {
 	t.Parallel()
 	repo := t.TempDir()
@@ -72,15 +73,32 @@ func TestShowTip(t *testing.T) {
 		{"the tip's files", "main", []string{"f", "dir/g"}, `main map["dir/g":"in\n" "f":"two\n"], no error`},
 		{"another branch's file", "old", []string{"f"}, `old map["f":"one\n"], no error`},
 		{"paths the tip lacks", "main", []string{"none", "dir", "f"}, `main map["f":"two\n"], no error`},
-		{"a branch git lacks", "none", []string{"f"}, `no commit map[], no error`},
+		{"a branch git lacks", "none", []string{"f"}, `no commit map[], no branch`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			tip, files, err := g.ShowTip(t.Context(), tc.branch, tc.paths...)
-			failed := map[bool]string{false: "no error", true: "an error"}[err != nil]
-			if got := fmt.Sprintf("%s %q, %s", named[tip], files, failed); got != tc.want {
+			if got := fmt.Sprintf("%s %q, %s", named[tip], files, failure(err)); got != tc.want {
 				t.Errorf("ShowTip(%s, %q) answered %s (%v); want %s", tc.branch, tc.paths, got, err, tc.want)
+			}
+
+			only, onlyErr := g.Tip(t.Context(), tc.branch)
+			if named[only] != named[tip] || failure(onlyErr) != failure(err) {
+				t.Errorf("Tip(%s) answered %s, %s (%v); want what ShowTip answered", tc.branch, named[only],
+					failure(onlyErr), onlyErr)
 			}
 		})
 	}
+}
+
+// failure names the kind of err, as a row of a test above wants it.
+func failure(err error) string {
+	switch {
+	case errors.Is(err, git.ErrNoBranch):
+		return "no branch"
+	case err != nil:
+		return "an error"
+	}
+
+	return "no error"
 }

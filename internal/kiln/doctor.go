@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
@@ -303,13 +304,13 @@ func (r *Repo) diagnoseSpec(ctx context.Context, c config, name Spec, monitors [
 // diagnoseMain adds to d what main lacks that kiln reads there. When readable, it notes each key of tree, the working
 // tree's kiln.json, that differs from main's.
 func (r *Repo) diagnoseMain(ctx context.Context, tree []byte, readable bool, d *diagnosis) error {
-	main, held, err := r.git.ShowTip(ctx, mainBranch, configFile)
+	_, held, err := r.git.ShowTip(ctx, mainBranch, configFile)
 	switch {
-	case err != nil:
-		return err
-	case main == "":
+	case errors.Is(err, git.ErrNoBranch):
 		d.found = append(d.found, noMainRefusal)
 		return nil
+	case err != nil:
+		return err
 	}
 
 	raw, found := held[configFile]

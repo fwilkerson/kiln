@@ -580,7 +580,11 @@ func (b *build) promptOf(ctx context.Context, t turn, role string) (string, erro
 // told it.
 func (b *build) told(ctx context.Context, prompt string) (string, error) {
 	tip, err := b.r.git.Tip(ctx, b.rec.Name.sideBranch(verifyRole))
-	if err != nil || tip == "" {
+	switch {
+	case errors.Is(err, git.ErrNoBranch):
+		// Before the first fetch of the sides, the verify session has amended nothing.
+		return prompt, nil
+	case err != nil:
 		return prompt, err
 	}
 

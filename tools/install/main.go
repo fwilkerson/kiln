@@ -50,8 +50,8 @@ func install(ctx context.Context) error {
 	}
 
 	tip, err := g.Tip(ctx, "main")
-	if err != nil || tip == "" {
-		return errors.Join(errors.New("the repository has no branch main"), err)
+	if err != nil {
+		return err
 	}
 
 	tmp, err := os.MkdirTemp("", "kiln-install-")

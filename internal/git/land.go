@@ -24,7 +24,8 @@ type InTheWay struct {
 
 // Move moves branch from the commit expected to the commit to, which descends from expected. A branch checked out in a
 // worktree moves with it, by a fast-forward merge. Move refuses with an [InTheWay], which says why, and moves nothing.
-// When git refuses for no reason Move can name, Move tries once more after 500 ms.
+// When git refuses for no reason Move can name, Move tries once more after 500 ms. Move answers an [ErrNoBranch]
+// when branch is not there.
 func (g *Git) Move(ctx context.Context, branch Branch, to, expected Rev) (*InTheWay, error) {
 	way, again, err := g.moveOnce(ctx, branch, to, expected)
 	if !again {
@@ -64,7 +65,7 @@ func (g *Git) moveOnce(ctx context.Context, branch Branch, to, expected Rev) (*I
 		return m.refused(ctx, err)
 	}
 
-	return nil, false, g.moved(ctx, m.branch.ref(), to)
+	return nil, false, g.moved(ctx, m.branch, to)
 }
 
 // blocked says why the branch can't move before it is tried, and learns where it is checked out. A worktree list
@@ -78,7 +79,7 @@ func (m *move) blocked(ctx context.Context) (*InTheWay, error) {
 	where := checkedOut(list, m.branch.ref())
 	tip := where.head
 	if where.path == "" {
-		if tip, err = m.g.tip(ctx, m.branch.ref()); err != nil {
+		if tip, err = m.g.Tip(ctx, m.branch); err != nil {
 			return nil, err
 		}
 	}
@@ -116,7 +117,7 @@ func (m *move) apply(ctx context.Context) error {
 
 // refused learns why git refused the move, and whether it is worth one more try.
 func (m *move) refused(ctx context.Context, err error) (*InTheWay, bool, error) {
-	if tip, found := m.g.tip(ctx, m.branch.ref()); found != nil {
+	if tip, found := m.g.Tip(ctx, m.branch); found != nil {
 		return nil, false, errors.Join(err, found)
 	} else if tip != m.expected {
 		return &InTheWay{Tip: tip}, false, nil
@@ -148,14 +149,22 @@ func indexLocked(err error) bool {
 	return ok && strings.Contains(f.Stderr, "index.lock")
 }
 
-// Tip is the commit branch points to, or "" if there is no such branch.
-func (g *Git) Tip(ctx context.Context, branch Branch) (Rev, error) {
-	return g.tip(ctx, branch.ref())
-}
+// ErrNoBranch is the error kind for a branch that is not there, or holds no commit yet.
+var ErrNoBranch = errors.New("no branch")
 
-func (g *Git) tip(ctx context.Context, ref string) (Rev, error) {
-	tips, err := g.tips(ctx, ref)
-	return tips[ref], err
+// Tip is the commit branch points to. It answers an [ErrNoBranch] when there is no such branch, or it holds no commit.
+func (g *Git) Tip(ctx context.Context, branch Branch) (Rev, error) {
+	tips, err := g.tips(ctx, branch.ref())
+	if err != nil {
+		return "", err
+	}
+
+	tip, found := tips[branch.ref()]
+	if !found {
+		return "", fmt.Errorf("%w %s", ErrNoBranch, branch)
+	}
+
+	return tip, nil
 }
 
 // tips maps each of refs that is there to the commit it points to, in one git. A ref git matches only by its prefix
@@ -178,14 +187,14 @@ func (g *Git) tips(ctx context.Context, refs ...string) (map[string]Rev, error) 
 
 // moved is the check that a move did what it was asked. A fast-forward to a commit the tip already holds exits 0, and
 // leaves the branch where it was.
-func (g *Git) moved(ctx context.Context, ref string, to Rev) error {
-	tip, err := g.tip(ctx, ref)
+func (g *Git) moved(ctx context.Context, branch Branch, to Rev) error {
+	tip, err := g.Tip(ctx, branch)
 	if err != nil {
 		return err
 	}
 
 	if tip != to {
-		return fmt.Errorf("move %s to %s: it is at %s", ref, to, tip)
+		return fmt.Errorf("move %s to %s: it is at %s", branch, to, tip)
 	}
 
 	return nil

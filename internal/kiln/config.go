@@ -420,10 +420,10 @@ func (r *Repo) config(ctx context.Context, at git.Rev) (config, error) {
 func (r *Repo) mainConfig(ctx context.Context) (git.Rev, config, error) {
 	main, files, err := r.git.ShowTip(ctx, mainBranch, configFile)
 	switch {
+	case errors.Is(err, git.ErrNoBranch):
+		return "", config{}, errNoMain
 	case err != nil:
 		return "", config{}, err
-	case main == "":
-		return "", config{}, errNoMain
 	}
 
 	raw, found := files[configFile]

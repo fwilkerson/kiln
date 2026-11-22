@@ -663,8 +663,8 @@ var errNoMain = fmt.Errorf("%w: %s", errRefused, noMain)
 // mainTip is the commit main points to. It answers errNoMain while the repository has no such branch.
 func (r *Repo) mainTip(ctx context.Context) (git.Rev, error) {
 	tip, err := r.git.Tip(ctx, mainBranch)
-	if err == nil && tip == "" {
-		err = errNoMain
+	if errors.Is(err, git.ErrNoBranch) {
+		return "", errNoMain
 	}
 
 	return tip, err
@@ -904,10 +904,10 @@ func (s Spec) misnamed() refusals {
 func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
 	main, files, err := r.git.ShowTip(ctx, mainBranch, append(readyPaths(), name.file())...)
 	switch {
+	case errors.Is(err, git.ErrNoBranch):
+		return errNoMain
 	case err != nil:
 		return err
-	case main == "":
-		return errNoMain
 	}
 
 	spec, err := r.queueable(ctx, main, files, name)
@@ -1233,10 +1233,10 @@ func (r *Repo) queueNames(ctx context.Context) ([]string, error) {
 
 	main, held, err := r.git.ShowTip(ctx, mainBranch, readyPaths()...)
 	switch {
+	case errors.Is(err, git.ErrNoBranch):
+		return nil, errNoMain
 	case err != nil:
 		return nil, err
-	case main == "":
-		return nil, errNoMain
 	}
 
 	// Main that is not ready refuses every spec, so no spec need be read.
@@ -1295,10 +1295,10 @@ func (r *Repo) queueableAt(ctx context.Context, main git.Rev, held map[string][]
 func (r *Repo) Status(ctx context.Context, out io.Writer) error {
 	main, held, err := r.git.ShowTip(ctx, mainBranch, initFile, configFile)
 	switch {
+	case errors.Is(err, git.ErrNoBranch):
+		return errNoMain
 	case err != nil:
 		return err
-	case main == "":
-		return errNoMain
 	}
 
 	b, err := r.store.read()

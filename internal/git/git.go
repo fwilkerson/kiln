@@ -14,7 +14,8 @@
 //	err = g.Remove(ctx, []git.Worktree{tree}, "kiln/x")
 //
 // A conflict and a refused move are answers, not errors. An error names the git command that failed and what it
-// printed. A branch is named by its short name, as refs/heads/ holds it. A relative path is the main checkout's.
+// printed, or is an [ErrNoBranch]. A branch is named by its short name, as refs/heads/ holds it. A relative path is the
+// main checkout's.
 //
 // Every call runs with hooks, signature checks, autostash, update-refs, fsmonitor, submodule recursion and background
 // maintenance off. A merge may make a merge commit, and a clone names its remote origin. A file one side added in a
@@ -411,7 +412,7 @@ func (g *Git) unmade(ctx context.Context, path Worktree, madePath bool, branch B
 		return errors.Join(err, pruned)
 	}
 
-	if tip, found := g.Tip(ctx, branch); found == nil && tip != "" {
+	if _, found := g.Tip(ctx, branch); found == nil {
 		_, deleted := g.in(ctx, g.repo, "branch", "--quiet", "-D", string(branch))
 		err = errors.Join(err, deleted)
 	}
@@ -866,8 +867,8 @@ func (g *Git) Show(ctx context.Context, at Rev, path string) ([]byte, bool, erro
 }
 
 // ShowTip reads the files at paths in the commit branch points to, as [Git.Show] reads one, and answers that commit.
-// It maps each path that holds a file there to the file. With no such branch, it answers "" and no file. One git
-// learns the commit, then reads each file there.
+// It maps each path that holds a file there to the file. It answers an [ErrNoBranch] when there is no such branch, or
+// it holds no commit. One git learns the commit, then reads each file there.
 func (g *Git) ShowTip(ctx context.Context, branch Branch, paths ...string) (Rev, map[string][]byte, error) {
 	args := []string{"cat-file", "--batch-command", "-Z"}
 	cmd := g.command(ctx, call{dir: string(g.repo)}, args...)
@@ -906,8 +907,12 @@ func askTip(in io.WriteCloser, answers *bufio.Reader, branch Branch, paths []str
 	}
 
 	header, err := answers.ReadString(0)
-	if err != nil || kind(header) != "commit" {
+	if err != nil {
 		return "", nil, err
+	}
+
+	if kind(header) != "commit" {
+		return "", nil, fmt.Errorf("%w %s", ErrNoBranch, branch)
 	}
 
 	tip, files := Rev(strings.Fields(header)[0]), map[string][]byte{}
