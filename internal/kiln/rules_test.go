@@ -1098,6 +1098,14 @@ func TestAuditReply(t *testing.T) {
 			lines: unparsed(head + "harm  h\nharm  i" + tallied)},
 		"prose under a finding's head": {text: head + "It breaks.\nharm  h" + tallied, back: true, tally: &tally{1, 1},
 			lines: unparsed(head + "It breaks.\nharm  h" + tallied)},
+		"a run-on line that starts with a field's name": {
+			text: head + "reaches    X answers when\n  harm is done\nproof      TestX" + tallied, back: true,
+			tally: &tally{1, 1}, lines: []finding{{Rank: 1, Path: "x.go", Line: 3, Category: "bug",
+				Reaches: "X answers when harm is done", Proof: "TestX"}}},
+		"a field's text run on with no indent": {text: head + "reaches  X answers\n41" + tallied, back: true,
+			tally: &tally{1, 1}, lines: unparsed(head + "reaches  X answers\n41" + tallied)},
+		"an indented line under a finding's head": {text: head + "  It breaks.\nharm  h" + tallied, back: true,
+			tally: &tally{1, 1}, lines: unparsed(head + "  It breaks.\nharm  h" + tallied)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := readReply(tc.text)

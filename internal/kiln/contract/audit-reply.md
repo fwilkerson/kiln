@@ -5,7 +5,8 @@ ranked, with a blank line after each:
 
 ```text
 1. path:line  kind
-reaches    the command or call, the state, and what goes wrong
+reaches    the command or call, the state, and what goes wrong,
+           indented where it runs on to the next line
 chance     what must happen in the program's wiring for the path to run, and how often that is
 harm       what a user or the data ends with, and what heals it
 design     the change that makes it impossible to build, or "none"
@@ -16,7 +17,7 @@ proof      the test or check that fails today, or "none" when no test can fail t
 - Number the findings from 1.
 - Write the place as `path:line`, or `path` alone for a whole file.
 - kind is one of `bug`, `impossible by design`, `weak test`, `false comment` and `test-only export`.
-- Start each field on a line of its own, with its name. Its text may run on to the next lines.
+- Start each field at the start of a line, with its name. Its text may run on to the next lines, each indented.
 - Leave out a field that does not apply.
 
 End your reply with one line: `read N directories, found M, reported K`. N counts the directories you read. M counts

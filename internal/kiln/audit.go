@@ -169,16 +169,23 @@ func readReply(text string) reply {
 }
 
 // listed answers the findings body lists, and whether each is in the contract's form, numbered from 1 in turn. A
-// finding is its head line, then its fields up to a blank line or a fence. A line that starts no field runs on from
-// the field above it. Lines outside a finding are the reply's own prose.
+// finding is its head line, then its fields up to a blank line or a fence. Each field starts at a line's start, and
+// an indented line runs on from the field above it. Lines outside a finding are the reply's own prose.
 func listed(body string) ([]finding, bool) {
 	var findings []finding
 	var open *finding
 	var field *string
-	for line := range strings.Lines(body) {
-		line = strings.TrimSpace(line)
+	for raw := range strings.Lines(body) {
+		line := strings.TrimSpace(raw)
 		head := findingHead.FindStringSubmatch(line)
 		switch {
+		case open != nil && runsOn(raw):
+			// A run-on line keeps its indent, so one that starts with a field's name stays in the field above.
+			if field == nil {
+				return nil, false
+			}
+
+			*field += " " + line
 		case head != nil:
 			if open != nil && !held(open) {
 				return nil, false
@@ -199,7 +206,7 @@ func listed(body string) ([]finding, bool) {
 
 			open = nil
 		default:
-			if field = fieldOf(open, line, field); field == nil {
+			if field = fieldOf(open, line); field == nil {
 				return nil, false
 			}
 		}
@@ -208,21 +215,22 @@ func listed(body string) ([]finding, bool) {
 	return findings, open == nil || held(open)
 }
 
+// runsOn is whether line runs on from the field above it. The contract indents such a line, and no blank line runs on.
+func runsOn(line string) bool {
+	return strings.TrimLeft(line, " \t") != line && strings.TrimSpace(line) != ""
+}
+
 // held is whether f holds a field, which a finding in the contract's form does.
 func held(f *finding) bool {
 	return f.Reaches+f.Chance+f.Harm+f.Design+f.Patch+f.Proof != ""
 }
 
-// fieldOf adds line to f, and answers the field it went in. A line that names a field starts it, unless f holds it
-// already. Any other line runs on from last, the field before it. It answers nil for a line it can't place.
-func fieldOf(f *finding, line string, last *string) *string {
+// fieldOf starts the field line names in f, with the rest of line, and answers that field. It answers nil for a line
+// that names no field, or one f holds already.
+func fieldOf(f *finding, line string) *string {
 	m := findingField.FindStringSubmatch(line)
 	if m == nil {
-		if last != nil {
-			*last += " " + line
-		}
-
-		return last
+		return nil
 	}
 
 	field := map[string]*string{"reaches": &f.Reaches, "chance": &f.Chance, "harm": &f.Harm, "design": &f.Design,
