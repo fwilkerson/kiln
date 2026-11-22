@@ -14,8 +14,9 @@ import (
 	"github.com/fwilkerson/kiln/internal/tui"
 )
 
-// ledgerRepo is a repository whose ledger holds a landed split build, x, and a build still running, y. It holds two
-// runs of the monitor gate-time, and the fix the second started. It holds a run of code-health, which reads a gauge.
+// ledgerRepo is a repository whose ledger holds a landed build of x, in build-and-verify, and a build still running, y.
+// It holds two runs of the monitor gate-time, and the fix the second started. It holds a run of code-health, which
+// reads a gauge.
 func ledgerRepo(t *testing.T) *Repo {
 	base := time.Date(2026, 11, 18, 5, 0, 0, 0, time.UTC)
 	at := func(minutes float64) time.Time { return base.Add(time.Duration(minutes * float64(time.Minute))) }
@@ -87,7 +88,7 @@ const (
 )
 
 // TestLedger holds what kiln ledger prints of a ledger. A build sums its runs and gates, and a sum is null while a
-// run lacks its part. A split build's findings count once. Lines come oldest first by when each started, whatever
+// run lacks its part. Build-and-verify's findings count once. Lines come oldest first by when each started, whatever
 // order kiln wrote them in. A line of a build with no build line is left out. An unknown kind is refused.
 func TestLedger(t *testing.T) {
 	r := ledgerRepo(t)

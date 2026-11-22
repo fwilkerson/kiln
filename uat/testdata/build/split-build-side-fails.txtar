@@ -1,6 +1,6 @@
 # A failure on the build session's side goes to the build session alone.
 
-# Given: the project chooses the split workflow, and the build session's work fails a gate command on its own.
+# Given: the project chooses the workflow build-and-verify, and the build session's work fails a gate command on its own.
 # Its first code does not compile.
 exec kiln queue x
 
@@ -19,7 +19,7 @@ grep 'undefined: nothing' .claude-calls/build/1/2/prompt
 stdout '^  1 of 3 rounds'
 
 -- .kiln/kiln.json --
-{"verifySession": true, "rounds": 3}
+{"workflow": "build-and-verify", "rounds": 3}
 -- claude.json --
 {
  "build": {

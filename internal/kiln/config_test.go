@@ -44,13 +44,19 @@ func TestConfigWords(t *testing.T) {
 		"a key near none": {config: `{"gate": ["true"], "colour": "red"}`,
 			said: `.kiln/kiln.json holds "colour", a key kiln does not read: remove it, or name one kiln reads: ` +
 				`$schema, gate, rounds, allowedHosts, allowUnixSockets, writablePathCommands, mcpServers, ` +
-				`verifySession, acceptanceTests, testHelpers, testFiles, reaudit, notify, timeout`},
+				`workflow, acceptanceTests, testHelpers, testFiles, reaudit, notify, timeout`},
 		"a trailing comma": {config: "{\n  \"gate\": [\"true\"],\n}",
 			said: ".kiln/kiln.json is no JSON at line 2, column 19: a comma with nothing after it: fix its JSON there"},
 		"a number as a string": {config: `{"gate": ["true"], "rounds": "3"}`,
 			said: ".kiln/kiln.json's rounds is a string: make it a whole number, such as 3"},
 		"a string where a list goes": {config: `{"gate": "go test ./..."}`,
 			said: `.kiln/kiln.json's gate is a string: make it a list of strings, such as ["go test ./..."]`},
+		"a workflow open to monitors only": {config: `{"gate": ["true"], "workflow": "verify-first"}`,
+			said: `.kiln/kiln.json names the workflow "verify-first", which is open to monitors only: name "build" or ` +
+				`"build-and-verify", or drop workflow`},
+		"a workflow kiln does not know": {config: `{"gate": ["true"], "workflow": "split"}`,
+			said: `.kiln/kiln.json names the workflow "split", which kiln does not know: name "build" or ` +
+				`"build-and-verify", or drop workflow`},
 		"a timeout of zero": {config: `{"gate": ["true"], "timeout": "0s"}`,
 			said: `.kiln/kiln.json names the timeout "0s", which is no Go duration above zero: name one such as "2h", ` +
 				`or none for 1h`},

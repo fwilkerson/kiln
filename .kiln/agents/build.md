@@ -5,9 +5,9 @@
 # it. kiln reads tools, model, effort and advisor here, and ignores the other keys.
 #
 # This body says how the code and its own tests are written, and the verify agent's says how the acceptance tests
-# are. In a build then audit, one session does both: that body follows this one in its prompt. In a split build,
-# this session reads this body alone, and a verify session reads the other. kiln's contract says which it is.
-# kiln.json's "verifySession": true asks for a split build.
+# are. In the workflow "build", one session does both: that body follows this one in its prompt. In the workflow
+# "build-and-verify", this session reads this body alone, and a verify session reads the other. kiln's contract
+# says which workflow the build runs, and kiln.json's "workflow" picks it.
 name: build
 description: Builds an approved spec, alone, with the code it asks for. kiln runs it on each build. Link it into .claude/agents/ to run it as a subagent too.
 model: opus

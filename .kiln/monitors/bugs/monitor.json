@@ -1,1 +1,1 @@
-{"$schema": "../../generated/monitor.schema.json", "hours": 1, "workflow": "test-first"}
+{"$schema": "../../generated/monitor.schema.json", "hours": 1, "workflow": "verify-first"}

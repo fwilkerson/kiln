@@ -1,6 +1,6 @@
 # Neither session sees the other's work.
 
-# Given: the project chooses the split workflow, and a spec is queued whose stack fails its gate once.
+# Given: the project chooses the workflow build-and-verify, and a spec is queued whose stack fails its gate once.
 # The verify session's first test expects 41, and the build's code answers 42.
 exec kiln queue x
 
@@ -33,7 +33,7 @@ grep '"denyRead": \[\s*"[^"]*/Library/Caches/kiln/[^"/]*"' .claude-calls/build/1
 grep '"allowRead": \[\s*"[^"]*/\.build-x"\s*\]' .claude-calls/build/1/1/settings.json
 
 -- .kiln/kiln.json --
-{"verifySession": true}
+{"workflow": "build-and-verify"}
 -- claude.json --
 {
   "build": {"1": {

@@ -1,6 +1,6 @@
 # The audit reads the stack once its gate passes.
 
-# Given: the project chooses the split workflow, and the stack passes its gate.
+# Given: the project chooses the workflow build-and-verify, and the stack passes its gate.
 # The build session changes the harness beside its code. The verify session writes its tests.
 exec kiln queue x
 
@@ -21,7 +21,7 @@ grep 'h\.go:3 weak test' .claude-calls/build/1/2/prompt
 grep 'h\.go:3 weak test' .claude-calls/verify/1/2/prompt
 
 -- .kiln/kiln.json --
-{"verifySession": true, "rounds": 3, "testHelpers": ["harness/"]}
+{"workflow": "build-and-verify", "rounds": 3, "testHelpers": ["harness/"]}
 -- claude.json --
 {
  "build": {

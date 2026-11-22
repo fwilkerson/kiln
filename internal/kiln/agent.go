@@ -245,7 +245,7 @@ func quoted(paths []string) string {
 }
 
 // agentLaunch is l, a session of role's agent in the build, as the agent's file at the build's approval says. Its
-// system prompt is the file's body, then kiln's contract. Outside a split build, the build session writes the
+// system prompt is the file's body, then kiln's contract. Outside build-and-verify, the build session writes the
 // acceptance tests too. Its prompt then holds the verify agent's body after the build agent's. Every session of a
 // build holds to what sandboxed adds.
 func (b *build) agentLaunch(ctx context.Context, role string, l claude.Launch) (claude.Launch, error) {
@@ -310,7 +310,7 @@ func (b *build) sides(ctx context.Context) (sides, error) {
 		return sides{}, err
 	}
 
-	s := sides{split: c.VerifySession, acceptance: c.acceptancePaths(b.rec.Name), helpers: c.TestHelpers}
+	s := sides{split: c.Workflow == buildAndVerify, acceptance: c.acceptancePaths(b.rec.Name), helpers: c.TestHelpers}
 	b.side = &s
 	return s, nil
 }

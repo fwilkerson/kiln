@@ -39,18 +39,19 @@ type record struct {
 	Build string `json:"build,omitempty"`
 	// Session is the build's Claude Code session, once it has one.
 	Session string `json:"session,omitempty"`
-	// Verify is a split build's verify session, once it has one. Session is then its build session.
+	// Verify is build-and-verify's verify session, once it has one. Session is then its build session.
 	Verify string `json:"verify,omitempty"`
-	// OldTests is true once kiln removed a revised spec's old acceptance tests from a split build's build side.
+	// OldTests is true once kiln removed a revised spec's old acceptance tests from build-and-verify's build side.
 	OldTests bool `json:"old_tests,omitempty"`
 	// ForBuild and ForVerify each hold a reply kiln read, but has not yet passed on to that session.
 	ForBuild  string `json:"for_build,omitempty"`
 	ForVerify string `json:"for_verify,omitempty"`
 	// Asked is true while kiln waits on the verify session's bugs line, in its answer to a failing stack.
 	Asked bool `json:"asked,omitempty"`
-	// Told is the spec, with its amendments folded in, as kiln last told a split build's build session it.
+	// Told is the spec, with its amendments folded in, as kiln last told build-and-verify's build session it.
 	Told string `json:"told,omitempty"`
-	// Running names the roles of a split build's sessions whose turn has not ended. kiln resumes only these.
+	// Running names the roles of the sessions whose turn has not ended. They are build-and-verify's sides, or a
+	// fix's landing session. kiln resumes only these.
 	Running []string `json:"running,omitempty"`
 	// Rounds counts the failed gates sent back to the session.
 	Rounds int `json:"rounds,omitempty"`
@@ -79,9 +80,10 @@ type record struct {
 	Monitor bool `json:"monitor,omitempty"`
 	// Title is the title the fix's agent last gave the commit that lands it, in place of kiln's own.
 	Title string `json:"title,omitempty"`
-	// TestSession is a test-first fix's test session, once it has one. Session is its fix session, once that starts.
-	TestSession string `json:"test_session,omitempty"`
-	// Tested is the commit of a test-first fix's tests that the gate last failed on alone, on kiln/<name>.test. The
+	// VerifyFirst is a verify-first fix's verify session, once it has one. Session is its fix session, once that
+	// starts.
+	VerifyFirst string `json:"verify_first,omitempty"`
+	// Tested is the commit of a verify-first fix's tests that the gate last failed on alone, on kiln/<name>.verify. The
 	// fix holds each test file as Tested holds it.
 	Tested git.Rev `json:"tested,omitempty"`
 	// Owed is the message kiln owes each session of a stopped build that kiln tend saw to. kiln resumes each with it.
@@ -356,16 +358,16 @@ func (b *book) accept(name Spec) (record, error) {
 		*r = record{Name: name, State: queued, Approved: r.Approved, Build: r.Build, Session: r.Session,
 			Verify: r.Verify, OldTests: r.OldTests, Told: r.Told, Running: r.Running, Limit: r.Limit,
 			Audited: r.Audited, Accepted: true, AcceptedAt: r.AcceptedAt, Before: r.Before, Monitor: r.Monitor,
-			Title: r.Title, TestSession: r.TestSession, Tested: r.Tested}
+			Title: r.Title, VerifyFirst: r.VerifyFirst, Tested: r.Tested}
 	}
 
 	return was, nil
 }
 
 // resume queues again the stopped build of name, as it stood, once kiln tend saw to it. It keeps the build's ID,
-// sessions, audited commit and rounds' limit, and what a split build holds of its sessions. Its rounds start
-// again at 0. The record owes each session a message, with why the build stopped and note, the tend session's note.
-// It holds the message before why is cleared, so a kiln that dies next loses neither.
+// sessions, audited commit and rounds' limit. In build-and-verify, it keeps what the build holds of its sessions. Its
+// rounds start again at 0. The record owes each session a message, with why the build stopped and note, the tend
+// session's note. It holds the message before why is cleared, so a kiln that dies next loses neither.
 func (b *book) resume(name Spec, note string) error {
 	r := b.find(name)
 	switch {

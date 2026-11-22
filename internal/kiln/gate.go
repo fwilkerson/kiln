@@ -390,9 +390,9 @@ func (r *Repo) judgedPaths(ctx context.Context, g guard, main, head git.Rev) ([]
 	return slices.Compact(slices.Sorted(slices.Values(slices.Concat(changed, tests)))), err
 }
 
-// keptTest is whether p is a test file of a test-first fix, and head holds it as g.tested does. g.tested holds the
+// keptTest is whether p is a test file of a verify-first fix, and head holds it as g.tested does. g.tested holds the
 // proved tests.
-// Then the test session wrote it, or main held it so, and the fix left it as it was.
+// Then the verify session wrote it, or main held it so, and the fix left it as it was.
 func (r *Repo) keptTest(ctx context.Context, g guard, head git.Rev, p string) (bool, error) {
 	if g.tested == "" || !g.side.testFile(fold(p)) {
 		return false, nil

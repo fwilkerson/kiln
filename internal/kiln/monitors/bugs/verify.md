@@ -1,6 +1,6 @@
 ---
-# This is the test agent of the bugs monitor. For one bug from bugs/, it writes a test that fails on today's code. A new
-# session writes the fix after. kiln's contract follows the body in the session's system prompt, and no line here
+# This is the verify agent of the bugs monitor. For one bug from bugs/, it writes a test that fails on today's code. A
+# new session writes the fix after. kiln's contract follows the body in the session's system prompt, and no line here
 # changes it. kiln reads tools, model, effort and advisor here, and ignores the other keys.
 model: opus
 ---

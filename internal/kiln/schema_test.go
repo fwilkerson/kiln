@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -25,11 +26,13 @@ func TestSchema(t *testing.T) {
 	for _, s := range []struct {
 		file, title string
 		typ         reflect.Type
+		workflows   workflows
 	}{
-		{"defaults/generated/kiln.schema.json", "kiln.json", reflect.TypeFor[config]()},
-		{"defaults/generated/monitor.schema.json", "monitor.json", reflect.TypeFor[settings]()},
+		{"defaults/generated/kiln.schema.json", "kiln.json", reflect.TypeFor[config](), specWorkflows},
+		{"defaults/generated/monitor.schema.json", "monitor.json", reflect.TypeFor[settings](), monitorWorkflows},
 	} {
 		root := schemaOf(t, s.typ, docs)
+		root.property("workflow").Enum = s.workflows.open
 		root.Schema, root.Title = "http://json-schema.org/draft-07/schema#", s.title
 		root.Description = hover(root.Description, s.typ.Name(), s.title)
 		raw, err := plainJSON(root)
@@ -79,6 +82,16 @@ type schemaNode struct {
 	Items                *schemaNode   `json:"items,omitempty"`
 	Properties           properties    `json:"properties,omitempty"`
 	AdditionalProperties any           `json:"additionalProperties,omitempty"`
+}
+
+// property is the schema of n's property name, or nil when n has none of that name.
+func (n *schemaNode) property(name string) *schemaNode {
+	i := slices.IndexFunc(n.Properties, func(p property) bool { return p.name == name })
+	if i < 0 {
+		return nil
+	}
+
+	return n.Properties[i].schema
 }
 
 // properties are an object's properties, in the order of its struct's fields.
@@ -131,8 +144,6 @@ func schemaOf(t *testing.T, typ reflect.Type, docs map[string]string) *schemaNod
 		return &schemaNode{}
 	case reflect.TypeFor[timeout]():
 		return &schemaNode{Type: "string"}
-	case reflect.TypeFor[workflow]():
-		return &schemaNode{Type: "string", Enum: workflows}
 	}
 
 	switch typ.Kind() {

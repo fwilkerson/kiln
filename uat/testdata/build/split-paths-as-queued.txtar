@@ -1,6 +1,6 @@
 # A build queued under one acceptance path builds with that path, though main names two by then.
 
-# Given: a project in the split workflow, and a spec x queued while kiln.json names its acceptance path as the string
+# Given: a project in the workflow build-and-verify, and a spec x queued while kiln.json names its acceptance path as the string
 # "uat/{spec}/". Main's kiln.json then changes to the list ["uat/{spec}/", "integration/{spec}/"].
 exec kiln queue x
 cp _given/kiln.json .kiln/kiln.json
@@ -20,9 +20,9 @@ exec git show main:integration/x/notes.txt
 stdout '^written by the build session$'
 
 -- .kiln/kiln.json --
-{"verifySession": true, "rounds": 3, "acceptanceTests": "uat/{spec}/"}
+{"workflow": "build-and-verify", "rounds": 3, "acceptanceTests": "uat/{spec}/"}
 -- _given/kiln.json --
-{"verifySession": true, "rounds": 3, "acceptanceTests": ["uat/{spec}/", "integration/{spec}/"], "gate": ["go vet ./...", "go test ./..."]}
+{"workflow": "build-and-verify", "rounds": 3, "acceptanceTests": ["uat/{spec}/", "integration/{spec}/"], "gate": ["go vet ./...", "go test ./..."]}
 -- claude.json --
 {
   "build": {

@@ -36,7 +36,7 @@ func TestMonitorAdd(t *testing.T) {
 		says           string // a part of the refusal
 		schema         string // the monitor.json it writes, from one that names no "$schema"
 	}{
-		"a monitor kiln ships": {source: "bugs", want: []string{"bugs/agent.md", "bugs/check*", "bugs/monitor.json", "bugs/test.md"}},
+		"a monitor kiln ships": {source: "bugs", want: []string{"bugs/agent.md", "bugs/check*", "bugs/monitor.json", "bugs/verify.md"}},
 		"one under its preset": {source: "go/docs", want: []string{"docs/agent.md", "docs/check*", "docs/monitor.json"}},
 		"a team's directory": {source: team + "/deps", schema: `{"$schema": "../../generated/monitor.schema.json", "hours": 168}`,
 			want: []string{"deps/command*", "deps/lib/run*", "deps/monitor.json", "deps/notes/why.md"}},

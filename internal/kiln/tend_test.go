@@ -121,7 +121,7 @@ func TestTendMessage(t *testing.T) {
 			want: []string{"The spec x: stopped, landing accepted amendments\nthe gate still failed after its last " +
 				"round:\nFAIL\nfailing: TestAT1\nIts sessions: build s4, in "},
 			lack: []string{"A note for the build", "Its directory", "Its work"}},
-		"a split build that stopped": {name: "x",
+		"a build in build-and-verify that stopped": {name: "x",
 			recs: []*record{{Name: "x", State: stopped, Session: "s5", Verify: "v5", Why: couldNotGoOn + "no disk",
 				Kind: stopKiln}},
 			want: []string{"The spec x: stopped\n" + couldNotGoOn + "no disk\nIts sessions: build s5, in ",
@@ -299,11 +299,11 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// TestSplitOwed holds that a split build kiln tend queued again sends the owed message to both its sessions. Both
-// turns had ended. passOn sends none of it, since it is no bug and no test that can't hold.
+// TestSplitOwed holds that a build in build-and-verify kiln tend queued again sends the owed message to both its
+// sessions. Both turns had ended. passOn sends none of it, since it is no bug and no test that can't hold.
 func TestSplitOwed(t *testing.T) {
 	t.Parallel()
-	r, repo, dir := tendRepo(t, `{"gate": ["true"], "rounds": 1, "verifySession": true, `+
+	r, repo, dir := tendRepo(t, `{"gate": ["true"], "rounds": 1, "workflow": "build-and-verify", `+
 		`"acceptanceTests": "acceptance/{spec}/"}`)
 	approved := git.Rev(shell(t, repo, "git rev-parse main"))
 	builder, verifier := claude.NewID(), claude.NewID()

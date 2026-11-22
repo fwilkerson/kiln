@@ -1,6 +1,6 @@
-# A split build lands the code and its tests, and leaves no checkout.
+# A build in build-and-verify lands the code and its tests, and leaves no checkout.
 
-# Given: the project chooses the split workflow, and a spec is queued.
+# Given: the project chooses the workflow build-and-verify, and a spec is queued.
 exec kiln queue x
 
 # When: kiln fire builds the spec, the build session writes its code, and the verify session writes its acceptance
@@ -37,7 +37,7 @@ exec git branch --list 'kiln/*'
 ! stdout .
 
 -- .kiln/kiln.json --
-{"verifySession": true}
+{"workflow": "build-and-verify"}
 -- claude.json --
 {
   "build": {"1": {"1": [

@@ -1,6 +1,6 @@
 # A bug the verify session reports goes to the build session.
 
-# Given: the project chooses the split workflow, and the verify session's test fails against the build session's code.
+# Given: the project chooses the workflow build-and-verify, and the verify session's test fails against the build session's code.
 # The build session's code answers 41, where the spec says 42.
 exec kiln queue x
 
@@ -26,7 +26,7 @@ exec git show main:x.go
 stdout 'return 42'
 
 -- .kiln/kiln.json --
-{"verifySession": true, "rounds": 3}
+{"workflow": "build-and-verify", "rounds": 3}
 -- claude.json --
 {
  "build": {

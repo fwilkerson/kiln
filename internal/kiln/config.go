@@ -12,6 +12,7 @@ import (
 	"path"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -55,26 +56,29 @@ type config struct {
 	// Write each server as Claude Code's own mcpServers setting holds one. Each server runs outside the sandbox that
 	// confines a session's shell commands. Absent, a session calls no MCP server.
 	MCPServers map[string]json.RawMessage `json:"mcpServers,omitempty"`
-	// VerifySession, when true, gives each build two sessions. The build session writes the code. The verify session
-	// writes the acceptance tests from the spec alone. Neither session reads the other's checkout. Absent or false,
-	// one session writes the code and the tests. A build uses the value that main held when the build was queued.
-	VerifySession bool `json:"verifySession,omitempty"`
+	// Workflow is how kiln builds a spec: "build" or "build-and-verify". Absent or "build", one build session writes
+	// the code and the acceptance tests. With "build-and-verify", a build session writes the code, and a verify
+	// session writes the acceptance tests from the spec alone. The two run at once, and neither reads the other's
+	// checkout. kiln refuses "verify-first", which only a monitor's monitor.json may name. A build uses the
+	// value that main held when the build was queued.
+	Workflow workflow `json:"workflow,omitempty"`
 	// AcceptanceTests is the path that holds a spec's acceptance tests, such as "uat/{spec}/". kiln puts the spec's
 	// name in place of {spec}. A list of such paths gives each spec several paths. Each path holds some text before
 	// {spec}. No listed path's text before {spec} starts with another's. kiln queue refuses every spec while
 	// acceptanceTests is absent. A build uses the value that main held when the build was queued.
 	AcceptanceTests paths `json:"acceptanceTests,omitempty"`
-	// TestHelpers lists paths of helper code that the acceptance tests call, such as ["internal/testutil/"]. With
-	// verifySession true, the verify session may write these paths, besides the acceptance tests and the spec's
-	// amendment file. The build session may write these paths too. kiln queue refuses a spec whose acceptance path
-	// equals, holds or lies under one of these paths. A build uses the value that main held when the build was
-	// queued.
+	// TestHelpers lists paths of helper code that the acceptance tests call, such as ["internal/testutil/"]. In the
+	// workflow "build-and-verify", the verify session may write these paths, besides the acceptance tests and the
+	// spec's amendment file. The build session may write these paths too. kiln queue refuses a spec whose
+	// acceptance path equals, holds or lies under one of these paths. A build uses the value that main held when the
+	// build was queued.
 	TestHelpers []string `json:"testHelpers,omitempty"`
 	// TestFiles lists patterns that name the project's test files, such as ["*_test.go", "testdata"]. A file is a test
 	// file when a pattern matches an element of its path, by Go's path.Match. A pattern holds no slash. In a monitor
-	// whose workflow is "test-first", the files under testHelpers are test files too. So are the files under each
-	// acceptanceTests path's part before {spec}. A test-first monitor's test session writes only test files, and its
-	// fix session writes none. Absent, kiln refuses each test-first monitor.
+	// whose workflow is "verify-first", the files under testHelpers are test files too. So are the files under each
+	// acceptanceTests path's part before {spec}. The verify session of a monitor whose workflow is "verify-first"
+	// writes only test files, and its fix session writes none. Absent, kiln refuses each monitor whose workflow is
+	// "verify-first".
 	TestFiles []string `json:"testFiles,omitempty"`
 	// Reaudit lists paths whose changes the audit must read before the work lands, such as ["migrations/"]. The
 	// audit reads the work once. When the work changes one of these paths after that, the audit reads the work again.
@@ -91,6 +95,54 @@ type config struct {
 	// how long a session may print nothing. Past it, kiln kills that command or session. It does not limit a whole
 	// build. Write a Go duration above zero, such as "2h". Absent, it is 1 hour.
 	Timeout timeout `json:"timeout,omitempty"`
+}
+
+// workflow is how kiln builds: a spec, as kiln.json names it, or a monitor's fix, as its monitor.json names it.
+type workflow string
+
+const (
+	// buildOnly is the workflow of a file that names none: one session writes the code and its tests.
+	buildOnly workflow = "build"
+	// buildAndVerify runs a spec's build session beside a verify session, which writes the tests from the spec alone.
+	buildAndVerify workflow = "build-and-verify"
+	// verifyFirst runs a monitor's verify session to write failing tests, then a fix session to make them pass.
+	verifyFirst workflow = "verify-first"
+)
+
+// workflows is the set of workflows one kind of build may name, in the file that names them.
+type workflows struct {
+	// names is the format of a refusal's subject, with %q for the workflow, such as "kiln.json names the workflow %q".
+	names string
+	// builds names the kind of build, for the other kind's refusal: specs or monitors.
+	builds string
+	open   []workflow
+}
+
+// The workflows of each kind of build. A workflow open only to the other kind gets a refusal of its own.
+var (
+	specWorkflows = workflows{names: configFile + " names the workflow %q", builds: "specs",
+		open: []workflow{buildOnly, buildAndVerify}}
+	monitorWorkflows = workflows{names: "names, in its " + settingsFile + ", the workflow %q", builds: "monitors",
+		open: []workflow{buildOnly, verifyFirst}}
+)
+
+// refusals say why kiln.json or a monitor.json, whichever s is for, may not name w. other is the other kind's set.
+// They are nil when w is absent or open to s.
+func (s workflows) refusals(w workflow, other workflows) refusals {
+	var names []string
+	for _, o := range s.open {
+		names = append(names, strconv.Quote(string(o)))
+	}
+
+	fix := fmt.Sprintf("name %s, or drop workflow", strings.Join(names, " or "))
+	switch {
+	case w == "" || slices.Contains(s.open, w):
+		return nil
+	case slices.Contains(other.open, w):
+		return refusals{{fmt.Sprintf(s.names+", which is open to %s only", w, other.builds), fix}}
+	}
+
+	return refusals{{fmt.Sprintf(s.names+", which kiln does not know", w), fix}}
 }
 
 // defaultTimeout is the timeout of a kiln.json that names none. It is over twice the longest gate seen on a loaded
@@ -195,7 +247,7 @@ func (c config) acceptanceRefusals() refusals {
 
 // helperRefusals say why kiln queue may not take spec. It refuses a spec whose acceptance paths meet a testHelpers
 // path.
-// A split build removes what main holds under those paths from its build session's checkout.
+// A build in build-and-verify removes what main holds under those paths from its build session's checkout.
 func (c config) helperRefusals(spec Spec) refusals {
 	var refused refusals
 	for _, a := range c.acceptancePaths(spec) {
@@ -401,6 +453,7 @@ func (c config) refusals() refusals {
 		}
 	}
 
+	refused = append(refused, specWorkflows.refusals(c.Workflow, monitorWorkflows)...)
 	for _, p := range c.TestFiles {
 		if !elementPattern(p) {
 			refused = append(refused, refusal{fmt.Sprintf("%s names the test file pattern %q", configFile, p),

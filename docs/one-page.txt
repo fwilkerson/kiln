@@ -58,7 +58,7 @@ arrow shape spec
 
 box build @agent 2.1 | BUILD | the code
 box verify @agent 2.1 | VERIFY | a test for each | acceptance test
-more Each acceptance test becomes an automated test, which runs your program as its user would. With `verifySession` on in `kiln.json`, a second session writes those tests from the spec alone, and neither session reads the other's work. With `verifySession` off, one session writes the code and the tests.
+more Each acceptance test becomes an automated test, which runs your program as its user would. With `"workflow": "build-and-verify"` in `kiln.json`, a second session writes those tests from the spec alone. Neither session reads the other's work. With `"workflow": "build"`, the default, one session writes the code and the tests.
 box gate @kiln 2.2 | GATE ●2 | your checks, | read from main
 more kiln reads the gate's commands from main, never from the build's checkout, so a build cannot weaken the checks it is held to.
 box audit @agent 2.3 | AUDIT | a second session | reads the work

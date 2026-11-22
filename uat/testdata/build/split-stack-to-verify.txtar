@@ -1,6 +1,6 @@
 # A failing stack goes to the verify session first.
 
-# Given: the project chooses the split workflow, and the verify session's test fails against the build session's code.
+# Given: the project chooses the workflow build-and-verify, and the verify session's test fails against the build session's code.
 # The verify session's test expects 41, where the spec and the code say 42.
 exec kiln queue x
 
@@ -24,7 +24,7 @@ grep -count=1 '"role":"audit"' .git/kiln/ledger.jsonl
 grep '"kind":"gate"[^\n]*\n(?:[^\n]*\n)*?[^\n]*"kind":"gate"[^\n]*"passed":true[^\n]*\n[^\n]*"role":"audit"' .git/kiln/ledger.jsonl
 
 -- .kiln/kiln.json --
-{"verifySession": true, "rounds": 3}
+{"workflow": "build-and-verify", "rounds": 3}
 -- claude.json --
 {
  "build": {

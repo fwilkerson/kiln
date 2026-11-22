@@ -44,10 +44,10 @@ type fixing struct {
 	monitor monitor
 	// checked is what the run's first check, or its gauge, found. A landing kiln accept started has none.
 	checked checked
-	// side is what the fix's session that works now may write. Its role is testRole while a test-first fix's test
-	// session works.
+	// side is what the fix's session that works now may write. Its role is verifyRole while a verify-first fix's
+	// verify session works.
 	side side
-	// tested is what the fix session's first message says of a test-first fix's proved tests.
+	// tested is what the fix session's first message says of a verify-first fix's proved tests.
 	tested string
 	// outcome, summary and report say how the fix ended, once it has.
 	outcome, summary, report string
@@ -59,11 +59,11 @@ type fixing struct {
 }
 
 // newFixing is the fix of m, as c, kiln.json at main's tip when it started, says. found is what its check found. A
-// test-first fix's sides tell the tests apart by kiln.json's testFiles, its testHelpers and its acceptance paths.
+// verify-first fix's sides tell the tests apart by kiln.json's testFiles, its testHelpers and its acceptance paths.
 func newFixing(c config, m monitor, found checked) *fixing {
 	fixes := side{role: fixRole}
 	switch {
-	case m.Workflow == testFirst:
+	case m.Workflow == verifyFirst:
 		fixes.tests, fixes.acceptance, fixes.helpers = c.TestFiles, c.fixedParts(), c.TestHelpers
 	case !m.WritesTests:
 		fixes.acceptance = c.fixedParts()
@@ -126,12 +126,12 @@ func (r *Repo) startFix(ctx context.Context, out io.Writer, f *fixing, line entr
 	return b, b.fixSettle(ctx, b.fixWork(ctx))
 }
 
-// fixWork runs the fix: the command first, then the agent when the command left the gate failing. A test-first fix
-// runs its test session first, and its agent from the tests kiln proved.
+// fixWork runs the fix: the command first, then the agent when the command left the gate failing. A verify-first fix
+// runs its verify session first, and its agent from the tests kiln proved.
 func (b *build) fixWork(ctx context.Context) error {
 	name, m, from := b.rec.Name, b.fix.monitor, b.rec.Approved
-	if m.Workflow == testFirst {
-		tested, err := b.testFirst(ctx)
+	if m.Workflow == verifyFirst {
+		tested, err := b.writeTests(ctx)
 		if err != nil || tested == "" {
 			return err
 		}
@@ -715,9 +715,9 @@ func (b *build) monitorLaunch(ctx context.Context, file string, g guard, l claud
 // kept is the forbidden action that keeps role's session of the fix off what it may not write.
 func (f *fixing) kept(role string) string {
 	switch {
-	case role == testRole:
+	case role == verifyRole:
 		return "Changing anything under .kiln/, or any file but a test file, by a file tool or a shell command."
-	case len(f.side.tests) > 0:
+	case f.side.verifiesFirst():
 		return "Changing anything under .kiln/, or any test file, by a file tool or a shell command."
 	case len(f.side.acceptance) == 0:
 		return "Changing anything under .kiln/, by a file tool or a shell command."
@@ -731,8 +731,8 @@ func (f *fixing) kept(role string) string {
 func (f *fixing) contract(name Spec) string {
 	tests := "The monitor says its fixes may write the acceptance tests."
 	switch {
-	case len(f.side.tests) > 0:
-		tests = fmt.Sprintf("Nor is any test file: %s. A test session wrote the tests that judge your fix. It "+
+	case f.side.verifiesFirst():
+		tests = fmt.Sprintf("Nor is any test file: %s. A verify session wrote the tests that judge your fix. It "+
 			"updated each old test that held the behavior your fix changes.", f.side.testWords())
 	case len(f.side.acceptance) > 0:
 		tests = fmt.Sprintf("Nor is anything under %s, the acceptance tests, which judge your fix.",
@@ -768,8 +768,8 @@ func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdi
 	switch {
 	case b.fix == nil || !b.fix.monitor.gated():
 		return v, nil
-	case b.fix.testing():
-		// A test-first fix's test must fail the gate before any fix, so its check, which asks for one, waits.
+	case b.fix.verifying():
+		// A verify-first fix's tests must fail the gate before any fix, so its check, which asks for one, waits.
 		return v, nil
 	case b.fix.monitor.finder == gaugeScript:
 		return b.gatedGauge(ctx, held, v)

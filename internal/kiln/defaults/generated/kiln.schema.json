@@ -42,9 +42,13 @@
       "type": "object",
       "additionalProperties": {}
     },
-    "verifySession": {
-      "description": "verifySession, when true, gives each build two sessions. The build session writes the code. The verify session writes the acceptance tests from the spec alone. Neither session reads the other's checkout. Absent or false, one session writes the code and the tests. A build uses the value that main held when the build was queued.",
-      "type": "boolean"
+    "workflow": {
+      "description": "workflow is how kiln builds a spec: \"build\" or \"build-and-verify\". Absent or \"build\", one build session writes the code and the acceptance tests. With \"build-and-verify\", a build session writes the code, and a verify session writes the acceptance tests from the spec alone. The two run at once, and neither reads the other's checkout. kiln refuses \"verify-first\", which only a monitor's monitor.json may name. A build uses the value that main held when the build was queued.",
+      "type": "string",
+      "enum": [
+        "build",
+        "build-and-verify"
+      ]
     },
     "acceptanceTests": {
       "description": "acceptanceTests is the path that holds a spec's acceptance tests, such as \"uat/{spec}/\". kiln puts the spec's name in place of {spec}. A list of such paths gives each spec several paths. Each path holds some text before {spec}. No listed path's text before {spec} starts with another's. kiln queue refuses every spec while acceptanceTests is absent. A build uses the value that main held when the build was queued.",
@@ -61,14 +65,14 @@
       ]
     },
     "testHelpers": {
-      "description": "testHelpers lists paths of helper code that the acceptance tests call, such as [\"internal/testutil/\"]. With verifySession true, the verify session may write these paths, besides the acceptance tests and the spec's amendment file. The build session may write these paths too. kiln queue refuses a spec whose acceptance path equals, holds or lies under one of these paths. A build uses the value that main held when the build was queued.",
+      "description": "testHelpers lists paths of helper code that the acceptance tests call, such as [\"internal/testutil/\"]. In the workflow \"build-and-verify\", the verify session may write these paths, besides the acceptance tests and the spec's amendment file. The build session may write these paths too. kiln queue refuses a spec whose acceptance path equals, holds or lies under one of these paths. A build uses the value that main held when the build was queued.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "testFiles": {
-      "description": "testFiles lists patterns that name the project's test files, such as [\"*_test.go\", \"testdata\"]. A file is a test file when a pattern matches an element of its path, by Go's path.Match. A pattern holds no slash. In a monitor whose workflow is \"test-first\", the files under testHelpers are test files too. So are the files under each acceptanceTests path's part before {spec}. A test-first monitor's test session writes only test files, and its fix session writes none. Absent, kiln refuses each test-first monitor.",
+      "description": "testFiles lists patterns that name the project's test files, such as [\"*_test.go\", \"testdata\"]. A file is a test file when a pattern matches an element of its path, by Go's path.Match. A pattern holds no slash. In a monitor whose workflow is \"verify-first\", the files under testHelpers are test files too. So are the files under each acceptanceTests path's part before {spec}. The verify session of a monitor whose workflow is \"verify-first\" writes only test files, and its fix session writes none. Absent, kiln refuses each monitor whose workflow is \"verify-first\".",
       "type": "array",
       "items": {
         "type": "string"

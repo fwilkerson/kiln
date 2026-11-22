@@ -16,7 +16,7 @@ import (
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// A split build runs two sessions at once, each in a clone of main of its own:
+// A build in build-and-verify runs two sessions at once, each in a clone of main of its own:
 //
 //	main ──┬─▶ kiln/<name>.build    the build session writes the code
 //	       └─▶ kiln/<name>.verify   the verify session writes the acceptance tests, from the spec alone
@@ -29,16 +29,16 @@ import (
 // Each session's branch lives in its clone. The repository's kiln/<name>.build and kiln/<name>.verify are only
 // fetches of them.
 
-// clone is the clone in which role's session of a split build of name works. A spec's name never starts with a dot,
-// so it is no build's tree.
+// clone is the clone in which role's session of a build of name works. That is either side of build-and-verify,
+// or a verify-first fix's verify session. A spec's name never starts with a dot, so it is no build's tree.
 func (r *Repo) clone(name Spec, role string) git.Worktree {
 	return git.Worktree(sideClone(r.tree(name), name, role))
 }
 
-// sideBranch is the branch role's session of a split build of the spec works on.
+// sideBranch is the branch role's session of a build of the spec works on, in its clone.
 func (s Spec) sideBranch(role string) git.Branch { return git.Branch("kiln/" + string(s) + "." + role) }
 
-// other is the role of a split build's other session.
+// other is the role of build-and-verify's other session.
 func other(role string) string {
 	if role == buildRole {
 		return verifyRole
@@ -51,12 +51,11 @@ func other(role string) string {
 // gate's worktrees, and each session's clone. The .main worktree stays, since every gate shares it.
 func (r *Repo) dropCheckouts(ctx context.Context, name Spec) error {
 	trees := []git.Worktree{r.tree(name), r.auditTree(name), r.gateTree(name), r.clone(name, buildRole),
-		r.clone(name, verifyRole), r.clone(name, testRole)}
-	return r.git.Remove(ctx, trees, name.branch(), name.sideBranch(buildRole), name.sideBranch(verifyRole),
-		name.sideBranch(testRole))
+		r.clone(name, verifyRole)}
+	return r.git.Remove(ctx, trees, name.branch(), name.sideBranch(buildRole), name.sideBranch(verifyRole))
 }
 
-// turn is what each session of a split build is told next. A session whose prompt is "" does not run.
+// turn is what each session of build-and-verify is told next. A session whose prompt is "" does not run.
 type turn struct {
 	build, verify string
 	why           reason
@@ -67,7 +66,7 @@ type turn struct {
 // none is whether t tells neither session anything, and gives no reason.
 func (t turn) none() bool { return t.build == "" && t.verify == "" && t.why.Why == "" }
 
-// splitRun runs a split build until it lands, waits on its branch, or stops.
+// splitRun runs a build in build-and-verify until it lands, waits on its branch, or stops.
 func (b *build) splitRun(ctx context.Context) error {
 	if err := b.splitGoOn(ctx); err != nil {
 		return err
@@ -89,7 +88,7 @@ func (b *build) splitRun(ctx context.Context) error {
 	}
 }
 
-// splitGoOn takes the split build up where kiln left it: it starts both sessions, or resumes each.
+// splitGoOn takes the build in build-and-verify up where kiln left it: it starts both sessions, or resumes each.
 func (b *build) splitGoOn(ctx context.Context) error {
 	b.ledger(ctx)
 	if err := b.unland(ctx); err != nil {
@@ -310,10 +309,10 @@ func (b *build) splitStep(ctx context.Context) (turn, error) {
 	return b.splitAfter(ctx)
 }
 
-// splitAfter takes a split build on once its stack passed its gate: to the audit, its branch, or main. Findings go
-// to both sessions. A landing's setback goes back as a round. Work that changes nothing goes to the build session.
-// Otherwise, main moved, so kiln merges it into both clones where the merge is clean. A conflict goes to the session
-// whose side holds the file.
+// splitAfter takes a build in build-and-verify on once its stack passed its gate: to the audit, its branch, or main.
+// Findings go to both sessions. A landing's setback goes back as a round. Work that changes nothing goes to the build
+// session. Otherwise, main moved, so kiln merges it into both clones where the merge is clean. A conflict goes to the
+// session whose side holds the file.
 func (b *build) splitAfter(ctx context.Context) (turn, error) {
 	findings, why, err := b.findings(ctx)
 	if err != nil || findings != "" {
@@ -619,7 +618,7 @@ func (b *build) amendedSpec(ctx context.Context, at git.Rev) (string, error) {
 	return folded, nil
 }
 
-// sessionLaunch is a run of role's session of the split build, in its own clone. Its hook keeps it to its side. Its
+// sessionLaunch is a run of role's session of build-and-verify, in its own clone. Its hook keeps it to its side. Its
 // settings deny it reads of every checkout but its own, and of the other session's transcripts.
 func (b *build) sessionLaunch(ctx context.Context, role string, resume bool, prompt string) (claude.Launch, error) {
 	g, err := b.sideGuard(ctx, role)
@@ -736,7 +735,7 @@ func (b *build) askBugsLine(ctx context.Context, l claude.Launch) error {
 	return nil
 }
 
-// heard reads the reply of a split build's session, where every run of its role ends. The build session's
+// heard reads the reply of build-and-verify's session, where every run of its role ends. The build session's
 // cannot-hold line keeps its reply for the verify session. The verify session answers a failing stack with its bugs
 // line. That keeps its report for the build session, with the Given, When, Then of each test it names.
 func (b *build) heard(ctx context.Context, l claude.Launch, ended claude.Ended) error {
@@ -852,7 +851,7 @@ func testsOf(spec string) map[int]string {
 }
 
 // harnessChanged lists each harness file the build session changed. The audit reads each for a weakened check. It
-// lists none outside a split build.
+// lists none outside build-and-verify.
 func (b *build) harnessChanged(ctx context.Context) ([]string, error) {
 	s, err := b.sides(ctx)
 	if err != nil || !s.split {
@@ -870,7 +869,7 @@ func (b *build) harnessChanged(ctx context.Context) ([]string, error) {
 	}), err
 }
 
-// Why a split build's session run started, beside the reasons every build shares.
+// Why build-and-verify's session run started, beside the reasons every build shares.
 const (
 	whyStack         = "stack"
 	whyStackConflict = "stack conflict"

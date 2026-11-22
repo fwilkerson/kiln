@@ -30,7 +30,7 @@ import (
 //	finding   after an audit's end line, one per finding its reply lists: its rank, place, category and fields.
 //	          A reply kiln could not parse gets one line, which holds it whole
 //	gate      after each gate: when it ended, whether it passed, whether it gated a landing, whether it ran the
-//	          commands at main too, and whether it gated a test-first fix's test before the fix
+//	          commands at main too, and whether it gated a verify-first fix's tests before the fix
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
 //	gauge     after a landing, one per gauge that printed something or failed: its name, the landed
 //	          commit, its value or none, and its line and side
@@ -121,7 +121,7 @@ type entry struct {
 	finding
 	// A gate line's. At is when it started. Landing is the gate on the work rebased onto main. RanMain is whether it
 	// ran the commands at main too. A line from before kiln wrote it holds none. BeforeFix is the gate on a
-	// test-first fix's test, which must fail.
+	// verify-first fix's tests, which must fail.
 	End       time.Time `json:"end,omitzero"`
 	Passed    bool      `json:"passed,omitempty"`
 	Landing   bool      `json:"landing,omitempty"`

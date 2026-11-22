@@ -8,7 +8,7 @@ is the quick start. `kiln help <topic>` prints the rules kiln follows, and a sec
   kiln.json                  the settings below
   specs/<name>.md            a spec, and <name>.amend.md, the amendments a build asks for
   agents/build.md            the build agent: frontmatter, then its prompt
-  agents/verify.md           how the acceptance tests' code is written, and the verify agent of a split build
+  agents/verify.md           how the acceptance tests' code is written, and the agent of a verify session
   agents/audit.md            the audit, which reads the work once the gate passes
   reviewers/<name>.md        each reviewer /shape runs on a spec before you approve it, as Reviewers below says
   skills/shape/SKILL.md      /shape, which writes a spec with you
@@ -80,7 +80,7 @@ kiln help [<topic>]      print this usage and the topics of kiln's docs, as kiln
   "writablePathCommands": ["go env GOCACHE GOMODCACHE"],
   "mcpServers": {"docs": {"command": "docs-mcp"}},
   "acceptanceTests": "acceptance/{spec}/",
-  "verifySession": true,
+  "workflow": "build-and-verify",
   "testHelpers": ["internal/testutil/"],
   "testFiles": ["*_test.go", "testdata"],
   "reaudit": ["migrations/"],
@@ -99,15 +99,15 @@ kiln help [<topic>]      print this usage and the topics of kiln's docs, as kiln
 | `"writablePathCommands"` | Commands that print the paths a session may write, besides its checkout      | a session writes in its checkout  |
 | `"mcpServers"`           | The only MCP servers a session calls, as Claude Code's settings hold one     | a session calls none              |
 | `"acceptanceTests"`      | Where a spec's acceptance tests go, with `{spec}` for the spec's name        | `kiln queue` refuses every spec   |
-| `"verifySession"`        | `true`: a second session writes the acceptance tests, from the spec alone    | one session writes code and tests |
+| `"workflow"`             | `"build-and-verify"`: a second session writes the acceptance tests           | one session writes code and tests |
 | `"testHelpers"`          | Paths of helper code the acceptance tests call, such as a test harness       | no helper path                    |
-| `"testFiles"`            | Patterns of a test file's name, or of a directory that holds tests           | kiln refuses a test-first monitor |
+| `"testFiles"`            | Patterns of a test file's name, or of a directory that holds tests           | no verify-first monitor runs      |
 | `"reaudit"`              | Paths whose changes the audit must read before the work lands                | the audit reads the work once     |
 | `"notify"`               | A program that receives each notification, run with `sh -c`                  | kiln prints each in its output    |
 | `"timeout"`              | How long a command may run, or a session print nothing, before kiln kills it | 1 hour                            |
 
 - kiln reads each key at main's tip, so a committed change takes effect on the next thing kiln does. Three keys
-  differ: a build keeps `"acceptanceTests"`, `"verifySession"` and `"testHelpers"` as main held them when
+  differ: a build keeps `"acceptanceTests"`, `"workflow"` and `"testHelpers"` as main held them when
   `kiln queue` ran.
 - kiln reads the gate from main, never from the build's checkout, so a build cannot weaken its own gate.
 - kiln refuses a `kiln.json` with a key it does not know.
@@ -170,7 +170,7 @@ tests go:
 - a list in which one path's part before `{spec}` starts another's, since two specs' paths could then meet,
 - a spec whose acceptance path equals a `"testHelpers"` path, holds one, or lies under one.
 
-### verifySession, testHelpers and reaudit
+### workflow, testHelpers and reaudit
 
 ```text
                        ┌─ build session, in its own clone:  the code       ─┐
@@ -179,9 +179,11 @@ kiln fire ─▶ main ─────┤                                        
                           written from the spec alone, never seeing the code
 ```
 
-- With `"verifySession": true`, kiln runs a split build. The build session writes nothing under the
-  `"acceptanceTests"` paths or in the amendment file. The verify session writes only those, and the `"testHelpers"`
-  paths.
+- `"workflow"` is `"build"` or `"build-and-verify"`. With `"build"`, or no `"workflow"`, one session writes the
+  code and the tests. With `"build-and-verify"`, two sessions run at once, as above. kiln refuses `"verify-first"`
+  here, a workflow open to monitors only.
+- In `"build-and-verify"`, the build session writes nothing under the `"acceptanceTests"` paths or in the
+  amendment file. The verify session writes only those, and the `"testHelpers"` paths.
 - Each session's settings deny it reads of the other's clone.
 - kiln gates the build session's work alone first, and its failures go to the build session.
 - Then kiln stacks both sides and gates the stack. Its failures go to the verify session. That session fixes its
@@ -278,13 +280,13 @@ monitor:
   gauge          in place of check: prints a number, and a reading past the limit in monitor.json asks for a fix
   command        a fix that needs no model, run outside the sandbox
   agent.md       an agent's file, run when there is no command, or command left the gate failing
-  test.md        with "workflow": "test-first", an agent's file that writes the fix's test before agent.md runs
+  verify.md      with "workflow": "verify-first", an agent's file that writes the fix's tests before agent.md runs
   monitor.json   the keys below
 ```
 
 A monitor holds a `command`, an `agent.md` or both, and at most one of `check` and `gauge`. With neither, each due
 run starts a fix. A monitor with a `gauge` alone watches a number and fixes nothing, as [Gauges](#gauges) says. A
-monitor whose workflow is `"test-first"` holds a `check`, a `test.md` and an `agent.md`, and no `command`. Its
+monitor whose workflow is `"verify-first"` holds a `check`, a `verify.md` and an `agent.md`, and no `command`. Its
 `monitor.json` names no `"writesTests"`.
 
 | Key             | What it holds                                                                  | When absent            |
@@ -294,7 +296,7 @@ monitor whose workflow is `"test-first"` holds a `check`, a `test.md` and an `ag
 | `"recheck"`     | `false` keeps the check or gauge out of the fix's gate                         | the gate runs it again |
 | `"mustAccept"`  | `true` keeps each passing fix on its branch until `kiln accept <name>`         | a passing fix lands    |
 | `"writesTests"` | `true` lets a fix write every spec's acceptance tests                          | a fix writes none      |
-| `"workflow"`    | `"test-first"`: one session writes a failing test, and a second the fix        | one session, `"fix"`   |
+| `"workflow"`    | `"verify-first"`: one session writes failing tests, and a second the fix       | one session, `"build"` |
 | `"atLeast"`     | Beside a gauge: the lowest reading that asks for no fix                        | kiln refuses a gauge   |
 | `"atMost"`      | Beside a gauge: the highest reading that asks for no fix                       | with neither, or both  |
 
@@ -338,9 +340,9 @@ with your edits. A monitor you deleted stays deleted.
   `command`, or `command` left the gate failing.
 - The agent's first message holds what the check or gauge printed, and what the gate printed after `command`. Its
   instructions are the body of `agent.md`.
-- With `"workflow": "test-first"`, a session of `test.md` first writes failing tests from what the check printed.
+- With `"workflow": "verify-first"`, a session of `verify.md` first writes failing tests from what the check printed.
   That session works in a clone of its own, and writes only the test files that `"testFiles"` names. Then a new
-  session of `agent.md` writes the fix, and no test file. `kiln help test-first-fixes` says how kiln holds each
+  session of `agent.md` writes the fix, and no test file. `kiln help verify-first-fixes` says how kiln holds each
   session to its part, and where the audit's findings go.
 - A fix must pass the gate, with the check or gauge added to it. `"recheck": false` leaves them out, for a check that
   reads something no fix changes until the fix is deployed.
@@ -435,7 +437,7 @@ You audit a build's work. ...
   No file changes the contract, the denied commands, or the guard on `.kiln/`.
 - `kiln queue` reads the build, verify and audit agents at the commit it queues. Each session of that build runs
   with them.
-- Without `"verifySession"`, the build session writes the tests too, so the verify agent's body follows the build
+- In the workflow `"build"`, the build session writes the tests too, so the verify agent's body follows the build
   agent's.
 
 ## Reviewers

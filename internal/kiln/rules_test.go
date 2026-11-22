@@ -42,48 +42,48 @@ func TestGuard(t *testing.T) {
 		side            side
 		refused         bool
 	}{
-		"a build writes its code":                    {tool: "Write", file: place + "/x.go"},
-		"a build writes its spec's amendments":       {tool: "Write", file: place + "/.kiln/specs/x.amend.md"},
-		"a build may not edit its spec":              {tool: "Edit", file: place + "/.kiln/specs/x.md", refused: true},
-		"nor another spec's amendments":              {tool: "Write", file: place + "/.kiln/specs/y.amend.md", refused: true},
-		"nor anything deeper under specs":            {tool: "Write", file: place + "/.kiln/specs/x/x.amend.md", refused: true},
-		"nor an agent's file":                        {tool: "Edit", file: place + "/.kiln/agents/audit.md", refused: true},
-		"nor the gate's commands":                    {tool: "Write", file: place + "/.kiln/kiln.json", refused: true},
-		"nor a spec spelled in other letters":        {tool: "Edit", file: place + "/.KILN/Specs/x.md", refused: true},
-		"nor a spec by a path relative to its cwd":   {tool: "Edit", cwd: place + "/.kiln/specs", file: "x.md", refused: true},
-		"nor a path that climbs out of its worktree": {tool: "Write", file: place + "/../y/x.go", refused: true},
-		"nor the developer's Claude Code settings":   {tool: "Write", file: place + "/.claude/settings.json", refused: true},
-		"nor an agent under .claude":                 {tool: "Write", file: place + "/.claude/agents/helper.md", refused: true},
-		"nor a nested .claude's skill":               {tool: "Write", file: place + "/sub/.claude/skills/t/SKILL.md", refused: true},
-		"nor a git directory":                        {tool: "Write", file: place + "/sub/.git/config", refused: true},
-		"nor a notebook under .kiln":                 {tool: "NotebookEdit", file: place + "/.kiln/n.ipynb", refused: true},
-		"a write that names no file is refused":      {tool: "Write", refused: true},
-		"a path through /private is the same path":   {tool: "Write", file: "/private/tmp/w/.kiln/specs/x.md", refused: true},
-		"a split build session writes its code":      {tool: "Write", file: place + "/x.go", side: builds},
-		"and the harness":                            {tool: "Edit", file: place + "/harness/h.go", side: builds},
-		"and another spec's tests":                   {tool: "Edit", file: place + "/acceptance/y/y_test.go", side: builds},
-		"but not its spec's tests":                   {tool: "Write", file: place + "/acceptance/x/x_test.go", side: builds, refused: true},
-		"nor its spec's tests in other letters":      {tool: "Write", file: place + "/Acceptance/X/x_test.go", side: builds, refused: true},
-		"nor its spec's amendments":                  {tool: "Write", file: place + "/.kiln/specs/x.amend.md", side: builds, refused: true},
-		"a verify session writes its spec's tests":   {tool: "Write", file: place + "/acceptance/x/x_test.go", side: verifies},
-		"and its spec's amendments":                  {tool: "Write", file: place + "/.kiln/specs/x.amend.md", side: verifies},
-		"and the harness too":                        {tool: "Write", file: place + "/harness/h.go", side: verifies},
-		"but not code":                               {tool: "Write", file: place + "/x.go", side: verifies, refused: true},
-		"nor another spec's tests":                   {tool: "Write", file: place + "/acceptance/y/y_test.go", side: verifies, refused: true},
-		"nor a path that only starts like its tests": {tool: "Write", file: place + "/acceptance/xy/t.go", side: verifies, refused: true},
-		"a fix writes code":                          {tool: "Write", file: place + "/x.go", side: fixes},
-		"but no test under the acceptance path":      {tool: "Write", file: place + "/acceptance/y/y_test.go", side: fixes, refused: true},
-		"nor the amendment file":                     {tool: "Write", file: place + "/.kiln/specs/x.amend.md", side: fixesTests, refused: true},
-		"a fix whose monitor says tests writes them": {tool: "Write", file: place + "/acceptance/y/y_test.go", side: fixesTests},
-		"a build session writes under neither path":  {tool: "Write", file: place + "/integration/x/x_test.go", side: buildsTwo, refused: true},
-		"nor under the first":                        {tool: "Write", file: place + "/uat/x/x_test.go", side: buildsTwo, refused: true},
-		"but writes another spec's second path":      {tool: "Write", file: place + "/integration/y/y_test.go", side: buildsTwo},
-		"a verify session writes under the second":   {tool: "Write", file: place + "/integration/x/x_test.go", side: verifiesTwo},
-		"and under the first":                        {tool: "Write", file: place + "/uat/x/x_test.go", side: verifiesTwo},
-		"a fix writes under no path's fixed part":    {tool: "Write", file: place + "/integration/y/y_test.go", side: fixesTwo, refused: true},
-		"and writes code beside them":                {tool: "Write", file: place + "/internal/integration/i.go", side: fixesTwo},
-		"a fixed part with no slash guards a prefix": {tool: "Write", file: place + "/tests/acceptance/test_x.py", side: fixesPython, refused: true},
-		"and leaves what only shares its directory":  {tool: "Write", file: place + "/tests/acceptance/conftest.py", side: fixesPython},
+		"a build writes its code":                          {tool: "Write", file: place + "/x.go"},
+		"a build writes its spec's amendments":             {tool: "Write", file: place + "/.kiln/specs/x.amend.md"},
+		"a build may not edit its spec":                    {tool: "Edit", file: place + "/.kiln/specs/x.md", refused: true},
+		"nor another spec's amendments":                    {tool: "Write", file: place + "/.kiln/specs/y.amend.md", refused: true},
+		"nor anything deeper under specs":                  {tool: "Write", file: place + "/.kiln/specs/x/x.amend.md", refused: true},
+		"nor an agent's file":                              {tool: "Edit", file: place + "/.kiln/agents/audit.md", refused: true},
+		"nor the gate's commands":                          {tool: "Write", file: place + "/.kiln/kiln.json", refused: true},
+		"nor a spec spelled in other letters":              {tool: "Edit", file: place + "/.KILN/Specs/x.md", refused: true},
+		"nor a spec by a path relative to its cwd":         {tool: "Edit", cwd: place + "/.kiln/specs", file: "x.md", refused: true},
+		"nor a path that climbs out of its worktree":       {tool: "Write", file: place + "/../y/x.go", refused: true},
+		"nor the developer's Claude Code settings":         {tool: "Write", file: place + "/.claude/settings.json", refused: true},
+		"nor an agent under .claude":                       {tool: "Write", file: place + "/.claude/agents/helper.md", refused: true},
+		"nor a nested .claude's skill":                     {tool: "Write", file: place + "/sub/.claude/skills/t/SKILL.md", refused: true},
+		"nor a git directory":                              {tool: "Write", file: place + "/sub/.git/config", refused: true},
+		"nor a notebook under .kiln":                       {tool: "NotebookEdit", file: place + "/.kiln/n.ipynb", refused: true},
+		"a write that names no file is refused":            {tool: "Write", refused: true},
+		"a path through /private is the same path":         {tool: "Write", file: "/private/tmp/w/.kiln/specs/x.md", refused: true},
+		"build-and-verify's build session writes its code": {tool: "Write", file: place + "/x.go", side: builds},
+		"and the harness":                                  {tool: "Edit", file: place + "/harness/h.go", side: builds},
+		"and another spec's tests":                         {tool: "Edit", file: place + "/acceptance/y/y_test.go", side: builds},
+		"but not its spec's tests":                         {tool: "Write", file: place + "/acceptance/x/x_test.go", side: builds, refused: true},
+		"nor its spec's tests in other letters":            {tool: "Write", file: place + "/Acceptance/X/x_test.go", side: builds, refused: true},
+		"nor its spec's amendments":                        {tool: "Write", file: place + "/.kiln/specs/x.amend.md", side: builds, refused: true},
+		"a verify session writes its spec's tests":         {tool: "Write", file: place + "/acceptance/x/x_test.go", side: verifies},
+		"and its spec's amendments":                        {tool: "Write", file: place + "/.kiln/specs/x.amend.md", side: verifies},
+		"and the harness too":                              {tool: "Write", file: place + "/harness/h.go", side: verifies},
+		"but not code":                                     {tool: "Write", file: place + "/x.go", side: verifies, refused: true},
+		"nor another spec's tests":                         {tool: "Write", file: place + "/acceptance/y/y_test.go", side: verifies, refused: true},
+		"nor a path that only starts like its tests":       {tool: "Write", file: place + "/acceptance/xy/t.go", side: verifies, refused: true},
+		"a fix writes code":                                {tool: "Write", file: place + "/x.go", side: fixes},
+		"but no test under the acceptance path":            {tool: "Write", file: place + "/acceptance/y/y_test.go", side: fixes, refused: true},
+		"nor the amendment file":                           {tool: "Write", file: place + "/.kiln/specs/x.amend.md", side: fixesTests, refused: true},
+		"a fix whose monitor says tests writes them":       {tool: "Write", file: place + "/acceptance/y/y_test.go", side: fixesTests},
+		"a build session writes under neither path":        {tool: "Write", file: place + "/integration/x/x_test.go", side: buildsTwo, refused: true},
+		"nor under the first":                              {tool: "Write", file: place + "/uat/x/x_test.go", side: buildsTwo, refused: true},
+		"but writes another spec's second path":            {tool: "Write", file: place + "/integration/y/y_test.go", side: buildsTwo},
+		"a verify session writes under the second":         {tool: "Write", file: place + "/integration/x/x_test.go", side: verifiesTwo},
+		"and under the first":                              {tool: "Write", file: place + "/uat/x/x_test.go", side: verifiesTwo},
+		"a fix writes under no path's fixed part":          {tool: "Write", file: place + "/integration/y/y_test.go", side: fixesTwo, refused: true},
+		"and writes code beside them":                      {tool: "Write", file: place + "/internal/integration/i.go", side: fixesTwo},
+		"a fixed part with no slash guards a prefix":       {tool: "Write", file: place + "/tests/acceptance/test_x.py", side: fixesPython, refused: true},
+		"and leaves what only shares its directory":        {tool: "Write", file: place + "/tests/acceptance/conftest.py", side: fixesPython},
 	} {
 		t.Run(name, func(t *testing.T) {
 			worktree := git.Worktree(place)
@@ -101,21 +101,22 @@ func TestGuard(t *testing.T) {
 	}
 }
 
-// TestTestFirstSides holds which files each session of a test-first fix may write. The test session writes only test
-// files, and the fix session none. A test file matches a pattern of testFiles, or lies under an acceptance path's
+// TestVerifyFirstSides holds which files each session of a verify-first fix may write. The verify session writes only
+// test files, and the fix session none. A test file matches a pattern of testFiles, or lies under an acceptance path's
 // fixed part or a helper.
-func TestTestFirstSides(t *testing.T) {
+func TestVerifyFirstSides(t *testing.T) {
 	const place = "/w"
-	for file, may := range map[string]struct{ test, fix bool }{
-		"x_test.go":             {test: true},
-		"X_TEST.GO":             {test: true},
-		"x/testdata/in.txt":     {test: true},
-		"acceptance/y/y.go":     {test: true},
-		"h/helper.go":           {test: true},
-		"x.go":                  {fix: true},
-		".kiln/specs/x_test.go": {},
+	for file, may := range map[string]struct{ verify, fix bool }{
+		"x_test.go":              {verify: true},
+		"X_TEST.GO":              {verify: true},
+		"x/testdata/in.txt":      {verify: true},
+		"acceptance/y/y.go":      {verify: true},
+		"h/helper.go":            {verify: true},
+		"x.go":                   {fix: true},
+		".kiln/specs/x_test.go":  {},
+		".kiln/specs/x.amend.md": {},
 	} {
-		for role, mayWrite := range map[string]bool{testRole: may.test, fixRole: may.fix} {
+		for role, mayWrite := range map[string]bool{verifyRole: may.verify, fixRole: may.fix} {
 			s := side{role: role, acceptance: []string{"acceptance/"}, helpers: []string{"h/"},
 				tests: []string{"*_test.go", "testdata"}}
 			c := hookCall{Tool: "Write", Cwd: place}
@@ -189,18 +190,18 @@ func TestGuardLinks(t *testing.T) {
 // TestHookArguments holds that the hook refuses arguments kiln never writes, so no slip leaves a session unguarded.
 func TestHookArguments(t *testing.T) {
 	for name, args := range map[string][]string{
-		"no spec":                         {"--place", "/w"},
-		"no worktree":                     {"--spec", "x"},
-		"a role kiln never writes":        {"--spec", "x", "--place", "/w", "--role", "verfy", "--acceptance", "a/"},
-		"a split build's side, pathless":  {"--spec", "x", "--place", "/w", "--role", verifyRole},
-		"a flag kiln does not read":       {"--spec", "x", "--place", "/w", "--fix"},
-		"a flag with no value":            {"--spec", "x", "--place", "/w", "--role"},
-		"a word after the flags":          {"--spec", "x", "--place", "/w", "y"},
-		"an acceptance path with no role": {"--spec", "x", "--place", "/w", "--acceptance", "a/"},
-		"two acceptance paths, no role":   {"--spec", "x", "--place", "/w", "--acceptance", "a/", "--acceptance", "b/"},
-		"helpers in a fix":                {"--spec", "x", "--place", "/w", "--role", fixRole, "--helpers", "h/"},
-		"a test side with no test files":  {"--spec", "x", "--place", "/w", "--role", testRole},
-		"test files in a split build":     {"--spec", "x", "--place", "/w", "--role", buildRole, "--acceptance", "a/", "--tests", "*_test.go"},
+		"no spec":                           {"--place", "/w"},
+		"no worktree":                       {"--spec", "x"},
+		"a role kiln never writes":          {"--spec", "x", "--place", "/w", "--role", "verfy", "--acceptance", "a/"},
+		"build-and-verify's side, pathless": {"--spec", "x", "--place", "/w", "--role", verifyRole},
+		"a flag kiln does not read":         {"--spec", "x", "--place", "/w", "--fix"},
+		"a flag with no value":              {"--spec", "x", "--place", "/w", "--role"},
+		"a word after the flags":            {"--spec", "x", "--place", "/w", "y"},
+		"an acceptance path with no role":   {"--spec", "x", "--place", "/w", "--acceptance", "a/"},
+		"two acceptance paths, no role":     {"--spec", "x", "--place", "/w", "--acceptance", "a/", "--acceptance", "b/"},
+		"helpers in a fix":                  {"--spec", "x", "--place", "/w", "--role", fixRole, "--helpers", "h/"},
+		"a verify side with helpers alone":  {"--spec", "x", "--place", "/w", "--role", verifyRole, "--helpers", "h/"},
+		"test files in build-and-verify":    {"--spec", "x", "--place", "/w", "--role", buildRole, "--acceptance", "a/", "--tests", "*_test.go"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := Hook(args, strings.NewReader("{}"), io.Discard); !errors.Is(err, ErrUsage) {
@@ -210,8 +211,8 @@ func TestHookArguments(t *testing.T) {
 	}
 }
 
-// TestTestFiles holds that the gate refuses a test-first fix's change to a test file, however made. A test file passes
-// while it stays as the proved tests hold it.
+// TestTestFiles holds that the gate refuses a verify-first fix's change to a test file, however made. A test file
+// passes while it stays as the proved tests hold it.
 func TestTestFiles(t *testing.T) {
 	t.Parallel()
 	r, repo := scratchRepo(t)
@@ -244,7 +245,7 @@ func TestTestFiles(t *testing.T) {
 	}
 }
 
-// TestFailsOnTests holds when a gate shows a test-first fix's test: it fails on tests alone, and on one at least.
+// TestFailsOnTests holds when a gate shows a verify-first fix's tests: it fails on tests alone, and on one at least.
 func TestFailsOnTests(t *testing.T) {
 	const other = "--- FAIL: TestNew (0.00s)\nFAIL\nFAIL\texample.com/s\t0.1s\n"
 	const broken = "# example.com/s\n./s.go:3:1: syntax error\nFAIL\texample.com/s [build failed]\n"
@@ -621,7 +622,7 @@ func givenBook(given string) book {
 		Rounds: 2, Limit: new(3), Audited: "read", Why: "w", FailingAtMain: []string{"TestF"}, Monitor: fix,
 		AcceptedAt: "taken", Title: "fix(x): t", Running: []string{"m"}}
 	if fix {
-		r.TestSession, r.Tested = "t", "proved"
+		r.VerifyFirst, r.Tested = "t", "proved"
 	}
 
 	return book{Specs: []*record{r}}
@@ -676,7 +677,7 @@ func (tc specState) want() commanded {
 
 // carries is what x's record should carry of the build before, if the row checks it. A new queue carries nothing.
 // A landing accepted again keeps its build, session, audit, rounds' limit, title, accepted commit and cut turns. A
-// fix's landing keeps its test session and proved tests too, which judge each later gate.
+// fix's landing keeps its verify session and proved tests too, which judge each later gate.
 func (tc specState) carries() (carried, bool) {
 	switch {
 	case tc.then == "":
@@ -703,7 +704,7 @@ type carried struct {
 	failingAtMain              bool
 	// landing is what a landing keeps to go back to its session: its limit, title, accepted commit and cut turns.
 	landing bool
-	// tested is a test-first fix's test session and proved tests.
+	// tested is a verify-first fix's verify session and proved tests.
 	tested bool
 }
 
@@ -711,7 +712,7 @@ func carriedOf(r *record) carried {
 	landing := r.Limit != nil && r.Title != "" && r.AcceptedAt != "" && r.Running != nil
 	return carried{approved: r.Approved, session: r.Session, why: r.Why, oldBuild: r.Build == "b",
 		noBuild: r.Build == "", audited: r.Audited != "", rounds: r.Rounds, failingAtMain: r.FailingAtMain != nil,
-		landing: landing, tested: r.TestSession == "t" && r.Tested == "proved"}
+		landing: landing, tested: r.VerifyFirst == "t" && r.Tested == "proved"}
 }
 
 // thenOf words the state of r as a row's then does.
@@ -1122,7 +1123,7 @@ func TestNextStep(t *testing.T) {
 			rec:      record{State: stopped, Session: "s", Why: couldNotGoOn + "no disk", Kind: stopKiln},
 			commands: []string{"queue", "tend"},
 		},
-		"a split build stopped": {
+		"a build in build-and-verify stopped": {
 			rec: record{State: stopped, Session: "s", Verify: "v", Why: why}, commands: []string{"queue", "tend"},
 		},
 		"stopped before its session began": {rec: record{State: stopped, Why: why}, commands: []string{"queue", "tend"}},
@@ -1273,7 +1274,7 @@ func TestSetbackSays(t *testing.T) {
 	t.Parallel()
 	const x = "echo %d >x.txt && git add x.txt && git commit --quiet -m x"
 	for name, tc := range map[string]struct {
-		// split stacks the sides of a split build, whose files conflict. Otherwise, the build lands its work.
+		// split stacks the sides of build-and-verify, whose files conflict. Otherwise, the build lands its work.
 		split bool
 		// work is what the session committed, and main what main gained since the build began.
 		work, main string
@@ -1285,7 +1286,7 @@ func TestSetbackSays(t *testing.T) {
 			stops: "the work still conflicts with main after its last round"},
 		"work that changes nothing on main": {work: "true", said: "the work changes nothing on main",
 			opens: "Your work changes nothing on main", stops: "the work still changes nothing on main after its last round"},
-		"a conflict between a split build's sides": {split: true,
+		"a conflict between build-and-verify's sides": {split: true,
 			said:  "the verify session's tests conflict with the build session's code",
 			opens: "Your tests conflict with the build session's work",
 			stops: "the verify session's tests still conflict with the build session's code after its last round"},
@@ -1310,9 +1311,9 @@ func TestSetbackSays(t *testing.T) {
 	}
 }
 
-// setbackOf is a build of x, with 1 round, that meets a setback each time sendBack runs it. A split build stacks
-// its sides, whose x.txt differ. Any other build lands work, after main gained main. sendBack answers the prompt for
-// the session, and writes what kiln says to out.
+// setbackOf is a build of x, with 1 round, that meets a setback each time sendBack runs it. A build in build-and-verify
+// stacks its sides, whose x.txt differ. Any other build lands work, after main gained main. sendBack answers the prompt
+// for the session, and writes what kiln says to out.
 func setbackOf(t *testing.T, split bool, work, main string) (sendBack func(io.Writer) (string, error)) {
 	if split {
 		b, _ := splitBuild(t, false)
@@ -1474,9 +1475,9 @@ func landingBuild(t *testing.T) (*build, string, git.Rev) {
 	return b, repo, main
 }
 
-// TestSplitLanding holds how a split build ends once its stack passed the gate. Work that changes nothing goes back to
-// the build session alone. A conflict with main goes to the session whose clone conflicts, after kiln merged main into
-// both clones. An accepted build lands, and its spec retires.
+// TestSplitLanding holds how a build in build-and-verify ends once its stack passed the gate. Work that changes nothing
+// goes back to the build session alone. A conflict with main goes to the session whose clone conflicts, after kiln
+// merged main into both clones. An accepted build lands, and its spec retires.
 func TestSplitLanding(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
@@ -1517,8 +1518,8 @@ func TestSplitLanding(t *testing.T) {
 	}
 }
 
-// splitBuild is landingBuild's build of x, in the split workflow, with each session's clone. Main holds the spec, the
-// audit has read the work, and kiln.json gives it 1 round. It answers the repository.
+// splitBuild is landingBuild's build of x, in the workflow build-and-verify, with each session's clone. Main holds the
+// spec, the audit has read the work, and kiln.json gives it 1 round. It answers the repository.
 func splitBuild(t *testing.T, accepted bool) (*build, string) {
 	b, repo, _ := landingBuild(t)
 	shell(t, repo, "mkdir -p .kiln/specs && echo '# X' >.kiln/specs/x.md && git add . && git commit --quiet -m spec")
@@ -1943,8 +1944,9 @@ func TestBugsLine(t *testing.T) {
 	}
 }
 
-// TestSumUpPlaces holds that a stopped build's summary names its stack only where its worktree is. A split build
-// stopped before its first stack has none. Its summary still names kiln tend, whose session names each clone.
+// TestSumUpPlaces holds that a stopped build's summary names its stack only where its worktree is. A build in
+// build-and-verify stopped before its first stack has none. Its summary still names kiln tend, whose session names each
+// clone.
 func TestSumUpPlaces(t *testing.T) {
 	dir := t.TempDir()
 	r := &Repo{store: store{dir: dir}}
@@ -1977,7 +1979,7 @@ func TestSumUpPlaces(t *testing.T) {
 	}
 }
 
-// TestBlindTranscripts holds where a split build's session may not read the other session's transcripts. The folder
+// TestBlindTranscripts holds where build-and-verify's session may not read the other session's transcripts. The folder
 // follows the environment the session gets, as Claude Code's own does.
 func TestBlindTranscripts(t *testing.T) {
 	t.Parallel()

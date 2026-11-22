@@ -176,7 +176,7 @@ type build struct {
 	side *sides
 	// auditing is the commit auditTry checked out in the audit's worktree, which undo puts back after each run.
 	auditing git.Rev
-	// mu guards rec while a split build's two sessions run at once. set, now, record and say hold it.
+	// mu guards rec while build-and-verify's two sessions run at once. set, now, record and say hold it.
 	mu sync.Mutex
 	// fix is a monitor's fix, or nil for a spec's build.
 	fix *fixing
@@ -528,8 +528,8 @@ func (b *build) roundFor(back setback, err error) (string, reason, error) {
 }
 
 // setback is what kept the work from passing, for the session. It is a failed gate, of the work, of the work rebased
-// onto main, or of a split build's stack. It is a conflict with main, or between a split build's sides. Or it is work
-// that changes nothing on main. why names which, as a start line does. failing names what failed: the gate's
+// onto main, or of build-and-verify's stack. It is a conflict with main, or between build-and-verify's sides. Or it is
+// work that changes nothing on main. why names which, as a start line does. failing names what failed: the gate's
 // failures, or the files in conflict.
 type setback struct {
 	why, report string
@@ -816,7 +816,7 @@ func (b *build) treeGuard(allowed ...string) guard {
 // sets the record's Before. A gate while it is set is the landing's gate, on the work rebased onto main.
 func (b *build) gated(ctx context.Context, held commands, without []string, guards ...guard) (verdict, error) {
 	e := entry{Kind: gateKind, At: time.Now(), Landing: b.now().Before != ""}
-	e.BeforeFix = b.fix != nil && b.fix.testing()
+	e.BeforeFix = b.fix != nil && b.fix.verifying()
 	v, err := held.gate(ctx, without, guards...)
 	if err == nil {
 		e.RanMain = new(v.ranMain)

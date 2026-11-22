@@ -1,6 +1,6 @@
 # A revised spec's build session starts without its old tests, under each acceptance path.
 
-# Given: the project chooses the split workflow, and kiln.json names two acceptance paths, uat/{spec}/ and
+# Given: the project chooses the workflow build-and-verify, and kiln.json names two acceptance paths, uat/{spec}/ and
 # integration/{spec}/. A spec landed with its tests under both paths on main, and the developer revised a Then and
 # queued it again.
 exec kiln queue x
@@ -37,7 +37,7 @@ exec git show main:x.go
 stdout 'return 43'
 
 -- .kiln/kiln.json --
-{"verifySession": true, "rounds": 0, "acceptanceTests": ["uat/{spec}/", "integration/{spec}/"]}
+{"workflow": "build-and-verify", "rounds": 0, "acceptanceTests": ["uat/{spec}/", "integration/{spec}/"]}
 -- claude.json --
 {
  "build": {

@@ -275,7 +275,7 @@ func plural(n int, what string) string {
 func (r *Repo) sumUp(ctx context.Context, rec record, tree git.Worktree, landedAt git.Rev) []string {
 	lines := []string{r.summary(rec.Build), roundsOf(rec) + " · " + r.auditOf(rec)}
 	lines = append(lines, r.ending(ctx, rec, landedAt)...)
-	// A split build stopped before its first stack has no stack to name.
+	// A build in build-and-verify stopped before its first stack has no stack to name.
 	place := tree
 	if _, err := os.Stat(string(tree)); err != nil {
 		place = ""
@@ -381,7 +381,7 @@ func readAgain(runs []run) string {
 }
 
 // auditReads counts the audit's reads of the work in runs, and the reads whose findings went back. A retry is no new
-// read. A split build's findings go to both sessions, and count once.
+// read. Build-and-verify's findings go to both sessions, and count once.
 func auditReads(runs []run) (reads, findings int) {
 	sent := true
 	for _, r := range runs {
@@ -473,7 +473,7 @@ func byKiln(rec record) bool {
 	return rec.State == stopped && rec.Kind == stopKiln
 }
 
-// sideClone is the clone of role's session of a split build of name, beside the build's worktree, tree.
+// sideClone is the clone of role's session of a build of name, beside the build's worktree, tree.
 func sideClone(tree git.Worktree, name Spec, role string) string {
 	return filepath.Join(filepath.Dir(string(tree)), "."+role+"-"+string(name))
 }

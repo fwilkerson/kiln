@@ -5,7 +5,7 @@
     "go test -timeout 30m ./..."
   ],
   "rounds": 3,
-  "verifySession": true,
+  "workflow": "build-and-verify",
   "acceptanceTests": "uat/{spec}/",
   "testHelpers": [
     "internal/hometest/",

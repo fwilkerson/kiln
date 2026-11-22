@@ -1,6 +1,6 @@
 # A stopped build keeps what the developer resumes.
 
-# Given: the project chooses the split workflow, and the stack's gate fails past the last round.
+# Given: the project chooses the workflow build-and-verify, and the stack's gate fails past the last round.
 # kiln.json gives the build 1 round, and the verify session's test expects 41 both times.
 exec kiln queue x
 
@@ -22,7 +22,7 @@ stdout 'kiln/x\.verify'
 grep 'next: run kiln tend x, ' .claude-calls/run.out
 
 -- .kiln/kiln.json --
-{"verifySession": true}
+{"workflow": "build-and-verify"}
 -- claude.json --
 {
  "build": {

@@ -11,23 +11,23 @@ exec git add .kiln/specs
 exec git commit --quiet -m 'docs: approve x and y'
 
 # When: kiln fire builds each.
-# x builds in build then audit, as kiln init wrote kiln.json. Then main's kiln.json names the split workflow, and y
-# builds in it.
+# x builds in the workflow build, as kiln init wrote kiln.json. Then main's kiln.json names the workflow
+# build-and-verify, and y builds in it.
 exec kiln queue x
 exec kiln fire
 stdout '^x: landed on main'
-exec sh -c 'sed -i "" "s/^{/{\n  \"verifySession\": true,/" .kiln/kiln.json'
-exec git commit --quiet -am 'chore: build in the split workflow'
+exec sh -c 'sed -i "" "s/^{/{\n  \"workflow\": \"build-and-verify\",/" .kiln/kiln.json'
+exec git commit --quiet -am 'chore: build in the workflow build-and-verify'
 exec kiln queue y
 exec kiln fire
 stdout '^y: landed on main'
 
-# Then: under build then audit, the build session's prompt says how to write the acceptance tests.
+# Then: under the workflow build, the build session's prompt says how to write the acceptance tests.
 grep '^## Acceptance tests$' .claude-calls/build/1/1/system
 grep '`TestAT<N>`' .claude-calls/build/1/1/system
 grep 'in `acceptance/x/`' .claude-calls/build/1/1/system
 
-# Under split, the verify session's prompt says it,
+# Under build-and-verify, the verify session's prompt says it,
 grep '^## Acceptance tests$' .claude-calls/verify/1/1/system
 grep '`TestAT<N>`' .claude-calls/verify/1/1/system
 grep 'in `acceptance/y/`' .claude-calls/verify/1/1/system

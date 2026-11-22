@@ -381,10 +381,10 @@ func (r *Repo) sessionsOf(rec *record) string {
 	switch {
 	case rec == nil:
 		return ""
-	case rec.TestSession != "" && rec.Session == "":
-		return fmt.Sprintf("%s %s, in %s", testRole, rec.TestSession, r.clone(rec.Name, testRole))
-	case rec.TestSession != "":
-		return fmt.Sprintf("%s %s, in %s; %s %s, in %s", testRole, rec.TestSession, r.clone(rec.Name, testRole),
+	case rec.VerifyFirst != "" && rec.Session == "":
+		return fmt.Sprintf("%s %s, in %s", verifyRole, rec.VerifyFirst, r.clone(rec.Name, verifyRole))
+	case rec.VerifyFirst != "":
+		return fmt.Sprintf("%s %s, in %s; %s %s, in %s", verifyRole, rec.VerifyFirst, r.clone(rec.Name, verifyRole),
 			fixRole, rec.Session, r.tree(rec.Name))
 	case rec.Session == "":
 		return ""
