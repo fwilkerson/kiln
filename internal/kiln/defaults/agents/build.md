@@ -30,5 +30,3 @@ decided and why.
 <!-- Tailor this: the commands that check this project's work, and what each needs. -->
 
 <!-- kiln:preset build-checks -->
-- Make a temporary file or directory under `$TMPDIR`, as `mktemp -d "$TMPDIR/x.XXXXXX"` does. On macOS, a bare
-  `mktemp -d` ignores `TMPDIR`, and writes to `/var/folders`, which the sandbox refuses.

@@ -36,5 +36,3 @@ decided and why.
   you add scores 10. When a file you change scores lower, fix the code. When a file listed in `held`, in
   `style_test.go`, reaches 10, delete its line. Never add a line to `held`, and never lower one.
 - Format each Go file with `gofmt`.
-- Make a temporary file or directory under `$TMPDIR`, as `mktemp -d "$TMPDIR/x.XXXXXX"` does. On macOS, a bare
-  `mktemp -d` ignores `TMPDIR`, and writes to `/var/folders`, which the sandbox refuses.

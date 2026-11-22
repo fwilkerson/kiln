@@ -102,8 +102,6 @@
       "",
       "- Run `go vet ./...` and `go test ./...` before you end your turn. The gate runs them too.",
       "- Format each Go file with `gofmt`.",
-      "- Make a temporary file or directory under `$TMPDIR`, as `mktemp -d \"$TMPDIR/x.XXXXXX\"` does. On macOS, a bare",
-      "  `mktemp -d` ignores `TMPDIR`, and writes to `/var/folders`, which the sandbox refuses.",
       ""
     ],
     "agents/verify.md": [

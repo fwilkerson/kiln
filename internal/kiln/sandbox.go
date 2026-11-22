@@ -2,6 +2,7 @@ package kiln
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -10,8 +11,14 @@ import (
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
+// sandboxContract tells every session where the sandbox lets its shell commands write.
+//
+//go:embed contract/sandbox.md
+var sandboxContract string
+
 // sandboxed adds to l what every session of a build holds to. No agent's file changes the denied commands and
-// forbidden actions. What the session reaches is kiln.json's, at main's tip.
+// forbidden actions. What the session reaches is kiln.json's, at main's tip. The system prompt ends with
+// sandboxContract.
 func (b *build) sandboxed(ctx context.Context, l claude.Launch) (claude.Launch, error) {
 	s, err := b.sides(ctx)
 	if err != nil {
@@ -22,6 +29,7 @@ func (b *build) sandboxed(ctx context.Context, l claude.Launch) (claude.Launch, 
 		"Bash(git branch -D *)", "Bash(git checkout main)", "Bash(git switch main)", "Bash(git reset * main)"},
 		l.Deny...)
 	kept := b.kept(s, l.Role)
+	l.System = strings.TrimSpace(l.System + "\n\n" + sandboxContract)
 	l.Forbidden = []string{
 		"Pushing to any remote, in any form.",
 		"Writing, moving, resetting or deleting any ref but the branch checked out in the working directory, " +
