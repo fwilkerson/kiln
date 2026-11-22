@@ -7,7 +7,9 @@
 //
 //	func TestUAT(t *testing.T) { scenariotest.RunAll(t, "testdata") }
 //
-// Run runs one script, for a spec's test N. RunAll runs each script of each feature, testdata/<feature>/*.txtar.
+// Run runs one script, for a spec's test N. RunAll runs each script of each feature, testdata/<feature>/*.txtar. Repo
+// makes a script's scratch repository for a test that runs kiln from Go, as internal/crash's does. Main builds kiln
+// with the build tags it is given.
 //
 // This script lands a spec x, with one scripted build session and one audit:
 //
@@ -110,13 +112,15 @@ import (
 
 	"github.com/fwilkerson/kiln/internal/hometest"
 	"github.com/rogpeppe/go-internal/testscript"
+	"github.com/rogpeppe/go-internal/txtar"
 )
 
-// Main runs the tests of m, with kiln and the scripted claude first on the PATH. Call it from TestMain. It first
-// drops the variables that would aim git at another repository, as [hometest.DropGitVars] says.
-func Main(m *testing.M) {
+// Main runs the tests of m, with kiln and the scripted claude first on the PATH. Call it from TestMain. kiln is built
+// with tags, such as crash, the tag package crash reads. Main first drops the variables that would aim git at another
+// repository, as [hometest.DropGitVars] says.
+func Main(m *testing.M, tags ...string) {
 	hometest.DropGitVars()
-	testscript.Main(tests{m}, map[string]func(){
+	testscript.Main(tests{m, strings.Join(tags, ",")}, map[string]func(){
 		"claude": func() { os.Exit(claudeMain()) },
 		"await":  func() { os.Exit(awaitMain()) },
 		"exits":  func() { os.Exit(exitsMain()) },
@@ -124,7 +128,8 @@ func Main(m *testing.M) {
 }
 
 type tests struct {
-	m *testing.M
+	m    *testing.M
+	tags string
 }
 
 // goEnv holds Go's caches, which each script shares with the developer, since a script's Go runs offline.
@@ -146,7 +151,7 @@ func (t tests) Run() int {
 
 	defer os.RemoveAll(bin)
 
-	if err := buildKiln(bin); err != nil {
+	if err := buildKiln(bin, t.tags); err != nil {
 		fmt.Fprintln(os.Stderr, "scenariotest:", err)
 		return 2
 	}
@@ -160,15 +165,15 @@ func (t tests) Run() int {
 	return t.m.Run()
 }
 
-// buildKiln builds kiln into bin, and lists the files it is built from in kilnSource.
-func buildKiln(bin string) error {
-	build := exec.Command("go", "build", "-o", filepath.Join(bin, "kiln"), kilnCommand)
+// buildKiln builds kiln into bin, with the build tags tags, and lists the files it is built from in kilnSource.
+func buildKiln(bin, tags string) error {
+	build := exec.Command("go", "build", "-tags", tags, "-o", filepath.Join(bin, "kiln"), kilnCommand)
 	if out, err := build.CombinedOutput(); err != nil {
 		return fmt.Errorf("building kiln: %w\n%s", err, out)
 	}
 
 	var err error
-	kilnSource, err = sourceOf(kilnCommand)
+	kilnSource, err = sourceOf(kilnCommand, tags)
 	return err
 }
 
@@ -201,12 +206,13 @@ var kilnRepo string
 // kilnSource is each file the kiln on the PATH is built from, but Go's own packages.
 var kilnSource []string
 
-// sourceOf lists the Go and embedded files that pkg is built from, with its dependencies, but Go's own packages.
-func sourceOf(pkg string) ([]string, error) {
+// sourceOf lists the Go and embedded files that pkg is built from with tags. It lists its dependencies' too, but
+// none of Go's own packages.
+func sourceOf(pkg, tags string) ([]string, error) {
 	format := `{{if not .Standard}}{{range .GoFiles}}{{$.Dir}}/{{.}}
 {{end}}{{range .EmbedFiles}}{{$.Dir}}/{{.}}
 {{end}}{{end}}`
-	out, err := exec.Command("go", "list", "-deps", "-f", format, pkg).Output()
+	out, err := exec.Command("go", "list", "-tags", tags, "-deps", "-f", format, pkg).Output()
 	if err != nil {
 		return nil, fmt.Errorf("listing the source of %s: %w", pkg, err)
 	}
@@ -268,6 +274,83 @@ func run(t *testing.T, scripts testscript.Params) {
 	testscript.Run(t, scripts)
 }
 
+// Repo makes the scratch repository a script would run in, for a test that runs kiln from Go. The txtar archive at
+// file holds its files. Repo answers the main checkout, $WORK, and the environment of each command run there. Repo
+// runs no line of the archive's comment. t's temporary directory holds the repository.
+func Repo(t *testing.T, file string) (work string, env []string) {
+	if len(goEnv) == 0 {
+		t.Fatal("scenariotest: this package's TestMain must call scenariotest.Main(m)")
+	}
+
+	if err := readSource(); err != nil {
+		t.Fatal("scenariotest:", err)
+	}
+
+	ar, err := txtar.ParseFile(file)
+	if err != nil {
+		t.Fatal("scenariotest:", err)
+	}
+
+	work = filepath.Join(t.TempDir(), "work")
+	for _, f := range append(ar.Files, txtar.File{Name: ".tmp/.keep"}) {
+		p := filepath.Join(work, f.Name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal("scenariotest:", err)
+		}
+
+		if err := os.WriteFile(p, f.Data, 0o644); err != nil {
+			t.Fatal("scenariotest:", err)
+		}
+	}
+
+	env = []string{"PATH=" + os.Getenv("PATH"), "WORK=" + work, "TMPDIR=" + filepath.Join(work, ".tmp")}
+	setenv := func(name, value string) { env = append(env, name+"="+value) }
+	if err := ready(work, setenv, func() []string { return env }); err != nil {
+		t.Fatal(err)
+	}
+
+	return work, env
+}
+
+// ready makes the scratch repository at work, whose files the script brought, and sets each variable its commands
+// run with. vars answers the variables set so far.
+func ready(work string, setenv func(name, value string), vars func() []string) error {
+	home := work + "-home"
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		return err
+	}
+
+	if err := hometest.Seed(home); err != nil {
+		return err
+	}
+
+	setenv("HOME", home)
+	for name, value := range goEnv {
+		setenv(name, value)
+	}
+
+	setenv("GOTOOLCHAIN", "local")
+	setenv("GOPROXY", "off")
+	setenv("GOFLAGS", "-buildvcs=false -trimpath")
+	setenv("KILN_REPO", kilnRepo)
+	setenv(testPIDEnv, strconv.Itoa(os.Getpid()))
+	if err := seed(work); err != nil {
+		return err
+	}
+
+	excluded := strings.Join([]string{"/" + ClaudeScriptFile, "/" + ClaudeCallsDir + "/", "/" + givenDir + "/"}, `\n`)
+	script := "git init --quiet -b main && git config user.name kiln-test && " +
+		"git config user.email kiln-test@example.com && printf '" + excluded + `\n' >>.git/info/exclude && ` +
+		"git add -A && git commit --quiet --allow-empty -m start"
+	cmd := exec.Command("/bin/sh", "-c", script)
+	cmd.Dir, cmd.Env = work, vars()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("scenariotest: making the scratch repository: %w\n%s", err, out)
+	}
+
+	return nil
+}
+
 // screenWaits answers the context that ends a script's waits for its screen. It ends as testscript ends a script's
 // commands, two grace periods before t's deadline, each 5% of the time left. A wait's failure then shows the screen.
 func screenWaits(t *testing.T) context.Context {
@@ -285,37 +368,8 @@ func screenWaits(t *testing.T) context.Context {
 const givenDir = "_given"
 
 func setUp(env *testscript.Env, waits context.Context) error {
-	home := env.WorkDir + "-home"
-	if err := os.MkdirAll(home, 0o755); err != nil {
+	if err := ready(env.WorkDir, env.Setenv, func() []string { return env.Vars }); err != nil {
 		return err
-	}
-
-	if err := hometest.Seed(home); err != nil {
-		return err
-	}
-
-	env.Setenv("HOME", home)
-	for name, value := range goEnv {
-		env.Setenv(name, value)
-	}
-
-	env.Setenv("GOTOOLCHAIN", "local")
-	env.Setenv("GOPROXY", "off")
-	env.Setenv("GOFLAGS", "-buildvcs=false -trimpath")
-	env.Setenv("KILN_REPO", kilnRepo)
-	env.Setenv(testPIDEnv, strconv.Itoa(os.Getpid()))
-	if err := seed(env.WorkDir); err != nil {
-		return err
-	}
-
-	excluded := strings.Join([]string{"/" + ClaudeScriptFile, "/" + ClaudeCallsDir + "/", "/" + givenDir + "/"}, `\n`)
-	script := "git init --quiet -b main && git config user.name kiln-test && " +
-		"git config user.email kiln-test@example.com && printf '" + excluded + `\n' >>.git/info/exclude && ` +
-		"git add -A && git commit --quiet --allow-empty -m start"
-	cmd := exec.Command("/bin/sh", "-c", script)
-	cmd.Dir, cmd.Env = env.WorkDir, env.Vars
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("scenariotest: making the scratch repository: %w\n%s", err, out)
 	}
 
 	t := &terminal{skip: env.T().Skip, waits: waits}

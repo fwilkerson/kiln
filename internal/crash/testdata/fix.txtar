@@ -1,0 +1,27 @@
+A monitor's check asks for a fix, and its agent's fix lands on main.
+
+-- .kiln/kiln.json --
+{"gate": ["true"]}
+-- .kiln/monitors/bump/check --
+if grep -qx current state.txt; then
+  echo '{"fix": false, "summary": "state.txt is current"}'
+else
+  echo '{"fix": true, "summary": "state.txt is stale"}'
+fi
+-- .kiln/monitors/bump/agent.md --
+Make state.txt current.
+-- .kiln/monitors/bump/monitor.json --
+{"hours": 1}
+-- state.txt --
+stale
+-- _given/steps.json --
+{
+ "fix": [
+  {"tool": {"name": "Bash", "input": {"command": "echo current >state.txt"}}},
+  {"result": {"result": "state.txt is current."}}
+ ],
+ "audit": [
+  {"tool": {"name": "Bash", "input": {"command": "echo stray >audit-stray.txt"}}},
+  {"result": {"result": "read 1 directory, found 0"}}
+ ]
+}

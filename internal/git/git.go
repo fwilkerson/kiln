@@ -55,6 +55,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/fwilkerson/kiln/internal/crash"
 	"github.com/fwilkerson/kiln/internal/proc"
 )
 
@@ -255,6 +256,10 @@ type call struct {
 
 // run runs git with args, as [proc.Run] runs a program.
 func (g *Git) run(ctx context.Context, c call, args ...string) (string, error) {
+	if name := named(args); !slices.Contains(reads, name) {
+		crash.Step("git " + name)
+	}
+
 	var stdout, stderr bytes.Buffer
 	cmd := g.command(ctx, c, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = strings.NewReader(c.stdin), &stdout, &stderr
@@ -267,6 +272,32 @@ func (g *Git) run(ctx context.Context, c call, args ...string) (string, error) {
 	}
 
 	return stdout.String(), nil
+}
+
+// reads are the git commands kiln runs that change no ref, worktree, index or config. Each other command is a step
+// at which a test build may kill kiln, as package crash says.
+var reads = []string{"cat-file", "commit-tree", "config get", "diff", "for-each-ref", "hash-object", "ls-tree",
+	"merge-base", "merge-tree", "rev-parse", "show", "status", "version", "worktree list"}
+
+// verbs are the git commands whose verb follows them, such as worktree add.
+var verbs = []string{"config", "worktree"}
+
+// named is the git command args run, such as "worktree add". That is the first argument that is no option. A
+// command whose verb follows it adds the verb.
+func named(args []string) string {
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "-c":
+			i++
+		case strings.HasPrefix(args[i], "-"):
+		case slices.Contains(verbs, args[i]):
+			return strings.Join(args[i:min(i+2, len(args))], " ")
+		default:
+			return args[i]
+		}
+	}
+
+	return ""
 }
 
 // command is the git that args start, with kiln's pinned config.
@@ -688,7 +719,7 @@ func (g *Git) rebasing(ctx context.Context, checkout Worktree, onto Rev) (*rebas
 func (g *Git) commitTree(ctx context.Context, r *rebase, tree string) (Rev, error) {
 	args := []string{"commit-tree", tree, "-p", string(r.onto), "-F", "-"}
 	// commit-tree ignores commit.gpgSign, which git commit and git merge read.
-	sign, _ := g.line(ctx, r.checkout, "config", "--type=bool", "commit.gpgSign")
+	sign, _ := g.line(ctx, r.checkout, "config", "get", "--type=bool", "commit.gpgSign")
 	if sign == "true" {
 		args = append(args, "-S")
 	}

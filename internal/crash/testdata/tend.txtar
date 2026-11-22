@@ -1,0 +1,32 @@
+A spec's build stops, since its gate fails until the developer's kiln tend session sees to it. Once the session
+exits, kiln resumes the build session with the session's note, and the build lands.
+
+-- .kiln/kiln.json --
+{"gate": ["test -e \"$WORK/.tmp/tended\""]}
+-- .kiln/specs/z.md --
+### 1. Z answers
+
+- **Given**: nothing.
+- **When**: Z is called.
+- **Then**: it answers 9.
+-- _given/z/z.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// Z answers 9.
+func Z() int { return 9 }
+-- _given/steps.json --
+{
+ "build": [
+  {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/z/.\" ."}}},
+  {"result": {"result": "Built z."}}
+ ],
+ "tend": [
+  {"tool": {"name": "Bash", "input": {"command": "for p in \"$WORK\"/.claude-calls/tend/*/*/prompt; do n=$(sed -n 's/^A note for the build: //p' \"$p\"); [ -z \"$n\" ] || echo 'The gate wanted .tmp/tended.' >\"$n\"; done; touch \"$WORK/.tmp/tended\""}}},
+  {"exit": 0}
+ ],
+ "audit": [
+  {"tool": {"name": "Bash", "input": {"command": "echo stray >audit-stray.txt"}}},
+  {"result": {"result": "read 1 directory, found 0"}}
+ ]
+}

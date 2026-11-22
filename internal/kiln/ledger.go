@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/fwilkerson/kiln/internal/claude"
+	"github.com/fwilkerson/kiln/internal/crash"
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
@@ -190,6 +191,7 @@ func (s store) write(e entry) error {
 		return err
 	}
 
+	crash.Step(ledgerFile + " " + string(e.Kind))
 	f, err := os.OpenFile(filepath.Join(s.dir, ledgerFile), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err

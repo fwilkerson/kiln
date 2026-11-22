@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fwilkerson/kiln/internal/crash"
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
@@ -508,6 +509,7 @@ func (s store) update(change func(*book) error) error {
 		return err
 	}
 
+	crash.Step(bookFile)
 	tmp := filepath.Join(s.dir, bookFile+".tmp")
 	if err := os.WriteFile(tmp, append(raw, '\n'), 0o600); err != nil {
 		return err

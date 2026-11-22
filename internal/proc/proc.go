@@ -56,6 +56,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/fwilkerson/kiln/internal/crash"
 )
 
 // Look finds program on the PATH that env holds, where [exec.LookPath] would read kiln's own. It skips a
@@ -136,6 +138,8 @@ func Run(ctx context.Context, c Command) error {
 // RunSession runs c as [Run] does, but each kill reaches c's whole tree, and its group. Once c's program exits,
 // RunSession kills what its tree left behind.
 func RunSession(ctx context.Context, c Command) error {
+	crash.Step("session start")
+	defer crash.Step("session end")
 	return run(ctx, c, &session{place: c.Dir})
 }
 
@@ -147,6 +151,9 @@ func RunAttached(c Command) error {
 	if err != nil {
 		return err
 	}
+
+	crash.Step("attached start")
+	defer crash.Step("attached end")
 
 	cmd.WaitDelay = outputGrace
 	return exited(cmd.Run())

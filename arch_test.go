@@ -82,6 +82,8 @@ var outside = map[string][]string{
 	"internal/proc":   {"golang.org/x/sys", "github.com/fwilkerson/practices/repotest"},
 	"internal/claude": {"golang.org/x/sys", "github.com/fwilkerson/practices/repotest"},
 	"internal/git":    {"github.com/fwilkerson/practices/repotest"},
+	// A test build's snapshot clones a directory, as only golang.org/x/sys exports.
+	"internal/crash": {"golang.org/x/sys"},
 	// claim holds the checks tests share, so only a test imports it.
 	"internal/kiln": {"github.com/fwilkerson/practices/claim", "github.com/fwilkerson/practices/repotest"},
 	"internal/scenariotest": {"github.com/rogpeppe/go-internal", "github.com/charmbracelet/x/ansi",
