@@ -38,7 +38,11 @@ func TestMain(m *testing.M) { scenariotest.Main(m, "crash") }
 // with a root of its own, and each slot takes every slots-th step. SIGINT takes kiln's graceful path. It differs from
 // a kill only where kiln reads its context's end: as a session starts and ends. So a real SIGINT kills kiln at each
 // session step.
+//
+// The test keeps a budget of its own, as outlasted says. Past the budget, a run starts no further command, and skips.
+// The test then fails once, by a message that names the budget.
 func TestKilledAtEachStep(t *testing.T) {
+	keepBudget(t)
 	for _, f := range flows {
 		t.Run(f.name, func(t *testing.T) {
 			t.Parallel()
@@ -319,6 +323,10 @@ func (f flow) drive(s *scratch, env []string) []string {
 		next := f.next(s)
 		if next == nil {
 			break
+		}
+
+		if why := overBudget(s.t); why != "" {
+			s.t.Skip(why)
 		}
 
 		if next[0] == f.from && s.from == 0 {

@@ -33,7 +33,7 @@ contract" and "Mechanical checks". This work rests on the guide's "Docs are the 
 
 ## How you check the fix
 
-- Run `go vet ./...` and `go test ./...`. Format each Go file with `gofmt`, and run `go tool style -l .`.
+- Run `go vet ./...` and `go test -timeout 30m ./...`. Format each Go file with `gofmt`, and run `go tool style -l .`.
 - Read `go doc` on each package you changed, as its reader does.
 
 ## When to ask for the developer
