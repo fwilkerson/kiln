@@ -11,8 +11,8 @@ import (
 )
 
 // MonitorRun runs, at main's tip, each monitor in .kiln/monitors/ that is due, one at a time. With a name, it runs that
-// monitor alone, due or not, and held or not by its last fix. It never starts a second fix while one builds, waits or
-// lands. It works in the monitors' lane, beside a kiln fire. It refuses while another kiln monitor run, or a kiln
+// monitor alone, due or not, and held or not by its last finding. It never starts a second fix while one builds, waits
+// or lands. It works in the monitors' lane, beside a kiln fire. It refuses while another kiln monitor run, or a kiln
 // accept that lands a fix, holds that lane. It refuses while kiln is being reinstalled. First it drops each fix a kiln
 // cut short, and lands each fix's accepted landing that is queued.
 func (r *Repo) MonitorRun(ctx context.Context, name Spec, out io.Writer) error {

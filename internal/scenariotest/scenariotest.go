@@ -70,8 +70,8 @@
 // A script brings only what its Given names. One that brings anything under .kiln/ gets the rest of a Go project that
 // kiln builds:
 //
-//   - .kiln/kiln.json gets each of three keys it lacks. They are acceptance, as acceptance/{spec}/, gate, as go vet
-//     and go test, and rounds, as 1. With that gate comes go.mod, for the module example.com/scratch.
+//   - .kiln/kiln.json gets each of three keys it lacks. They are acceptanceTests, as acceptance/{spec}/, gate, as go
+//     vet and go test, and rounds, as 1. With that gate comes go.mod, for the module example.com/scratch.
 //   - Each agent's file it lacks: a build agent, a verify agent and an audit, each a line of prompt. The audit has
 //     the tools Read, Grep, Glob and Bash.
 //   - A spec under .kiln/specs/ that holds only its acceptance tests, from "### 1." on, gets the other sections of
