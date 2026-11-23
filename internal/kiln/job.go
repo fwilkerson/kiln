@@ -157,28 +157,9 @@ func (specJob) passed(ctx context.Context, b *build, _ git.Rev) (setback, error)
 	return b.waitOrLand(ctx)
 }
 
-// goneBack sends a landing's setback back to the build session. Main moved, so kiln first merges it into the verify
-// session's clone, as mergeMainAt says.
+// goneBack sends a landing's setback back to the build session, as sendBack says.
 func (specJob) goneBack(ctx context.Context, b *build, back setback) error {
-	if err := b.mergeVerify(ctx, back); err != nil {
-		return err
-	}
-
-	return b.goBack(codeSeat, back)
-}
-
-// mergeVerify merges main into the verify session's clone, once back says main moved under the work.
-func (b *build) mergeVerify(ctx context.Context, back setback) error {
-	if !b.order.isolated() || back.why == whyUnchanged {
-		return nil
-	}
-
-	clone := b.r.clone(b.rec.Name, verifyRole)
-	if err := b.r.git.Pull(ctx, clone, mainBranch); err != nil {
-		return err
-	}
-
-	return b.mergeMainAt(ctx, clone, verifySeat)
+	return b.sendBack(ctx, back)
 }
 
 // sideOf is what the session at the seat s may write. A spec's build with one session has the zero side.

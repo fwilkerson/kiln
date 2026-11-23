@@ -232,7 +232,8 @@ The last two are one isolated workflow, in two orders:
 	proof    the gate at the verify session's commit, which holds no code of the build's. It must fail, and on tests
 	         alone; a test that does not compile names no failed test. Otherwise its report goes back to the verify
 	         session, as a round. A commit that leaves the proved tests as they were needs no proof.
-	join     kiln merges the proved commit into kiln/<name>; a conflict goes to the build session, as a round
+	join     kiln merges the proved commit into kiln/<name>, with main as the verify session's clone holds it; a
+	         conflict goes to the build session, as a round
 	build    the build session, or the fix's, in <trees>/<name>. It reads and runs the proved tests, and changes none.
 	         Its next message after a join opens with what the join brought: the tests' files, the proof's report,
 	         and each new amendment's wording. A join that needs no answer starts no run.
@@ -251,8 +252,11 @@ The audit's prompt names the tests that failed at the proof, and each testHelper
 After a proof that did not stand, a run of the verify session may change no path it may write. That stops the
 build: "the verify session changed no test after a proof that did not stand". Each gate after the join fails while
 a file the verify session alone writes differs from the proved tests. Those are main's file with the proved
-commit's change applied. The landing's gate fails so too. Whenever kiln merges main into the work, it merges main
-into the verify session's clone too. A conflict there goes to a spec's verify session, as a round, and stops a fix.
+commit's change applied. The landing's gate fails so too.
+
+When main moved under the build, kiln merges main into the verify session's clone alone. A conflict there goes to a
+spec's verify session, as a round, and stops a fix. The join then brings main into the work. So a conflict between
+main and the work arises at the join, and costs the build session one round.
 
 # kiln tend
 
@@ -286,8 +290,9 @@ tend. Otherwise kiln reads where the name stands again, and goes on at once, ask
 	a stopped landing          lands again, as kiln accept does
 	a monitor                  runs again, as kiln monitor run with its name does; it waits for the monitors' lane
 
-A build that goes on owes each of its sessions a message: why it stopped, and the note's text. kiln merges main into
-its branch, and into the verify session's clone, when main moved. A conflict goes back as a round. kiln resumes
+A build that goes on owes each of its sessions a message: why it stopped, and the note's text. When main moved, kiln
+merges main into the build's branch. Beside a verify session, it merges main into that session's clone instead, and
+the join brings main into the branch. A conflict goes back as a round. kiln resumes
 each session once with the message, whichever turn had ended. From there it is the same build, under the same build
 ID. While another kiln holds the specs' lane, that kiln goes on with it, as with an accepted landing. Should it halt
 once taken, it still owes the message, and waits for kiln fire. kiln queue builds it anew instead.

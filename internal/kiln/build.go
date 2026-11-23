@@ -278,13 +278,13 @@ func (b *build) goOn(ctx context.Context) error {
 	return b.tended(ctx)
 }
 
-// tended merges main into the work of a build kiln tend saw to, once. A conflict goes back as a round.
+// tended merges main into a build kiln tend saw to, once, as mergeMain says. A conflict goes back as a round.
 func (b *build) tended(ctx context.Context) error {
 	if !b.now().MergeMain {
 		return nil
 	}
 
-	if err := b.mergeMains(ctx); err != nil {
+	if err := b.mergeMain(ctx); err != nil {
 		return err
 	}
 

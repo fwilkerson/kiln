@@ -425,15 +425,11 @@ func (f *fixing) passed(ctx context.Context, b *build, _ git.Rev) (setback, erro
 	return b.fixLand(ctx, head)
 }
 
-// goneBack sends a landing's setback back to the fix session. Main moved, so kiln first merges it into the verify
-// session's clone. A conflict there stops the fix, since the fix session writes no test.
+// goneBack sends a landing's setback back to the fix session, as sendBack says. A conflict with main in the verify
+// session's clone stops the fix, since the fix session writes no test.
 func (f *fixing) goneBack(ctx context.Context, b *build, back setback) error {
 	f.answering = false
-	if err := b.mergeVerify(ctx, back); err != nil {
-		return err
-	}
-
-	return b.goBack(codeSeat, back)
+	return b.sendBack(ctx, back)
 }
 
 // verifierAnswers is whether the verify session of f answers the audit. It does in an isolated workflow, until the

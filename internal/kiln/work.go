@@ -304,17 +304,18 @@ func (b *build) disproved(head git.Rev, v verdict) error {
 }
 
 // join merges the proved commit into kiln/<name>, once its work is committed. It answers whether kiln/<name> holds
-// the proved commit. Whether it does is read from git, so a kill before the merge joins again. A conflict goes back to
-// the code session, as a round.
+// the proved commit. Whether it does is read from git, so a kill before the merge joins again. The proved commit holds
+// main as mergeMain left it, so the join brings main into the work too. A conflict goes back to the code session, as a
+// round. A run of that session that kiln cut short is told again first, so kiln commits no half-done answer.
 func (b *build) join(ctx context.Context) (bool, error) {
-	tested := b.now().Tested
-	tip, err := b.r.git.Head(ctx, b.tree)
-	if err != nil {
-		return false, err
+	rec := b.now()
+	tested := rec.Tested
+	if held, err := b.holds(ctx, tested); err != nil || held {
+		return held, err
 	}
 
-	if base, err := b.r.git.MergeBase(ctx, tip, tested); err != nil || base == tested {
-		return err == nil, err
+	if rec.Code.From != nil {
+		return false, nil
 	}
 
 	if _, back, err := b.sessionWork(ctx); err != nil || back.why != "" {
@@ -331,8 +332,19 @@ func (b *build) join(ctx context.Context) (bool, error) {
 		return err == nil, err
 	}
 
-	report := fmt.Sprintf(joinConflicts, strings.Join(conflict.Files, "\n"), branch)
+	report := fmt.Sprintf(joinConflicts, branch, strings.Join(conflict.Files, "\n"))
 	return false, b.goBack(codeSeat, setback{why: whyConflict, report: report, failing: conflict.Files})
+}
+
+// holds is whether kiln/<name>, as the build's worktree has it checked out, holds the commit at.
+func (b *build) holds(ctx context.Context, at git.Rev) (bool, error) {
+	tip, err := b.r.git.Head(ctx, b.tree)
+	if err != nil {
+		return false, err
+	}
+
+	base, err := b.r.git.MergeBase(ctx, tip, at)
+	return base == at, err
 }
 
 // goBackOn sends back to s, as goBack does, unless err is set: it answers err then.
@@ -466,12 +478,18 @@ func (b *build) turn(ctx context.Context, s seatName) (*turn, error) {
 	}
 
 	if s == codeSeat && rec.Tested != rec.Told {
-		joined, err := b.joined(ctx, rec)
+		note, held, err := b.joined(ctx, rec)
 		if err != nil {
 			return nil, err
 		}
 
-		texts, t.told = append([]string{joined}, texts...), rec.Tested
+		if held {
+			t.told = rec.Tested
+		}
+
+		if note != "" {
+			texts = append([]string{note}, texts...)
+		}
 	}
 
 	l, err := b.job.launch(ctx, b, s, strings.Join(texts, "\n\n"))
@@ -490,24 +508,35 @@ func (b *build) cutShort(at *seat) bool {
 	return err == nil && streamed != *at.From
 }
 
-// joined is what a join brought the code session since rec.Told. It names the tests' files, the proof's report,
-// and each new amendment's wording.
-func (b *build) joined(ctx context.Context, rec record) (string, error) {
+// joined is what a join brought the code session since rec.Told. Its note names the tests' files, the proof's report,
+// and each new amendment's wording. held is whether the work holds the proved commit: a join that conflicted brought
+// nothing yet. The note is "" until then. It is "" too where the join changed no file the verify session writes.
+func (b *build) joined(ctx context.Context, rec record) (note string, held bool, err error) {
+	if held, err = b.holds(ctx, rec.Tested); err != nil || !held {
+		return "", false, err
+	}
+
+	if rec.Told != "" {
+		if changed, err := b.verifyChanged(ctx, rec.Told, rec.Tested); err != nil || len(changed) == 0 {
+			return "", true, err
+		}
+	}
+
 	main, err := b.r.mainTip(ctx)
 	if err != nil {
-		return "", err
+		return "", true, err
 	}
 
 	files, err := b.r.git.Branched(ctx, main, rec.Tested)
 	if err != nil {
-		return "", err
+		return "", true, err
 	}
 
 	g := b.verifyGuard()
 	files = slices.DeleteFunc(files, func(p string) bool { return g.guarded(p) != "" })
-	note := fmt.Sprintf(joinedTests, strings.Join(files, ", "), rec.Proof)
+	note = fmt.Sprintf(joinedTests, strings.Join(files, ", "), rec.Proof)
 	amended, err := b.amendedSince(ctx, rec)
-	return note + amended, err
+	return note + amended, true, err
 }
 
 // amendedSince is the note of the spec as rec.Tested holds it, with its amendments folded in. It is "" where those
@@ -573,21 +602,39 @@ func (b *build) check(ctx context.Context, head git.Rev) (bool, error) {
 	return b.job.audited(ctx, b)
 }
 
-// mergeMains merges main into the work, and into the verify session's clone. A conflict in the clone goes to the
-// verify session, as conflicted says. One in the work goes to the code session, as a round.
-func (b *build) mergeMains(ctx context.Context) error {
-	if b.order.isolated() {
-		clone := b.r.clone(b.rec.Name, verifyRole)
-		if err := b.r.git.Pull(ctx, clone, mainBranch); err != nil {
-			return err
-		}
+// mergeMain merges main into the build, once main moved under it. A build with one session takes main in its work.
+// An isolated build takes main in the verify session's clone alone, and the join brings it into the work. So main
+// reaches the work one way, and one conflict costs one round. A conflict in a file the verify session alone writes
+// arises in its clone. Any other arises at the join.
+func (b *build) mergeMain(ctx context.Context) error {
+	if !b.order.isolated() {
+		return b.mergeMainAt(ctx, b.tree, codeSeat)
+	}
 
-		if err := b.mergeMainAt(ctx, clone, verifySeat); err != nil {
+	clone := b.r.clone(b.rec.Name, verifyRole)
+	if err := b.r.git.Pull(ctx, clone, mainBranch); err != nil {
+		return err
+	}
+
+	return b.mergeMainAt(ctx, clone, verifySeat)
+}
+
+// sendBack sends back, which kept a landing from main, to the code session, as a round. In an isolated build, main
+// moved unless the work changed nothing, so kiln merges main first, as mergeMain says. The join then meets a conflict
+// with main, and sends that back itself.
+func (b *build) sendBack(ctx context.Context, back setback) error {
+	moved := b.order.isolated() && back.why != whyUnchanged
+	if moved {
+		if err := b.mergeMain(ctx); err != nil {
 			return err
 		}
 	}
 
-	return b.mergeMainAt(ctx, b.tree, codeSeat)
+	if moved && back.why == whyConflict {
+		return nil
+	}
+
+	return b.goBack(codeSeat, back)
 }
 
 // mergeMainAt merges main into checkout, the checkout of the seat s. A clean merge is a commit of kiln's. A
@@ -608,8 +655,9 @@ func (b *build) mergeMainAt(ctx context.Context, checkout git.Worktree, s seatNa
 const (
 	joinedTests = "kiln joined the verify session's tests into your branch. They are in %s, and the gate fails on " +
 		"them at main's code, as it must until your work:\n\n%s"
-	joinConflicts = "The verify session's tests conflict with your work in these files:\n%s\n\nMerge %s into your " +
-		"branch with git merge, resolve each conflict, commit, and end your turn."
+	joinConflicts = "The branch %[1]s holds main and the verify session's proved tests. Your work conflicts with it " +
+		"in these files:\n%[2]s\n\nMerge %[1]s into your branch with git merge, resolve each conflict, commit, and " +
+		"end your turn."
 	testPassed = "The gate passed with your work, so no test fails on %s. Write a test that fails on main's code " +
 		"for that reason, and end your turn. Where main's code already does it, change nothing, and end your turn: " +
 		"the build then stops."

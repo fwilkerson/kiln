@@ -1700,8 +1700,8 @@ func landingBuild(t *testing.T) (*build, string, git.Rev) {
 }
 
 // TestSplitLanding holds how a build with a verify session ends once its work passed the gate. Work that changes
-// nothing goes back to the build session alone. A conflict with main goes to the build session, once kiln merged main
-// into the verify session's clone. An accepted build lands, and its spec retires.
+// nothing goes back to the build session alone. A conflict with main goes to the build session once. kiln merges
+// main into the verify session's clone, and the join meets the conflict. An accepted build lands, and its spec retires.
 func TestSplitLanding(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
@@ -1712,8 +1712,9 @@ func TestSplitLanding(t *testing.T) {
 		build string
 	}{
 		"work that changes nothing goes to the build session": {build: unchanged},
-		"a conflict goes to the build session":                {code: "42", main: "43", build: fmt.Sprintf(conflicts, "x.txt")},
-		"an accepted build lands, and its spec retires":       {accepted: true, code: "42"},
+		"a conflict goes to the build session, once": {code: "42", main: "43",
+			build: fmt.Sprintf(joinConflicts, "kiln/x.verify", "x.txt")},
+		"an accepted build lands, and its spec retires": {accepted: true, code: "42"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			b, repo := splitBuild(t, tc.accepted)
@@ -1736,27 +1737,58 @@ func TestSplitLanding(t *testing.T) {
 	}
 }
 
-// passedThenTold takes b's passed work to its end, and sends back what kept it there. It answers what kiln then owes
-// the build session, or "" for nothing.
+// TestJoinAfterCutShort holds that kiln joins nothing while a run of the build session was cut short. That session is
+// told its messages again first. So a kill while it answers a join's conflict owes the conflict once.
+func TestJoinAfterCutShort(t *testing.T) {
+	t.Parallel()
+	b, repo := splitBuild(t, false)
+	shell(t, string(b.tree), "echo 42 >x.txt && git add x.txt && git commit --quiet -m x")
+	shell(t, repo, "echo 43 >x.txt && git add x.txt && git commit --quiet -m x")
+	if err := b.mergeMain(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	var owed [2]int
+	for i, from := range []*int64{new(int64(0)), nil} {
+		b.set(func(r *record) { r.Code.From = from })
+		if _, err := b.prove(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+
+		owed[i] = len(b.now().Code.Owed)
+	}
+
+	if owed != [2]int{0, 1} {
+		t.Errorf("kiln owed the build session %v messages, cut short and then not; want none, then the conflict", owed)
+	}
+}
+
+// passedThenTold takes b's passed work to its end, and sends back what kept it there. Then it proves and joins, as
+// the loop does before the next run. It answers each message kiln then owes the build session, or "" for none.
 func passedThenTold(t *testing.T, b *build) string {
 	back, err := specJob{}.passed(t.Context(), b, "")
 	if err == nil && back.why != "" {
 		err = specJob{}.goneBack(t.Context(), b, back)
 	}
 
+	if err == nil && back.why != "" {
+		_, err = b.prove(t.Context())
+	}
+
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if owed := b.now().Code.Owed; len(owed) > 0 {
-		return owed[0].Text
+	var told []string
+	for _, m := range b.now().Code.Owed {
+		told = append(told, m.Text)
 	}
 
-	return ""
+	return strings.Join(told, "\n\nAND\n\n")
 }
 
 // splitBuild is landingBuild's build of x, with a verify session's clone. Main holds the spec, the audit has read the
-// work, and kiln.json gives it 1 round. It answers the repository.
+// work, and kiln.json gives it 1 round. The work holds the proved commit, which is main's. It answers the repository.
 func splitBuild(t *testing.T, accepted bool) (*build, string) {
 	b, repo, _ := landingBuild(t)
 	shell(t, repo, "mkdir -p .kiln/specs && echo '# X' >.kiln/specs/x.md && git add . && git commit --quiet -m spec")
@@ -1767,7 +1799,7 @@ func splitBuild(t *testing.T, accepted bool) (*build, string) {
 	}
 
 	main := git.Rev(shell(t, repo, "git rev-parse main"))
-	b.set(func(r *record) { r.Accepted, r.Limit, r.Audited = accepted, new(1), main })
+	b.set(func(r *record) { r.Accepted, r.Limit, r.Audited, r.Tested = accepted, new(1), main, main })
 	return b, repo
 }
 
