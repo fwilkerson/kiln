@@ -80,10 +80,10 @@ func (s side) valid() bool {
 	return false
 }
 
-// refusal says why the session of s may not write folded, a path folded as APFS reads it, or "". In build-and-verify,
-// the build session writes neither the acceptance tests nor the amendments. The verify session writes only those,
-// and the paths of testHelpers. A fix writes no acceptance test, unless its monitor says it may. A verify-first
-// fix's verify session writes only test files, and its fix session writes none.
+// refusal says why the session of s may not write folded, a path folded as APFS reads it, or "". Beside a verify
+// session, the build session writes neither the acceptance tests nor the amendments. The verify session writes only
+// those, and the paths of testHelpers. A fix writes no acceptance test, unless its monitor says it may. A fix's verify
+// session writes only test files, and the fix session beside it writes none.
 func (s side) refusal(rel, folded string, spec Spec) string {
 	in := func(root string) bool { return within(folded, root) }
 	tests := slices.ContainsFunc(s.acceptance, in) || folded == fold(spec.amendPath())
@@ -91,17 +91,17 @@ func (s side) refusal(rel, folded string, spec Spec) string {
 	switch {
 	case s.role == buildRole:
 		if tests {
-			return fmt.Sprintf("%s is the verify session's: in build-and-verify, it alone writes %s and %s", rel,
+			return fmt.Sprintf("%s is the verify session's: it alone writes %s and %s", rel,
 				paths, spec.amendPath())
 		}
 	case s.role == verifyRole && s.verifiesFirst():
 		if !s.testFile(folded) {
-			return fmt.Sprintf("%s is no test file: in a verify-first fix, the verify session writes only %s", rel,
+			return fmt.Sprintf("%s is no test file: a fix's verify session writes only %s", rel,
 				s.testWords())
 		}
 	case s.role == verifyRole:
 		if !tests && !slices.ContainsFunc(s.helpers, in) {
-			return fmt.Sprintf("%s is the build session's: in build-and-verify, the verify session writes only %s, "+
+			return fmt.Sprintf("%s is the build session's: the verify session writes only %s, "+
 				"%s and the paths of kiln.json's testHelpers", rel, paths, spec.amendPath())
 		}
 	case s.role == fixRole:
@@ -111,12 +111,12 @@ func (s side) refusal(rel, folded string, spec Spec) string {
 	return ""
 }
 
-// fixRefusal says why the fix session of s may not write folded, or "". A verify-first fix writes no test file. Any
-// other fix writes no acceptance test.
+// fixRefusal says why the fix session of s may not write folded, or "". Beside a verify session, it writes no test
+// file. Any other fix writes no acceptance test.
 func (s side) fixRefusal(rel, folded string) string {
 	if s.verifiesFirst() && s.testFile(folded) {
-		return fmt.Sprintf("%s is a test file: in a verify-first fix, the verify session wrote the tests that judge "+
-			"the fix, and the fix changes none of %s", rel, s.testWords())
+		return fmt.Sprintf("%s is a test file: a verify session writes the tests that judge the fix, and the fix "+
+			"changes none of %s", rel, s.testWords())
 	}
 
 	i := slices.IndexFunc(s.acceptance, func(fixed string) bool { return strings.HasPrefix(folded, fold(fixed)) })

@@ -771,8 +771,9 @@ func (f *fixing) contract(name Spec) string {
 	tests := "The monitor says its fixes may write the acceptance tests."
 	switch {
 	case f.side.verifiesFirst():
-		tests = fmt.Sprintf("Nor is any test file: %s. A verify session wrote the tests that judge your fix. It "+
-			"updated each old test that held the behavior your fix changes.", f.side.testWords())
+		tests = fmt.Sprintf("Nor is any test file: %s. A verify session writes the tests that judge your fix, and "+
+			"kiln joins them into your branch once they fail on main's code. It updates each old test that holds "+
+			"the behavior your fix changes.", f.side.testWords())
 	case len(f.side.acceptance) > 0:
 		tests = fmt.Sprintf("Nor is anything under %s, the acceptance tests, which judge your fix.",
 			quoted(f.side.acceptance))

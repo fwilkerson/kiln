@@ -312,8 +312,8 @@ func TestRunScreen(t *testing.T) {
 	}
 }
 
-// TestGateMarks holds that a gate is marked by whether it went as kiln wanted. The gate on a verify-first fix's tests
-// before the fix must fail.
+// TestGateMarks holds that a gate is marked by whether it went as kiln wanted. A proof, the gate of a verify
+// session's tests alone, must fail.
 func TestGateMarks(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -323,9 +323,9 @@ func TestGateMarks(t *testing.T) {
 	}{
 		{"a gate that passed", Gate{Passed: true}, "✓ passed", dark.passed.GetForeground()},
 		{"a gate that failed", Gate{}, "✗ failed", dark.failed.GetForeground()},
-		{"tests that failed before the fix", Gate{MustFail: true}, "✓ failed · before the fix",
+		{"a proof that failed", Gate{MustFail: true}, "✓ failed · proof",
 			dark.passed.GetForeground()},
-		{"tests that passed before the fix", Gate{Passed: true, MustFail: true}, "✗ passed · before the fix",
+		{"a proof that passed", Gate{Passed: true, MustFail: true}, "✗ passed · proof",
 			dark.failed.GetForeground()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

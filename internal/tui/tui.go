@@ -190,8 +190,8 @@ type Gate struct {
 	Passed     bool
 	// Landing is the gate on the work rebased onto main.
 	Landing bool
-	// MustFail is whether kiln wanted the gate to fail. The gate on a verify-first fix's tests, before the fix, must
-	// fail to show the problem. kiln tui marks each gate by whether it went as kiln wanted.
+	// MustFail is whether kiln wanted the gate to fail. A proof, the gate of a verify session's tests alone, must fail
+	// to show the problem. kiln tui marks each gate by whether it went as kiln wanted.
 	MustFail bool
 }
 

@@ -757,7 +757,7 @@ func (t theme) verdict(g *Gate) string {
 	}
 
 	if g.MustFail {
-		said += " · before the fix"
+		said += " · proof"
 	}
 
 	return said

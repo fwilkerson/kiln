@@ -31,7 +31,7 @@ import (
 //	          audit's adds the tally its reply ends with, and each finding it lists: its rank, place, category and
 //	          fields. A reply kiln could not parse is one finding, which holds it whole
 //	gate      after each gate: when it ended, whether it passed, whether it gated a landing, whether it ran the
-//	          commands at main too, and whether it gated a verify-first fix's tests before the fix
+//	          commands at main too, and whether it was a proof, the gate of a verify session's tests alone
 //	outcome   when the build lands, stops, waits on its branch, is dropped or is accepted; a wait holds its amendments
 //	gauge     after a landing, one per gauge that printed something or failed: its name, the landed
 //	          commit, its value or none, and its line and side
