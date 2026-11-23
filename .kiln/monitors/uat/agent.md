@@ -47,7 +47,7 @@ the scenario, or add the line that says why it stays.
 
 ## How you check the fix
 
-- Run `go vet ./...` and `go test -timeout 30m ./...`.
+- Run `go vet ./...` and `go test -p 2 -timeout 30m ./...`.
 - Commit, then run `sh .kiln/monitors/uat/check`. It reads commits alone. Its last line says `"fix": false` once
   the fix has done what the check printed.
 - Run `sh .kiln/monitors/uat/lib/lost main`. It lists each check no scenario holds anymore.

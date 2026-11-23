@@ -19,7 +19,7 @@ command required each that `go get` took, then tidied `go.mod`, and the gate fai
 
 ## How you check the fix
 
-- Run `go vet ./...` and `go test -timeout 30m ./...`, and format each Go file you changed with `gofmt`.
+- Run `go vet ./...` and `go test -p 2 -timeout 30m ./...`, and format each Go file you changed with `gofmt`.
 
 ## When to ask for the developer
 

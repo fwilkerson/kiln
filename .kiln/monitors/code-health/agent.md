@@ -38,7 +38,7 @@ worth" and "Tests", which `CLAUDE.md` loads from `docs/guide.md`.
 
 ## How you check the fix
 
-- Run `go vet ./...` and `go test -timeout 30m ./...`. Format each Go file with `gofmt`.
+- Run `go vet ./...` and `go test -p 2 -timeout 30m ./...`. Format each Go file with `gofmt`.
 - For each piece of code you moved, plant a bug in it, run its package's tests, and undo the plant. For code in
   `cmd/kiln`, run `go test ./uat/...` too, since the acceptance tests hold its wiring. A plant that passes every
   test names a rule no test holds.

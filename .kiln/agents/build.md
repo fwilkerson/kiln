@@ -31,7 +31,7 @@ decided and why.
 
 <!-- Tailor this: the commands that check this project's work, and what each needs. -->
 
-- Run `go vet ./...` and `go test -timeout 30m ./...` before you end your turn. The gate runs them too. Keep the
+- Run `go vet ./...` and `go test -p 2 -timeout 30m ./...` before you end your turn. The gate runs them too. Keep the
   timeout: a busy machine can slow the tests past the 10 minutes `go test` allows by default.
 - `go test ./...` holds the score of each Go file from `go tool health .`, and `TestHealth` fails when one moves. A file
   you add scores 10. When a file you change scores lower, fix the code. When a file listed in `held`, in

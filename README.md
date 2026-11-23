@@ -124,12 +124,12 @@ A **monitor** fixes problems on a schedule, with no spec. A monitor's check look
 When the check finds one, the monitor fixes it, with a script or a session. The fix must pass the gate, as any build
 must. kiln ships four monitors:
 
-| Monitor        | What it fixes                                                                        |
-|----------------|--------------------------------------------------------------------------------------|
-| `bugs`         | each bug report under `bugs/`, one at a time: a test that fails first, then its fix  |
-| `go/deps`      | each Go module behind its newest release that is at least 7 days old                 |
-| `go/docs`      | each Go package doc that a change made false                                         |
-| `go/gate-time` | a gate that slowed, by making the Go tests faster                                    |
+| Monitor        | What it fixes                                                                       |
+|----------------|-------------------------------------------------------------------------------------|
+| `bugs`         | each bug report under `bugs/`, one at a time: a test that fails first, then its fix |
+| `go/deps`      | each Go module behind its newest release that is at least 7 days old                |
+| `go/docs`      | each Go package doc that a change made false                                        |
+| `go/gate-time` | a gate that slowed, by making the Go tests faster                                   |
 
 ```sh
 kiln monitor add bugs       # writes .kiln/monitors/bugs/, for you to commit on main
@@ -156,8 +156,8 @@ watch a **gauge**: a number, such as the tests' time, that kiln reads after ever
 ## Working on kiln
 
 ```sh
-go test -timeout 30m ./...    # the gate. The terminal UI's scenarios need a real terminal, and skip in a sandbox.
-go run ./tools/install        # reinstall kiln and its zsh completion from main's tip
+go test -p 2 -timeout 30m ./...  # the gate. The terminal UI's scenarios need a real terminal, and skip in a sandbox.
+go run ./tools/install           # reinstall kiln and its zsh completion from main's tip
 ```
 
 [docs/guide.md](docs/guide.md) holds the rules for Go code, and [docs/practices.md](docs/practices.md) adds kiln's
