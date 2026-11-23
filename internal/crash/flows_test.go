@@ -455,8 +455,23 @@ func (s *scratch) judge(left, after string, problems []string) {
 	case known:
 		t.Logf("%q: a known defect: %s", left, why)
 	case len(problems) > 0:
-		t.Errorf("%s, %s:\n%s\n\n%s", s.subject, after, strings.Join(problems, "\n"), s.said.String())
+		t.Errorf("%s, %s:\n%s\n\n%s%s", s.subject, after, strings.Join(problems, "\n"), s.said.String(),
+			s.stderrs())
 	}
+}
+
+// stderrs is what each session's standard error holds, for a failure's report. A session that Claude Code refused
+// says why only there.
+func (s *scratch) stderrs() string {
+	var b strings.Builder
+	kept, _ := filepath.Glob(filepath.Join(s.work, ".git", "kiln", "sessions", "*", "stderr"))
+	for _, path := range kept {
+		if raw, _ := os.ReadFile(path); len(raw) > 0 {
+			fmt.Fprintf(&b, "\nsession %s's standard error:\n%s", filepath.Base(filepath.Dir(path)), raw)
+		}
+	}
+
+	return b.String()
 }
 
 // clones lists each session's clone that kiln's cache holds.

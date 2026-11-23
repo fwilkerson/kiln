@@ -24,8 +24,6 @@ type leftover struct {
 	class string
 	// lost names each run with no end, which the next kiln ends whatever the record holds. roles are their roles.
 	lost, roles []string
-	// begun counts the runs with no end whose session has printed since the run started.
-	begun int
 	// broken lists each rule the leftover breaks, whatever command comes next.
 	broken []string
 }
@@ -48,20 +46,22 @@ func (l leftover) keys(byClass bool) []string {
 
 // holds reads what a kill at the step st would leave, as left does. It fails the test for each rule that breaks.
 //
-// A session prints while kiln takes its next steps. So what a kill leaves of it would turn on the machine's load.
-// A step that starts or ends a session first waits until the sessions kiln runs have begun. running counts them.
-// So a kill between two sessions' starts leaves the first begun, and the second not.
+// A session prints while kiln takes its next steps, and a kiln runs two sessions at once. So what a kill leaves of a
+// session would turn on the machine's load. Each step first waits until the sessions kiln runs have begun. running
+// counts them. So a kill between two sessions' starts leaves the first begun, and the second not.
+//
+// A snapshot copies the scratch file by file, while each session prints on. A session that starts during the copy
+// can leave its stream there, yet not its transcript, which no kill leaves. The wait keeps each start out of the copy.
 func (s *scratch) holds(f flow, st step, running int) leftover {
-	if st.started() == 0 {
-		running = 0
+	for asked := time.Now(); s.begun() < running; time.Sleep(time.Millisecond) {
+		if time.Since(asked) > beginWait {
+			s.t.Errorf("%s: at step %d, %s, a session kiln started printed nothing in %s, so a snapshot could "+
+				"hold half of its start", f.name, st.n, st.what, beginWait)
+			break
+		}
 	}
 
 	l := s.left(f)
-	for wait := 0; l.begun < running && wait < 2000; wait++ {
-		time.Sleep(time.Millisecond)
-		l = s.left(f)
-	}
-
 	for _, rule := range l.broken {
 		s.t.Errorf("%s: a kill at step %d, %s, would leave a rule broken: %s", f.name, st.n, st.what, rule)
 	}
@@ -92,11 +92,7 @@ func (s *scratch) left(f flow) leftover {
 	}
 
 	for session, start := range runs {
-		begun := s.streamed(session) > start.Streamed
-		if begun {
-			l.begun++
-		}
-
+		begun := s.printed(session, start)
 		l.roles = append(l.roles, start.Role)
 		l.lost = append(l.lost, fmt.Sprintf("a run of the %s session with no end, begun: %v", start.Role, begun))
 		if rec["build"] != start.Build || rec["state"] != "building" {
@@ -127,6 +123,29 @@ type ledgerLine struct {
 	Streamed                                 int64
 	// text is the line as the ledger holds it.
 	text string
+}
+
+// beginWait is how long a step waits for the sessions kiln runs to begin. Under load, a scripted session takes
+// seconds to print. A kiln waits a minute for a step's answer, so the wait is shorter.
+const beginWait = 30 * time.Second
+
+// begun counts the runs with no end whose session has printed since the run started.
+func (s *scratch) begun() int {
+	_, lines := s.kept()
+	_, runs, _ := unended(lines)
+	begun := 0
+	for session, start := range runs {
+		if s.printed(session, start) {
+			begun++
+		}
+	}
+
+	return begun
+}
+
+// printed is whether session has printed since start, the start line of its run.
+func (s *scratch) printed(session string, start ledgerLine) bool {
+	return s.streamed(session) > start.Streamed
 }
 
 // kept reads the record of the flow's subject, and each line of the ledger. The ledger's file lacks the lines of the
