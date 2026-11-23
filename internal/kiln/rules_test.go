@@ -978,6 +978,54 @@ func TestRecoverLane(t *testing.T) {
 	}
 }
 
+// TestSetKeepsItsBuild holds that a build writes its lines as its own, and changes no other build's record. kiln
+// queue may queue a landed spec anew while the kiln that landed it still reads the landing's gauges.
+func TestSetKeepsItsBuild(t *testing.T) {
+	r := &Repo{store: store{dir: t.TempDir()}}
+	err := r.store.update(func(b *book) error {
+		b.Specs = []*record{{Name: "x", State: queued, Build: "new"}}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := &build{r: r, rec: record{Name: "x", State: landed, Build: "old"}, out: io.Discard}
+	b.set(func(r *record) { r.Rounds++ }, entry{Kind: gaugeKind, Gauge: "g"})
+	k, _ := r.store.read()
+	read, _ := r.store.entries()
+	if len(read) != 1 {
+		t.Fatalf("the ledger holds %d lines, want the gauge line alone", len(read))
+	}
+
+	if !claim.Holds(read[0].Build == "old", b.rec.Build == "old", k.find("x").Rounds == 0) {
+		t.Errorf("the landed build wrote its line as %q, goes on as %q, and left the new record at round %d; want "+
+			"old, old and 0", read[0].Build, b.rec.Build, k.find("x").Rounds)
+	}
+}
+
+// TestSetAppliesOnce holds that set applies its change once to the build's copy, though no update can keep it.
+func TestSetAppliesOnce(t *testing.T) {
+	r := &Repo{store: store{dir: t.TempDir()}}
+	err := r.store.update(func(b *book) error {
+		b.Specs = []*record{{Name: "x", State: building}}
+		return nil
+	})
+
+	// No update writes the book while a directory holds the name of the book's temporary file.
+	if err := errors.Join(err, os.Mkdir(filepath.Join(r.store.dir, bookFile+".tmp"), 0o700)); err != nil {
+		t.Fatal(err)
+	}
+
+	var said strings.Builder
+	b := &build{r: r, rec: record{Name: "x", State: building}, out: &said}
+	b.set(func(r *record) { r.Rounds++ })
+	if b.rec.Rounds != 1 || said.Len() == 0 {
+		t.Errorf("the build's copy is at round %d, and kiln said %q; want round 1, and that kiln could not record it",
+			b.rec.Rounds, said.String())
+	}
+}
+
 // TestTakeRequeuesOnce holds that only a run's first take queues again what a kiln left building. A record left
 // building at a later take is the running kiln's own. So no run builds it twice.
 func TestTakeRequeuesOnce(t *testing.T) {

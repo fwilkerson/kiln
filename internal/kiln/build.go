@@ -183,7 +183,7 @@ type build struct {
 	side *sides
 	// auditing is the commit auditTry checked out in the audit's worktree, which undo puts back after each run.
 	auditing git.Rev
-	// mu guards rec while build-and-verify's two sessions run at once. set, now, record and say hold it.
+	// mu guards rec while build-and-verify's two sessions run at once. set, now and say hold it.
 	mu sync.Mutex
 	// fix is a monitor's fix, or nil for a spec's build.
 	fix *fixing
@@ -730,9 +730,12 @@ func (r *Repo) undo(ctx context.Context, dir git.Worktree, read git.Rev) ([]stri
 	return slices.Compact(changed), r.git.Detached(ctx, dir, read)
 }
 
-// set applies change once, to the stored record, and takes that record as the build's copy. A nil change changes
-// nothing. The same update writes lines to the ledger, as the build's. A build with no ID writes none: its spec was
-// approved before kiln kept a ledger.
+// set applies change once, to the build's stored record, and takes that record as the build's copy. A nil change
+// changes nothing. The same update writes lines to the ledger, as the build's. A build with no ID writes none: its
+// spec was approved before kiln kept a ledger.
+//
+// The stored record is the build's while it holds the build's ID. kiln queue may queue a landed spec anew while kiln
+// still reads the landing's gauges. set leaves that newer record alone, and the lines stay the landed build's.
 func (b *build) set(change func(*record), lines ...entry) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -740,10 +743,11 @@ func (b *build) set(change func(*record), lines ...entry) {
 		change = func(*record) {}
 	}
 
+	var kept *record
 	err := b.r.store.update(func(k *book) error {
-		if r := k.find(b.rec.Name); r != nil {
+		if r := k.find(b.rec.Name); r != nil && r.Build == b.rec.Build {
 			change(r)
-			b.rec = *r
+			kept = new(*r)
 		}
 
 		for _, e := range lines {
@@ -753,9 +757,14 @@ func (b *build) set(change func(*record), lines ...entry) {
 
 		return nil
 	})
-	if err != nil {
+
+	switch {
+	case err != nil:
+		// The update kept nothing, so the build's copy has yet to take the change.
 		change(&b.rec)
 		fmt.Fprintf(b.out, "%s: kiln could not record it: %v\n", b.rec.Name, err)
+	case kept != nil:
+		b.rec = *kept
 	}
 }
 
