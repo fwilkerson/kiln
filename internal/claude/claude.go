@@ -318,7 +318,7 @@ func run(ctx context.Context, c proc.Command, stream io.Writer, silence time.Dur
 	case silent:
 		return read.ended(), tail.String(), err
 	// The stream says how a session that failed, or that kiln killed, ended.
-	case failed, ctx.Err() != nil && err == context.Cause(ctx):
+	case failed, ctx.Err() != nil && errors.Is(err, context.Cause(ctx)):
 		return read.ended(), tail.String(), nil
 	}
 

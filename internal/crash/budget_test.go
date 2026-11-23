@@ -48,8 +48,8 @@ func overBudget(t *testing.T) string {
 }
 
 // outlasted answers what TestKilledAtEachStep fails with once it outlasts its budget, nine tenths of timeout. It
-// answers "" before then. left is the time before go test's timeout ends the run. In the last tenth, each command
-// at work ends, so go test's own panic never names the failure.
+// answers "" before then. left is the time before the timeout of go test ends the run. In the last tenth, each command
+// at work ends, so the panic of go test never names the failure.
 func outlasted(left, timeout time.Duration) string {
 	if left > timeout/10 {
 		return ""

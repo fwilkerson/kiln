@@ -7,12 +7,12 @@
 // kiln calls Step inside the few functions that change durable state, never at their callers:
 //
 //	state.json     each write of the book of records
-//	ledger.jsonl   each append to the ledger, of the lines a write of the book kept
+//	ledger.jsonl   each append to the ledger, of the lines the book kept when it was written
 //	git            each command that changes a ref, a worktree, the index or the config
 //	clone remove   each removal of a session's clone, which is no worktree of git's
 //	proc           each session's start and end, as RunSession or RunAttached runs it
 //
-// In kiln's own build, Step does nothing. A build with the tag crash asks a test at each step, and waits:
+// In the build of kiln itself, Step does nothing. A build with the tag crash asks a test at each step, and waits:
 //
 //	go build -tags crash ./cmd/kiln
 //

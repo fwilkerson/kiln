@@ -86,7 +86,7 @@ organize current work by stories, then reorganize it by functional area. A story
 - When one change rewrites many scenarios, the tests are saying what they share. Move it into the harness first.
 - Keep a scenario to one story a developer would tell. It may be long, when each step follows from the last.
 - The `uat` monitor, in `.kiln/monitors/uat/`, folds and weighs. Its check asks for a fold when an accepted spec
-  still has a folder under `uat/`, or two scenarios bring the same fixture. Otherwise it lists a few scenarios not yet
+  still has a folder under `uat/`, or two scenarios bring the same fixture. Otherwise, it lists a few scenarios not yet
   weighed, the costliest first, by the rule its header states. Its fix lands without `kiln accept`: the audit reads
   it, and its last reply accounts for each dropped check.
 

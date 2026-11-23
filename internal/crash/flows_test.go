@@ -266,7 +266,7 @@ type proof struct {
 	scratch *scratch
 	// queue holds each clone settle left the flow, to drive from in the next round.
 	queue []snapshot
-	// sessions names each session step of the flow's own run, by what a kill there leaves.
+	// sessions names each session step of this flow's run, by what a kill at that step leaves.
 	sessions []string
 }
 
