@@ -331,14 +331,15 @@ func verifyRuns(t *testing.T, replies string, asked bool) ([]reason, error) {
 
 // TestOneWrite holds that the book and the ledger change in one write. A kiln may die before it appends an update's
 // lines to the ledger, or part way. The ledger still reads whole, and the next update leaves its file whole. An older
-// book put back costs the ledger no line.
+// book put back costs the ledger no line. The update a row cuts short wrote two lines, a gate and an outcome.
 func TestOneWrite(t *testing.T) {
 	t.Parallel()
 	for name, left := range map[string]func(t *testing.T, s store, older []byte) error{
-		"kiln appended the update's lines":    func(*testing.T, store, []byte) error { return nil },
-		"kiln died before it appended them":   func(_ *testing.T, s store, _ []byte) error { return s.cutLedger(1 << 20) },
-		"kiln died with one line half there":  func(_ *testing.T, s store, _ []byte) error { return s.cutLedger(40) },
-		"kiln died before the line's newline": func(_ *testing.T, s store, _ []byte) error { return s.cutLedger(1) },
+		"kiln appended the update's lines":         func(*testing.T, store, []byte) error { return nil },
+		"kiln died before it appended them":        func(_ *testing.T, s store, _ []byte) error { return s.cutLedger(1 << 20) },
+		"kiln died with the first line half there": func(_ *testing.T, s store, _ []byte) error { return s.cutLedger(120) },
+		"kiln died with the last line half there":  func(_ *testing.T, s store, _ []byte) error { return s.cutLedger(40) },
+		"kiln died before the last line's newline": func(_ *testing.T, s store, _ []byte) error { return s.cutLedger(1) },
 		"an older book was put back": func(_ *testing.T, s store, older []byte) error {
 			return os.WriteFile(filepath.Join(s.dir, bookFile), older, 0o600)
 		},
@@ -354,15 +355,17 @@ func TestOneWrite(t *testing.T) {
 
 			err := s.update(queue)
 			older, _ := os.ReadFile(filepath.Join(s.dir, bookFile))
-			err = errors.Join(err, s.write(entry{Kind: outcomeKind, Build: "b1", Outcome: outStopped}))
+			stopped := entry{Kind: outcomeKind, Build: "b1", Outcome: outStopped}
+			err = errors.Join(err, s.write(entry{Kind: gateKind, Build: "b1"}, stopped))
 			if err := errors.Join(err, left(t, s, older)); err != nil {
 				t.Fatal(err)
 			}
 
 			b, _ := s.read()
 			read, err := s.entries()
-			if got := kinds(read); !claim.Holds(err == nil, got == "build outcome", b.find("x") != nil) {
-				t.Errorf("the ledger reads %q, %v, and the book holds %v; want build outcome, and x", got, err, b.Specs)
+			if got := kinds(read); !claim.Holds(err == nil, got == "build gate outcome", b.find("x") != nil) {
+				t.Errorf("the ledger reads %q, %v, and the book holds %v; want build gate outcome, and x", got, err,
+					b.Specs)
 			}
 
 			if err := s.write(entry{Kind: gateKind, Build: "b1"}); err != nil {
@@ -370,9 +373,9 @@ func TestOneWrite(t *testing.T) {
 			}
 
 			read, _ = s.entries()
-			if got := kinds(ledgerLines(t, s)); !claim.Holds(got == "build outcome gate", kinds(read) == got) {
-				t.Errorf("after the next update, the file holds %q and the ledger reads %q; want build outcome gate",
-					got, kinds(read))
+			if got := kinds(ledgerLines(t, s)); !claim.Holds(got == "build gate outcome gate", kinds(read) == got) {
+				t.Errorf("after the next update, the file holds %q and the ledger reads %q; want build gate outcome "+
+					"gate", got, kinds(read))
 			}
 		})
 	}

@@ -175,7 +175,8 @@ const (
 	whyNoTest      = "no test"
 )
 
-// write adds e to the ledger, as one line, in the update that changes b. A line that names no build is left out.
+// write adds e to the ledger, as one line, in the update that changes b. A line that names no build is left out,
+// unless it is a monitor line.
 func (b *book) write(e entry) {
 	if e.At.IsZero() {
 		e.At = time.Now()
