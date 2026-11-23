@@ -258,9 +258,16 @@ func TestTestFiles(t *testing.T) {
 }
 
 // TestFailsOnTests holds when a gate shows a verify-first fix's tests: it fails on tests alone, and on one at least.
+// A package cut short counts each test it names with --- FAIL as failed. One that names none shows nothing.
 func TestFailsOnTests(t *testing.T) {
 	const other = "--- FAIL: TestNew (0.00s)\nFAIL\nFAIL\texample.com/s\t0.1s\n"
 	const broken = "# example.com/s\n./s.go:3:1: syntax error\nFAIL\texample.com/s [build failed]\n"
+	// panicked is a test that panics, so its binary ends before it prints the lone FAIL line that reports.
+	const panicked = "--- FAIL: TestAT1 (0.00s)\n" +
+		"panic: runtime error: index out of range [0] with length 0 [recovered]\n" +
+		"\tpanic: runtime error: index out of range [0] with length 0\n\ngoroutine 7 [running]:\n" +
+		"FAIL\texample.com/acceptance/x\t0.2s\n"
+	const hung = "panic: test timed out after 10m0s\nFAIL\texample.com/t\t600.0s\n"
 	for name, tc := range map[string]struct {
 		tip, main []check
 		refused   map[string]string
@@ -275,6 +282,17 @@ func TestFailsOnTests(t *testing.T) {
 			refused: map[string]string{".kiln/kiln.json": "under .kiln/"}},
 		"a command fails that names no test": {tip: append(goTest(1, other), check{Command: "go vet ./...", Exit: 1}),
 			main: goTest(0, "")},
+		"a new test panics":                       {tip: goTest(1, panicked+"FAIL\n"), main: goTest(0, ""), shows: true},
+		"a new test panics, and another fails":    {tip: goTest(1, other+panicked+"FAIL\n"), main: goTest(0, ""), shows: true},
+		"a new test panics, and a package hangs":  {tip: goTest(1, panicked+hung+"FAIL\n"), main: goTest(0, "")},
+		"a new test panics beside a broken build": {tip: goTest(1, panicked+broken+"FAIL\n"), main: goTest(0, "")},
+		"a test panics at main too":               {tip: goTest(1, panicked+"FAIL\n"), main: goTest(1, panicked+"FAIL\n")},
+		"a new test fails, and a package panics at main too": {tip: goTest(1, other+panicked+"FAIL\n"),
+			main: goTest(1, panicked+"FAIL\n")},
+		"a new test panics, and a path is refused": {tip: goTest(1, panicked), main: goTest(0, ""),
+			refused: map[string]string{".kiln/kiln.json": "under .kiln/"}},
+		"a new test panics, and a command fails that names no test": {
+			tip: append(goTest(1, panicked), check{Command: "go vet ./...", Exit: 1}), main: goTest(0, "")},
 	} {
 		t.Run(name, func(t *testing.T) {
 			v := judge(readOutputs(tc.tip), readOutputs(tc.main), tc.refused)

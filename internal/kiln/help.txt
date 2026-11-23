@@ -230,9 +230,9 @@ The last two are one isolated workflow, in two orders:
 	         its acceptance tests from the spec alone, and alone amends the spec. A fix's writes test files from what
 	         the check printed. It never reads the build's worktree, nor the build session's transcripts.
 	proof    the gate at the verify session's commit, which holds no code of the build's. It must fail, and on tests
-	         alone; a test that does not compile names no failed test. Otherwise its report goes back to the verify
-	         session, as a round. A commit that leaves the proved tests as they were needs no proof, unless it
-	         changes a path the verify session may not write.
+	         alone; a test that does not compile names no failed test. A test that panics fails, if go test named
+	         it. Otherwise the proof's report goes back to the verify session, as a round. A commit that leaves the
+	         proved tests as they were needs no proof, unless it changes a path the verify session may not write.
 	join     kiln merges the proved commit into kiln/<name>, with main as the verify session's clone holds it; a
 	         conflict goes to the build session, as a round
 	build    the build session, or the fix's, in <trees>/<name>. It reads and runs the proved tests, and changes none.

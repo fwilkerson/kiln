@@ -184,8 +184,8 @@ tests go:
 - Otherwise a verify session writes the tests in a clone of main of its own, from the spec alone. Its settings deny
   it reads of the build's worktree.
 - The **proof** gates the verify session's commit, which holds no code of the build's. It must fail, and on tests
-  alone, so a test that does not compile on main proves nothing. Otherwise its report goes back to the verify
-  session.
+  alone, so a test that does not compile on main proves nothing. A test that panics there fails, once `go test`
+  names it with `--- FAIL`. Otherwise the proof's report goes back to the verify session.
 - Then kiln joins the proved tests into the build session's branch. The build session reads and runs them, and
   changes none. `"build-and-verify"` starts both sessions at once, which saves time. `"verify-first"` starts the
   build session once the tests are proved, which saves a build no test asks for.

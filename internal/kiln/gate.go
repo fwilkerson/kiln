@@ -32,7 +32,7 @@ type check struct {
 	// JUnit XML that will not parse, and a test module that will not import.
 	Broken bool `json:"broken,omitempty"`
 	// CutShort names each Go package whose test binary ended before it reported, as os.Exit, a panic or a timeout does.
-	// Such a check is broken too.
+	// A gate counts such a check as broken. A proof counts each test the package named as failed.
 	CutShort []string `json:"cut_short,omitempty"`
 }
 
@@ -89,14 +89,14 @@ func runCheck(ctx context.Context, dir git.Worktree, command string, s projectSh
 
 // failedTests reads the output of go test for the top-level tests that failed, each named with its package. cutShort
 // names each package that named a failed test, but whose test binary ended before it reported. broken is true when a
-// package failed with no test named, or is cut short.
+// package failed with no test named.
 func failedTests(output string) (failed, cutShort []string, broken bool) {
 	var f failures
 	for line := range strings.Lines(output) {
 		f.read(strings.TrimRight(line, "\r\n"))
 	}
 
-	return append(f.failed, f.pending...), f.cutShort, f.broken || len(f.cutShort) > 0
+	return append(f.failed, f.pending...), f.cutShort, f.broken
 }
 
 // failures holds what the output of go test says failed, so far. pending names the tests that failed in a package whose
@@ -152,6 +152,9 @@ type verdict struct {
 	failing []string
 	// tests names the tests of failing.
 	tests []string
+	// cutShort counts the commands that failing names only for their packages cut short. Each such package named a
+	// test of tests.
+	cutShort int
 	// rounds is how many times kiln.json lets a failing gate go back to the session.
 	rounds int
 	// ranMain is whether the gate ran the commands at main, rather than reading the checks kept from an earlier gate.
@@ -172,6 +175,9 @@ func judge(tip, main []check, refused map[string]string) verdict {
 			v.failing = append(v.failing, failing...)
 			tests, _ := c.against(atMain[c.Command])
 			v.tests = append(v.tests, tests...)
+			if c.cutShortOn(tests) {
+				v.cutShort++
+			}
 		}
 	}
 
@@ -196,6 +202,7 @@ func failedAt(main []check) (byCommand map[string]check, names []string) {
 			c.Failed = append(slices.Clone(seen.Failed), c.Failed...)
 			c.Ran = append(slices.Clone(seen.Ran), c.Ran...)
 			c.Broken = c.Broken || seen.Broken
+			c.CutShort = append(slices.Clone(seen.CutShort), c.CutShort...)
 		}
 
 		byCommand[c.Command] = c
@@ -206,9 +213,25 @@ func failedAt(main []check) (byCommand map[string]check, names []string) {
 	return byCommand, slices.Compact(names)
 }
 
-// failsOnTests is whether v failed on tests alone: on one at least, with no command broken and no path refused.
+// failsOnTests is whether v failed on tests alone: on one at least, with no command broken and no path refused. A
+// package cut short fails on tests when it named a test that failed here alone, as cutShortOn says.
 func (v verdict) failsOnTests() bool {
-	return !v.passed && len(v.tests) > 0 && len(v.tests) == len(v.failing)
+	return !v.passed && len(v.tests) > 0 && len(v.tests)+v.cutShort == len(v.failing)
+}
+
+// cutShortOn is whether c is broken only by packages cut short, each of which named a test of failedHere.
+func (c check) cutShortOn(failedHere tests) bool {
+	named := func(pkg string) bool {
+		return slices.ContainsFunc(failedHere, func(n string) bool { return strings.HasSuffix(n, " ("+pkg+")") })
+	}
+
+	unnamed := func(pkg string) bool { return !named(pkg) }
+	return !c.Broken && len(c.CutShort) > 0 && !slices.ContainsFunc(c.CutShort, unnamed)
+}
+
+// broken is whether c failed in a way no test excuses: as Broken says, or with a package cut short.
+func (c check) broken() bool {
+	return c.Broken || len(c.CutShort) > 0
 }
 
 // unnamed is what a report adds for a command that failed at the tip and at main. It named no test at either.
@@ -228,7 +251,7 @@ func (c check) judged(main check) (report string, failing []string) {
 		return "", nil
 	}
 
-	if c.Broken || len(failing) == 0 {
+	if c.broken() || len(failing) == 0 {
 		failing = append(failing, "`"+c.Command+"`")
 	}
 
@@ -238,7 +261,7 @@ func (c check) judged(main check) (report string, failing []string) {
 // excused is whether c failed only on tests that failed at main, and ran every test main ran. failing and notRun are
 // what against answers.
 func (c check) excused(failing, notRun tests) bool {
-	return !c.Broken && len(c.Failed) > 0 && len(failing) == 0 && len(notRun) == 0
+	return !c.broken() && len(c.Failed) > 0 && len(failing) == 0 && len(notRun) == 0
 }
 
 // report says what failed in c. main is the check of c's command at main, and notRun the tests main ran but c did not.
@@ -283,7 +306,7 @@ func (t tests) without(drop tests) tests {
 
 // namesNothing is whether c failed, is not broken, and names no failed test.
 func (c check) namesNothing() bool {
-	return c.Exit != 0 && !c.Broken && len(c.Failed) == 0
+	return c.Exit != 0 && !c.broken() && len(c.Failed) == 0
 }
 
 // gate runs the gate on the commit checked out at the first guard's checkout, a build's checkout. It runs
