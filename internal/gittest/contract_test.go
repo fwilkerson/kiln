@@ -73,12 +73,6 @@ var contract = []struct {
 	{"Show: a link, as its target", func(ctx context.Context, r reads, g given) string {
 		return shown(r.Show(ctx, g.exec, "bin/link"))
 	}, `"lib/x" true, no error`},
-	{"Show: a commit git lacks", func(ctx context.Context, r reads, g given) string {
-		return shown(r.Show(ctx, lacked, "f"))
-	}, `"" false, an error`},
-	{"Show: a branch git lacks", func(ctx context.Context, r reads, g given) string {
-		return shown(r.Show(ctx, "none", "f"))
-	}, `"" false, an error`},
 	{"ShowTip: the tip's files", func(ctx context.Context, r reads, g given) string {
 		return g.tipShown(r.ShowTip(ctx, "main", "f", "dir/g"))
 	}, `second map["dir/g":"in\n" "f":"two\n"], no error`},
@@ -115,9 +109,6 @@ var contract = []struct {
 	{"Files: a directory whose last file a commit removed", func(ctx context.Context, r reads, g given) string {
 		return listed(r.Files(ctx, "pruned", "dir"))
 	}, "[g], no error"},
-	{"Files: a commit git lacks", func(ctx context.Context, r reads, g given) string {
-		return listed(r.Files(ctx, lacked, "dir"))
-	}, "[], an error"},
 	{"Tree: each directory before what it holds, a link as a file", func(ctx context.Context, r reads,
 		g given) string {
 		return entered(r.Tree(ctx, g.plain, "bin"))
@@ -153,9 +144,6 @@ var contract = []struct {
 	{"Changed: a file removed", func(ctx context.Context, r reads, g given) string {
 		return listed(r.Changed(ctx, g.second, g.pruned))
 	}, "[dir/sub/h], no error"},
-	{"Changed: a commit git lacks", func(ctx context.Context, r reads, g given) string {
-		return listed(r.Changed(ctx, g.first, lacked))
-	}, "[], an error"},
 	{"Branched: what a branch changed since it left main", func(ctx context.Context, r reads, g given) string {
 		return listed(r.Branched(ctx, "main", "side"))
 	}, "[s], no error"},
@@ -183,13 +171,7 @@ var contract = []struct {
 	{"MergeBase: two commits that share none", func(ctx context.Context, r reads, g given) string {
 		return g.based(r.MergeBase(ctx, "main", "orphan"))
 	}, "no commit, an error"},
-	{"MergeBase: a branch git lacks", func(ctx context.Context, r reads, g given) string {
-		return g.based(r.MergeBase(ctx, "none", "main"))
-	}, "no commit, an error"},
 }
-
-// lacked is the ID of a commit that no history holds.
-var lacked = git.Rev(strings.Repeat("1", 40))
 
 // given names the commits of the history that history makes.
 type given struct {

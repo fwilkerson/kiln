@@ -16,7 +16,8 @@ import (
 )
 
 // TestCommitDir holds that CommitDir commits what git add -A commits of a directory. That is each file with its
-// executable bit, as git reads the owner's, and each link. It is not an empty directory, or the directory .git.
+// executable bit, as git reads the owner's, and each link. It is not an empty directory, or the directory .git. A
+// .gitattributes that changes no content, and git init's exclude of comments alone, change nothing.
 func TestCommitDir(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -33,6 +34,7 @@ func TestCommitDir(t *testing.T) {
 
 	symlink(t, "plain", filepath.Join(dir, "to-file"))
 	symlink(t, "d", filepath.Join(dir, "to-dir"))
+	write(t, filepath.Join(dir, ".gitattributes"), "# kiln's own\n* linguist-generated\n*.png -diff binary\n", 0o644)
 	cmd := exec.Command("/bin/sh", "-c", "git init --quiet && git add -A && git write-tree")
 	cmd.Dir = dir
 	out, err := cmd.Output()
@@ -104,7 +106,7 @@ var loud = map[string]func(ctx context.Context, h *History, main git.Rev) error{
 	"Show of a directory/":   func(ctx context.Context, h *History, main git.Rev) error { return show(ctx, h, main, "dir/") },
 	"Show of the top":        func(ctx context.Context, h *History, main git.Rev) error { return show(ctx, h, main, "") },
 	"Changed from git's empty tree": func(ctx context.Context, h *History, main git.Rev) error {
-		return second(h.Changed(ctx, emptyTree, main))
+		return second(h.Changed(ctx, git.Rev(object("tree", "")), main))
 	},
 	"ShowTip of a path above the top": func(ctx context.Context, h *History, main git.Rev) error {
 		_, _, err := h.ShowTip(ctx, "main", "../f")
@@ -114,15 +116,50 @@ var loud = map[string]func(ctx context.Context, h *History, main git.Rev) error{
 	"Tree of /dir": func(ctx context.Context, h *History, main git.Rev) error {
 		return second(h.Tree(ctx, main, "/dir"))
 	},
-	"CommitDir of a directory that holds a .gitignore": func(ctx context.Context, h *History, main git.Rev) error {
-		dir, err := os.MkdirTemp("", "gittest")
-		if err == nil {
-			defer os.RemoveAll(dir)
-			err = os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("x\n"), 0o644)
-		}
-
-		h.CommitDir("main", dir)
+	"Show at heads/main, which git reads as main": func(ctx context.Context, h *History, main git.Rev) error {
+		return show(ctx, h, "heads/main", "f")
+	},
+	"Show at MAIN, which git may read as main on a disk that folds case": func(ctx context.Context, h *History,
+		main git.Rev) error {
+		return show(ctx, h, "MAIN", "f")
+	},
+	"Show at a branch the history lacks": func(ctx context.Context, h *History, main git.Rev) error {
+		return show(ctx, h, "none", "f")
+	},
+	"Show at a commit the history lacks": func(ctx context.Context, h *History, main git.Rev) error {
+		return show(ctx, h, git.Rev(strings.Repeat("1", 40)), "f")
+	},
+	"ShowTip of MAIN": func(ctx context.Context, h *History, main git.Rev) error {
+		_, _, err := h.ShowTip(ctx, "MAIN", "f")
 		return err
+	},
+	"Tip of MAIN": func(ctx context.Context, h *History, main git.Rev) error { return second(h.Tip(ctx, "MAIN")) },
+	"CommitDir of a directory that holds a .gitignore": func(ctx context.Context, h *History, main git.Rev) error {
+		return commitDir(h, map[string]string{".gitignore": "x\n"})
+	},
+	"CommitDir of a .gitattributes that names text": func(ctx context.Context, h *History, main git.Rev) error {
+		return commitDir(h, map[string]string{".gitattributes": "* text=auto\n", "a.txt": "x\r\n"})
+	},
+	"CommitDir of a .gitattributes that names eol": func(ctx context.Context, h *History, main git.Rev) error {
+		return commitDir(h, map[string]string{"d/.gitattributes": "# ends\n*.sh eol=lf\n", "d/a.sh": "x\r\n"})
+	},
+	"CommitDir of a .gitattributes that names a filter": func(ctx context.Context, h *History, main git.Rev) error {
+		return commitDir(h, map[string]string{".gitattributes": "*.bin filter=lfs -diff\n", "a.bin": "x"})
+	},
+	"CommitDir of a .gitattributes that names ident": func(ctx context.Context, h *History, main git.Rev) error {
+		return commitDir(h, map[string]string{".gitattributes": "*.c ident\n", "a.c": "$Id: x $\n"})
+	},
+	"CommitDir of a .git directory below the top": func(ctx context.Context, h *History, main git.Rev) error {
+		return commitDir(h, map[string]string{"sub/.git/note": "n\n", "sub/f": "f\n"})
+	},
+	"CommitDir of a repository below the top": func(ctx context.Context, h *History, main git.Rev) error {
+		return commitDir(h, map[string]string{"sub/.git/HEAD": "ref: refs/heads/main\n", "sub/f": "f\n"})
+	},
+	"CommitDir of a worktree below the top": func(ctx context.Context, h *History, main git.Rev) error {
+		return commitDir(h, map[string]string{"sub/.git": "gitdir: /elsewhere\n", "sub/f": "f\n"})
+	},
+	"CommitDir of a pattern in .git/info/exclude": func(ctx context.Context, h *History, main git.Rev) error {
+		return commitDir(h, map[string]string{".git/info/exclude": "# git ls-files --others\n*.log\n", "a.log": "x"})
 	},
 	"CommitFiles of a file under a file": func(ctx context.Context, h *History, main git.Rev) error {
 		h.CommitFiles("main", Files{"f/y/x": "x\n"})
@@ -140,6 +177,30 @@ var errEnded = errors.New("the call ended its goroutine")
 // second is the error that ends what a call answered.
 func second[T any](_ T, err error) error {
 	return err
+}
+
+// commitDir commits a new directory that holds files, by path, with CommitDir. It answers an error from making the
+// directory.
+func commitDir(h *History, files map[string]string) error {
+	dir, err := os.MkdirTemp("", "gittest")
+	if err != nil {
+		return err
+	}
+
+	defer os.RemoveAll(dir)
+	for p, content := range files {
+		target := filepath.Join(dir, p)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+
+		if err := os.WriteFile(target, []byte(content), 0o644); err != nil {
+			return err
+		}
+	}
+
+	h.CommitDir("main", dir)
+	return nil
 }
 
 // show is the error Show answers at at, of p.

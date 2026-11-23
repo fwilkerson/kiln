@@ -15,9 +15,6 @@ const author = "gittest <gittest@example.com> 0 +0000"
 // message is each commit's message.
 const message = "gittest\n"
 
-// emptyTree is git's ID of the tree that holds no file. git reads it as a Rev, where the stand-in reads only commits.
-var emptyTree = git.Rev(object("tree", ""))
-
 // object is git's ID of an object of kind, such as blob, whose content is body.
 func object(kind, body string) string {
 	sum := sha1.Sum(fmt.Appendf(nil, "%s %d\x00%s", kind, len(body), body))

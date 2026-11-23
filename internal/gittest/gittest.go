@@ -10,12 +10,14 @@
 // starting git. Its commits and files have the IDs git would give them. TestContract asks real git and the stand-in
 // the same questions of one history, and holds both to one answer.
 //
-// A History has no Check or CommonDir. Each other method of [git.Git] fails the test. So does a question git would
-// answer otherwise, such as one at HEAD, main~1 or a short commit ID. So does one with a path that is not clean. A
-// test that needs one runs on real git. Each commit has one parent at most, so a history holds no merge.
+// A History has no Check or CommonDir. Each other method of [git.Git] fails the test. So does a question git may
+// answer otherwise. Such a question names a Rev the history holds as no branch or full commit ID, such as heads/main.
+// It may name a branch in other letters, or a path that is not clean.
+// A test that needs one runs on real git. Each commit has one parent at most, so a history holds no merge.
 package gittest
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io/fs"
@@ -112,8 +114,9 @@ func (h *History) CommitRemoved(branch git.Branch, paths ...string) git.Rev {
 }
 
 // CommitDir makes a commit on branch's tip that holds what git add -A would commit of dir, and nothing else. It
-// keeps each file's executable bit, and each symbolic link as its target. It skips dir's .git, and fails the test on
-// a .gitignore, which it does not read. It moves branch to the commit, and answers it.
+// keeps each file's executable bit, and each symbolic link as its target. It skips dir's .git. It fails the test on
+// what git add -A reads that it does not, as unread lists. It moves branch to the commit, and answers it. It reads no
+// git config, as under hometest, whose HOME sets no core.autocrlf or core.excludesFile.
 func (h *History) CommitDir(branch git.Branch, dir string) git.Rev {
 	h.t.Helper()
 	held, err := snapshot(dir)
@@ -131,13 +134,17 @@ func snapshot(dir string) (map[string]blob, error) {
 	held := map[string]blob{}
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		rel, _ := filepath.Rel(dir, p)
-		switch {
-		case err != nil:
+		if err != nil {
 			return err
+		}
+
+		if why := unread(p, filepath.ToSlash(rel), d); why != "" {
+			return fmt.Errorf("%s: %s; run this test on real git", rel, why)
+		}
+
+		switch {
 		case d.IsDir() && rel == ".git":
 			return filepath.SkipDir
-		case d.Name() == ".gitignore":
-			return fmt.Errorf("%s: the stand-in reads no .gitignore", rel)
 		case d.Type()&fs.ModeSymlink != 0:
 			target, err := os.Readlink(p)
 			held[filepath.ToSlash(rel)] = blob{content: target, mode: link}
@@ -151,6 +158,59 @@ func snapshot(dir string) (map[string]blob, error) {
 
 	return held, err
 }
+
+// unread says why git add -A would read the entry d, at p, otherwise than snapshot does. rel is d's path from the top.
+// It answers "" for an entry both read alike.
+func unread(p, rel string, d fs.DirEntry) string {
+	switch {
+	case rel == ".git" && d.IsDir():
+		return cmp.Or(excluded(filepath.Join(p, "info", "exclude")), converts(filepath.Join(p, "info", "attributes")))
+	case d.Name() == ".git":
+		return "git add -A reads a .git below the top, or a linked worktree's, as a repository"
+	case d.Name() == ".gitignore":
+		return "the stand-in reads no .gitignore"
+	case d.Name() == ".gitattributes":
+		return converts(p)
+	}
+
+	return ""
+}
+
+// excluded says that the exclude file at p leaves files out of git add -A, where it holds a pattern. It answers ""
+// for a file of comments alone, as git init writes, or none.
+func excluded(p string) string {
+	raw, _ := os.ReadFile(p)
+	for line := range strings.Lines(string(raw)) {
+		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+			return fmt.Sprintf("its .git/info/exclude leaves %s out, which the stand-in does not read", line)
+		}
+	}
+
+	return ""
+}
+
+// converts names an attribute in the attributes file at p that changes what git add -A stores of a file. It answers
+// "" for a file that names none, or no file.
+func converts(p string) string {
+	raw, _ := os.ReadFile(p)
+	for line := range strings.Lines(string(raw)) {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || strings.HasPrefix(fields[0], "#") {
+			continue
+		}
+
+		for _, attr := range fields[1:] {
+			if name, _, _ := strings.Cut(strings.TrimLeft(attr, "-!"), "="); slices.Contains(converters, name) {
+				return fmt.Sprintf("its attribute %s changes what git add -A stores, which the stand-in does not", name)
+			}
+		}
+	}
+
+	return ""
+}
+
+// converters are the attributes that change what git add -A stores: line ends, a filter, $Id$, or an encoding.
+var converters = []string{"text", "crlf", "eol", "filter", "ident", "working-tree-encoding"}
 
 // readFile adds the file at p to held, at rel, with git's mode for it. git reads the owner's executable bit alone.
 func readFile(held map[string]blob, p, rel string) error {
@@ -229,7 +289,7 @@ func (h *History) ShowTip(_ context.Context, branch git.Branch, paths ...string)
 	defer h.mu.Unlock()
 	tip, found := h.mu.branches[branch]
 	if !found {
-		return "", nil, fmt.Errorf("%w %s", git.ErrNoBranch, branch)
+		return "", nil, h.missing(branch)
 	}
 
 	files := map[string][]byte{}
@@ -252,10 +312,24 @@ func (h *History) Tip(_ context.Context, branch git.Branch) (git.Rev, error) {
 	defer h.mu.Unlock()
 	tip, found := h.mu.branches[branch]
 	if !found {
-		return "", fmt.Errorf("%w %s", git.ErrNoBranch, branch)
+		return "", h.missing(branch)
 	}
 
 	return tip, nil
+}
+
+// missing is the error of branch, which the history lacks: an ErrNoBranch, as git answers. A name the history holds
+// in other letters fails the test. Where the disk folds case, git may read branch as that one.
+func (h *History) missing(branch git.Branch) error {
+	for held := range h.mu.branches {
+		if strings.EqualFold(string(held), string(branch)) {
+			h.t.Errorf("gittest: %s names %s in other letters, which git may read as %s: run this test on real git",
+				branch, held, held)
+			return fmt.Errorf("gittest: %s is %s in other letters", branch, held)
+		}
+	}
+
+	return fmt.Errorf("%w %s", git.ErrNoBranch, branch)
 }
 
 // Files lists the names of the entries directly in dir, in the commit at, as [git.Git.Files] does.
@@ -399,27 +473,20 @@ func (h *History) mergeBase(a, b git.Rev) (git.Rev, error) {
 // fullID matches a commit's full ID, which git reads as one before it reads a branch's name.
 var fullID = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
-// unreadable matches a Rev that git may read as a commit where the stand-in cannot. Such a Rev is HEAD, a full ref
-// or an option. It is an ID git may shorten, or a name with an operator, such as main~1 or a..b.
-var unreadable = regexp.MustCompile(`^(HEAD|refs/.*|-.*|[0-9a-f]{4,39}|.*(\.\.|[~^:@{}\\ ?*\[]).*)$`)
-
-// id is the commit at names: a commit's full ID, or a branch's name. A commit or branch the history lacks is an
-// error, as it is in git. A Rev that git reads otherwise fails the test, as git's empty tree does.
+// id is the commit at names: a held commit's full ID, or a held branch's name. Any other Rev fails the test. git
+// may read it as a commit the history holds, as heads/main, or MAIN where the disk folds case.
 func (h *History) id(at git.Rev) (git.Rev, error) {
-	_, held := h.mu.commits[at]
-	tip, isBranch := h.mu.branches[git.Branch(at)]
-	full := fullID.MatchString(string(at))
-	switch {
-	case at == emptyTree, unreadable.MatchString(string(at)):
-		h.t.Errorf("gittest: the stand-in cannot read %q as git would: run this test on real git", at)
-		return "", fmt.Errorf("gittest: %q is no commit the stand-in reads", at)
-	case full && held:
+	if _, held := h.mu.commits[at]; held {
 		return at, nil
-	case full, !isBranch:
-		return "", fmt.Errorf("gittest: %s is no commit git holds", at)
 	}
 
-	return tip, nil
+	if tip, held := h.mu.branches[git.Branch(at)]; held && !fullID.MatchString(string(at)) {
+		return tip, nil
+	}
+
+	h.t.Errorf("gittest: the history holds no commit or branch %q, which git may read otherwise: run this test on "+
+		"real git", at)
+	return "", fmt.Errorf("gittest: %q names no commit or branch the history holds", at)
 }
 
 // unclean fails the test where p is no clean path from the top, which call reads otherwise in git. It then answers
