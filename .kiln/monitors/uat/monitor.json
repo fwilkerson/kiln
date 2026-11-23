@@ -1,1 +1,1 @@
-{"$schema": "../../generated/monitor.schema.json", "writesTests": true}
+{"$schema": "../../generated/monitor.schema.json", "hours": 8, "writesTests": true}

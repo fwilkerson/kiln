@@ -54,14 +54,19 @@ organize current work by stories, then reorganize it by functional area. A story
 - Once the spec is accepted, its scenarios fold into `uat/testdata/<feature>/`. A feature is something the developer
   does, such as review a build. Name a folded scenario for what it shows. From then on it follows the product, not
   the retired spec's wording or numbers.
-- Fold in a change that touches the tests alone. Only the `uat` monitor folds or merges: another session that
-  did would rewrite the tests that judge its own code.
+- Fold in a change that touches the tests alone. Only the `uat` monitor folds, merges or weighs: another session
+  that did would rewrite the tests that judge its own code.
 - Merge two scenarios that build the same Given, so one build carries the checks of both. Three of kiln's specs
   each described one state from their own side: nine of their scenarios held one of three fixtures, byte for byte.
-- Drop a scenario when a unit table's row holds its rule, and another scenario runs the same wiring through the
-  command line. Keep one scenario for each transport, such as Go's test output and JUnit XML.
-- A fold keeps each check, or says why it went. `sh .kiln/monitors/uat/lib/lost <commit>` lists the checks no scenario
-  has held since that commit.
+- Weigh each folded scenario once. For each check, find the cheapest test that can hold its rule, as "Tests" ranks
+  them. Where that is not a scenario, the check moves there, once it fails with the rule broken. Each step only the
+  check needed goes with it.
+- Drop a scenario once its checks have moved, and another scenario runs the same wiring through the command line.
+  Keep one scenario for each transport, such as Go's test output and JUnit XML.
+- A weighed scenario that stays says why in one line of its script: `# Only the built binary shows: <what>`. A
+  merge into it takes the line out, so the checks it gains are weighed too.
+- A fold or a weighing keeps each check, or says why it went. `sh .kiln/monitors/uat/lib/lost <commit>` lists the
+  checks no scenario has held since that commit.
 - Never merge a scenario that needs a pseudo-terminal with one that needs none. A sandboxed session runs only the
   second kind.
 - A scenario brings only the files its Given names. What each scenario would repeat goes in `internal/scenariotest`,
@@ -69,8 +74,10 @@ organize current work by stories, then reorganize it by functional area. A story
   held a copy of.
 - When one change rewrites many scenarios, the tests are saying what they share. Move it into the harness first.
 - Keep a scenario to one story a developer would tell. It may be long, when each step follows from the last.
-- The `uat` monitor, in `.kiln/monitors/uat/`, folds. Its check asks for a fix when an accepted spec still has a folder
-  under `uat/`, or two scenarios bring the same fixture. Its fix lands without `kiln accept`.
+- The `uat` monitor, in `.kiln/monitors/uat/`, folds and weighs. Its check asks for a fold when an accepted spec
+  still has a folder under `uat/`, or two scenarios bring the same fixture. Otherwise it lists a few scenarios not yet
+  weighed, the costliest first, by the rule its header states. Its fix lands without `kiln accept`: the audit reads
+  it, and its last reply accounts for each dropped check.
 
 ## Working with agents on an API
 

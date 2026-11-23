@@ -1,36 +1,134 @@
 #!/bin/sh
-# The check of kiln's uat monitor. It asks for a fix when the acceptance tests want folding, as docs/practices.md
-# "Acceptance tests" says: an accepted spec still has a folder under uat/, or two scenarios bring the same fixture.
-# Its last line is the JSON object kiln reads. What it prints above that line goes to the monitor's agent.
+# The check of kiln's uat monitor. It asks for a fix while the acceptance tests want folding or weighing, as
+# docs/practices.md "Acceptance tests" says. Its last line is the JSON object kiln reads. What it prints above that
+# line goes to the monitor's agent.
+#
+#   at main's tip    asks for a fold while an accepted spec still has a folder under uat/, or two scenarios bring the
+#                    same fixture. With neither, it lists the three costliest scenarios not yet weighed.
+#   in a fix's gate  passes once nothing is left to fold, and each scenario listed at the fix's base is gone or is
+#                    weighed. It fails while the fix changes a file outside the tests.
+#
+# A scenario is weighed once its script holds a comment line that says what only the built binary shows, such as:
+#
+#   # Only the built binary shows: a kiln killed while it lands recovers at the next command.
+#
+# A scenario's cost is its sessions of the scripted claude, then its kiln commands. Each session brings a worktree,
+# a gate and the git around them. Across kiln's scenarios, sessions ranked their times far closer than exec lines did.
+#
+# It reads commits, never the working tree, so an agent commits before it runs this check.
 set -eu
+export LC_ALL=C
 
-found=0
+# take is how many scenarios one fix weighs: enough to finish in weeks, few enough for the audit to read whole.
+take=3
+weighed='# Only the built binary shows: '
 
-# kiln deletes a spec once the developer accepts it, so a folder under uat/ with no spec is an accepted spec's.
-for dir in uat/*/; do
-  name=$(basename "$dir")
-  if [ "$name" != testdata ] && [ ! -e ".kiln/specs/$name.md" ]; then
-    echo "uat/$name/ holds the tests of $name, a spec the developer accepted: fold them into uat/testdata/."
-    found=$((found + 1))
-  fi
-done
+# count prints how many lines it reads that are not empty.
+count() { grep -c . || true; }
 
-# A scenario's fixture is the files it brings, from its first "-- name --" line on. One that brings none has none
-# to share.
-shared=$(for f in uat/testdata/*/*.txtar; do
-  fixture=$(sed -n '/^-- .* --$/,$p' "$f")
-  [ -n "$fixture" ] && printf '%s %s\n' "$(printf '%s' "$fixture" | shasum | cut -d' ' -f1)" "$f"
-done | awk '{ n[$1]++; files[$1] = files[$1] " " $2 } END { for (h in n) if (n[h] > 1) print files[h] }' | sort)
+# script prints a scenario's script: its lines above the first file it brings.
+script() { sed '/^-- .* --$/,$d'; }
 
-if [ -n "$shared" ]; then
-  echo "$shared" | while read -r files; do
-    echo "These scenarios bring the same fixture, so one build can carry the checks of each: $files"
+# scenarios prints each folded scenario that commit $1 holds.
+scenarios() { git ls-tree -r --name-only "$1" -- uat/testdata | grep '^uat/testdata/[^/]*/[^/]*\.txtar$' || true; }
+
+# folds prints each fold that commit $1 still needs, one to a line.
+folds() {
+  # kiln deletes a spec once the developer accepts it, so a folder under uat/ with no spec is an accepted spec's.
+  git ls-tree -d --name-only "$1" uat/ | while read -r dir; do
+    name=$(basename "$dir")
+    if [ "$name" != testdata ] && ! git cat-file -e "$1:.kiln/specs/$name.md" 2>/dev/null; then
+      echo "uat/$name/ holds the tests of $name, a spec the developer accepted: fold them into uat/testdata/."
+    fi
   done
-  found=$((found + $(echo "$shared" | wc -l)))
+
+  # A scenario's fixture is the files it brings, from its first "-- name --" line on. One that brings none has none
+  # to share.
+  scenarios "$1" | while read -r f; do
+    fixture=$(git show "$1:$f" | sed -n '/^-- .* --$/,$p')
+    [ -z "$fixture" ] || printf '%s %s\n' "$(printf '%s' "$fixture" | shasum | cut -d' ' -f1)" "$f"
+  done | awk '{ n[$1]++; files[$1] = files[$1] " " $2 } END { for (h in n) if (n[h] > 1) print files[h] }' | sort |
+    while read -r files; do
+      echo "These scenarios bring the same fixture, so one build can carry the checks of each: $files"
+    done
+}
+
+# costliest prints "<sessions> <commands> <scenario>" for each scenario of commit $1 not yet weighed, the costliest
+# first.
+costliest() {
+  scenarios "$1" | while read -r f; do
+    body=$(git show "$1:$f")
+    if ! printf '%s\n' "$body" | script | grep -q "^$weighed."; then
+      # Each session is a call of claude.json, a list of steps under its number, such as "1": [.
+      sessions=$(printf '%s\n' "$body" | sed -n '/^-- claude\.json --$/,/^-- .* --$/p' |
+        awk '{ n += gsub(/"[0-9]+": *\[/, "") } END { print n + 0 }')
+      commands=$(printf '%s\n' "$body" | script | grep -cE '^(! )?exec (exits [0-9]+ )?kiln ' || true)
+      echo "$sessions $commands $f"
+    fi
+  done | sort -k1,1nr -k2,2nr -k3,3
+}
+
+base=$(git merge-base main HEAD)
+todo=$(folds HEAD)
+
+if [ "$base" = "$(git rev-parse HEAD)" ]; then
+  if [ -n "$todo" ]; then
+    echo "$todo"
+    echo "{\"fix\": true, \"summary\": \"$(echo "$todo" | count) to fold in uat/\"}"
+    exit 0
+  fi
+
+  queue=$(costliest HEAD)
+  count=$(printf '%s\n' "$queue" | count)
+  if [ "$count" -eq 0 ]; then
+    echo '{"fix": false, "summary": "each spec is folded, no two scenarios share a fixture, and each is weighed"}'
+    exit 0
+  fi
+
+  echo "Weigh these scenarios, the costliest of the $count that lack the line \"$weighed<what>\"."
+  echo "Each shows its sessions of the scripted claude, then its kiln commands:"
+  echo
+  printf '%s\n' "$queue" | head -n "$take" | while read -r sessions commands f; do
+    echo "  $f: $sessions sessions, $commands kiln commands"
+  done
+  echo
+  first=$(printf '%s\n' "$queue" | head -n 1 | cut -d' ' -f3)
+  echo "{\"fix\": true, \"summary\": \"$count scenarios to weigh in uat/, first $first\"}"
+  exit 0
 fi
 
-if [ "$found" -eq 0 ]; then
-  echo '{"fix": false, "summary": "each accepted spec is folded, and no two scenarios share a fixture"}'
-else
-  echo "{\"fix\": true, \"summary\": \"$found to fold in uat/\"}"
+# The gate judges a fix by what the check listed at the fix's base, so the scenarios next in line never fail it.
+listed=""
+[ -n "$(folds "$base")" ] || listed=$(costliest "$base" | head -n "$take" | cut -d' ' -f3)
+unweighed=$(printf '%s\n' "$listed" | while read -r f; do
+  [ -n "$f" ] || continue
+  if git cat-file -e "HEAD:$f" 2>/dev/null && ! git show "HEAD:$f" | script | grep -q "^$weighed."; then
+    echo "$f still lacks the line \"$weighed<what>\": drop it, merge it into another, or add the line."
+  fi
+done)
+
+# A fix writes tests alone: a unit test's file, a test's data, uat/, or the harness that seeds each scenario.
+code=$(git diff --name-only "$base" HEAD | grep -Ev '^uat/|^internal/scenariotest/|_test\.go$|(^|/)testdata/' || true)
+
+if [ -z "$todo$unweighed$code" ]; then
+  weighs=""
+  [ -z "$listed" ] || weighs=", and weighed $(echo "$listed" | count) scenarios"
+  echo "{\"fix\": false, \"summary\": \"the fix left nothing to fold$weighs\"}"
+  exit 0
 fi
+
+left=""
+if [ -n "$todo" ]; then
+  echo "$todo"
+  left="$left, $(echo "$todo" | count) to fold"
+fi
+if [ -n "$unweighed" ]; then
+  echo "$unweighed"
+  left="$left, $(echo "$unweighed" | count) to weigh"
+fi
+if [ -n "$code" ]; then
+  echo "The fix changes code outside the tests. Undo each change, since a fix of this monitor writes tests alone:"
+  echo "$code" | sed 's/^/  /'
+  left="$left, $(echo "$code" | count) changed outside the tests"
+fi
+echo "{\"fix\": true, \"summary\": \"the fix left ${left#, }\"}"
