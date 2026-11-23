@@ -1,0 +1,154 @@
+# 9. An amendment waits for the developer.
+# x builds under verify-first, then y under build-and-verify.
+
+# Given: a spec whose verify session amends one of its acceptance tests.
+# The spec says x.txt holds 42. The amendment says it holds 42, or more.
+exec kiln queue x
+
+# When: kiln fire builds it, and the developer runs kiln accept.
+exec kiln fire
+! stdout '^x: landed on main'
+exec kiln status
+stdout '^x: waiting on its branch'
+! exec git show main:x.txt
+exec kiln accept x
+stdout '^x: accepted'
+
+# Then: the build waited on its branch, and the work lands with the amendment folded into the spec.
+exec git show main:x.txt
+stdout '^42$'
+exec git show main:acceptance/x/x_test.go
+stdout 'func TestAT1'
+exec sh -c '$(sed -n "s/^- Spec 1: x: .\(git show .*\).$/\1/p" PRODUCT.md)'
+stdout '^- \*\*Then\*\*: it holds 42, or more\.$'
+
+# The same holds side by side.
+exec sed -i '' 's/"verify-first"/"build-and-verify"/' .kiln/kiln.json
+exec git commit --quiet -am 'chore: build side by side'
+exec kiln queue y
+exec kiln fire
+! stdout '^y: landed on main'
+exec kiln status
+stdout '^y: waiting on its branch'
+! exec git show main:y.txt
+exec kiln accept y
+stdout '^y: accepted'
+exec git show main:y.txt
+stdout '^42$'
+exec git show main:acceptance/y/y_test.go
+stdout 'func TestAT1'
+exec sh -c '$(sed -n "s/^- Spec 2: y: .\(git show .*\).$/\1/p" PRODUCT.md)'
+stdout '^- \*\*Then\*\*: it holds 42, or more\.$'
+
+-- .kiln/kiln.json --
+{"workflow": "verify-first", "rounds": 3}
+-- claude.json --
+{
+  "verify": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+      {"result": {"result": "Wrote the tests of x, and amended test 1."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y/.\" ."}}},
+      {"result": {"result": "Wrote the tests of y, and amended test 1."}}
+    ]}
+  },
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "echo 42 >x.txt"}}},
+      {"result": {"result": "Built x."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "echo 42 >y.txt"}}},
+      {"result": {"result": "Built y."}}
+    ]}
+  },
+  "audit": {
+    "1": {"1": [{"result": {"audit": {"read": 1}}}]},
+    "2": {"1": [{"result": {"audit": {"read": 1}}}]}
+  }
+}
+-- doc.go --
+// Package scratch is where kiln's builds land.
+package scratch
+-- .kiln/specs/x.md --
+### 1. x.txt answers
+
+- **Given**: nothing.
+- **When**: the developer reads x.txt.
+- **Then**: it holds 42.
+-- .kiln/specs/y.md --
+### 1. y.txt answers
+
+- **Given**: nothing.
+- **When**: the developer reads y.txt.
+- **Then**: it holds 42.
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"os"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	b, _ := os.ReadFile("../../x.txt")
+	if n, err := strconv.Atoi(strings.TrimSpace(string(b))); err != nil || n < 42 {
+		t.Fatalf("x.txt holds %q, want 42 or more", b)
+	}
+}
+-- _given/x/.kiln/specs/x.amend.md --
+## Acceptance test 1: x.txt answers
+
+### Old
+
+- **Given**: nothing.
+- **When**: the developer reads x.txt.
+- **Then**: it holds 42.
+
+### New
+
+- **Given**: nothing.
+- **When**: the developer reads x.txt.
+- **Then**: it holds 42, or more.
+
+### Reason
+
+A larger answer serves too.
+-- _given/y/acceptance/y/y_test.go --
+package y_test
+
+import (
+	"os"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	b, _ := os.ReadFile("../../y.txt")
+	if n, err := strconv.Atoi(strings.TrimSpace(string(b))); err != nil || n < 42 {
+		t.Fatalf("y.txt holds %q, want 42 or more", b)
+	}
+}
+-- _given/y/.kiln/specs/y.amend.md --
+## Acceptance test 1: y.txt answers
+
+### Old
+
+- **Given**: nothing.
+- **When**: the developer reads y.txt.
+- **Then**: it holds 42.
+
+### New
+
+- **Given**: nothing.
+- **When**: the developer reads y.txt.
+- **Then**: it holds 42, or more.
+
+### Reason
+
+A larger answer serves too.

@@ -38,28 +38,24 @@ type record struct {
 	Approved git.Rev `json:"approved"`
 	// Build is the ID of this queue's build, which names it in the ledger.
 	Build string `json:"build,omitempty"`
-	// Session is the build's Claude Code session, once it has one.
-	Session string `json:"session,omitempty"`
-	// Verify is build-and-verify's verify session, once it has one. Session is then its build session.
-	Verify string `json:"verify,omitempty"`
-	// OldTests is true once kiln removed a revised spec's old acceptance tests from build-and-verify's build side.
+	// Code is the session that writes the code: a spec's build session, or a fix's. Verify is the verify session of
+	// the workflows build-and-verify and verify-first.
+	Code   seat `json:"code,omitzero"`
+	Verify seat `json:"verify,omitzero"`
+	// OldTests is true once kiln removed a revised spec's old acceptance tests from kiln/<name>, as removeOldTests
+	// says.
 	OldTests bool `json:"old_tests,omitempty"`
-	// ForBuild and ForVerify each hold a reply kiln read, but has not yet passed on to that session.
-	ForBuild  string `json:"for_build,omitempty"`
-	ForVerify string `json:"for_verify,omitempty"`
-	// Asked is true while kiln waits on the verify session's bugs line, in its answer to a failing stack.
-	Asked bool `json:"asked,omitempty"`
-	// Told is the spec, with its amendments folded in, as kiln last told build-and-verify's build session it.
-	Told string `json:"told,omitempty"`
-	// Running names the roles of the sessions whose turn has not ended. They are build-and-verify's sides, or a
-	// fix's landing session. kiln resumes only these.
-	Running []string `json:"running,omitempty"`
-	// Telling is what kiln told a fix's landing session in the turn Running marks. From is the length of the
-	// session's stream before that turn. A turn whose stream is still From long never began.
-	Telling string `json:"telling,omitempty"`
-	From    int64  `json:"from,omitempty"`
-	// Rounds counts the failed gates sent back to the session.
-	Rounds int `json:"rounds,omitempty"`
+	// Tested is the verify session's commit that the last proof that stood gated, on kiln/<name>.verify. Proof is that
+	// gate's report, and Proved the tests it failed on.
+	Tested git.Rev  `json:"tested,omitempty"`
+	Proof  string   `json:"proof,omitempty"`
+	Proved []string `json:"proved,omitempty"`
+	// Unproved is the verify session's commit at a proof that did not stand, until a proof stands.
+	Unproved git.Rev `json:"unproved,omitempty"`
+	// Told is the proved commit kiln last told the code session of.
+	Told git.Rev `json:"told,omitempty"`
+	// MergeMain is true from kiln tend's queue of the stopped build until kiln merged main into its work.
+	MergeMain bool `json:"merge_main,omitempty"`
 	// Limit is how many rounds kiln.json gave the build's last gate. It is nil until a gate has run.
 	Limit *int `json:"limit,omitempty"`
 	// Audited is the commit the audit last read, once it has answered.
@@ -85,14 +81,6 @@ type record struct {
 	Monitor bool `json:"monitor,omitempty"`
 	// Title is the title the fix's agent last gave the commit that lands it, in place of kiln's own.
 	Title string `json:"title,omitempty"`
-	// VerifyFirst is a verify-first fix's verify session, once it has one. Session is its fix session, once that
-	// starts.
-	VerifyFirst string `json:"verify_first,omitempty"`
-	// Tested is the commit of a verify-first fix's tests that the gate last failed on alone, on kiln/<name>.verify. The
-	// fix holds each test file as main does, with Tested's change applied.
-	Tested git.Rev `json:"tested,omitempty"`
-	// Owed is the message kiln owes each session of a stopped build that kiln tend saw to. kiln resumes each with it.
-	Owed string `json:"owed,omitempty"`
 	// Tended is true from kiln tend's queue of the stopped build until a kiln takes it. Any run in the specs' lane
 	// takes it meanwhile. A build halted since then waits for kiln fire, as any halted build does.
 	Tended bool `json:"tended,omitempty"`
@@ -125,6 +113,9 @@ const (
 	stopConflict stopKind = "conflict"
 	// stopKiln is an error of kiln's, not the work's, such as a full disk.
 	stopKiln stopKind = "kiln"
+	// stopUnproved is a verify session that changed no test after a proof that did not stand. Main's code already
+	// does what is asked, so no build session has work to do. Its why is one line, with no report under it.
+	stopUnproved stopKind = "unproved"
 )
 
 // runner is what the kiln fire that builds a spec holds of it. next replaces it whole, so no kiln fire inherits it.
@@ -356,7 +347,7 @@ func (b *book) queue(name Spec, main git.Rev, changed func(since git.Rev) (bool,
 	}
 
 	// A queued build with a session was interrupted, so it had not ended.
-	if r.State == queued && r.Session != "" {
+	if r.State == queued && r.Code.Session != "" {
 		dropped = r.Build
 	}
 
@@ -382,20 +373,19 @@ func (b *book) accept(name Spec) (record, error) {
 
 	was := *r
 	if r.Accepted {
-		*r = record{Name: name, State: queued, Approved: r.Approved, Build: r.Build, Session: r.Session,
-			Verify: r.Verify, OldTests: r.OldTests, Told: r.Told, Running: r.Running, Telling: r.Telling, From: r.From,
-			Limit:   r.Limit,
-			Audited: r.Audited, Accepted: true, AcceptedAt: r.AcceptedAt, Before: r.Before, Monitor: r.Monitor,
-			Title: r.Title, VerifyFirst: r.VerifyFirst, Tested: r.Tested}
+		*r = record{Name: name, State: queued, Approved: r.Approved, Build: r.Build, Code: r.Code.again(),
+			Verify: r.Verify.again(), OldTests: r.OldTests, Tested: r.Tested, Proof: r.Proof, Proved: r.Proved,
+			Told: r.Told, Limit: r.Limit, Audited: r.Audited, Accepted: true, AcceptedAt: r.AcceptedAt,
+			Before: r.Before, Monitor: r.Monitor, Title: r.Title}
 	}
 
 	return was, nil
 }
 
 // resume queues again the stopped build of name, as it stood, once kiln tend saw to it. It keeps the build's ID,
-// sessions, audited commit and rounds' limit. In build-and-verify, it keeps what the build holds of its sessions. Its
-// rounds start again at 0. The record owes each session a message, with why the build stopped and note, the tend
-// session's note. It holds the message before why is cleared, so a kiln that dies next loses neither.
+// sessions, proof, audited commit and rounds' limit. Each session's rounds start again at 0. The record owes each
+// session a message, with why the build stopped and note, the tend session's note. kiln merges main into the work
+// first. The record holds the message before why is cleared, so a kiln that dies next loses neither.
 func (b *book) resume(name Spec, note string) error {
 	r := b.find(name)
 	switch {
@@ -403,8 +393,14 @@ func (b *book) resume(name Spec, note string) error {
 		return fmt.Errorf("%w: %s: kiln tend goes on with a spec's stopped build alone", errRefused, name)
 	}
 
-	r.Owed, r.Tended = owedMessage(r.Why, note), true
-	r.State, r.Rounds, r.stop, r.runner = queued, 0, stop{}, runner{}
+	tended := message{Text: owedMessage(r.Why, note), Why: whyTended}
+	for _, s := range r.seats() {
+		owe(r, s, tended)
+		r.seat(s).Rounds = 0
+	}
+
+	r.Tended, r.MergeMain = true, true
+	r.State, r.stop, r.runner = queued, stop{}, runner{}
 	return nil
 }
 
@@ -475,7 +471,7 @@ func (b *book) lost(l lane) []record {
 }
 
 func goesOn(r *record) int {
-	if r.State == queued && r.Session != "" {
+	if r.State == queued && r.Code.Session != "" {
 		return 1
 	}
 

@@ -49,8 +49,8 @@ stdout -count=1 '"role":"audit",.*"found":null,"reported":null\}$'
 
 # Its first gate ran the gate's commands at main too. Its landing's gate read the checks kept there.
 exec kiln ledger --kind gate --name x
-stdout '\A\{"kind":"gate",[^\n]*"landing":false,"ran_main":true,"before_fix":false\}\n'
-stdout '"landing":true,"ran_main":false,"before_fix":false\}\n\z'
+stdout '\A\{"kind":"gate",[^\n]*"landing":false,"ran_main":true,"proof":false\}\n'
+stdout '"landing":true,"ran_main":false,"proof":false\}\n\z'
 
 # The first audit ended with no result, so it ran again. Its finding went back to the session, which fixed it
 # before the work landed.

@@ -73,8 +73,9 @@ words. A build may change one only by an amendment, in `.kiln/specs/<name>.amend
 acceptance.
 
 - A Then names a state a test can read through the program, as its user reaches it.
-- With kiln.json's "workflow": "build-and-verify", a verify session writes the tests from the spec alone, and never
-  sees the code. So the Technical Plan names each output form a Then reads, such as a line a command prints.
+- With kiln.json's "workflow": "build-and-verify" or "verify-first", a verify session writes the tests from the
+  spec alone, and never sees the code. So the Technical Plan names each output form a Then reads, such as a line a
+  command prints. kiln proves those tests fail on main's code, so a Then main already meets stops the build.
 - A Given, When, Then names only what the intent names: never a timeout, a length or a message's wording. A test that
   locks a detail the intent never asked for becomes an amendment later.
 - Renumbering an approved test breaks the tie to its code. Add a test at the end instead.

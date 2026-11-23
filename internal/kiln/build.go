@@ -181,9 +181,12 @@ type build struct {
 	landed, onto git.Rev
 	// side is what each session may write, once read.
 	side *sides
+	// order is when the build's sessions run, and job what the build works for: a spec, or a monitor's fix.
+	order order
+	job   job
 	// auditing is the commit auditTry checked out in the audit's worktree, which undo puts back after each run.
 	auditing git.Rev
-	// mu guards rec while build-and-verify's two sessions run at once. set, now and say hold it.
+	// mu guards rec while two sessions run at once. set, now and say hold it.
 	mu sync.Mutex
 	// fix is a monitor's fix, or nil for a spec's build.
 	fix *fixing
@@ -210,20 +213,11 @@ func (b *build) run(ctx context.Context) error {
 		return b.landFix(ctx)
 	}
 
-	s, err := b.sides(ctx)
-	if err != nil {
-		return err
-	}
-
-	if s.split {
-		return b.splitRun(ctx)
-	}
-
 	if err := b.goOn(ctx); err != nil {
 		return err
 	}
 
-	return b.untilDone(ctx)
+	return b.work(ctx)
 }
 
 // landedBefore records the landing that moved main before kiln died, and starts no session. A spec's build waits for
@@ -263,65 +257,38 @@ func (r *Repo) holdsLanding(ctx context.Context, rec record) (bool, error) {
 	return base == rec.Landing, err
 }
 
-// untilDone gates the work, and sends each failure or finding back to the session, until nothing goes back.
-func (b *build) untilDone(ctx context.Context) error {
-	for {
-		next, why, err := b.gateWork(ctx)
-		if err != nil || next == "" {
-			return err
-		}
-
-		if err := b.tell(ctx, next, why); err != nil {
-			return err
-		}
-	}
-}
-
-// goOn takes the build up where kiln left it: it starts its session, or resumes one kiln stopped.
+// goOn takes a spec's build up where kiln left it. It starts its sessions, or merges main into the work once kiln
+// tend saw to it. A landing cut off left the branch where it moved it.
 func (b *build) goOn(ctx context.Context) error {
-	b.ledger(ctx)
-	// A landing cut off left the branch where it moved it.
-	if err := b.unland(ctx); err != nil {
-		return err
-	}
-
-	// A kiln that died before the session's first line left its ID in the record, and no session.
-	switch {
-	case !b.r.claude.Begun(b.rec.Session):
-		b.set(func(r *record) { r.Owed = "" })
-		return b.start(ctx)
-	case b.rec.Owed != "":
-		return b.payOwed(ctx)
-	case !b.rec.Accepted:
-		return b.tell(ctx, interrupted, reason{Why: whyInterrupted, Round: b.rec.Rounds})
-	}
-
-	return nil
-}
-
-// payOwed resumes the build's session with the message kiln owes it, once kiln tend saw to the stopped build. It
-// first commits what the session left, and merges main into the branch. A conflict goes to the session with the
-// message. Then the record owes nothing.
-func (b *build) payOwed(ctx context.Context) error {
-	if _, err := b.r.git.Commit(ctx, b.tree, b.message("the session's work")); err != nil {
-		return err
-	}
-
-	conflict, err := b.r.git.Merge(ctx, b.tree, mainBranch, fmt.Sprintf("chore(%s): merge main\n", b.rec.Name))
+	s, err := b.sides(ctx)
 	if err != nil {
 		return err
 	}
 
-	prompt := b.rec.Owed
-	if conflict != nil {
-		prompt += "\n\n" + fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n"))
-	}
-
-	if err := b.tell(ctx, prompt, reason{Why: whyTended}); err != nil {
+	b.order, b.job = s.order, specJob{}
+	b.ledger(ctx)
+	if err := b.unland(ctx); err != nil {
 		return err
 	}
 
-	b.set(func(r *record) { r.Owed = "" })
+	if b.rec.Code.Session == "" {
+		return b.start(ctx, s)
+	}
+
+	return b.tended(ctx)
+}
+
+// tended merges main into the work of a build kiln tend saw to, once. A conflict goes back as a round.
+func (b *build) tended(ctx context.Context) error {
+	if !b.now().MergeMain {
+		return nil
+	}
+
+	if err := b.mergeMains(ctx); err != nil {
+		return err
+	}
+
+	b.set(func(r *record) { r.MergeMain = false })
 	return nil
 }
 
@@ -333,25 +300,9 @@ func (b *build) ledger(ctx context.Context) {
 		b.set(func(r *record) { r.Build = newBuild() })
 	}
 
-	if fresh || b.rec.Session == "" {
+	if fresh || b.rec.Code.Session == "" {
 		b.begin(ctx)
 	}
-}
-
-// gateWork commits what the session left, gates it, and takes the build on from the verdict, as after does.
-func (b *build) gateWork(ctx context.Context) (string, reason, error) {
-	head, back, err := b.sessionWork(ctx)
-	if err != nil || back.why != "" {
-		return b.roundFor(back, err)
-	}
-
-	v, err := b.gate(ctx, head, b.allowed()...)
-	if err != nil {
-		return "", reason{}, err
-	}
-
-	b.keepFailingAtMain(v.atMain)
-	return b.after(ctx, v)
 }
 
 // keepFailingAtMain records the tests that fail at main, the first time a gate of the build's code names any.
@@ -361,66 +312,43 @@ func (b *build) keepFailingAtMain(atMain []string) {
 	}
 }
 
-// after takes the build on from a gate's verdict. It answers what to tell the session next, and why. It answers "" once
-// the build has landed, or waits on its branch.
-func (b *build) after(ctx context.Context, v verdict) (string, reason, error) {
-	if !v.passed {
-		return b.round(setback{why: whyGate, report: v.report, failing: v.failing})
-	}
-
-	if findings, why, err := b.findings(ctx); err != nil || findings != "" {
-		return fmt.Sprintf(audited, findings), why, err
-	}
-
-	back, err := b.waitOrLand(ctx)
-	if err != nil || back.report == "" {
-		return "", reason{}, err
-	}
-
-	return b.round(back)
-}
-
 // findings runs the audit, unless it has read the work. It runs it again when the work changed a path kiln.json's
 // reaudit names otherwise than the audit last read. That audit counts as a round, and past the last one the build
-// stops. It answers the findings, or "" when the audit found none or had nothing to read.
-func (b *build) findings(ctx context.Context) (string, reason, error) {
+// stops. route owes the findings to the sessions, in the write that records the audit's read. It answers whether the
+// audit found any.
+func (b *build) findings(ctx context.Context, route func(r *record, findings string, why reason)) (bool, error) {
 	head, err := b.r.git.Head(ctx, b.tree)
 	if err != nil {
-		return "", reason{}, err
+		return false, err
 	}
 
 	why := reason{Why: whyFindings}
 	if b.rec.Audited != "" {
 		again, err := b.r.reaudits(ctx, b.rec.Audited, head)
 		if err != nil || !again {
-			return "", reason{}, err
+			return false, err
 		}
 
 		if why, err = b.reauditRound(); err != nil {
-			return "", reason{}, err
+			return false, err
 		}
 	}
 
-	findings, err := b.audit(ctx)
-	if err != nil || findings == "" {
-		return "", reason{}, err
-	}
-
-	return findings, why, nil
+	return b.audit(ctx, func(r *record, findings string) { route(r, findings, why) })
 }
 
-// reauditRound counts an audit past the first as a round. Past the last round, it stops the build, so no change the
-// audit has not read lands.
+// reauditRound counts an audit past the first as a round of the code session's. Past the last round, it stops the
+// build, so no change the audit has not read lands.
 func (b *build) reauditRound() (reason, error) {
 	rounds := b.limit()
-	if b.rec.Rounds >= rounds {
+	if b.rec.Code.Rounds >= rounds {
 		return reason{}, &outOfRounds{stop{Why: "the work changed a path the audit must read, after its last round"}}
 	}
 
-	b.set(func(r *record) { r.Rounds++ })
-	b.say("the work changed a path the audit must read; it reads the work again, round %d of %d", b.rec.Rounds,
+	b.set(func(r *record) { r.Code.Rounds++ })
+	b.say("the work changed a path the audit must read; it reads the work again, round %d of %d", b.rec.Code.Rounds,
 		rounds)
-	return reason{Why: whyFindings, Round: b.rec.Rounds, Rounds: rounds}, nil
+	return reason{Why: whyFindings, Round: b.rec.Code.Rounds, Rounds: rounds}, nil
 }
 
 // limit is the rounds kiln.json gave the build's last gate, or 0 before any gate ran.
@@ -520,24 +448,15 @@ func (b *build) allowed() []string {
 // conflict, for the session.
 func (b *build) sessionWork(ctx context.Context) (git.Rev, setback, error) {
 	head, err := b.r.git.Commit(ctx, b.tree, b.message("the session's work"))
-	if u, ok := errors.AsType[*git.Unmerged](err); ok && b.rec.Session != "" {
+	if u, ok := errors.AsType[*git.Unmerged](err); ok && b.rec.Code.Session != "" {
 		return "", setback{whyConflict, fmt.Sprintf(unfinished, strings.Join(u.Files, "\n")), u.Files}, nil
 	}
 
 	return head, setback{}, err
 }
 
-// roundFor sends back to the session, as round does, unless err is set: it answers err then.
-func (b *build) roundFor(back setback, err error) (string, reason, error) {
-	if err != nil {
-		return "", reason{}, err
-	}
-
-	return b.round(back)
-}
-
-// setback is what kept the work from passing, for the session. It is a failed gate, of the work, of the work rebased
-// onto main, or of build-and-verify's stack. It is a conflict with main, or between build-and-verify's sides. Or it is
+// setback is what kept the work from passing, for a session. It is a failed gate: of the work, of the work rebased
+// onto main, or of the verify session's tests. It is a conflict with main, or with the proved tests. Or it is
 // work that changes nothing on main. why names which, as a start line does. failing names what failed: the gate's
 // failures, or the files in conflict.
 type setback struct {
@@ -555,87 +474,25 @@ func (s setback) said() (goesBack, stops, prompt string) {
 	case whyUnchanged:
 		return "the work changes nothing on main", "the work still changes nothing on main", s.report
 	case whyNoTest:
-		return "no test fails on its own", "still no test failed on its own", s.report
-	case whyStackConflict:
-		return "the verify session's tests conflict with the build session's code",
-			"the verify session's tests still conflict with the build session's code", s.report
+		return "no test fails on main's code alone", "still no test failed on main's code alone", s.report
 	}
 
 	return "the gate failed", "the gate still failed", fmt.Sprintf(gateFailed, s.report)
 }
 
-// round sends a setback back to the session, as said words it, or stops the build past its last round. It answers
-// the prompt, and the round it starts. It allows as many rounds as kiln.json gave the build's last gate.
-func (b *build) round(back setback) (string, reason, error) {
-	goesBack, stops, prompt := back.said()
-	rounds := b.limit()
-	if b.rec.Rounds >= rounds {
-		return "", reason{}, &outOfRounds{stop{Why: stops + " after its last round:\n" + back.report,
-			Failing: back.failing}}
-	}
-
-	b.set(func(r *record) { r.Rounds++ })
-	b.say("%s; it goes back to the session, round %d of %d", goesBack, b.rec.Rounds, rounds)
-	return prompt, reason{Why: back.why, Round: b.rec.Rounds, Rounds: rounds}, nil
-}
-
-func (b *build) start(ctx context.Context) error {
-	main, err := b.r.mainTip(ctx)
-	if err != nil {
-		return err
-	}
-
-	// A branch an earlier build of the spec left would hold work from a spec as it was approved before. Checkout
-	// removes it.
-	if err := b.r.git.Checkout(ctx, b.tree, b.rec.Name.branch(), main); err != nil {
-		return err
-	}
-
-	session := claude.NewID()
-	b.set(func(r *record) { r.Session = session })
-	b.say("building on %s, in %s", b.rec.Name.branch(), b.tree)
-	return b.tell(ctx, b.startPrompt(), reason{Why: whyFirst})
-}
-
-// startPrompt is what the build agent's session is told as it starts.
-func (b *build) startPrompt() string {
-	return fmt.Sprintf(starting, b.rec.Name.file(), short(b.rec.Approved), b.rec.Name.branch())
-}
-
-// tell runs the build agent's session on prompt, for why, until its turn ends, as talk does.
-func (b *build) tell(ctx context.Context, prompt string, why reason) error {
-	l, err := b.agentLaunch(ctx, buildRole, claude.Launch{
-		Session: b.rec.Session,
-		Prompt:  prompt,
-		First:   b.startPrompt(),
-		Dir:     string(b.tree),
-		Hook:    b.treeGuard().hookCommand(b.r.exe),
-	})
-	if err != nil {
-		return err
-	}
-
-	_, err = b.talk(ctx, l, why)
-	return err
-}
-
 // talk runs the session l launches, and answers how it ended. A usage limit pauses the build until it resets, and the
-// same session resumes. The ledger gets a line before each run of the session, with why it started, and one after.
+// same session resumes. The ledger gets a line before each run of the session, with why it started, and one after. t
+// is the seat's turn the run tells, or nil for an audit's run. A fix's session that a limit ended ends the fix.
 //
 // The audit changes nothing, so kiln checks. It runs in a worktree of its own. Each audit run's start line names the
 // commit it read, and its end line each path the run changed. Then kiln puts that worktree back at the commit read.
-func (b *build) talk(ctx context.Context, l claude.Launch, why reason) (claude.Ended, error) {
+func (b *build) talk(ctx context.Context, l claude.Launch, why reason, t *turn) (claude.Ended, error) {
 	for {
-		ended, err := b.runOnce(ctx, l, why)
-		if err != nil {
+		ended, err := b.runOnce(ctx, l, why, t)
+		switch {
+		case err != nil, ended.Limit == nil:
 			return ended, err
-		}
-
-		if ended.Limit == nil {
-			return ended, b.heard(ctx, l, ended)
-		}
-
-		if b.fix != nil {
+		case b.fix != nil:
 			return ended, errLimitEnded
 		}
 
@@ -647,9 +504,10 @@ func (b *build) talk(ctx context.Context, l claude.Launch, why reason) (claude.E
 	}
 }
 
-// runOnce runs the session l launches once, between its start line and its end line. Once kiln is interrupted, it
-// answers the context's error. A session kiln's interrupt ended has not ended on its own, so how it ended says nothing.
-func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claude.Ended, error) {
+// runOnce runs the session l launches once, between its start line and its end line. The update of each line marks
+// t's run, as turn.starts and turn.ends say. Once kiln is interrupted, it answers the context's error. A session
+// kiln's interrupt ended has not ended on its own, so how it ended says nothing.
+func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason, t *turn) (claude.Ended, error) {
 	streamed, err := b.r.claude.Streamed(l.Session)
 	if err != nil {
 		b.say("kiln could not measure session %s's stream: %v", l.Session, err)
@@ -660,35 +518,42 @@ func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claud
 		read = b.auditing
 	}
 
-	if l.First != "" && !b.r.claude.Begun(l.Session) {
-		// Run tells a session that never began its first prompt, whatever kiln cut short.
-		why = reason{Why: whyFirst}
-	}
-
-	b.set(nil, entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed, PID: os.Getpid(),
-		reason: why, Read: read})
+	b.set(t.starts(streamed), entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed,
+		PID: os.Getpid(), reason: why, Read: read})
 	ended, err := b.r.claude.Run(ctx, l)
 	if silent, ok := errors.AsType[*claude.Silent](err); ok {
 		err = fmt.Errorf("the %s session printed nothing past %s of %s, so kiln killed it", l.Role, timeoutKey,
 			shownDuration(silent.For))
 	}
 
-	end := entry{Kind: endKind, Session: l.Session, Ended: how(ended), Totals: &ended.Totals}
-	end.Streamed, _ = b.r.claude.Streamed(l.Session)
-	var undone error
-	if l.Role == auditRole {
-		// An interrupted audit run may have changed its worktree too, and its end line names what it changed.
-		end.Changed, undone = b.r.undo(context.WithoutCancel(ctx), git.Worktree(l.Dir), read)
-		end.heard(ended)
+	end, undone := b.endLine(ctx, l, read, ended)
+	var change func(*record)
+	if ctx.Err() == nil && err == nil {
+		change = t.ends(ended)
 	}
 
-	b.set(nil, end)
-
+	b.set(change, end)
 	if ctx.Err() != nil {
 		return ended, ctx.Err()
 	}
 
 	return ended, errors.Join(err, undone)
+}
+
+// endLine is the end line of the run that l launched, which ended as ended. An audit's names each path it changed
+// since read, the commit it read, and kiln puts its worktree back there. An interrupted audit run may have changed it
+// too.
+func (b *build) endLine(ctx context.Context, l claude.Launch, read git.Rev, ended claude.Ended) (entry, error) {
+	end := entry{Kind: endKind, Session: l.Session, Ended: how(ended), Totals: &ended.Totals}
+	end.Streamed, _ = b.r.claude.Streamed(l.Session)
+	if l.Role != auditRole {
+		return end, nil
+	}
+
+	var err error
+	end.Changed, err = b.r.undo(context.WithoutCancel(ctx), git.Worktree(l.Dir), read)
+	end.heard(ended)
+	return end, err
 }
 
 // pause pauses the build for a usage limit, until it resets. A limit with no reset pauses it for unknownReset.
@@ -786,7 +651,7 @@ func (b *build) message(what string) string {
 	}
 
 	return fmt.Sprintf("feat(%s): %s\n\nkiln built %s, approved at %s, in session %s.\n", b.rec.Name, what,
-		b.rec.Name.file(), short(b.rec.Approved), b.rec.Session)
+		b.rec.Name.file(), short(b.rec.Approved), b.rec.Code.Session)
 }
 
 // landingTitle is the first line of the commit that lands the build. A fix's is its agent's title, when it gave one.
@@ -818,41 +683,52 @@ func (b *build) landing() string {
 func (b *build) gate(ctx context.Context, head git.Rev, allowed ...string) (verdict, error) {
 	g := b.treeGuard(allowed...)
 	g.head = head
-	return b.judgeWork(ctx, nil, g)
+	return b.judgeWork(ctx, gating{}, g)
+}
+
+// gating is how kiln gates a commit. A proof gates the verify session's commit, with no code of the build's, and no
+// gated check.
+type gating struct {
+	proof bool
 }
 
 // judgeWork takes commandsLock, and runs the gate under it, as gated does. A landing's try holds the lock already, and
 // calls gated itself.
-func (b *build) judgeWork(ctx context.Context, without []string, guards ...guard) (verdict, error) {
+func (b *build) judgeWork(ctx context.Context, how gating, guards ...guard) (verdict, error) {
 	held, err := b.r.lockCommands(ctx, b.rec.Name, b.out)
 	if err != nil {
 		return verdict{}, err
 	}
 
 	defer held.release()
-	return b.gated(ctx, held, without, guards...)
+	return b.gated(ctx, held, how, guards...)
 }
 
-// treeGuard is the guard on the build's worktree, which lets the build change allowed. A fix's keeps it to its side.
-// The hook of a session in that worktree and the gate there both take it from here.
+// treeGuard is the guard on the build's worktree, which lets the build change allowed. It keeps the code session to
+// its side. Each file the verify session alone writes stays as the proved commit holds it. The hook of a session in
+// that worktree and the gate there both take it from here. A spec's build with one session has no sides.
 func (b *build) treeGuard(allowed ...string) guard {
-	g := guard{spec: b.rec.Name, place: b.tree, allowed: allowed}
-	if b.fix != nil {
-		g.side, g.tested = b.fix.side, b.now().Tested
-	}
+	return guard{spec: b.rec.Name, place: b.tree, allowed: allowed, side: b.sideOf(codeSeat),
+		tested: b.now().Tested}
+}
 
-	return g
+// verifyGuard is the guard on the verify session's work, in its clone. It keeps the session to its side.
+func (b *build) verifyGuard() guard {
+	return guard{spec: b.rec.Name, place: b.r.clone(b.rec.Name, verifyRole), allowed: b.allowed(),
+		side: b.sideOf(verifySeat)}
 }
 
 // gated runs the gate under held, as commands.gate does, and writes it to the ledger. Its line starts once the lock
 // is held, so a build's time counts no wait. Its line says it passed only when it ended with no error. Only a landing
 // sets the record's Before. A gate while it is set is the landing's gate, on the work rebased onto main.
-func (b *build) gated(ctx context.Context, held commands, without []string, guards ...guard) (verdict, error) {
-	e := entry{Kind: gateKind, At: time.Now(), Landing: b.now().Before != ""}
-	e.BeforeFix = b.fix != nil && b.fix.verifying()
-	v, err := held.gate(ctx, without, guards...)
+func (b *build) gated(ctx context.Context, held commands, how gating, guards ...guard) (verdict, error) {
+	e := entry{Kind: gateKind, At: time.Now(), Landing: b.now().Before != "", Proof: how.proof}
+	v, err := held.gate(ctx, guards...)
 	if err == nil {
 		e.RanMain = new(v.ranMain)
+	}
+
+	if err == nil && !how.proof {
 		v, err = b.gatedCheck(ctx, held, v)
 	}
 

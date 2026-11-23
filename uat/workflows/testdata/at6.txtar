@@ -1,0 +1,138 @@
+# 6. The verify session never reads the build's work.
+# x builds under verify-first, then y under build-and-verify.
+
+# Given: a spec whose audit sends findings, so the verify session works again once the build session has.
+# The build session writes x.txt. At its next run it lists the commits that changed x.txt, each of them its work.
+exec kiln queue x
+
+# When: kiln fire builds it, and the verify session lists the files and commits its checkout holds.
+exec kiln fire
+stdout '^x: landed on main'
+exists .claude-calls/x-verify-files
+exists .claude-calls/x-build-commits
+
+# Then: the list holds none of the build session's,
+grep '^acceptance/x/x_test\.go$' .claude-calls/x-verify-files
+! grep '^x\.txt$' .claude-calls/x-verify-files
+grep . .claude-calls/x-build-commits
+exec sh -c 'grep -Fxf .claude-calls/x-build-commits .claude-calls/x-verify-commits || true'
+! stdout .
+
+# and the verify session's settings deny it reads of the build's worktree and of the build session's transcripts.
+grep '"Read\(/[^"]*/Library/Caches/kiln/[^"/]*/x/\*\*\)"' .claude-calls/verify/1/2/settings.json
+grep '"Read\(/[^"]*/\.claude/projects/[^"/]*-Library-Caches-kiln-[^"/]*-[0-9a-f]{8}-x/\*\*\)"' .claude-calls/verify/1/2/settings.json
+grep '"denyRead": \[\s*"[^"]*/Library/Caches/kiln/[^"/]*"' .claude-calls/verify/1/2/settings.json
+grep '"allowRead": \[\s*"[^"]*/\.verify-x"\s*\]' .claude-calls/verify/1/2/settings.json
+
+# The same holds side by side.
+exec sed -i '' 's/"verify-first"/"build-and-verify"/' .kiln/kiln.json
+exec git commit --quiet -am 'chore: build side by side'
+exec kiln queue y
+exec kiln fire
+stdout '^y: landed on main'
+exists .claude-calls/y-verify-files
+exists .claude-calls/y-build-commits
+grep '^acceptance/y/y_test\.go$' .claude-calls/y-verify-files
+! grep '^y\.txt$' .claude-calls/y-verify-files
+grep . .claude-calls/y-build-commits
+exec sh -c 'grep -Fxf .claude-calls/y-build-commits .claude-calls/y-verify-commits || true'
+! stdout .
+grep '"Read\(/[^"]*/Library/Caches/kiln/[^"/]*/y/\*\*\)"' .claude-calls/verify/2/2/settings.json
+grep '"Read\(/[^"]*/\.claude/projects/[^"/]*-Library-Caches-kiln-[^"/]*-[0-9a-f]{8}-y/\*\*\)"' .claude-calls/verify/2/2/settings.json
+grep '"denyRead": \[\s*"[^"]*/Library/Caches/kiln/[^"/]*"' .claude-calls/verify/2/2/settings.json
+grep '"allowRead": \[\s*"[^"]*/\.verify-y"\s*\]' .claude-calls/verify/2/2/settings.json
+
+-- .kiln/kiln.json --
+{"workflow": "verify-first", "rounds": 3}
+-- claude.json --
+{
+  "verify": {
+    "1": {
+      "1": [
+        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+        {"result": {"result": "Wrote the tests of x."}}
+      ],
+      "2": [
+        {"tool": {"name": "Bash", "input": {"command": "git ls-files --cached --others >\"$WORK/.claude-calls/x-verify-files\" && git log --all --format=%H >\"$WORK/.claude-calls/x-verify-commits\""}}},
+        {"result": {"result": "The finding is wrong: TestAT1 reads x.txt as the spec says."}}
+      ]
+    },
+    "2": {
+      "1": [
+        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y/.\" ."}}},
+        {"result": {"result": "Wrote the tests of y."}}
+      ],
+      "2": [
+        {"tool": {"name": "Bash", "input": {"command": "git ls-files --cached --others >\"$WORK/.claude-calls/y-verify-files\" && git log --all --format=%H >\"$WORK/.claude-calls/y-verify-commits\""}}},
+        {"result": {"result": "The finding is wrong: TestAT1 reads y.txt as the spec says."}}
+      ]
+    }
+  },
+  "build": {
+    "1": {
+      "1": [
+        {"tool": {"name": "Bash", "input": {"command": "echo 42 >x.txt"}}},
+        {"result": {"result": "Built x."}}
+      ],
+      "2": [
+        {"tool": {"name": "Bash", "input": {"command": "git rev-list HEAD -- x.txt >\"$WORK/.claude-calls/x-build-commits\""}}},
+        {"result": {"result": "The finding is wrong."}}
+      ]
+    },
+    "2": {
+      "1": [
+        {"tool": {"name": "Bash", "input": {"command": "echo 42 >y.txt"}}},
+        {"result": {"result": "Built y."}}
+      ],
+      "2": [
+        {"tool": {"name": "Bash", "input": {"command": "git rev-list HEAD -- y.txt >\"$WORK/.claude-calls/y-build-commits\""}}},
+        {"result": {"result": "The finding is wrong."}}
+      ]
+    }
+  },
+  "audit": {
+    "1": {"1": [{"result": {"audit": {"read": 1, "findings": [{"path": "acceptance/x/x_test.go", "line": 9, "kind": "weak test", "reaches": "TestAT1 checks one clause"}]}}}]},
+    "2": {"1": [{"result": {"audit": {"read": 1, "findings": [{"path": "acceptance/y/y_test.go", "line": 9, "kind": "weak test", "reaches": "TestAT1 checks one clause"}]}}}]}
+  }
+}
+-- doc.go --
+// Package scratch is where kiln's builds land.
+package scratch
+-- .kiln/specs/x.md --
+### 1. x.txt answers
+
+- **Given**: nothing.
+- **When**: the developer reads x.txt.
+- **Then**: it holds 42.
+-- .kiln/specs/y.md --
+### 1. y.txt answers
+
+- **Given**: nothing.
+- **When**: the developer reads y.txt.
+- **Then**: it holds 42.
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"os"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	if b, _ := os.ReadFile("../../x.txt"); string(b) != "42\n" {
+		t.Fatalf("x.txt holds %q, want 42", b)
+	}
+}
+-- _given/y/acceptance/y/y_test.go --
+package y_test
+
+import (
+	"os"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	if b, _ := os.ReadFile("../../y.txt"); string(b) != "42\n" {
+		t.Fatalf("y.txt holds %q, want 42", b)
+	}
+}

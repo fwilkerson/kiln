@@ -1,7 +1,8 @@
 # A stopped build keeps what the developer resumes.
 
-# Given: the project chooses the workflow build-and-verify, and the stack's gate fails past the last round.
-# kiln.json gives the build 1 round, and the verify session's test expects 41 both times.
+# Given: the project chooses the workflow build-and-verify, and the gate of the joined work fails past the last round.
+# kiln.json gives the build 1 round. The verify session's test expects 41, and the build session's code answers 42
+# both times.
 exec kiln queue x
 
 # When: the build stops.
@@ -11,11 +12,10 @@ cp stdout .claude-calls/run.out
 
 # Then: both sessions' checkouts remain,
 exec sh -c 'ls -A "$HOME"/Library/Caches/kiln/*/'
-stdout '^\.build-x$'
 stdout '^\.verify-x$'
 stdout '^x$'
 exec git branch --list 'kiln/*'
-stdout 'kiln/x\.build'
+stdout 'kiln/x$'
 stdout 'kiln/x\.verify'
 
 # and the summary names kiln tend, whose session names each of the build's sessions.
@@ -41,6 +41,13 @@ grep 'next: run kiln tend x, ' .claude-calls/run.out
       "result": "Built x."
      }
     }
+   ],
+   "2": [
+    {
+     "result": {
+      "result": "My code holds."
+     }
+    }
    ]
   }
  },
@@ -58,13 +65,6 @@ grep 'next: run kiln tend x, ' .claude-calls/run.out
     {
      "result": {
       "result": "Wrote the tests of x."
-     }
-    }
-   ],
-   "2": [
-    {
-     "result": {
-      "result": "My test holds.\nbugs: none"
      }
     }
    ]
@@ -98,13 +98,14 @@ func X() int { return 42 }
 package x_test
 
 import (
+	"os"
+	"strings"
 	"testing"
-
-	"example.com/scratch"
 )
 
 func TestAT1(t *testing.T) {
-	if got := scratch.X(); got != 41 {
-		t.Fatalf("X answers %d, want 41", got)
+	code, err := os.ReadFile("../../x.go")
+	if !strings.Contains(string(code), "return 41") {
+		t.Fatalf("x.go does not answer 41: %v", err)
 	}
 }

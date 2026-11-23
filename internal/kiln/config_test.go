@@ -51,12 +51,9 @@ func TestConfigWords(t *testing.T) {
 			said: ".kiln/kiln.json's rounds is a string: make it a whole number, such as 3"},
 		"a string where a list goes": {config: `{"gate": "go test ./..."}`,
 			said: `.kiln/kiln.json's gate is a string: make it a list of strings, such as ["go test ./..."]`},
-		"a workflow open to monitors only": {config: `{"gate": ["true"], "workflow": "verify-first"}`,
-			said: `.kiln/kiln.json names the workflow "verify-first", which is open to monitors only: name "build" or ` +
-				`"build-and-verify", or drop workflow`},
 		"a workflow kiln does not know": {config: `{"gate": ["true"], "workflow": "split"}`,
-			said: `.kiln/kiln.json names the workflow "split", which kiln does not know: name "build" or ` +
-				`"build-and-verify", or drop workflow`},
+			said: `.kiln/kiln.json names the workflow "split", which kiln does not know: name "build", ` +
+				`"build-and-verify", "verify-first", or drop workflow`},
 		"a timeout of zero": {config: `{"gate": ["true"], "timeout": "0s"}`,
 			said: `.kiln/kiln.json names the timeout "0s", which is no Go duration above zero: name one such as "2h", ` +
 				`or none for 1h`},

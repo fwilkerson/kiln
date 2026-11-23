@@ -212,11 +212,11 @@ func TestStateOf(t *testing.T) {
 		next bool
 		want tui.State
 	}{
-		"a build paused by its own kiln fire is paused": {given: record{State: building, Session: "s",
+		"a build paused by its own kiln fire is paused": {given: record{State: building, Code: seat{Session: "s"},
 			runner: runner{PID: os.Getpid(), Paused: time.Now().Add(time.Hour)}}, want: tui.Paused},
-		"a pause ends with the kiln fire that took it": {given: record{State: queued, Session: "s",
+		"a pause ends with the kiln fire that took it": {given: record{State: queued, Code: seat{Session: "s"},
 			runner: runner{Paused: time.Now().Add(-time.Hour)}}, next: true, want: tui.Running},
-		"an accepted spec waits for the kiln fire building now": {given: record{State: queued, Session: "s",
+		"an accepted spec waits for the kiln fire building now": {given: record{State: queued, Code: seat{Session: "s"},
 			Accepted: true}, want: tui.Queued},
 	} {
 		t.Run(name, func(t *testing.T) {

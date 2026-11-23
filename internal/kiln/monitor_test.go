@@ -58,13 +58,14 @@ func TestMonitorConfig(t *testing.T) {
 		"each rule a monitor breaks":       {name: "Deps", files: "check README", refused: []string{"a name no spec could have", "holds README", "holds no command and no agent.md"}},
 		"a verify first":                   {files: "check verify.md agent.md", settings: `{"workflow": "verify-first"}`},
 		"one session, named":               {files: "check agent.md", settings: `{"workflow": "build"}`},
-		"a workflow kiln does not know":    {files: "check agent.md", settings: `{"workflow": "tdd"}`, refused: []string{`names, in its monitor.json, the workflow "tdd", which kiln does not know: name "build" or "verify-first", or drop workflow`}},
-		"a workflow open to specs only":    {files: "check agent.md", settings: `{"workflow": "build-and-verify"}`, refused: []string{`names, in its monitor.json, the workflow "build-and-verify", which is open to specs only: name "build" or "verify-first", or drop workflow`}},
+		"a workflow kiln does not know":    {files: "check agent.md", settings: `{"workflow": "tdd"}`, refused: []string{`names, in its monitor.json, the workflow "tdd", which kiln does not know: name "build", "build-and-verify", "verify-first", or drop workflow`}},
+		"side by side":                     {files: "check verify.md agent.md", settings: `{"workflow": "build-and-verify"}`},
+		"side by side with no verify.md":   {files: "check agent.md", settings: `{"workflow": "build-and-verify"}`, refused: []string{"names the workflow build-and-verify, which needs a check, verify.md and agent.md"}},
 		"a verify first with no verify.md": {files: "check agent.md", settings: `{"workflow": "verify-first"}`, refused: []string{"names the workflow verify-first, which needs a check, verify.md and agent.md"}},
 		"a verify first with no agent.md":  {files: "check verify.md", settings: `{"workflow": "verify-first"}`, refused: []string{"holds no command and no agent.md", "which needs a check, verify.md and agent.md", "names workflow in its monitor.json, a key that steers a fix"}},
 		"a verify first of a gauge":        {files: "gauge verify.md agent.md", settings: `{"workflow": "verify-first", "atMost": 0}`, refused: []string{"which needs a check, verify.md and agent.md"}},
 		"a verify first with a command":    {files: "check verify.md agent.md command", settings: `{"workflow": "verify-first"}`, refused: []string{"names the workflow verify-first, but holds a command"}},
-		"a verify.md no workflow runs":     {files: "check verify.md agent.md", refused: []string{`holds verify.md, which only the workflow verify-first runs: say "workflow": "verify-first"`}},
+		"a verify.md no workflow runs":     {files: "check verify.md agent.md", refused: []string{`holds verify.md, which only the workflows build-and-verify and verify-first run: say "workflow": "verify-first"`}},
 		"a workflow in a watch alone":      {files: "gauge", settings: `{"atMost": 0, "workflow": "build"}`, refused: []string{"names workflow in its monitor.json, a key that steers a fix"}},
 		"a verify first that writes tests": {files: "check verify.md agent.md", settings: `{"workflow": "verify-first", "writesTests": true}`, refused: []string{"names the workflow verify-first and writesTests, but its verify session alone writes the tests: drop writesTests"}},
 		"a verify first with no testFiles": {files: "check verify.md agent.md", settings: `{"workflow": "verify-first"}`, testFiles: `[]`, refused: []string{"names the workflow verify-first, but .kiln/kiln.json names no testFiles, so kiln cannot tell the tests from the fix: add testFiles"}},
@@ -513,7 +514,7 @@ func TestAsk(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := &fixing{}
-			ended := f.heard(claudeEnded(tc.text, tc.failed), "line 1\nkiln: not signed in\n")
+			ended := f.endedBy(claudeEnded(tc.text, tc.failed), "line 1\nkiln: not signed in\n")
 			type ending struct {
 				ended            bool
 				outcome, summary string
@@ -580,27 +581,6 @@ func TestNamedRun(t *testing.T) {
 				t.Errorf("held %v, want %v", held, tc.held)
 			}
 		})
-	}
-}
-
-// TestTestsConflict holds that a verify-first fix stops as a conflict when its tests conflict with the fix. No session
-// may resolve that, so kiln status names where the work is, and no error of kiln's.
-func TestTestsConflict(t *testing.T) {
-	t.Parallel()
-	r, repo := scratchRepo(t)
-	shell(t, repo, "echo base >x_test.go && git add . && git commit --quiet -m main && "+
-		"git checkout --quiet -b kiln/m.verify && echo verify >x_test.go && git commit --quiet -am verify && "+
-		"git checkout --quiet -b kiln/m main && echo fix >x_test.go && git commit --quiet -am fix")
-	b := &build{r: r, rec: record{Name: "m", Monitor: true, Session: "s"}, tree: git.Worktree(repo)}
-	err := b.mergeTests(t.Context())
-	s, stops := errors.AsType[*outOfRounds](err)
-	if !stops {
-		t.Fatalf("the merge answered %v, want a stop", err)
-	}
-
-	rec := record{Name: "m", Monitor: true, Session: "s", State: stopped, stop: s.stop}
-	if where := workPlace(rec, b.tree); s.Kind != stopConflict || !strings.Contains(where, string(b.tree)) {
-		t.Errorf("the fix stopped as %q; status says %q, want a conflict, and where the work is", s.Kind, where)
 	}
 }
 

@@ -70,8 +70,9 @@ An agent wrote those tests, so kiln guards them:
   to accept or reject it.
 - **Another session reads each test.** The **audit** is a session that wrote none of the work. The audit reports a
   test that checks less than its Then says.
-- **Another session can write the tests.** With `"workflow": "build-and-verify"` in `kiln.json`, the session that
-  writes the tests gets the spec alone. kiln denies that session any read of the code.
+- **Another session can write the tests.** With `"workflow": "build-and-verify"` or `"verify-first"` in
+  `kiln.json`, the session that writes the tests gets the spec alone. kiln denies that session any read of the
+  build's work, and proves its tests fail on main before the build session reads them.
 
 ## The gate
 

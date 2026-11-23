@@ -378,24 +378,26 @@ func (r *Repo) workOf(rec *record) string {
 
 // sessionsOf names each session rec holds, with the checkout it runs in. It is "" when rec holds none.
 func (r *Repo) sessionsOf(rec *record) string {
-	switch {
-	case rec == nil:
+	if rec == nil {
 		return ""
-	case rec.VerifyFirst != "" && rec.Session == "":
-		return fmt.Sprintf("%s %s, in %s", verifyRole, rec.VerifyFirst, r.clone(rec.Name, verifyRole))
-	case rec.VerifyFirst != "":
-		return fmt.Sprintf("%s %s, in %s; %s %s, in %s", verifyRole, rec.VerifyFirst, r.clone(rec.Name, verifyRole),
-			fixRole, rec.Session, r.tree(rec.Name))
-	case rec.Session == "":
-		return ""
-	case rec.Verify != "":
-		return fmt.Sprintf("%s %s, in %s; %s %s, in %s", buildRole, rec.Session, r.clone(rec.Name, buildRole),
-			verifyRole, rec.Verify, r.clone(rec.Name, verifyRole))
-	case rec.Monitor:
-		return fmt.Sprintf("%s %s, in %s", fixRole, rec.Session, r.tree(rec.Name))
 	}
 
-	return fmt.Sprintf("%s %s, in %s", buildRole, rec.Session, r.tree(rec.Name))
+	code := buildRole
+	if rec.Monitor {
+		code = fixRole
+	}
+
+	var named []string
+	if rec.Code.Session != "" {
+		named = append(named, fmt.Sprintf("%s %s, in %s", code, rec.Code.Session, r.tree(rec.Name)))
+	}
+
+	if rec.Verify.Session != "" {
+		clone := r.clone(rec.Name, verifyRole)
+		named = append(named, fmt.Sprintf("%s %s, in %s", verifyRole, rec.Verify.Session, clone))
+	}
+
+	return strings.Join(named, "; ")
 }
 
 // underAny is whether the path p lies within any of roots, with case folded.
@@ -455,7 +457,9 @@ func (r *Repo) TendLanded(ctx context.Context, name Spec, out io.Writer) error {
 
 	b := &build{r: r, rec: *rec, tree: r.tree(name), out: out}
 	b.set(func(r *record) {
-		r.stop, r.Owed, r.ForBuild, r.ForVerify, r.Asked, r.Running = stop{}, "", "", "", false, nil
+		r.stop, r.MergeMain = stop{}, false
+		paid(r, codeSeat, len(r.Code.Owed))
+		paid(r, verifySeat, len(r.Verify.Owed))
 		r.Before, r.Landing, r.Onto = "", "", ""
 	})
 

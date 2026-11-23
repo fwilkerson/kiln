@@ -83,13 +83,14 @@ type settings struct {
 	// nothing there. kiln then refuses the monitor while kiln.json's acceptanceTests is absent, or names a path that
 	// starts with {spec}. kiln refuses writesTests in a monitor with no command and no agent.md.
 	WritesTests bool `json:"writesTests"`
-	// Workflow is how kiln runs the monitor's fix: "build" or "verify-first". Absent or "build", one session of
-	// agent.md writes the fix and any test of it. With "verify-first", a verify session of verify.md first writes
-	// tests from the check's finding alone. That session writes only test files, which kiln.json's testFiles names.
-	// Once the gate fails on those tests alone, a new session of agent.md writes the fix, and no test file. kiln
-	// refuses "verify-first" in a monitor that lacks a check, verify.md or agent.md, or holds a command, or names
-	// writesTests. kiln refuses "verify-first" while kiln.json names no testFiles. kiln refuses verify.md in a monitor
-	// with any other workflow. kiln refuses "build-and-verify", which only kiln.json may name.
+	// Workflow is how kiln runs the monitor's fix: "build", "build-and-verify" or "verify-first". Absent or "build",
+	// one session of agent.md writes the fix and any test of it. Otherwise a verify session of verify.md writes tests
+	// from the check's finding alone. That session writes only test files, which kiln.json's testFiles names. A
+	// session of agent.md writes the fix, and no test file. The agent.md session reads the tests once the gate fails
+	// on them alone. "build-and-verify" starts both sessions at once, and "verify-first" starts the fix session once
+	// the tests are proved. kiln refuses either in a monitor that lacks a check, verify.md or agent.md, or holds a
+	// command, or names writesTests. kiln refuses either while kiln.json names no testFiles. kiln refuses verify.md in
+	// a monitor with the workflow "build".
 	Workflow workflow `json:"workflow"`
 	// AtLeast is the lowest reading of the monitor's gauge that needs no fix, such as 80. A reading below it starts
 	// a fix. In a monitor with no command and no agent.md, such a reading notifies the developer instead. A monitor
@@ -391,24 +392,24 @@ func (c config) monitorRefusals(m monitor, files, keys []string) refusals {
 	return refused
 }
 
-// workflowRefusals say why kiln may not run m by the workflow its monitor.json names, with c as kiln.json. A
-// verify-first fix needs the testFiles of c, which tell its tests from its fix.
+// workflowRefusals say why kiln may not run m by the workflow its monitor.json names, with c as kiln.json. A fix
+// with a verify session needs the testFiles of c, which tell its tests from its fix.
 func (c config) workflowRefusals(m monitor) refusals {
-	first := m.Workflow == verifyFirst
-	return append(monitorWorkflows.refusals(m.Workflow, specWorkflows), broken(
-		rule{first && (m.finder != checkScript || !m.verifier || !m.agent), refusal{fmt.Sprintf("names the "+
-			"workflow %s, which needs a check, %s and %s", verifyFirst, verifyAgent, monitorAgent),
+	isolated, w := orderOf(m.Workflow).isolated(), m.Workflow
+	return append(workflowRefusals(w, "names, in its "+settingsFile+","), broken(
+		rule{isolated && (m.finder != checkScript || !m.verifier || !m.agent), refusal{fmt.Sprintf("names the "+
+			"workflow %s, which needs a check, %s and %s", w, verifyAgent, monitorAgent),
 			"add each it lacks, or drop workflow"}},
-		rule{first && m.command, refusal{fmt.Sprintf("names the workflow %s, but holds a command, which fixes with no "+
-			"test first", verifyFirst), "remove the command, or drop workflow"}},
-		rule{first && m.WritesTests, refusal{fmt.Sprintf("names the workflow %s and writesTests, but its verify "+
-			"session alone writes the tests", verifyFirst), "drop writesTests"}},
-		rule{first && len(c.TestFiles) == 0, refusal{fmt.Sprintf("names the workflow %s, but %s names no testFiles, "+
-			"so kiln cannot tell the tests from the fix", verifyFirst, configFile), fmt.Sprintf("add testFiles to %s, "+
-			"such as [\"*_test.go\", \"testdata\"]", configFile)}},
-		rule{m.verifier && !first, refusal{fmt.Sprintf("holds %s, which only the workflow %s runs", verifyAgent,
-			verifyFirst), fmt.Sprintf("say \"workflow\": %q in its monitor.json, or remove %s", verifyFirst,
-			verifyAgent)}},
+		rule{isolated && m.command, refusal{fmt.Sprintf("names the workflow %s, but holds a command, which fixes "+
+			"with no test first", w), "remove the command, or drop workflow"}},
+		rule{isolated && m.WritesTests, refusal{fmt.Sprintf("names the workflow %s and writesTests, but its verify "+
+			"session alone writes the tests", w), "drop writesTests"}},
+		rule{isolated && len(c.TestFiles) == 0, refusal{fmt.Sprintf("names the workflow %s, but %s names no "+
+			"testFiles, so kiln cannot tell the tests from the fix", w, configFile), fmt.Sprintf("add testFiles to "+
+			"%s, such as [\"*_test.go\", \"testdata\"]", configFile)}},
+		rule{m.verifier && !isolated, refusal{fmt.Sprintf("holds %s, which only the workflows %s and %s run",
+			verifyAgent, buildAndVerify, verifyFirst), fmt.Sprintf("say \"workflow\": %q in its monitor.json, or "+
+			"remove %s", verifyFirst, verifyAgent)}},
 	)...)
 }
 

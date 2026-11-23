@@ -99,9 +99,9 @@ kiln help [<topic>]      print this usage and the topics of kiln's docs, as kiln
 | `"writablePathCommands"` | Commands that print the paths a session may write, besides its checkout      | a session writes in its checkout  |
 | `"mcpServers"`           | The only MCP servers a session calls, as Claude Code's settings hold one     | a session calls none              |
 | `"acceptanceTests"`      | Where a spec's acceptance tests go, with `{spec}` for the spec's name        | `kiln queue` refuses every spec   |
-| `"workflow"`             | `"build-and-verify"`: a second session writes the acceptance tests           | one session writes code and tests |
+| `"workflow"`             | `"build-and-verify"` or `"verify-first"`: a second session writes the tests  | one session writes code and tests |
 | `"testHelpers"`          | Paths of helper code the acceptance tests call, such as a test harness       | no helper path                    |
-| `"testFiles"`            | Patterns of a test file's name, or of a directory that holds tests           | no verify-first monitor runs      |
+| `"testFiles"`            | Patterns of a test file's name, or of a directory that holds tests           | no monitor with a verify session  |
 | `"reaudit"`              | Paths whose changes the audit must read before the work lands                | the audit reads the work once     |
 | `"notify"`               | A program that receives each notification, run with `sh -c`                  | kiln prints each in its output    |
 | `"timeout"`              | How long a command may run, or a session print nothing, before kiln kills it | 1 hour                            |
@@ -173,22 +173,27 @@ tests go:
 ### workflow, testHelpers and reaudit
 
 ```text
-                       ┌─ build session, in its own clone:  the code       ─┐
-kiln fire ─▶ main ─────┤                                                    ├─▶ stacked on kiln/<name> ─▶ gate ─▶ audit
-                       └─ verify session, in its own clone: the tests      ─┘
-                          written from the spec alone, never seeing the code
+"verify-first"       verify ──▶ proof ──▶ join ──▶ build ──▶ gate ──▶ audit ──▶ land
+
+"build-and-verify"   verify ──▶ proof ──┐
+                     build ─────────────┴▶ join ──▶ gate ──▶ audit ──▶ land
 ```
 
-- `"workflow"` is `"build"` or `"build-and-verify"`. With `"build"`, or no `"workflow"`, one session writes the
-  code and the tests. With `"build-and-verify"`, two sessions run at once, as above. kiln refuses `"verify-first"`
-  here, a workflow open to monitors only.
-- In `"build-and-verify"`, the build session writes nothing under the `"acceptanceTests"` paths or in the
-  amendment file. The verify session writes only those, and the `"testHelpers"` paths.
-- Each session's settings deny it reads of the other's clone.
-- kiln gates the build session's work alone first, and its failures go to the build session.
-- Then kiln stacks both sides and gates the stack. Its failures go to the verify session. That session fixes its
-  tests, or names the tests the code fails, which go to the build session.
-- The audit reads the stack, and its findings go to both.
+- `"workflow"` is `"build"`, `"build-and-verify"` or `"verify-first"`, and a monitor's `monitor.json` takes the
+  same. With `"build"`, or no `"workflow"`, one session writes the code and the tests.
+- Otherwise a verify session writes the tests in a clone of main of its own, from the spec alone. Its settings deny
+  it reads of the build's worktree.
+- The **proof** gates the verify session's commit, which holds no code of the build's. It must fail, and on tests
+  alone, so a test that does not compile on main proves nothing. Otherwise its report goes back to the verify
+  session.
+- Then kiln joins the proved tests into the build session's branch. The build session reads and runs them, and
+  changes none. `"build-and-verify"` starts both sessions at once, which saves time. `"verify-first"` starts the
+  build session once the tests are proved, which saves a build no test asks for.
+- The build session writes nothing under the `"acceptanceTests"` paths or in the amendment file. The verify session
+  writes only those, and the `"testHelpers"` paths.
+- A failed gate goes to the build session. A test the build session says cannot hold, and the audit's findings, go
+  to the verify session first.
+- A spec whose tests main already passes stops, once its verify session changes no test.
 - `"reaudit"` lists paths that never land unread, such as test helpers or migrations. When the work's change to one
   differs from what the audit last read, the audit reads the work again. That second reading spends a round.
 
@@ -280,14 +285,14 @@ monitor:
   gauge          in place of check: prints a number, and a reading past the limit in monitor.json asks for a fix
   command        a fix that needs no model, run outside the sandbox
   agent.md       an agent's file, run when there is no command, or command left the gate failing
-  verify.md      with "workflow": "verify-first", an agent's file that writes the fix's tests before agent.md runs
+  verify.md      with a verify session's workflow, an agent's file that writes the fix's tests apart from agent.md
   monitor.json   the keys below
 ```
 
 A monitor holds a `command`, an `agent.md` or both, and at most one of `check` and `gauge`. With neither, each due
 run starts a fix. A monitor with a `gauge` alone watches a number and fixes nothing, as [Gauges](#gauges) says. A
-monitor whose workflow is `"verify-first"` holds a `check`, a `verify.md` and an `agent.md`, and no `command`. Its
-`monitor.json` names no `"writesTests"`.
+monitor whose workflow is `"build-and-verify"` or `"verify-first"` holds a `check`, a `verify.md` and an `agent.md`,
+and no `command`. Its `monitor.json` names no `"writesTests"`.
 
 | Key             | What it holds                                                                  | When absent            |
 |-----------------|--------------------------------------------------------------------------------|------------------------|
@@ -296,7 +301,7 @@ monitor whose workflow is `"verify-first"` holds a `check`, a `verify.md` and an
 | `"recheck"`     | `false` keeps the check or gauge out of the fix's gate                         | the gate runs it again |
 | `"mustAccept"`  | `true` keeps each passing fix on its branch until `kiln accept <name>`         | a passing fix lands    |
 | `"writesTests"` | `true` lets a fix write every spec's acceptance tests                          | a fix writes none      |
-| `"workflow"`    | `"verify-first"`: one session writes failing tests, and a second the fix       | one session, `"build"` |
+| `"workflow"`    | `"build-and-verify"` or `"verify-first"`: a verify session writes the tests    | one session, `"build"` |
 | `"atLeast"`     | Beside a gauge: the lowest reading that asks for no fix                        | kiln refuses a gauge   |
 | `"atMost"`      | Beside a gauge: the highest reading that asks for no fix                       | with neither, or both  |
 
@@ -340,10 +345,10 @@ with your edits. A monitor you deleted stays deleted.
   `command`, or `command` left the gate failing.
 - The agent's first message holds what the check or gauge printed, and what the gate printed after `command`. Its
   instructions are the body of `agent.md`.
-- With `"workflow": "verify-first"`, a session of `verify.md` first writes failing tests from what the check printed.
-  That session works in a clone of its own, and writes only the test files that `"testFiles"` names. Then a new
-  session of `agent.md` writes the fix, and no test file. `kiln help verify-first-fixes` says how kiln holds each
-  session to its part, and where the audit's findings go.
+- With `"workflow": "build-and-verify"` or `"verify-first"`, a session of `verify.md` writes failing tests from what
+  the check printed. That session works in a clone of its own, and writes only the test files that `"testFiles"`
+  names. A session of `agent.md` writes the fix, and no test file. `kiln help fixes-with-a-verify-session` says how
+  kiln holds each session to its part, and where the audit's findings go.
 - A fix must pass the gate, with the check or gauge added to it. `"recheck": false` leaves them out, for a check that
   reads something no fix changes until the fix is deployed.
 - A fix never writes under `.kiln/`. Without `"writesTests": true`, a fix never writes under an

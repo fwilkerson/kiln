@@ -1,24 +1,19 @@
-# A bug the verify session reports goes to the build session.
+# A failed gate of the work joined with the proved tests goes to the build session alone.
 
 # Given: the project chooses the workflow build-and-verify, and the verify session's test fails against the build session's code.
 # The build session's code answers 41, where the spec says 42.
 exec kiln queue x
 
-# When: kiln fire gates the stack, and the verify session reports that the code is at fault.
+# When: kiln fire proves the tests, joins them into the build session's work, and gates it.
 exec kiln fire
 stdout '^x: landed on main'
 
-# Then: the build session gets the verify session's report and the failing test's Given, When, Then,
-grep 'X answered 41 where the spec expects 42\.' .claude-calls/build/1/2/prompt
-grep '\*\*Given\*\*: nothing\.' .claude-calls/build/1/2/prompt
-grep '\*\*When\*\*: X is called\.' .claude-calls/build/1/2/prompt
-grep '\*\*Then\*\*: it answers 42\.' .claude-calls/build/1/2/prompt
+# Then: the build session gets the gate's report, with the joined tests' file,
+grep 'exited 1' .claude-calls/build/1/2/prompt
+grep 'acceptance/x/x_test\.go' .claude-calls/build/1/2/prompt
 
-# but not the gate's report,
-grep 'exited 1' .claude-calls/verify/1/2/prompt
-! grep 'exited' .claude-calls/build/1/2/prompt
-! grep 'FAIL' .claude-calls/build/1/2/prompt
-! grep 'want 42' .claude-calls/build/1/2/prompt
+# the verify session runs once,
+! exists .claude-calls/verify/1/2
 
 # and the build has used one round.
 stdout '^  1 of 3 rounds'
@@ -79,13 +74,6 @@ stdout 'return 42'
       "result": "Wrote the tests of x."
      }
     }
-   ],
-   "2": [
-    {
-     "result": {
-      "result": "X answered 41 where the spec expects 42.\nbugs: 1"
-     }
-    }
    ]
   }
  },
@@ -123,13 +111,14 @@ func X() int { return 42 }
 package x_test
 
 import (
+	"os"
+	"strings"
 	"testing"
-
-	"example.com/scratch"
 )
 
 func TestAT1(t *testing.T) {
-	if got := scratch.X(); got != 42 {
-		t.Fatalf("X answers %d, want 42", got)
+	code, err := os.ReadFile("../../x.go")
+	if !strings.Contains(string(code), "return 42") {
+		t.Fatalf("x.go does not answer 42, want 42: %v", err)
 	}
 }

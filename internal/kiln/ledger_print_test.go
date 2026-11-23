@@ -79,13 +79,13 @@ const (
 		`"end":null,"seconds":null,"ended":null,"cost_usd":null,"turns":null,"failed_calls":null,"found":null,` +
 		`"reported":null}`
 	landingX = `{"kind":"gate","build":"b1","name":"x","at":"2026-11-18T05:08:00Z","end":"2026-11-18T05:09:00Z",` +
-		`"seconds":60,"passed":true,"landing":true,"ran_main":false,"before_fix":false}`
+		`"seconds":60,"passed":true,"landing":true,"ran_main":false,"proof":false}`
 	fixFinding = `{"kind":"finding","build":"b3","name":"gate-time","fix":true,"session":"s5",` +
 		`"at":"2026-11-18T05:20:45Z","parsed":false,"rank":null,"path":null,"line":null,"category":null,` +
 		`"reaches":null,"chance":null,"harm":null,"design":null,"patch":null,"proof":null,` +
 		`"reply":"It reads fine."}`
 	fixGate = `{"kind":"gate","build":"b3","name":"gate-time","at":"2026-11-18T05:22:00Z",` +
-		`"end":"2026-11-18T05:23:00Z","seconds":60,"passed":true,"landing":false,"ran_main":null,"before_fix":false}`
+		`"end":"2026-11-18T05:23:00Z","seconds":60,"passed":true,"landing":false,"ran_main":null,"proof":false}`
 )
 
 // TestLedger holds what kiln ledger prints of a ledger. A build sums its runs and gates, and a sum is null while a
@@ -127,9 +127,9 @@ func TestLedger(t *testing.T) {
 		{"a run that has not ended", LedgerOptions{Kind: "run", Name: "y"}, runY},
 		{"each gate says whether it ran the commands at main", LedgerOptions{Kind: "gate", Name: "x"},
 			`{"kind":"gate","build":"b1","name":"x","at":"2026-11-18T05:03:00Z","end":"2026-11-18T05:04:00Z",` +
-				`"seconds":60,"passed":false,"landing":false,"ran_main":true,"before_fix":false}` + "\n" +
+				`"seconds":60,"passed":false,"landing":false,"ran_main":true,"proof":false}` + "\n" +
 				`{"kind":"gate","build":"b1","name":"x","at":"2026-11-18T05:05:00Z","end":"2026-11-18T05:06:00Z",` +
-				`"seconds":60,"passed":true,"landing":false,"ran_main":false,"before_fix":false}` + "\n" + landingX},
+				`"seconds":60,"passed":true,"landing":false,"ran_main":false,"proof":false}` + "\n" + landingX},
 		{"the last gates leave out one of no build, and say null where the ledger does not say",
 			LedgerOptions{Kind: "gate", Last: 2}, landingX + "\n" + fixGate},
 		{"a gauge's reading of a landing", LedgerOptions{Kind: "reading"},

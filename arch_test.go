@@ -148,6 +148,101 @@ func TestOneShell(t *testing.T) {
 // shell matches a Go string that names sh, as a program kiln would run.
 var shell = regexp.MustCompile(`"(/bin/)?sh"`)
 
+// TestOneLoop holds the rules of the build's one loop, in internal/kiln, that the compiler does not check:
+//   - Only owe and paid write a seat's Owed, so what kiln owes a session changes in one of two ways.
+//   - work alone calls prove, tell and judge, and prove alone calls join. So no session runs while kiln proves,
+//     joins or gates.
+func TestOneLoop(t *testing.T) {
+	calls, writers := loopCalls(t)
+	if !writers["owe"] || !writers["paid"] {
+		t.Errorf("the test found %v writing Owed, and no longer finds owe and paid: fix writesOwed", writers)
+	}
+
+	for writer, writes := range writers {
+		if writes && !slices.Contains([]string{"owe", "paid"}, writer) {
+			t.Errorf("%s writes a seat's Owed: add a message with owe, and remove the ones a run told with paid",
+				writer)
+		}
+	}
+
+	for step, caller := range map[string]string{"prove": "work", "tell": "work", "judge": "work", "join": "prove"} {
+		if got := calls[step]; !slices.Equal(got, []string{caller}) {
+			t.Errorf("%s is called from %q: call it from %s alone, between the sessions' runs", step, got, caller)
+		}
+	}
+}
+
+// loopCalls reads internal/kiln's code. It answers, by each method of the build b it calls, the functions that call
+// it. It answers the functions that write a seat's Owed too.
+func loopCalls(t *testing.T) (calls map[string][]string, writers map[string]bool) {
+	calls, writers = map[string][]string{}, map[string]bool{}
+	for _, f := range kilnFiles(t) {
+		for _, d := range f.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				calls[calledMethod(n)] = append(calls[calledMethod(n)], fn.Name.Name)
+				writers[fn.Name.Name] = writers[fn.Name.Name] || writesOwed(n)
+				return true
+			})
+		}
+	}
+
+	return calls, writers
+}
+
+// kilnFiles parses each Go file of internal/kiln but its tests.
+func kilnFiles(t *testing.T) []*ast.File {
+	paths, err := filepath.Glob("internal/kiln/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var files []*ast.File
+	fset := token.NewFileSet()
+	for _, p := range slices.DeleteFunc(paths, func(p string) bool { return strings.HasSuffix(p, "_test.go") }) {
+		f, err := parser.ParseFile(fset, p, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		files = append(files, f)
+	}
+
+	return files
+}
+
+// calledMethod is the name of the method of the build b that n calls, as b.name(...), or "".
+func calledMethod(n ast.Node) string {
+	call, ok := n.(*ast.CallExpr)
+	if !ok {
+		return ""
+	}
+
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return ""
+	}
+
+	if recv, isIdent := sel.X.(*ast.Ident); isIdent && recv.Name == "b" {
+		return sel.Sel.Name
+	}
+
+	return ""
+}
+
+// writesOwed is whether n assigns to a field named Owed.
+func writesOwed(n ast.Node) bool {
+	assign, ok := n.(*ast.AssignStmt)
+	return ok && slices.ContainsFunc(assign.Lhs, func(e ast.Expr) bool {
+		sel, isSel := e.(*ast.SelectorExpr)
+		return isSel && sel.Sel.Name == "Owed"
+	})
+}
+
 // TestHomeForGit holds that a package whose tests run git starts them in hometest.Main or scenariotest.Main. A test's
 // git would otherwise read the developer's config. That git would also obey a GIT_DIR from git rebase --exec or a
 // hook, writing to another repository.

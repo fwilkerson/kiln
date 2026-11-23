@@ -102,11 +102,10 @@
 //	<user cache dir>/kiln/         ~/Library/Caches/kiln/
 //	  build.lock                   shared by each kiln that drives a build session; HoldBuilds takes it alone
 //	  <repo>-<8 hex>/              <trees>, the repository's checkouts, named for its directory and git common dir
-//	    <name>/                    a build's or a fix's worktree on kiln/<name>; in build-and-verify, its stack
+//	    <name>/                    a build's or a fix's worktree on kiln/<name>, where its code session works
 //	    .audit-<name>/             the audit's worktree, at the build's commit
 //	    .gate-<name>/              where the gate runs, at the build's commit
-//	    .build-<name>/             the build session's clone, in build-and-verify
-//	    .verify-<name>/            the verify session's clone, in build-and-verify or a verify-first fix
+//	    .verify-<name>/            the verify session's clone, in build-and-verify or verify-first
 //	    .main/                     where the gate runs at main
 //	    .gauges/                   where gauges are read after a landing
 //	    .monitor-check/            where a monitor's check runs, or its gauge
@@ -214,21 +213,46 @@
 // A usage limit pauses the build until the limit resets, and then resumes the same session. A limit with no reset
 // pauses it for 5 minutes.
 //
-// kiln.json's "workflow", as main held it when the spec was queued, says how the spec builds. Absent or "build", one
-// build session writes the code and the tests, as above. "build-and-verify" runs two sessions at once:
+// kiln.json's "workflow", as main held it when the spec was queued, says how the spec builds. A monitor.json's
+// says how its fix runs. Each file takes the same three:
 //
-//	build session    in <trees>/.build-<name>, a clone of main on kiln/<name>.build: writes the code
-//	verify session   in <trees>/.verify-<name>, a clone of main on kiln/<name>.verify: writes the acceptance tests,
-//	                 from the spec alone, and alone amends the spec
+//	build              one session writes the code and its tests, as above (the default)
+//	build-and-verify   the verify and build sessions start at once
+//	verify-first       the build session starts once the verify session's tests are proved
 //
-//	gate the build side   fails: to the build session, as a round
-//	stack                 kiln/<name> at the build side, the verify side merged in; a conflict: to verify, as a round
-//	gate the stack        fails: to verify, as a round; each bug its "bugs:" line names goes to build
-//	audit the stack       findings: to both
-//	land                  as a build does; each setback goes to the side that owns it
+// The last two are one isolated workflow, in two orders:
 //
-// A build reply with a line that starts "cannot hold:" goes to the verify session. Each session's settings deny it
-// reads of the other's clone and transcripts, and of kiln's other checkouts. Its hook keeps it to its side.
+//	verify-first       verify ──▶ proof ──▶ join ──▶ build ──▶ gate ──▶ audit ──▶ land
+//	build-and-verify   verify ──▶ proof ──┐
+//	                   build ─────────────┴▶ join ──▶ gate ──▶ audit ──▶ land
+//
+//	verify   the verify session, in <trees>/.verify-<name>, a clone of main on kiln/<name>.verify. A spec's writes
+//	         its acceptance tests from the spec alone, and alone amends the spec. A fix's writes test files from what
+//	         the check printed. It never reads the build's worktree, nor the build session's transcripts.
+//	proof    the gate at the verify session's commit, which holds no code of the build's. It must fail, and on tests
+//	         alone; a test that does not compile names no failed test. Otherwise its report goes back to the verify
+//	         session, as a round. A commit that leaves the proved tests as they were needs no proof.
+//	join     kiln merges the proved commit into kiln/<name>; a conflict goes to the build session, as a round
+//	build    the build session, or the fix's, in <trees>/<name>. It reads and runs the proved tests, and changes none.
+//	         Its next message after a join opens with what the join brought: the tests' files, the proof's report,
+//	         and each new amendment's wording. A join that needs no answer starts no run.
+//
+// Each session has kiln.json's rounds of its own. kiln commits, proves, joins and gates only between runs. It proves
+// and joins only while it owes the verify session nothing. It never gates the build's work before the join. Side by
+// side, the build session's first run starts from main. So kiln removes a revised spec's earlier tests before that
+// run, and puts them back before the first join. In turn, the build session starts from the
+// join. Once a proof stands, the build session runs only while kiln owes the verify session nothing.
+//
+// A build reply whose last line starts "cannot hold:" goes to the verify session. A fix's session asks for the
+// developer instead. The audit's findings go to the verify session first, then to the build session. That session
+// reads the verify session's answer, joined. A fix's findings go to its session alone once the developer accepted it.
+// The audit's prompt names the tests that failed at the proof, and each testHelpers file the build session changed.
+//
+// After a proof that did not stand, a run of the verify session may change no path it may write. That stops the
+// build: "the verify session changed no test after a proof that did not stand". Each gate after the join fails while
+// a file the verify session alone writes differs from the proved tests. Those are main's file with the proved
+// commit's change applied. The landing's gate fails so too. Whenever kiln merges main into the work, it merges main
+// into the verify session's clone too. A conflict there goes to a spec's verify session, as a round, and stops a fix.
 //
 // # kiln tend
 //
@@ -263,8 +287,8 @@
 //	a monitor                  runs again, as kiln monitor run with its name does; it waits for the monitors' lane
 //
 // A build that goes on owes each of its sessions a message: why it stopped, and the note's text. kiln merges main into
-// its branch, or into each clone of a build in build-and-verify, when main moved. A conflict joins the message. kiln
-// resumes each session once with it, whichever turn had ended. From there it is the same build, under the same build
+// its branch, and into the verify session's clone, when main moved. A conflict goes back as a round. kiln resumes
+// each session once with the message, whichever turn had ended. From there it is the same build, under the same build
 // ID. While another kiln holds the specs' lane, that kiln goes on with it, as with an accepted landing. Should it halt
 // once taken, it still owes the message, and waits for kiln fire. kiln queue builds it anew instead.
 //
@@ -280,8 +304,8 @@
 // when every command exits 0, but for tests that fail at main too. A command names its failed tests in the output of go
 // test. Or it writes them as JUnit XML, to the path kiln gives it in $KILN_JUNIT. A failure that names no test is never
 // excused. With JUnit XML, a run cut short fails too: each test run at main must run at the build's commit. kiln keeps
-// the last 16 KiB of each command's output. It runs them at main again only once main or the commands change. In
-// build-and-verify, a change to the paths the build removes at main runs them again too. The gate holds commands.lock,
+// the last 16 KiB of each command's output. It runs them at main again only once main or the commands change. The
+// gate holds commands.lock,
 // with the check or gauge it reads, so no gate runs beside another. Its line in the ledger starts once it holds the
 // lock, so a build's time counts no wait.
 //
@@ -289,14 +313,14 @@
 // or a Write there before it happens. Each name is folded as APFS folds it:
 //
 //	a .git directory          only git and kiln write there
-//	.kiln/                    but .kiln/specs/<name>.amend.md, which only the verify session writes, in
-//	                          build-and-verify; a monitor's fix writes nothing there
+//	.kiln/                    but .kiln/specs/<name>.amend.md, which only the verify session writes, where there is
+//	                          one; a monitor's fix writes nothing there
 //	a .claude directory       the developer's Claude Code settings, agents and skills, whose hooks run unsandboxed
-//	the other side            in build-and-verify, the build session writes neither the acceptance tests nor the
+//	the other side            with a verify session, the build session writes neither the acceptance tests nor the
 //	                          amendments; the verify session writes only those, and the testHelpers paths
 //	the acceptance tests      to a monitor's fix, each path starting with an acceptance path's part before {spec},
 //	                          unless its monitor says "writesTests": true
-//	the test files            to a verify-first fix's fix session, and all but them to its verify session
+//	the test files            to the fix session of a fix with a verify session, and all but them to that session
 //
 // # Monitors
 //
@@ -308,7 +332,7 @@
 //	  gauge          finds a problem by a number in place of a check: the monitor's gauge, its line atLeast or atMost
 //	  command        fixes it with no model, outside the sandbox
 //	  agent.md       fixes it in a session, from an agent's file, as Agents says
-//	  verify.md      writes a verify-first fix's tests in a session before agent.md's, as Verify-first fixes says
+//	  verify.md      writes the fix's tests in a session apart from agent.md's, as Fixes with a verify session says
 //	  monitor.json   {"hours": 1, "recheck": false, "mustAccept": true, "writesTests": true, "workflow": "build",
 //	                  "atLeast": 80}
 //
@@ -319,8 +343,8 @@
 // with no line, and a line with no gauge. It refuses a check, gauge or command git holds without the executable bit. It
 // refuses a monitor with no command and no agent.md, unless the monitor holds a gauge alone to watch. Such a monitor
 // fixes nothing, so it refuses recheck, mustAccept, writesTests and workflow in its monitor.json, which steer a fix.
-// It refuses a workflow other than build and verify-first, and verify.md in a monitor with any other workflow. It
-// refuses a verify-first monitor that breaks a rule of Verify-first fixes. It refuses a
+// It refuses verify.md in a monitor whose workflow is build. It refuses a monitor with a verify session that breaks a
+// rule of Fixes with a verify session. It refuses a
 // monitor that may not write the tests while kiln cannot guard them. acceptanceTests then names no path, or one with
 // no part before {spec}. A refusal holds back its one monitor: kiln monitor run runs the rest, and says why. It
 // notifies when it first refuses that monitor's directory, and again each time the directory changes. kiln status and
@@ -350,7 +374,7 @@
 //	           commands.lock from before it reads main's tip, so it runs at the main its fix starts from
 //	  fix      a build with no spec on kiln/<name>, from main's tip; a monitor that fixes nothing needs you instead
 //	           command   first, outside the sandbox, then the gate; fails with no agent: stopped
-//	           verify    first, with the workflow verify-first: verify.md's session, as Verify-first fixes says
+//	           verify    beside agent.md's, or before it: verify.md's session, as Fixes with a verify session says
 //	           agent     while the gate fails, or with no command; kiln.json's rounds, and the audit
 //	  ends     landed, waits on its branch, unchanged, needs you, session failed, usage limit, stopped, couldn't run
 //	           each printed with its time, cost, turns and failed calls, as a spec's build is
@@ -414,38 +438,33 @@
 // A healthy run drops the monitor's stopped fix the developer has not accepted, with its branch and worktree. kiln
 // monitor run skips a monitor while a kiln tend is at work on it, and says so.
 //
-// # Verify-first fixes
+// # Fixes with a verify session
 //
-// A monitor.json that says "workflow": "verify-first" splits the fix between two sessions, one after the other:
+// A monitor.json that says "workflow": "build-and-verify" or "verify-first" splits the fix between two sessions, in
+// the order Builds says:
 //
-//	verify verify.md's session, with the role verify, in <trees>/.verify-<name>, a clone of main on
-//	       kiln/<name>.verify. It writes tests from what the check printed. kiln commits them, and gates them
-//	       without the check. While the gate passes, kiln resumes the session with its report, as a round. kiln does
-//	       the same while a command fails that names no failed test, or a path is refused.
-//	fix    agent.md's session, a new one, on kiln/<name> from the tests, once the gate fails on tests alone. Its
-//	       rounds start at 0. Its first message adds the files the verify session changed, and the gate's report.
-//	       From there it runs as any fix's agent.
+//	verify verify.md's session, with the role verify, in <trees>/.verify-<name>. It writes tests from what the check
+//	       printed. The proof gates them without the check.
+//	fix    agent.md's session, with the role fix, on kiln/<name>. Its next message after a join names the files the
+//	       verify session changed, and holds the proof's report. From there it runs as any fix's agent.
 //	audit  as any fix's. Its prompt adds what the check printed, to read each test against. Its findings go to the
-//	       verify session first, which answers with test files alone. kiln gates them as before, and merges
-//	       kiln/<name>.verify into kiln/<name>. Then the findings go to the fix session. A merge that conflicts
-//	       stops the fix as a conflict, and kiln status names where its work is. Once the developer accepted the
-//	       fix, findings go to the fix session alone.
+//	       verify session first, which answers with test files alone. kiln proves and joins its answer, then the
+//	       findings go to the fix session. Once the developer accepted the fix, findings go to the fix session alone.
 //
 // A test file has an element of its path that a pattern of kiln.json's testFiles matches, by path.Match. So is
 // each file under testHelpers, and under each acceptance path's part before {spec}. The verify session writes only
 // test files, and the fix session none. So the fix never adds a test that passes, nor edits a fixture a test reads.
 // Each session's hook refuses its write outside its own files, and so does each gate on its work. The proved tests
-// are the commit the gate last failed on alone. Each gate of the fix, its landing's too, fails while a test file
+// are the commit the proof last failed on alone. Each gate of the fix, its landing's too, fails while a test file
 // differs from main's with their change applied. So a landing keeps what main changed meanwhile in a test file. The
 // record keeps that commit through kiln accept.
 //
-// The verify session never reads the fix's worktree, nor the fix session's transcripts. Its sandbox denies them, as
-// the sandbox of build-and-verify denies each side the other's. A verify session that asks for the developer, fails or
-// meets a usage limit ends the fix as Monitors says. The ledger marks each gate of the tests alone with before_fix.
+// A verify session that asks for the developer, fails or meets a usage limit ends the fix as Monitors says. The
+// ledger marks each gate of the tests alone with proof.
 //
-// kiln refuses a verify-first monitor that lacks a check, verify.md or agent.md, or holds a command. It refuses one
-// that names writesTests, since its verify session alone writes the tests. It refuses one while kiln.json names no
-// testFiles. kiln.json refuses an empty testFiles pattern, one path.Match cannot read, and one that holds a slash.
+// kiln refuses such a monitor that lacks a check, verify.md or agent.md, or holds a command. It refuses one that names
+// writesTests, since its verify session alone writes the tests. It refuses one while kiln.json names no testFiles.
+// kiln.json refuses an empty testFiles pattern, one path.Match cannot read, and one that holds a slash.
 //
 // # Lanes
 //
@@ -569,7 +588,7 @@
 //	  passed        bool           whether it passed; a gate that stopped on an error did not
 //	  landing       bool           whether it gated a landing, the work rebased onto main
 //	  ran_main      bool|null      whether it ran the commands at main too, rather than read the checks kept there
-//	  before_fix    bool           whether it gated a verify-first fix's tests alone, which must fail
+//	  proof         bool           whether it gated the verify session's tests alone, which must fail
 //	reading                        a gauge's reading of a landing
 //	  build         string         the landed build's ID
 //	  name          string         the landed build's name
@@ -1426,7 +1445,11 @@ func (r *Repo) Status(ctx context.Context, out io.Writer) error {
 // status shows where the spec of r stands, as kiln status does.
 func (r *record) status(out io.Writer) {
 	fmt.Fprintf(out, "%s: %s", r.Name, shownState(r))
+	why := r.Why
 	switch {
+	case r.State == stopped && r.Kind == stopUnproved:
+		fmt.Fprintf(out, ": %s", r.Why)
+		why = ""
 	case r.halted():
 		fmt.Fprintf(out, "\n  %s", haltedNext)
 	case r.Accepted && r.State == queued:
@@ -1443,7 +1466,7 @@ func (r *record) status(out io.Writer) {
 		fmt.Fprintf(out, "  failing at main before the build: %s\n", strings.Join(r.FailingAtMain, ", "))
 	}
 
-	for _, text := range []string{r.Why, r.Amendments} {
+	for _, text := range []string{why, r.Amendments} {
 		if text != "" {
 			fmt.Fprintln(out, indent(text))
 		}
@@ -1539,13 +1562,12 @@ func (r *Repo) acceptLanded(ctx context.Context, b *build) error {
 	return nil
 }
 
-// acceptAmended folds the amendments of b's spec into the spec, on its branch, and lands it. A build in
-// build-and-verify folds them in the verify session's clone, whose side owns the amendment file. Every later stack then
-// carries the fold.
+// acceptAmended folds the amendments of b's spec into the spec, on its branch, and lands it. A build with a verify
+// session folds them in its clone, whose side owns the amendment file. The next join then carries the fold.
 func (r *Repo) acceptAmended(ctx context.Context, b *build) error {
 	name := b.rec.Name
 	at := b.tree
-	if b.rec.Verify != "" {
+	if b.rec.Verify.Session != "" {
 		at = r.clone(name, verifyRole)
 	}
 
@@ -1559,7 +1581,8 @@ func (r *Repo) acceptAmended(ctx context.Context, b *build) error {
 	}
 
 	err = r.store.set(name, func(s *record) {
-		s.State, s.Accepted, s.Rounds, s.Amendments, s.Accepting = queued, true, 0, "", 0
+		s.State, s.Accepted, s.Amendments, s.Accepting = queued, true, "", 0
+		s.Code.Rounds, s.Verify.Rounds = 0, 0
 	})
 	if err != nil {
 		return err
@@ -1577,7 +1600,8 @@ func (r *Repo) acceptFix(ctx context.Context, b *build) error {
 	}
 
 	err = r.store.set(b.rec.Name, func(s *record) {
-		s.State, s.Accepted, s.Rounds, s.AcceptedAt, s.Audited, s.Accepting = queued, true, 0, tip, tip, 0
+		s.State, s.Accepted, s.AcceptedAt, s.Audited, s.Accepting = queued, true, tip, tip, 0
+		s.Code.Rounds, s.Verify.Rounds = 0, 0
 	})
 	if err != nil {
 		return err

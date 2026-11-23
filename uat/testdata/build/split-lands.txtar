@@ -10,7 +10,7 @@ exists .claude-calls/build/1/1/call.json
 exists .claude-calls/verify/1/1/call.json
 
 # Then: kiln fire names the branch and checkout of each session,
-stdout '^x: building on kiln/x\.build, in [^\n]*/\.build-x, and verifying on kiln/x\.verify, in [^\n]*/\.verify-x$'
+stdout '^x: building on kiln/x, in [^\n]*/x, and verifying on kiln/x\.verify, in [^\n]*/\.verify-x$'
 
 # the spec waits for UAT,
 stdout '^x: landed on main'
@@ -26,7 +26,6 @@ stdout 'func TestAT1'
 # None of the clones and worktrees the build made remains, but the .main worktree every gate shares.
 exec sh -c 'ls -A "$HOME"/Library/Caches/kiln/*/'
 stdout '^\.main$'
-! stdout '^\.build-x$'
 ! stdout '^\.verify-x$'
 ! stdout '^\.audit-x$'
 ! stdout '^x$'
@@ -66,13 +65,14 @@ func X() int { return 42 }
 package x_test
 
 import (
+	"os"
+	"strings"
 	"testing"
-
-	"example.com/scratch"
 )
 
 func TestAT1(t *testing.T) {
-	if got := scratch.X(); got != 42 {
-		t.Fatalf("X answers %d, want 42", got)
+	code, err := os.ReadFile("../../x.go")
+	if !strings.Contains(string(code), "return 42") {
+		t.Fatalf("x.go does not answer 42: %v", err)
 	}
 }

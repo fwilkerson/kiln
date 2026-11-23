@@ -45,7 +45,7 @@ stdout 'want an even answer'
 
 # the ledger marks the four gates of the tests alone,
 exec kiln ledger --kind gate
-stdout -count=4 '"before_fix":true\}'
+stdout -count=4 '"proof":true\}'
 
 # two fixes landed, one for each bug,
 exec git log --format=%s main

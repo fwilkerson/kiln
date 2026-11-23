@@ -1,0 +1,153 @@
+# 8. The audit's findings go to the verify session first.
+# x builds under verify-first, then y under build-and-verify.
+
+# Given: a spec whose audit sends findings.
+# The finding says the test checks one clause. The verify session answers it with a test that checks each clause.
+# The build session keeps the test it finds in its checkout at its next run.
+exec kiln queue x
+
+# When: kiln fire goes on.
+exec kiln fire
+stdout '^x: landed on main'
+
+# Then: the verify session gets the findings before the build session does,
+grep 'TestAT1 checks one clause' .claude-calls/verify/1/2/prompt
+grep 'TestAT1 checks one clause' .claude-calls/build/1/2/prompt
+exec jq -se --arg s x 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | at(.kind=="start" and .role=="audit") as $a | (to_entries | map(select(.key > $a and .value.kind=="start")) | .[0].value.role) as $first | $a != null and $first == "verify"' .git/kiln/ledger.jsonl
+
+# and the build session's checkout holds the verify session's answer when its next run starts.
+grep 'want each clause' .claude-calls/x-build-saw
+
+# The same holds side by side.
+exec sed -i '' 's/"verify-first"/"build-and-verify"/' .kiln/kiln.json
+exec git commit --quiet -am 'chore: build side by side'
+exec kiln queue y
+exec kiln fire
+stdout '^y: landed on main'
+grep 'TestAT1 checks one clause' .claude-calls/verify/2/2/prompt
+grep 'TestAT1 checks one clause' .claude-calls/build/2/2/prompt
+exec jq -se --arg s y 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | at(.kind=="start" and .role=="audit") as $a | (to_entries | map(select(.key > $a and .value.kind=="start")) | .[0].value.role) as $first | $a != null and $first == "verify"' .git/kiln/ledger.jsonl
+grep 'want each clause' .claude-calls/y-build-saw
+
+-- .kiln/kiln.json --
+{"workflow": "verify-first", "rounds": 3}
+-- claude.json --
+{
+  "verify": {
+    "1": {
+      "1": [
+        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+        {"result": {"result": "Wrote the tests of x."}}
+      ],
+      "2": [
+        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x-each/.\" ."}}},
+        {"result": {"result": "TestAT1 checks each clause now."}}
+      ]
+    },
+    "2": {
+      "1": [
+        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y/.\" ."}}},
+        {"result": {"result": "Wrote the tests of y."}}
+      ],
+      "2": [
+        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y-each/.\" ."}}},
+        {"result": {"result": "TestAT1 checks each clause now."}}
+      ]
+    }
+  },
+  "build": {
+    "1": {
+      "1": [
+        {"tool": {"name": "Bash", "input": {"command": "echo 42 >x.txt"}}},
+        {"result": {"result": "Built x."}}
+      ],
+      "2": [
+        {"tool": {"name": "Bash", "input": {"command": "cat acceptance/x/x_test.go >\"$WORK/.claude-calls/x-build-saw\""}}},
+        {"result": {"result": "The verify session answered the finding."}}
+      ]
+    },
+    "2": {
+      "1": [
+        {"tool": {"name": "Bash", "input": {"command": "echo 42 >y.txt"}}},
+        {"result": {"result": "Built y."}}
+      ],
+      "2": [
+        {"tool": {"name": "Bash", "input": {"command": "cat acceptance/y/y_test.go >\"$WORK/.claude-calls/y-build-saw\""}}},
+        {"result": {"result": "The verify session answered the finding."}}
+      ]
+    }
+  },
+  "audit": {
+    "1": {"1": [{"result": {"audit": {"read": 1, "findings": [{"path": "acceptance/x/x_test.go", "line": 9, "kind": "weak test", "reaches": "TestAT1 checks one clause"}]}}}]},
+    "2": {"1": [{"result": {"audit": {"read": 1, "findings": [{"path": "acceptance/y/y_test.go", "line": 9, "kind": "weak test", "reaches": "TestAT1 checks one clause"}]}}}]}
+  }
+}
+-- doc.go --
+// Package scratch is where kiln's builds land.
+package scratch
+-- .kiln/specs/x.md --
+### 1. x.txt answers
+
+- **Given**: nothing.
+- **When**: the developer reads x.txt.
+- **Then**: it holds 42, on one line.
+-- .kiln/specs/y.md --
+### 1. y.txt answers
+
+- **Given**: nothing.
+- **When**: the developer reads y.txt.
+- **Then**: it holds 42, on one line.
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	if b, _ := os.ReadFile("../../x.txt"); !strings.HasPrefix(string(b), "42") {
+		t.Fatalf("x.txt holds %q, want 42", b)
+	}
+}
+-- _given/x-each/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"os"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	if b, _ := os.ReadFile("../../x.txt"); string(b) != "42\n" {
+		t.Fatalf("x.txt holds %q, want each clause: 42, on one line", b)
+	}
+}
+-- _given/y/acceptance/y/y_test.go --
+package y_test
+
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	if b, _ := os.ReadFile("../../y.txt"); !strings.HasPrefix(string(b), "42") {
+		t.Fatalf("y.txt holds %q, want 42", b)
+	}
+}
+-- _given/y-each/acceptance/y/y_test.go --
+package y_test
+
+import (
+	"os"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	if b, _ := os.ReadFile("../../y.txt"); string(b) != "42\n" {
+		t.Fatalf("y.txt holds %q, want each clause: 42, on one line", b)
+	}
+}

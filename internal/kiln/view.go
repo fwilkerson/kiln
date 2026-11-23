@@ -312,7 +312,7 @@ func (r run) tuiRun() *tui.Run {
 func gateSteps(gates []entry) []tui.Step {
 	steps := make([]tui.Step, len(gates))
 	for i, e := range gates {
-		steps[i] = &tui.Gate{Start: e.At, End: e.End, Passed: e.Passed, Landing: e.Landing, MustFail: e.BeforeFix}
+		steps[i] = &tui.Gate{Start: e.At, End: e.End, Passed: e.Passed, Landing: e.Landing, MustFail: e.Proof}
 	}
 
 	return steps
@@ -332,22 +332,17 @@ func (w reason) shown() string {
 	}
 
 	return map[string]string{
-		whyFirst:         "first run",
-		whyGate:          round,
-		whyAudit:         fmt.Sprintf("audit, try %d", w.Try),
-		whyFindings:      "audit's findings",
-		whyConflict:      "conflict with main, " + round,
-		whyLanding:       "landing gate failed, " + round,
-		whyUnchanged:     "work changed nothing on main, " + round,
-		whyLimit:         "after a usage limit",
-		whyInterrupted:   "after kiln stopped",
-		whyTended:        "after kiln tend",
-		whyStack:         "stack's gate failed, " + round,
-		whyStackConflict: "conflict in the stack, " + round,
-		whyBug:           "a bug the verify session found, " + round,
-		whyCannotHold:    "tests the build can't meet",
-		whyNoResult:      fmt.Sprintf("after no result, try %d", w.Try),
-		whyBugsLine:      "asked for its bugs line",
-		whyNoTest:        "no test failed, " + round,
+		whyFirst:       "first run",
+		whyGate:        round,
+		whyAudit:       fmt.Sprintf("audit, try %d", w.Try),
+		whyFindings:    "audit's findings",
+		whyConflict:    "conflict with main, " + round,
+		whyLanding:     "landing gate failed, " + round,
+		whyUnchanged:   "work changed nothing on main, " + round,
+		whyLimit:       "after a usage limit",
+		whyInterrupted: "after kiln stopped",
+		whyTended:      "after kiln tend",
+		whyCannotHold:  "tests the build can't meet",
+		whyNoTest:      "no test failed, " + round,
 	}[w.Why]
 }

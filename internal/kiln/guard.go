@@ -128,6 +128,20 @@ func (s side) fixRefusal(rel, folded string) string {
 		"when its monitor says \"writesTests\": true", rel, s.acceptance[i])
 }
 
+// verifiers is whether the verify session alone writes folded. The code session, whose side s is, leaves such a file
+// as the proved tests hold it. A spec's are its acceptance tests and its amendments. A fix's are its test files.
+func (s side) verifiers(folded string, spec Spec) bool {
+	switch s.role {
+	case buildRole:
+		in := func(root string) bool { return within(folded, root) }
+		return slices.ContainsFunc(s.acceptance, in) || folded == fold(spec.amendPath())
+	case fixRole:
+		return s.verifiesFirst() && s.testFile(folded)
+	}
+
+	return false
+}
+
 // testFile is whether folded is a test file of s, a verify-first fix's side. folded is a path folded as APFS reads it.
 func (s side) testFile(folded string) bool {
 	matches := func(name string) bool {

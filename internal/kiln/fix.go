@@ -11,13 +11,15 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// A monitor's fix is a build with no spec, on kiln/<name>, in the monitor's worktree:
+// A monitor's fix is a build with no spec, on kiln/<name>, in the monitor's worktree. Its workflow, by its
+// monitor.json, is build, build-and-verify or verify-first, as work runs them:
 //
 //	command, then commit and gate (+ check) ── pass ──────────────────────────┐
 //	  │ fail, or no command                                                   │
@@ -31,12 +33,18 @@ import (
 // agent, as a crossed reading does. One whose command ran past kiln.json's timeout stops the fix. Past the last
 // round, or on a command alone that the gate fails, it stops. An accepted fix's landing sends each setback to the
 // agent's session, through the same loop. Each ending but landed stops it.
+//
+// In an isolated workflow, verify.md's session writes test files alone, from the check's finding, in a clone of
+// main. A proof gates them without the check, and must fail on tests alone. agent.md's session writes the fix, and no
+// test file. The audit's findings go to the verify session first, until the developer accepts the fix.
 
 var (
 	//go:embed contract/monitor.md
 	monitorContract string
 	//go:embed contract/monitor-audit.md
 	monitorAuditContract string
+	//go:embed contract/monitor-verify-first.md
+	monitorVerifyContract string
 )
 
 // fixing is what a monitor's fix carries beside its build.
@@ -44,11 +52,8 @@ type fixing struct {
 	monitor monitor
 	// checked is what the run's first check, or its gauge, found. A landing kiln accept started has none.
 	checked checked
-	// side is what the fix's session that works now may write. Its role is verifyRole while a verify-first fix's
-	// verify session works.
+	// side is what the fix session may write. The verify session of an isolated workflow writes its test files alone.
 	side side
-	// tested is what the fix session's first message says of a verify-first fix's proved tests.
-	tested string
 	// outcome, summary and report say how the fix ended, once it has.
 	outcome, summary, report string
 	// answering is true while the session answers a landing audit's findings. It ends once the work passes the gate,
@@ -56,14 +61,16 @@ type fixing struct {
 	answering bool
 	// since lists the files changed since kiln accept, for the landing commit's body.
 	since []string
+	// ending is held while a session's reply ends the fix, since its two sessions may end at once.
+	ending sync.Mutex
 }
 
 // newFixing is the fix of m, as c, kiln.json at main's tip when it started, says. found is what its check found. A
-// verify-first fix's sides tell the tests apart by kiln.json's testFiles, its testHelpers and its acceptance paths.
+// fix with a verify session tells the tests apart by kiln.json's testFiles, its testHelpers and its acceptance paths.
 func newFixing(c config, m monitor, found checked) *fixing {
 	fixes := side{role: fixRole}
 	switch {
-	case m.Workflow == verifyFirst:
+	case orderOf(m.Workflow).isolated():
 		fixes.tests, fixes.acceptance, fixes.helpers = c.TestFiles, c.fixedParts(), c.TestHelpers
 	case !m.WritesTests:
 		fixes.acceptance = c.fixedParts()
@@ -128,7 +135,17 @@ func (r *Repo) startFix(out io.Writer, f *fixing, line entry) (*build, error) {
 		return nil, err
 	}
 
-	return &build{r: r, rec: rec, tree: r.tree(m.Name), out: out, fix: f}, nil
+	return &build{r: r, rec: rec, tree: r.tree(m.Name), out: out, fix: f, order: orderOf(m.Workflow), job: f}, nil
+}
+
+// sideOf is what the session at the seat s of f may write.
+func (f *fixing) sideOf(s seatName) side {
+	own := f.side
+	if s == verifySeat {
+		own.role = verifyRole
+	}
+
+	return own
 }
 
 // fixRun runs the fix of b, whose record the book holds, until it ends.
@@ -136,58 +153,82 @@ func (b *build) fixRun(ctx context.Context) error {
 	return b.fixSettle(ctx, b.fixWork(ctx))
 }
 
-// fixWork runs the fix: the command first, then the agent when the command left the gate failing. A verify-first fix
-// runs its verify session first, and its agent from the tests kiln proved.
+// fixWork starts the fix from main's tip, as the monitor line says, and runs it until it ends. A fix with a command
+// runs it first, and its agent when the command left the gate failing. An isolated workflow starts its verify
+// session too.
 func (b *build) fixWork(ctx context.Context) error {
-	name, m, from := b.rec.Name, b.fix.monitor, b.rec.Approved
-	if m.Workflow == verifyFirst {
-		tested, err := b.writeTests(ctx)
-		if err != nil || tested == "" {
-			return err
-		}
-
-		from = tested
-	}
-
-	if err := b.r.git.Checkout(ctx, b.tree, name.branch(), from); err != nil {
+	if err := b.r.dropCheckouts(ctx, b.rec.Name); err != nil {
 		return err
 	}
 
-	b.say("fixing on %s, in %s", name.branch(), b.tree)
-	if !m.command {
-		return b.fixAgent(ctx, "")
+	if err := b.r.git.Checkout(ctx, b.tree, b.rec.Name.branch(), b.rec.Approved); err != nil {
+		return err
 	}
 
-	v, err := b.commandGate(ctx)
+	if err := b.cloneVerify(ctx); err != nil {
+		return err
+	}
+
+	b.saysWhere()
+	report, err := b.commanded(ctx)
+	if err != nil || report == nil {
+		return err
+	}
+
+	first, verify := b.fix.prompt(*report), b.fix.verifyPrompt()
+	isolated := b.order.isolated()
+	b.set(func(r *record) {
+		r.Code = seat{Session: claude.NewID()}
+		owe(r, codeSeat, message{Text: first, Why: whyFirst})
+		if isolated {
+			r.Verify = seat{Session: claude.NewID()}
+			owe(r, verifySeat, message{Text: verify, Why: whyFirst})
+		}
+	})
+
+	return b.work(ctx)
+}
+
+// commanded runs the monitor's command, where it holds one, then commits and gates its work. It answers the report
+// that the agent's first message holds. That is "" with no command, or the gate's report after the command. It answers
+// nil once the fix ended with no session: the command's work passed, or no agent may fix it.
+func (b *build) commanded(ctx context.Context) (*string, error) {
+	m := b.fix.monitor
+	if !m.command {
+		return new(""), nil
+	}
+
+	v, head, err := b.commandGate(ctx)
 	switch {
 	case err != nil:
-		return err
+		return nil, err
 	case v.passed:
-		_, _, err := b.fixAfter(ctx)
-		return err
+		_, err := b.job.passed(ctx, b, head)
+		return nil, err
 	case !m.agent:
-		return &outOfRounds{stop{Why: "the gate failed after the monitor's command:\n" + v.report, Failing: v.failing}}
+		return nil, &outOfRounds{stop{Why: "the gate failed after the monitor's command:\n" + v.report,
+			Failing: v.failing}}
 	}
 
-	return b.fixAgent(ctx, v.report)
+	return &v.report, nil
 }
 
 // commandGate runs the monitor's command in the fix's worktree, outside the sandbox, then commits and gates its work.
 // A command that ran past kiln.json's timeout stops the fix. Its half-done work is no work to gate.
-func (b *build) commandGate(ctx context.Context) (verdict, error) {
+func (b *build) commandGate(ctx context.Context) (verdict, git.Rev, error) {
 	_, c, err := b.r.mainConfig(ctx)
 	if err != nil {
-		return verdict{}, err
+		return verdict{}, "", err
 	}
 
 	command := b.fix.monitor.path(commandScript)
 	out, err := c.shell(b.r.env).run(ctx, b.tree, command)
 	if ctx.Err() != nil {
-		return verdict{}, ctx.Err()
+		return verdict{}, "", ctx.Err()
 	}
 
 	if _, past := errors.AsType[*ranPast](err); past {
-		return verdict{}, fmt.Errorf("the monitor's command %q %w", command, err)
+		return verdict{}, "", fmt.Errorf("the monitor's command %q %w", command, err)
 	}
 
 	if err != nil {
@@ -196,66 +237,17 @@ func (b *build) commandGate(ctx context.Context) (verdict, error) {
 
 	head, err := b.r.git.Commit(ctx, b.tree, b.message("the command's work"))
 	if err != nil {
-		return verdict{}, err
+		return verdict{}, "", err
 	}
 
-	return b.gate(ctx, head)
+	v, err := b.gate(ctx, head)
+	return v, head, err
 }
 
 // lastLines is the last n lines of text.
 func lastLines(text string, n int) string {
 	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
 	return strings.Join(lines[max(0, len(lines)-n):], "\n")
-}
-
-// fixAgent runs the monitor's agent until the fix ends. gateReport is what the gate printed after the command, or "".
-func (b *build) fixAgent(ctx context.Context, gateReport string) error {
-	b.set(func(r *record) { r.Session = claude.NewID() })
-	return b.fixTurns(ctx, b.fix.prompt(gateReport), reason{Why: whyFirst})
-}
-
-// fixTurns tells the agent's session prompt, for why. kiln commits and gates each turn's work, and tells the session
-// what goes back, until nothing does. A prompt of "" tells it nothing.
-func (b *build) fixTurns(ctx context.Context, prompt string, why reason) error {
-	for prompt != "" {
-		l, err := b.fixLaunch(ctx, prompt)
-		if err != nil {
-			return err
-		}
-
-		ended, err := b.fixTalk(ctx, l, why)
-		if err != nil || b.fix.heard(ended, b.r.claude.Stderr(l.Session)) {
-			return err
-		}
-
-		// A landing keeps the title of the fix the developer accepted.
-		if title := titleOf(ended.Text); title != "" && !b.rec.Accepted {
-			b.set(func(r *record) { r.Title = title })
-		}
-
-		if prompt, why, err = b.fixGate(ctx); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-// fixTalk runs the session l launches, as talk does. In a landing, the record marks the session's turn running
-// until the turn ends, with what l tells it. An interrupt, a killed kiln or a usage limit leaves the mark, for landFix.
-func (b *build) fixTalk(ctx context.Context, l claude.Launch, why reason) (claude.Ended, error) {
-	if !b.rec.Accepted {
-		return b.talk(ctx, l, why)
-	}
-
-	from, _ := b.r.claude.Streamed(l.Session)
-	b.set(func(r *record) { r.Running, r.Telling, r.From = []string{l.Role}, l.Prompt, from })
-	ended, err := b.talk(ctx, l, why)
-	if err == nil {
-		b.set(func(r *record) { r.Running, r.Telling, r.From = nil, "", 0 })
-	}
-
-	return ended, err
 }
 
 // prompt is the agent's first message. It holds what the check or the gauge printed, and what the gate printed after
@@ -272,10 +264,6 @@ func (f *fixing) prompt(gateReport string) string {
 		parts = append(parts, fmt.Sprintf(commandFailed, m.path(commandScript), gateReport))
 	}
 
-	if f.tested != "" {
-		parts = append(parts, f.tested)
-	}
-
 	parts = append(parts, fmt.Sprintf(fixWhat, m.Name))
 	return strings.Join(parts, "\n\n")
 }
@@ -286,9 +274,18 @@ var foundBy = map[string]string{
 	gaugeScript: "The monitor's gauge, `%s`, crossed its line over the whole repository: %s\n\nIt printed:\n\n%s",
 }
 
-// heard reads how a turn of the agent's session ended. It answers true once that ends the fix. The session failed,
+// verifyPrompt is the verify session's first message. It holds what the monitor's check printed, and nothing of a
+// fix.
+func (f *fixing) verifyPrompt() string {
+	m := f.monitor
+	found := fmt.Sprintf(foundBy[checkScript], m.path(checkScript), f.checked.summary, cmpOr(f.checked.found,
+		"(nothing)"))
+	return found + "\n\n" + fmt.Sprintf(verifyWhat, m.Name)
+}
+
+// endedBy reads how a run of a session of the fix ended. It answers true once that ends the fix. The session failed,
 // or asked for the developer. stderr is what the session wrote to its standard error.
-func (f *fixing) heard(ended claude.Ended, stderr string) bool {
+func (f *fixing) endedBy(ended claude.Ended, stderr string) bool {
 	if ended.Failed {
 		last, _ := lastOf(stderr)
 		why := cmpOr(strings.TrimSpace(ended.Text), last)
@@ -349,102 +346,152 @@ func jsonLine(line string, v any) bool {
 	return strings.HasPrefix(line, "{") && json.Unmarshal([]byte(line), v) == nil
 }
 
-// fixGate commits what the agent's session left, gates it, and takes the fix on from the verdict. It answers what to
-// tell the session next, and why, or "" once the fix has ended. A landing whose work changes nothing on main stops
-// before the gate, which could only send it back.
-func (b *build) fixGate(ctx context.Context) (string, reason, error) {
-	if _, back, err := b.sessionWork(ctx); err != nil || back.why != "" {
-		return b.roundFor(back, err)
+func (f *fixing) launch(ctx context.Context, b *build, s seatName, prompt string) (claude.Launch, error) {
+	if s == verifySeat {
+		return b.verifyLaunch(ctx, prompt)
 	}
 
-	if b.rec.Accepted {
-		if _, changed, err := b.fixChanged(ctx); err != nil || !changed {
-			return "", reason{}, cmpOr(err, error(&outOfRounds{stop{Why: nothingToLand}}))
-		}
-	}
-
-	v, err := b.gate(ctx, "")
-	switch {
-	case err != nil:
-		return "", reason{}, err
-	case !v.passed:
-		return b.round(setback{why: whyGate, report: v.report, failing: v.failing})
-	}
-
-	return b.fixAfter(ctx)
+	return b.fixLaunch(ctx, prompt)
 }
 
-// fixAfter takes a fix on once its gate passed. Work that changes nothing ends unchanged. An agent's work gets the
-// audit. Then a fix of a monitor with "mustAccept": true waits on its branch, until the developer accepts it. Any other
-// lands, as does an accepted fix's landing. A setback goes back to the session, or stops a fix with none.
-func (b *build) fixAfter(ctx context.Context) (string, reason, error) {
+// heard ends the fix once the session failed, or asked for the developer. Otherwise the fix session's reply may
+// title the landing. A landing keeps the title of the fix the developer accepted.
+func (f *fixing) heard(b *build, s seatName, ended claude.Ended) answer {
+	rec := b.now()
+	f.ending.Lock()
+	over := f.endedBy(ended, b.r.claude.Stderr(rec.seat(s).Session))
+	f.ending.Unlock()
+	if over {
+		return answer{over: true}
+	}
+
+	if s != codeSeat || rec.Accepted {
+		return answer{}
+	}
+
+	return answer{title: titleOf(ended.Text)}
+}
+
+func (*fixing) asks() string { return "what the monitor found" }
+
+// gates is whether the fix's work at head needs the gate and the audit before it lands. A landing's work needs them
+// once it changed a file outside .kiln/ the audit has not read. It needs a session to answer, too. A landing whose
+// work changes nothing on main stops, since the gate could only send it back.
+func (f *fixing) gates(ctx context.Context, b *build, head git.Rev) (bool, error) {
+	rec := b.now()
+	if !rec.Accepted {
+		return true, nil
+	}
+
+	if _, changed, err := b.fixChanged(ctx); err != nil || !changed {
+		return false, cmpOr(err, error(&outOfRounds{stop{Why: nothingToLand}}))
+	}
+
+	unread, err := b.unread(ctx, head)
+	return unread && rec.Code.Session != "", err
+}
+
+// audited runs the audit of the fix's work, as fixFindings does. A session wrote the work, since the command's work
+// alone never reaches the audit. Until the developer accepts the fix, a verify session answers the findings first.
+func (f *fixing) audited(ctx context.Context, b *build) (bool, error) {
+	verifies := f.verifierAnswers(b, b.now().Accepted)
+	return b.fixFindings(ctx, func(r *record, findings string, why reason) {
+		if !verifies {
+			owe(r, codeSeat, message{Text: fmt.Sprintf(fixAudited, findings), reason: why})
+			return
+		}
+
+		owe(r, verifySeat, message{Text: fmt.Sprintf(testsAudited, findings), reason: why})
+		owe(r, codeSeat, message{Text: fmt.Sprintf(fixAuditedTests, findings), reason: why})
+	})
+}
+
+// passed takes a fix on once its gate passed. Work that changes nothing ends unchanged. A fix of a monitor with
+// "mustAccept": true then waits on its branch, until the developer accepts it. Any other lands, as does an accepted
+// fix's landing.
+func (f *fixing) passed(ctx context.Context, b *build, _ git.Rev) (setback, error) {
 	head, changed, err := b.fixChanged(ctx)
 	switch {
 	case err != nil:
-		return "", reason{}, err
+		return setback{}, err
 	case !changed:
-		b.fix.end(outUnchanged, "", "")
-		return "", reason{}, nil
-	}
-
-	if b.rec.Session != "" {
-		findings, why, err := b.fixFindings(ctx)
-		switch {
-		case err != nil:
-			return "", reason{}, err
-		case findings != "":
-			return b.sendFindings(ctx, findings, why)
-		}
-	}
-
-	if b.fix.monitor.MustAccept && !b.rec.Accepted {
-		b.fix.end(outWaits, "", "")
-		return "", reason{}, nil
+		f.end(outUnchanged, "", "")
+		return setback{}, nil
+	case f.monitor.MustAccept && !b.now().Accepted:
+		f.end(outWaits, "", "")
+		return setback{}, nil
 	}
 
 	return b.fixLand(ctx, head)
 }
 
+// goneBack sends a landing's setback back to the fix session. Main moved, so kiln first merges it into the verify
+// session's clone. A conflict there stops the fix, since the fix session writes no test.
+func (f *fixing) goneBack(ctx context.Context, b *build, back setback) error {
+	f.answering = false
+	if err := b.mergeVerify(ctx, back); err != nil {
+		return err
+	}
+
+	return b.goBack(codeSeat, back)
+}
+
+// verifierAnswers is whether the verify session of f answers the audit. It does in an isolated workflow, until the
+// developer accepts the fix and its tests.
+func (f *fixing) verifierAnswers(b *build, accepted bool) bool {
+	return !accepted && b.order.isolated()
+}
+
+// auditNote is what the audit is told of the fix's tests, where its verify session answers the audit, or "".
+func (f *fixing) auditNote(b *build) string {
+	if !f.verifierAnswers(b, b.now().Accepted) {
+		return ""
+	}
+
+	return fmt.Sprintf(auditingTests, strings.TrimSpace(f.checked.summary+"\n\n"+f.checked.found))
+}
+
 // nothingToLand is why a landing stopped, once the fix's work changes nothing on main.
 const nothingToLand = "the work changes nothing on main, so nothing lands"
 
-// fixFindings runs the audit of the fix, as findings does. A landing's audit reads what changed since kiln accept. It
-// runs once the work's own change outside .kiln/ differs from what the audit last read. It spends no round. The
-// session's answer to its findings moves Audited with no audit, but for a path kiln.json's reaudit names.
-func (b *build) fixFindings(ctx context.Context) (string, reason, error) {
+// fixFindings runs the audit of the fix, as findings does, and owes its findings as route says. A landing's audit
+// reads what changed since kiln accept. It runs once the work's own change outside .kiln/ differs from what the audit
+// last read. It spends no round. The session's answer to its findings moves Audited with no audit, but for a path
+// kiln.json's reaudit names. It answers whether the audit found any.
+func (b *build) fixFindings(ctx context.Context, route func(r *record, findings string, why reason)) (bool, error) {
 	if !b.rec.Accepted {
-		return b.findings(ctx)
+		return b.findings(ctx, route)
 	}
 
 	head, err := b.r.git.Head(ctx, b.tree)
 	if err != nil {
-		return "", reason{}, err
+		return false, err
 	}
 
 	answer := b.fix.answering
 	b.fix.answering = false
 	unread, err := b.unread(ctx, head)
-	findings, why := "", reason{Why: whyFindings}
+	found := false
 	switch {
 	case err != nil:
-		return "", reason{}, err
+		return false, err
 	case answer:
 		// The guide says not to audit the fix for an audit finding.
-		findings, why, err = b.findings(ctx)
+		found, err = b.findings(ctx, route)
 	case unread:
-		findings, err = b.audit(ctx)
+		found, err = b.audit(ctx, func(r *record, findings string) { route(r, findings, reason{Why: whyFindings}) })
 	}
 
 	if err != nil {
-		return "", reason{}, err
+		return false, err
 	}
 
 	if answer {
 		b.set(func(r *record) { r.Audited = head })
 	}
 
-	b.fix.answering = findings != ""
-	return findings, why, nil
+	b.fix.answering = found
+	return found, nil
 }
 
 // unread is whether the work at head changed a file outside .kiln/ since the commit the audit last read.
@@ -458,33 +505,30 @@ func outsideKiln(p string) bool {
 	return !strings.HasPrefix(p, kilnDir+"/")
 }
 
-// fixLand lands the fix at head. A setback goes back to the session, or stops a fix with none. A failed landing
+// fixLand lands the fix at head. It answers a setback for the session, or stops a fix with none. A failed landing
 // gate goes back with main merged in, as fixMergeMain says. Work that changes nothing on main stops a landing.
-func (b *build) fixLand(ctx context.Context, head git.Rev) (string, reason, error) {
+func (b *build) fixLand(ctx context.Context, head git.Rev) (setback, error) {
 	if err := b.sinceAccept(ctx, head); err != nil {
-		return "", reason{}, err
+		return setback{}, err
 	}
 
 	landed, back, err := b.land(ctx, head, nil)
 	switch {
 	case err != nil:
-		return "", reason{}, err
+		return setback{}, err
 	case back.report == "":
 		b.landed = landed
 		b.fix.end(outLanded, "", "")
-		return "", reason{}, nil
-	case b.rec.Session == "":
-		return "", reason{}, aloneStops(back)
+		return setback{}, nil
+	case b.now().Code.Session == "":
+		return setback{}, aloneStops(back)
 	case back.why == whyUnchanged && b.rec.Accepted:
-		return "", reason{}, &outOfRounds{stop{Why: nothingToLand}}
+		return setback{}, &outOfRounds{stop{Why: nothingToLand}}
 	case back.why == whyLanding:
-		if back, err = b.fixMergeMain(ctx, back); err != nil {
-			return "", reason{}, err
-		}
+		return b.fixMergeMain(ctx, back)
 	}
 
-	b.fix.answering = false
-	return b.round(back)
+	return back, nil
 }
 
 // aloneStops is the stop of a fix with no session, which back kept from landing. No session resolves a conflict.
@@ -542,14 +586,15 @@ func (b *build) fixChanged(ctx context.Context) (head git.Rev, changed bool, err
 
 // landFix lands a fix the developer accepted. It is rebased onto main, and gated again, check included. Then main
 // moves onto it if main hasn't moved. A conflict or a failed gate goes back to the fix's session, as fixLand says.
-// It stops a fix with none. kiln accept tries a stopped landing again, and kiln reject drops it.
+// It stops a fix with none. kiln accept tries a stopped landing again, and kiln reject drops it. A run kiln cut
+// short is told again first, as work says.
 func (b *build) landFix(ctx context.Context) error {
 	f, err := b.r.fixOf(ctx, b.rec)
 	if err != nil {
 		return err
 	}
 
-	b.fix = f
+	b.fix, b.job, b.order = f, f, orderOf(f.monitor.Workflow)
 	if err := b.unland(ctx); err != nil {
 		return err
 	}
@@ -558,29 +603,7 @@ func (b *build) landFix(ctx context.Context) error {
 		return err
 	}
 
-	rec := b.now()
-	if rec.Session != "" && len(rec.Running) > 0 {
-		// A turn kiln cut short may have left a merge half done. kiln never commits that as the session's work.
-		return b.fixTurns(ctx, b.cutShort(rec), reason{Why: whyInterrupted, Round: rec.Rounds})
-	}
-
-	next, why, err := b.fixLanding(ctx)
-	if err != nil {
-		return err
-	}
-
-	return b.fixTurns(ctx, next, why)
-}
-
-// cutShort is what kiln tells the session of rec, a landing whose turn kiln cut short. A turn that never began gets
-// the message it was told, since the session never read it. Any other goes on where it stopped.
-func (b *build) cutShort(rec record) string {
-	streamed, err := b.r.claude.Streamed(rec.Session)
-	if err == nil && streamed == rec.From {
-		return rec.Telling
-	}
-
-	return interrupted
+	return b.work(ctx)
 }
 
 // acceptedBefore gives an accepted commit to a landing that stopped before kiln kept one. It takes the branch's tip,
@@ -598,25 +621,6 @@ func (b *build) acceptedBefore(ctx context.Context) error {
 
 	b.set(func(r *record) { r.AcceptedAt, r.Audited = tip, tip })
 	return nil
-}
-
-// fixLanding commits what the fix's worktree holds, which a session the developer resumed there may have left. Work
-// the audit has read lands. Any other is gated and audited first. It answers what goes back to the session, and why.
-func (b *build) fixLanding(ctx context.Context) (string, reason, error) {
-	head, back, err := b.sessionWork(ctx)
-	if err != nil || back.why != "" {
-		return b.roundFor(back, err)
-	}
-
-	unread, err := b.unread(ctx, head)
-	switch {
-	case err != nil:
-		return "", reason{}, err
-	case unread && b.rec.Session != "":
-		return b.fixGate(ctx)
-	}
-
-	return b.fixLand(ctx, head)
 }
 
 // fixConflicts starts why an accepted fix's landing stopped on a conflict with main, before the files in conflict.
@@ -717,9 +721,24 @@ func (b *build) fixEnded(ctx context.Context) error {
 
 // fixLaunch is a run of the monitor's agent's session, in the fix's worktree. Its hook keeps it off .kiln/, and off
 // the tests the monitor's fix may not write.
+// Beside a verify session, its sandbox denies it reads of the verify session's clone.
 func (b *build) fixLaunch(ctx context.Context, prompt string) (claude.Launch, error) {
-	l := claude.Launch{Session: b.now().Session, Prompt: prompt, System: b.fix.contract(b.rec.Name)}
+	l := claude.Launch{Session: b.now().Code.Session, Prompt: prompt, System: b.fix.contract(b.rec.Name)}
+	if b.order.isolated() {
+		l.DenyRead, l.AllowRead, l.Deny = b.r.blinds(b.rec.Name, b.tree, b.r.clone(b.rec.Name, verifyRole))
+	}
+
 	return b.monitorLaunch(ctx, monitorAgent, b.treeGuard(), l)
+}
+
+// verifyLaunch is a run of the verify session, in its clone, told prompt. Its sandbox denies it reads of the fix's
+// worktree, and of the fix session's transcripts.
+func (b *build) verifyLaunch(ctx context.Context, prompt string) (claude.Launch, error) {
+	g := b.verifyGuard()
+	l := claude.Launch{Session: b.now().Verify.Session, Prompt: prompt,
+		System: fmt.Sprintf(monitorVerifyContract, b.rec.Name, g.side.testWords())}
+	l.DenyRead, l.AllowRead, l.Deny = b.r.blinds(b.rec.Name, g.place, b.tree)
+	return b.monitorLaunch(ctx, verifyAgent, g, l)
 }
 
 // monitorLaunch is l, a run of a session from file, an agent's file of the fix's monitor, in g's place. Its system
@@ -773,6 +792,16 @@ func (f *fixing) contract(name Spec) string {
 }
 
 const (
+	verifyWhat = "Write the tests that fail for what the monitor %s found, as your instructions say, and end your " +
+		"turn. A session of its own then writes the fix."
+	testsAudited = "The audit read the work: your tests, and the fix another session wrote. Answer each finding " +
+		"on your tests with commits to the tests alone, and leave each finding on the code to the fix session. " +
+		"Then end your turn: kiln proves your tests again.\n\n%s"
+	fixAuditedTests = "The audit read the directories the fix and the tests changed. The verify session answered " +
+		"its findings on the tests, and kiln merged its answer here. Fix each finding on the code, or say in your " +
+		"reply why it is wrong. Then end your turn.\n\n%s"
+	auditingTests = " A session of its own wrote the tests from what the monitor's check found, and kiln proved " +
+		"they fail at main. Read each test against that finding, which follows.\n\n%s"
 	gaugeCrossed  = "The monitor's gauge, %s, still crosses its line over what the fix changed: %s"
 	gaugeFailed   = "The monitor's gauge, %s, failed over what the fix changed. Its command, `%s`, wrote:\n\n%s"
 	commandFailed = "The monitor's command, `%s`, ran, and the gate failed after it:\n\n%s"
@@ -791,9 +820,6 @@ const (
 func (b *build) gatedCheck(ctx context.Context, held commands, v verdict) (verdict, error) {
 	switch {
 	case b.fix == nil || !b.fix.monitor.gated():
-		return v, nil
-	case b.fix.verifying():
-		// A verify-first fix's tests must fail the gate before any fix, so its check, which asks for one, waits.
 		return v, nil
 	case b.fix.monitor.finder == gaugeScript:
 		return b.gatedGauge(ctx, held, v)

@@ -3,21 +3,24 @@
 kiln runs this session. The lines below are kiln's, and hold whatever the text above says.
 
 You write the tests of what the monitor `%[1]s` found, before anyone fixes it. You work alone. The developer added the
-monitor, in `.kiln/monitors/%[1]s/`, with the workflow verify-first. Once your tests fail, kiln starts a new session
-that writes the fix in a worktree of its own, and changes no test file. Nobody is at the keyboard, and no question you ask will be answered.
+monitor, in `.kiln/monitors/%[1]s/`, with a verify session. Another session writes the fix in a worktree of its
+own, and changes no test file. It reads your tests once kiln proved they fail on main. Under verify-first it starts
+then. Under build-and-verify it starts beside you. Nobody is at the keyboard, and no question you ask will be
+answered.
 
 ### What your tests do
 
 They fail on main's code, for the reason the monitor found, and pass once that is fixed. When you end your turn, kiln
 commits what you leave. Then it runs the gate, `.kiln/kiln.json`'s commands, at your commit and at main. The gate
 leaves out the monitor's check, and must fail on tests alone. While the gate passes, kiln resumes you with its report.
-kiln does the same while a command fails with no test named, such as when code no longer builds. Write no fix.
+kiln does the same while a command fails with no test named, such as when code no longer builds. A test that does
+not compile on main's code names no failed test, so it proves nothing. Write no fix.
 
 An old test may hold the behavior that the fix will change. Update it to hold what should happen, as part of your
 tests: the fix session changes no test file, so no one else can.
 
 The audit may later send you its findings. Answer each finding on your tests with commits to the tests alone, and end
-your turn. kiln gates your tests again, and merges them into the fix.
+your turn. kiln proves your tests again, and merges them into the fix.
 
 ### What you write
 

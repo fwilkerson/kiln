@@ -1,12 +1,11 @@
 # Neither session sees the other's work.
 
-# Given: the project chooses the workflow build-and-verify, and a spec is queued whose stack fails its gate once.
-# The verify session's first test expects 41, and the build's code answers 42.
+# Given: the project chooses the workflow build-and-verify, and a spec is queued whose audit sends a finding.
 exec kiln queue x
 
 # When: kiln fire builds the spec, and each session lists the files and commits its checkout holds.
-# The verify session lists them once the stack failed, and the build session once the audit sent its findings. By
-# then kiln has fetched both sides into the repository, and stacked them.
+# The build session lists them in its first run, before any join. The verify session lists them once the audit sent
+# its finding, after the build session's work was committed and gated.
 exec kiln fire
 stdout '^x: landed on main'
 exists .claude-calls/verify/1/2/call.json
@@ -17,20 +16,18 @@ grep 'acceptance/x/x_test.go' .claude-calls/verify-listed
 grep 'the verify session''s work' .claude-calls/verify-listed
 ! grep 'x\.go$' .claude-calls/verify-listed
 ! grep 'the build session''s work' .claude-calls/verify-listed
-! grep 'stack' .claude-calls/verify-listed
 grep '^x\.go$' .claude-calls/build-listed
 grep 'the build session''s work' .claude-calls/build-listed
 ! grep 'x_test\.go' .claude-calls/build-listed
 ! grep 'the verify session''s work' .claude-calls/build-listed
-! grep 'stack' .claude-calls/build-listed
 
 # and each session's settings deny it reads of the other's checkout.
-grep '"Read\(/[^"]*/\.build-x/\*\*\)"' .claude-calls/verify/1/1/settings.json
+grep '"Read\(/[^"]*/x/\*\*\)"' .claude-calls/verify/1/1/settings.json
 grep '"denyRead": \[\s*"[^"]*/Library/Caches/kiln/[^"/]*"' .claude-calls/verify/1/1/settings.json
 grep '"allowRead": \[\s*"[^"]*/\.verify-x"\s*\]' .claude-calls/verify/1/1/settings.json
 grep '"Read\(/[^"]*/\.verify-x/\*\*\)"' .claude-calls/build/1/1/settings.json
 grep '"denyRead": \[\s*"[^"]*/Library/Caches/kiln/[^"/]*"' .claude-calls/build/1/1/settings.json
-grep '"allowRead": \[\s*"[^"]*/\.build-x"\s*\]' .claude-calls/build/1/1/settings.json
+grep '"allowRead": \[\s*"[^"]*/x"\s*\]' .claude-calls/build/1/1/settings.json
 
 -- .kiln/kiln.json --
 {"workflow": "build-and-verify"}
@@ -38,25 +35,23 @@ grep '"allowRead": \[\s*"[^"]*/\.build-x"\s*\]' .claude-calls/build/1/1/settings
 {
   "build": {"1": {
     "1": [
-      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/code/.\" ."}}},
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/code/.\" . && git add -A && git commit --quiet -m \"the build session's work\""}}},
+      {"tool": {"name": "Bash", "input": {"command": "{ git ls-files --cached --others; git log --all --format=%s; } >\"$WORK/.claude-calls/build-listed\""}}},
       {"result": {"result": "Built x."}}
     ],
     "2": [
-      {"tool": {"name": "Bash", "input": {"command": "{ git ls-files --cached --others; git log --all --format=%s; } >\"$WORK/.claude-calls/build-listed\""}}},
       {"result": {"result": "The finding is wrong: X answers as the spec says."}}
     ]
   }},
   "verify": {"1": {
     "1": [
-      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/wrong/.\" ."}}},
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/tests/.\" ."}}},
       {"result": {"result": "Wrote the tests of x."}}
     ],
     "2": [
       {"tool": {"name": "Bash", "input": {"command": "{ git ls-files --cached --others; git log --all --format=%s; } >\"$WORK/.claude-calls/verify-listed\""}}},
-      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/tests/.\" ."}}},
-      {"result": {"result": "My test misread the spec: it answers 42.\nbugs: none"}}
-    ],
-    "3": [{"result": {"result": "The finding is wrong."}}]
+      {"result": {"result": "The finding is on the code, not the tests."}}
+    ]
   }},
   "audit": {"1": {"1": [{"result": {"audit": {"read": 2, "findings": [{"path": "x.go", "line": 5, "kind": "false comment", "harm": "a stale doc"}]}}}]}}
 }
@@ -72,31 +67,18 @@ package scratch
 
 // X answers 42.
 func X() int { return 42 }
--- _given/wrong/acceptance/x/x_test.go --
-package x_test
-
-import (
-	"testing"
-
-	"example.com/scratch"
-)
-
-func TestAT1(t *testing.T) {
-	if got := scratch.X(); got != 41 {
-		t.Fatalf("X answers %d, want 41", got)
-	}
-}
 -- _given/tests/acceptance/x/x_test.go --
 package x_test
 
 import (
+	"os"
+	"strings"
 	"testing"
-
-	"example.com/scratch"
 )
 
 func TestAT1(t *testing.T) {
-	if got := scratch.X(); got != 42 {
-		t.Fatalf("X answers %d, want 42", got)
+	code, err := os.ReadFile("../../x.go")
+	if !strings.Contains(string(code), "return 42") {
+		t.Fatalf("x.go does not answer 42, want 42: %v", err)
 	}
 }

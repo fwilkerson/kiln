@@ -1,7 +1,13 @@
-A spec's build in build-and-verify runs its two sessions at once, and lands on main.
+A spec's build in build-and-verify runs its two sessions at once, proves the verify session's tests, and lands on main.
 
 -- .kiln/kiln.json --
-{"gate": ["true"], "workflow": "build-and-verify", "acceptanceTests": "acceptance/{spec}/"}
+{"gate": ["sh gate.sh"], "workflow": "build-and-verify", "acceptanceTests": "acceptance/{spec}/"}
+-- gate.sh --
+# The acceptance test of v fails while v.go is missing, as JUnit XML names it.
+if [ -f acceptance/v/v.txt ] && [ ! -f v.go ]; then
+  echo '<testsuite><testcase name="TestAT1"><failure/></testcase></testsuite>' >"$KILN_JUNIT"
+  exit 1
+fi
 -- .kiln/specs/v.md --
 ### 1. V answers
 

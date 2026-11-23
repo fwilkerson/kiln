@@ -227,7 +227,7 @@ var (
 // drops a line of it. It fills in the spec's name, its acceptance paths and the harness, each path in backticks.
 func (s sides) contract(role string, name Spec) string {
 	text := map[string]string{buildRole: buildContract, verifyRole: verifyContract, auditRole: auditContract}[role]
-	if role == buildRole && s.split {
+	if role == buildRole && s.order.isolated() {
 		text = splitContract
 	}
 
@@ -260,7 +260,7 @@ func (b *build) agentLaunch(ctx context.Context, role string, l claude.Launch) (
 	}
 
 	body := a.body
-	if role == buildRole && !s.split {
+	if role == buildRole && !s.order.isolated() {
 		v, err := b.agentAt(ctx, verifyRole)
 		if err != nil {
 			return l, err
@@ -291,9 +291,10 @@ func (b *build) agentAt(ctx context.Context, role string) (agent, error) {
 	return b.r.filesAt(b.rec.Approved).agent(ctx, agentFile(role), fix)
 }
 
-// sides is what each session of a build may write, as kiln.json at the build's approval says.
+// sides is what each session of a build may write, as kiln.json at the build's approval says. order is when its
+// sessions run.
 type sides struct {
-	split bool
+	order order
 	// acceptance holds the spec's acceptance paths, with its name filled in.
 	acceptance []string
 	helpers    []string
@@ -310,7 +311,7 @@ func (b *build) sides(ctx context.Context) (sides, error) {
 		return sides{}, err
 	}
 
-	s := sides{split: c.Workflow == buildAndVerify, acceptance: c.acceptancePaths(b.rec.Name), helpers: c.TestHelpers}
+	s := sides{order: orderOf(c.Workflow), acceptance: c.acceptancePaths(b.rec.Name), helpers: c.TestHelpers}
 	b.side = &s
 	return s, nil
 }

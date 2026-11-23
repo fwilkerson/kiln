@@ -249,7 +249,7 @@ func TestTestFiles(t *testing.T) {
 			shell(t, repo, "git checkout --quiet --detach "+from+" && "+tc.change+
 				" && git add -A && git commit --quiet -m fix")
 			g.head = git.Rev(shell(t, repo, "git rev-parse HEAD"))
-			refused, _, err := r.refused(t.Context(), g, git.Rev(main), nil)
+			refused, _, err := r.refused(t.Context(), g, git.Rev(main))
 			if got := slices.Sorted(maps.Keys(refused)); err != nil || !slices.Equal(got, tc.refused) {
 				t.Errorf("the gate refused %q, %v; want %q", got, err, tc.refused)
 			}
@@ -630,11 +630,12 @@ func givenBook(given string) book {
 
 	given, landing := strings.CutSuffix(given, " landing")
 	given, fix := strings.CutPrefix(given, "fix ")
-	r := &record{Name: "x", State: state(given), Accepted: landing, Approved: "old", Session: "s", Build: "b",
-		Rounds: 2, Limit: new(3), Audited: "read", Why: "w", FailingAtMain: []string{"TestF"}, Monitor: fix,
-		AcceptedAt: "taken", Title: "fix(x): t", Running: []string{"m"}}
+	r := &record{Name: "x", State: state(given), Accepted: landing, Approved: "old", Build: "b", Limit: new(3),
+		Code:    seat{Session: "s", Rounds: 2, Owed: []message{{Text: "m"}}},
+		Audited: "read", Why: "w", FailingAtMain: []string{"TestF"}, Monitor: fix, AcceptedAt: "taken",
+		Title: "fix(x): t"}
 	if fix {
-		r.VerifyFirst, r.Tested = "t", "proved"
+		r.Verify, r.Tested = seat{Session: "t"}, "proved"
 	}
 
 	return book{Specs: []*record{r}}
@@ -716,15 +717,15 @@ type carried struct {
 	failingAtMain              bool
 	// landing is what a landing keeps to go back to its session: its limit, title, accepted commit and cut turns.
 	landing bool
-	// tested is a verify-first fix's verify session and proved tests.
+	// tested is a fix's verify session and proved tests.
 	tested bool
 }
 
 func carriedOf(r *record) carried {
-	landing := r.Limit != nil && r.Title != "" && r.AcceptedAt != "" && r.Running != nil
-	return carried{approved: r.Approved, session: r.Session, why: r.Why, oldBuild: r.Build == "b",
-		noBuild: r.Build == "", audited: r.Audited != "", rounds: r.Rounds, failingAtMain: r.FailingAtMain != nil,
-		landing: landing, tested: r.VerifyFirst == "t" && r.Tested == "proved"}
+	landing := r.Limit != nil && r.Title != "" && r.AcceptedAt != "" && len(r.Code.Owed) > 0
+	return carried{approved: r.Approved, session: r.Code.Session, why: r.Why, oldBuild: r.Build == "b",
+		noBuild: r.Build == "", audited: r.Audited != "", rounds: r.rounds(), failingAtMain: r.FailingAtMain != nil,
+		landing: landing, tested: r.Verify.Session == "t" && r.Tested == "proved"}
 }
 
 // thenOf words the state of r as a row's then does.
@@ -868,7 +869,7 @@ func TestCommandsLock(t *testing.T) {
 func TestNext(t *testing.T) {
 	b := book{Specs: []*record{{Name: "y", State: queued}, {Name: "x", State: queued, Accepted: true},
 		{Name: "z", State: queued, Accepted: true},
-		{Name: "o", State: queued, Session: "s", Owed: "go on", Tended: true}}}
+		{Name: "o", State: queued, Code: seat{Session: "s", Owed: []message{{Text: "go on"}}}, Tended: true}}}
 	var took []Spec
 	for {
 		r, found := b.next(specsLane, "z", 1)
@@ -917,7 +918,7 @@ func TestNextFix(t *testing.T) {
 // TestHaltedTendedBuild holds that a build kiln tend queued again, once a kiln took it and halted, waits for kiln
 // fire. A kiln accept of another spec takes its own landing alone, though the build still owes its message.
 func TestHaltedTendedBuild(t *testing.T) {
-	b := book{Specs: []*record{{Name: "x", State: stopped, Session: "s", Why: "w"},
+	b := book{Specs: []*record{{Name: "x", State: stopped, Code: seat{Session: "s"}, Why: "w"},
 		{Name: "y", State: queued, Accepted: true}}}
 	if err := b.resume("x", "a note"); err != nil {
 		t.Fatal(err)
@@ -934,8 +935,8 @@ func TestHaltedTendedBuild(t *testing.T) {
 		took = append(took, r.Name)
 	}
 
-	if !slices.Equal(took, []Spec{"y"}) || b.find("x").Owed == "" {
-		t.Errorf("kiln accept y took %q, and x owes %q; want y alone, and x still owing", took, b.find("x").Owed)
+	if !slices.Equal(took, []Spec{"y"}) || len(b.find("x").Code.Owed) == 0 {
+		t.Errorf("kiln accept y took %q, and x owes %+v; want y alone, and x still owing", took, b.find("x").Code.Owed)
 	}
 }
 
@@ -991,16 +992,16 @@ func TestSetKeepsItsBuild(t *testing.T) {
 	}
 
 	b := &build{r: r, rec: record{Name: "x", State: landed, Build: "old"}, out: io.Discard}
-	b.set(func(r *record) { r.Rounds++ }, entry{Kind: gaugeKind, Gauge: "g"})
+	b.set(func(r *record) { r.Code.Rounds++ }, entry{Kind: gaugeKind, Gauge: "g"})
 	k, _ := r.store.read()
 	read, _ := r.store.entries()
 	if len(read) != 1 {
 		t.Fatalf("the ledger holds %d lines, want the gauge line alone", len(read))
 	}
 
-	if !claim.Holds(read[0].Build == "old", b.rec.Build == "old", k.find("x").Rounds == 0) {
+	if !claim.Holds(read[0].Build == "old", b.rec.Build == "old", k.find("x").Code.Rounds == 0) {
 		t.Errorf("the landed build wrote its line as %q, goes on as %q, and left the new record at round %d; want "+
-			"old, old and 0", read[0].Build, b.rec.Build, k.find("x").Rounds)
+			"old, old and 0", read[0].Build, b.rec.Build, k.find("x").Code.Rounds)
 	}
 }
 
@@ -1019,10 +1020,10 @@ func TestSetAppliesOnce(t *testing.T) {
 
 	var said strings.Builder
 	b := &build{r: r, rec: record{Name: "x", State: building}, out: &said}
-	b.set(func(r *record) { r.Rounds++ })
-	if b.rec.Rounds != 1 || said.Len() == 0 {
+	b.set(func(r *record) { r.Code.Rounds++ })
+	if b.rec.Code.Rounds != 1 || said.Len() == 0 {
 		t.Errorf("the build's copy is at round %d, and kiln said %q; want round 1, and that kiln could not record it",
-			b.rec.Rounds, said.String())
+			b.rec.Code.Rounds, said.String())
 	}
 }
 
@@ -1032,7 +1033,7 @@ func TestTakeRequeuesOnce(t *testing.T) {
 	r := &Repo{store: store{dir: t.TempDir()}}
 	in := inLane{lane: specsLane, unlock: func() {}}
 	err := r.store.update(func(b *book) error {
-		b.Specs = []*record{{Name: "fresh", State: queued}, {Name: "left", State: building, Session: "s"}}
+		b.Specs = []*record{{Name: "fresh", State: queued}, {Name: "left", State: building, Code: seat{Session: "s"}}}
 		return nil
 	})
 
@@ -1079,7 +1080,7 @@ func TestAcceptDuringReinstall(t *testing.T) {
 
 	defer release()
 	r := &Repo{store: store{dir: t.TempDir()}}
-	stopped := record{Name: "x", State: stopped, Accepted: true, Build: "b", Rounds: 1, Why: "w"}
+	stopped := record{Name: "x", State: stopped, Accepted: true, Build: "b", Code: seat{Rounds: 1}, Why: "w"}
 	if err := r.store.update(func(b *book) error { b.Specs = []*record{&stopped}; return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -1212,8 +1213,9 @@ func waitingFix(t *testing.T) (r *Repo, repo string, main git.Rev) {
 	}
 
 	shell(t, string(r.tree("c")), "echo fixed >fix.txt && git add fix.txt && git commit --quiet -m 'fix(c): f'")
-	given(t, r, []*record{{Name: "c", State: waiting, Monitor: true, Build: "b1", Session: "s1", Approved: main,
-		Title: "fix(c): f"}}, nil)
+	given(t, r, []*record{{Name: "c", State: waiting, Monitor: true, Build: "b1", Code: seat{Session: "s1"},
+		Approved: main,
+		Title:    "fix(c): f"}}, nil)
 	return r, repo, main
 }
 
@@ -1355,23 +1357,23 @@ func TestNextStep(t *testing.T) {
 			rec: record{State: amended}, commands: []string{"accept", "reject"},
 		},
 		"stopped past its last round": {
-			rec: record{State: stopped, Session: "s", Why: why}, commands: []string{"queue", "tend"},
+			rec: record{State: stopped, Code: seat{Session: "s"}, Why: why}, commands: []string{"queue", "tend"},
 			says: "kiln queue x, which builds anew",
 		},
 		"stopped for a kiln error": {
-			rec:      record{State: stopped, Session: "s", Why: couldNotGoOn + "no disk", Kind: stopKiln},
+			rec:      record{State: stopped, Code: seat{Session: "s"}, Why: couldNotGoOn + "no disk", Kind: stopKiln},
 			commands: []string{"queue", "tend"},
 		},
 		"a build in build-and-verify stopped": {
-			rec: record{State: stopped, Session: "s", Verify: "v", Why: why}, commands: []string{"queue", "tend"},
+			rec: record{State: stopped, Code: seat{Session: "s"}, Verify: seat{Session: "v"}, Why: why}, commands: []string{"queue", "tend"},
 		},
 		"stopped before its session began": {rec: record{State: stopped, Why: why}, commands: []string{"queue", "tend"}},
 		"a landing of accepted amendments stopped past its last round": {
-			rec:      record{State: stopped, Accepted: true, Session: "s", Why: why},
+			rec:      record{State: stopped, Accepted: true, Code: seat{Session: "s"}, Why: why},
 			commands: []string{"accept", "reject", "tend"},
 		},
 		"a landing of accepted amendments stopped for a kiln error": {
-			rec: record{State: stopped, Accepted: true, Session: "s", Why: couldNotGoOn + "main's checkout",
+			rec: record{State: stopped, Accepted: true, Code: seat{Session: "s"}, Why: couldNotGoOn + "main's checkout",
 				Kind: stopKiln},
 			commands: []string{"accept", "reject", "tend"},
 		},
@@ -1392,13 +1394,13 @@ func TestNextStep(t *testing.T) {
 			rec: record{State: building, Accepted: true, Monitor: true}, says: "run kiln monitor run x, which lands it",
 		},
 		"a fix building": {
-			rec: record{State: building, Monitor: true, Session: "s", runner: runner{PID: os.Getpid()}}, says: "wait",
+			rec: record{State: building, Monitor: true, Code: seat{Session: "s"}, runner: runner{PID: os.Getpid()}}, says: "wait",
 		},
 		"a fix whose kiln is gone": {
-			rec: record{State: building, Monitor: true, Session: "s"}, says: "run kiln monitor run x, which drops",
+			rec: record{State: building, Monitor: true, Code: seat{Session: "s"}}, says: "run kiln monitor run x, which drops",
 		},
 		"a fix stopped": {
-			rec: record{State: stopped, Monitor: true, Session: "s"}, commands: []string{"tend"},
+			rec: record{State: stopped, Monitor: true, Code: seat{Session: "s"}}, commands: []string{"tend"},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -1422,7 +1424,7 @@ func TestFixStep(t *testing.T) {
 	for _, s := range []state{queued, building, stopped, landed, amended, waiting} {
 		for _, accepted := range []bool{false, true} {
 			for _, session := range []string{"", "s"} {
-				rec := record{Name: "x", State: s, Accepted: accepted, Monitor: true, Session: session}
+				rec := record{Name: "x", State: s, Accepted: accepted, Monitor: true, Code: seat{Session: session}}
 				namedIn(t, fixStep(rec), &rec)
 			}
 		}
@@ -1436,7 +1438,7 @@ func TestFixStep(t *testing.T) {
 		"a conflicted fix with a session":  {session: "s", want: []string{"accept", "reject", "tend"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			rec := record{Name: "x", State: stopped, Accepted: true, Monitor: true, Session: tc.session,
+			rec := record{Name: "x", State: stopped, Accepted: true, Monitor: true, Code: seat{Session: tc.session},
 				Why: fixConflicts + "docs.txt", Kind: stopConflict}
 			next := fixStep(rec)
 			named := namedIn(t, next, &rec)
@@ -1513,8 +1515,6 @@ func TestSetbackSays(t *testing.T) {
 	t.Parallel()
 	const x = "echo %d >x.txt && git add x.txt && git commit --quiet -m x"
 	for name, tc := range map[string]struct {
-		// split stacks the sides of build-and-verify, whose files conflict. Otherwise, the build lands its work.
-		split bool
 		// work is what the session committed, and main what main gained since the build began.
 		work, main string
 		// said is what the developer reads, opens how the session's prompt opens, and stops how the stop says it.
@@ -1525,13 +1525,9 @@ func TestSetbackSays(t *testing.T) {
 			stops: "the work still conflicts with main after its last round"},
 		"work that changes nothing on main": {work: "true", said: "the work changes nothing on main",
 			opens: "Your work changes nothing on main", stops: "the work still changes nothing on main after its last round"},
-		"a conflict between build-and-verify's sides": {split: true,
-			said:  "the verify session's tests conflict with the build session's code",
-			opens: "Your tests conflict with the build session's work",
-			stops: "the verify session's tests still conflict with the build session's code after its last round"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			sendBack := setbackOf(t, tc.split, tc.work, tc.main)
+			sendBack := setbackOf(t, tc.work, tc.main)
 			var out strings.Builder
 			prompt, err := sendBack(&out)
 			if err != nil {
@@ -1550,23 +1546,9 @@ func TestSetbackSays(t *testing.T) {
 	}
 }
 
-// setbackOf is a build of x, with 1 round, that meets a setback each time sendBack runs it. A build in build-and-verify
-// stacks its sides, whose x.txt differ. Any other build lands work, after main gained main. sendBack answers the prompt
-// for the session, and writes what kiln says to out.
-func setbackOf(t *testing.T, split bool, work, main string) (sendBack func(io.Writer) (string, error)) {
-	if split {
-		b, _ := splitBuild(t, false)
-		for role, text := range map[string]string{buildRole: "42", verifyRole: "43"} {
-			shell(t, string(b.r.clone("x", role)), "echo "+text+" >x.txt && git add x.txt && git commit --quiet -m x")
-		}
-
-		return func(out io.Writer) (string, error) {
-			b.out = out
-			next, err := b.splitStep(t.Context())
-			return next.verify, err
-		}
-	}
-
+// setbackOf is a build of x, with 1 round, that meets a setback each time sendBack runs it. It lands work, after main
+// gained main. sendBack answers the prompt kiln owes the session, and writes what kiln says to out.
+func setbackOf(t *testing.T, work, main string) (sendBack func(io.Writer) (string, error)) {
 	b, repo, _ := landingBuild(t)
 	b.set(func(r *record) { r.Limit = new(1) })
 	shell(t, string(b.tree), work)
@@ -1578,12 +1560,15 @@ func setbackOf(t *testing.T, split bool, work, main string) (sendBack func(io.Wr
 	return func(out io.Writer) (string, error) {
 		b.out = out
 		_, back, err := b.land(t.Context(), head, nil)
-		if err != nil {
-			return "", err
+		if err == nil {
+			err = b.goBack(codeSeat, back)
 		}
 
-		prompt, _, err := b.round(back)
-		return prompt, err
+		if owed := b.now().Code.Owed; err == nil && len(owed) > 0 {
+			return owed[len(owed)-1].Text, nil
+		}
+
+		return "", err
 	}
 }
 
@@ -1714,9 +1699,9 @@ func landingBuild(t *testing.T) (*build, string, git.Rev) {
 	return b, repo, main
 }
 
-// TestSplitLanding holds how a build in build-and-verify ends once its stack passed the gate. Work that changes nothing
-// goes back to the build session alone. A conflict with main goes to the session whose clone conflicts, after kiln
-// merged main into both clones. An accepted build lands, and its spec retires.
+// TestSplitLanding holds how a build with a verify session ends once its work passed the gate. Work that changes
+// nothing goes back to the build session alone. A conflict with main goes to the build session, once kiln merged main
+// into the verify session's clone. An accepted build lands, and its spec retires.
 func TestSplitLanding(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
@@ -1727,44 +1712,57 @@ func TestSplitLanding(t *testing.T) {
 		build string
 	}{
 		"work that changes nothing goes to the build session": {build: unchanged},
-		"a conflict goes to the session whose clone conflicts": {code: "42", main: "43",
-			build: fmt.Sprintf(conflicts, "x.txt")},
-		"an accepted build lands, and its spec retires": {accepted: true, code: "42"},
+		"a conflict goes to the build session":                {code: "42", main: "43", build: fmt.Sprintf(conflicts, "x.txt")},
+		"an accepted build lands, and its spec retires":       {accepted: true, code: "42"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			b, repo := splitBuild(t, tc.accepted)
-			clone := string(b.r.clone("x", buildRole))
-			for dir, text := range map[string]string{string(b.tree): tc.code, clone: tc.code, repo: tc.main} {
+			for dir, text := range map[string]string{string(b.tree): tc.code, repo: tc.main} {
 				if text != "" {
 					shell(t, dir, "echo "+text+" >x.txt && git add x.txt && git commit --quiet -m x")
 				}
 			}
 
-			got, err := b.splitAfter(t.Context())
-			if err != nil {
-				t.Fatal(err)
-			}
-
+			told := passedThenTold(t, b)
 			merged, _ := os.ReadFile(filepath.Join(string(b.r.clone("x", verifyRole)), "x.txt"))
 			retired := exec.Command("git", "-C", repo, "cat-file", "-e", "main:.kiln/specs/x.md").Run() != nil
-			if !claim.Holds(got.build == tc.build, got.verify == "", strings.TrimSpace(string(merged)) == tc.main,
-				retired == tc.accepted) {
-				t.Errorf("the build session is told %q, and the verify session %q. The verify clone holds %q, and the "+
-					"spec retired: %v. Want %q, nothing, %q, %v.", got.build, got.verify, merged, retired, tc.build,
-					tc.main, tc.accepted)
+			if !claim.Holds(told == tc.build, len(b.now().Verify.Owed) == 0,
+				strings.TrimSpace(string(merged)) == tc.main, retired == tc.accepted) {
+				t.Errorf("the build session is told %q, and the verify session %+v. The verify clone holds %q, "+
+					"and the spec retired: %v. Want %q, nothing, %q, %v.", told, b.now().Verify.Owed, merged, retired,
+					tc.build, tc.main, tc.accepted)
 			}
 		})
 	}
 }
 
-// splitBuild is landingBuild's build of x, in the workflow build-and-verify, with each session's clone. Main holds the
-// spec, the audit has read the work, and kiln.json gives it 1 round. It answers the repository.
+// passedThenTold takes b's passed work to its end, and sends back what kept it there. It answers what kiln then owes
+// the build session, or "" for nothing.
+func passedThenTold(t *testing.T, b *build) string {
+	back, err := specJob{}.passed(t.Context(), b, "")
+	if err == nil && back.why != "" {
+		err = specJob{}.goneBack(t.Context(), b, back)
+	}
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if owed := b.now().Code.Owed; len(owed) > 0 {
+		return owed[0].Text
+	}
+
+	return ""
+}
+
+// splitBuild is landingBuild's build of x, with a verify session's clone. Main holds the spec, the audit has read the
+// work, and kiln.json gives it 1 round. It answers the repository.
 func splitBuild(t *testing.T, accepted bool) (*build, string) {
 	b, repo, _ := landingBuild(t)
 	shell(t, repo, "mkdir -p .kiln/specs && echo '# X' >.kiln/specs/x.md && git add . && git commit --quiet -m spec")
 	shell(t, string(b.tree), "git reset --quiet --hard main")
-	b.side = &sides{split: true}
-	if err := b.cloneSides(t.Context()); err != nil {
+	b.side, b.order, b.job = &sides{order: sideBySide}, sideBySide, specJob{}
+	if err := b.cloneVerify(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2103,7 +2101,7 @@ func TestGateLineAfterError(t *testing.T) {
 	b.fix.monitor.finder = checkScript
 	b.rec.Build = "b-m"
 	b.set(nil, entry{Kind: builtKind, Spec: "m", Monitor: "m"})
-	if _, err := b.gated(t.Context(), heldBy(t, b.r), nil, b.treeGuard()); !errors.As(err, new(*checkFailed)) {
+	if _, err := b.gated(t.Context(), heldBy(t, b.r), gating{}, b.treeGuard()); !errors.As(err, new(*checkFailed)) {
 		t.Fatalf("the gate answers %v, want its check couldn't run", err)
 	}
 
@@ -2112,7 +2110,7 @@ func TestGateLineAfterError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.HasSuffix(out.String(), `"passed":false,"landing":false,"ran_main":true,"before_fix":false}`+"\n") {
+	if !strings.HasSuffix(out.String(), `"passed":false,"landing":false,"ran_main":true,"proof":false}`+"\n") {
 		t.Errorf("the gate's line is %s, want it failed, and ran at main", out.String())
 	}
 }
@@ -2154,42 +2152,13 @@ func gaugeReadings(t *testing.T, r *Repo) []string {
 	return read
 }
 
-// TestBugsLine holds how kiln reads the verify session's bugs line. A line it can't read never passes as none.
-func TestBugsLine(t *testing.T) {
-	tests := map[int]string{1: "### 1.", 2: "### 2.", 4: "### 4."}
-	for name, tc := range map[string]struct {
-		line    string
-		numbers []int
-		read    bool
-	}{
-		"none":                           {line: "none", read: true},
-		"one test":                       {line: "1", numbers: []int{1}, read: true},
-		"tests by commas":                {line: "2, 4", numbers: []int{2, 4}, read: true},
-		"tests by spaces, once each":     {line: "4 2 4", numbers: []int{4, 2}, read: true},
-		"a test with a period":           {line: "1."},
-		"a test by its code's name":      {line: "AT1"},
-		"a test by a hash":               {line: "#1"},
-		"a number the spec holds none":   {line: "3"},
-		"a known test beside an unknown": {line: "1, 3"},
-		"nothing":                        {line: ""},
-		"none, and a test":               {line: "none, 1"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			numbers, read := bugsLine(tc.line, tests)
-			if !slices.Equal(numbers, tc.numbers) || read != tc.read {
-				t.Errorf("bugsLine(%q) = %v, %v; want %v, %v", tc.line, numbers, read, tc.numbers, tc.read)
-			}
-		})
-	}
-}
-
 // TestSumUpPlaces holds that a stopped build's summary names its stack only where its worktree is. A build in
 // build-and-verify stopped before its first stack has none. Its summary still names kiln tend, whose session names each
 // clone.
 func TestSumUpPlaces(t *testing.T) {
 	dir := t.TempDir()
 	r := &Repo{store: store{dir: dir}}
-	rec := record{Name: "x", State: stopped, Session: "b", Verify: "v", Why: "the gate still failed",
+	rec := record{Name: "x", State: stopped, Code: seat{Session: "b"}, Verify: seat{Session: "v"}, Why: "the gate still failed",
 		Failing: []string{"`go vet ./...`"}}
 	for name, tc := range map[string]struct {
 		made  bool

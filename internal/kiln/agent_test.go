@@ -491,7 +491,8 @@ func TestAuditReadsLaterWork(t *testing.T) {
 		{work: "echo 'package x' >x.go && git add x.go && git commit --quiet -m x", findings: "Done."},
 	} {
 		shell(t, string(b.tree), step.work)
-		findings, _, err := b.findings(t.Context())
+		findings := ""
+		_, err := b.findings(t.Context(), func(_ *record, found string, _ reason) { findings = found })
 		if err != nil {
 			t.Fatal(err)
 		}

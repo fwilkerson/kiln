@@ -45,7 +45,7 @@ func (b *build) kept(s sides, role string) string {
 	switch {
 	case b.fix != nil:
 		return b.fix.kept(role)
-	case s.split && role == buildRole:
+	case s.order.isolated() && role == buildRole:
 		// Build-and-verify's amendments are the verify session's.
 		return fmt.Sprintf("Changing anything under .kiln/, or under %s, by a file tool or a shell command.",
 			strings.Join(s.acceptance, ", "))

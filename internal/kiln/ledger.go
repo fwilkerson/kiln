@@ -120,13 +120,13 @@ type entry struct {
 	Tally    *tally         `json:"tally,omitempty"`
 	Findings []finding      `json:"findings,omitempty"`
 	// A gate line's. At is when it started. Landing is the gate on the work rebased onto main. RanMain is whether it
-	// ran the commands at main too. A line from before kiln wrote it holds none. BeforeFix is the gate on a
-	// verify-first fix's tests, which must fail.
-	End       time.Time `json:"end,omitzero"`
-	Passed    bool      `json:"passed,omitempty"`
-	Landing   bool      `json:"landing,omitempty"`
-	RanMain   *bool     `json:"ran_main,omitempty"`
-	BeforeFix bool      `json:"before_fix,omitempty"`
+	// ran the commands at main too. A line from before kiln wrote it holds none. Proof is the gate on the verify
+	// session's tests alone, which must fail on tests alone.
+	End     time.Time `json:"end,omitzero"`
+	Passed  bool      `json:"passed,omitempty"`
+	Landing bool      `json:"landing,omitempty"`
+	RanMain *bool     `json:"ran_main,omitempty"`
+	Proof   bool      `json:"proof,omitempty"`
 	// An outcome line's. Amendments is the text of a waiting build's amendments.
 	Outcome    string `json:"outcome,omitempty"`
 	Amendments string `json:"amendments,omitempty"`

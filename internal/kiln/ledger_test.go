@@ -267,68 +267,6 @@ esac
 exit 0
 `
 
-// TestVerifyReruns holds when a build in build-and-verify runs its verify session again. A run that ends with no result
-// runs again while the session owes a bugs line, up to auditTries runs. A session that still owes one is asked once
-// more.
-func TestVerifyReruns(t *testing.T) {
-	t.Parallel()
-	first, owed := reason{Why: whyFirst}, reason{Why: whyBugsLine}
-	for name, tc := range map[string]struct {
-		asked bool
-		// replies holds r for each run that ends with a result, and - for each that ends with none.
-		replies string
-		want    []reason
-		refused bool
-	}{
-		"a session that owes no bugs line": {replies: "-", want: []reason{first}},
-		"a session whose runs all end with no result": {asked: true, replies: "----", refused: true,
-			want: []reason{first, {Why: whyNoResult, Try: 2}, {Why: whyNoResult, Try: 3}, owed}},
-		"a session whose second run ends with a result": {asked: true, replies: "-rr", refused: true,
-			want: []reason{first, {Why: whyNoResult, Try: 2}, owed}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			got, err := verifyRuns(t, tc.replies, tc.asked)
-			if (err != nil) != tc.refused {
-				t.Errorf("converse answers %v, want refused %v", err, tc.refused)
-			}
-
-			if !slices.Equal(got, tc.want) {
-				t.Errorf("the session ran for %+v, want %+v", got, tc.want)
-			}
-		})
-	}
-}
-
-// verifyRuns runs converse for a verify session with a fake claude that replies as replies says, as replying reads
-// it. Asked says whether the session owes a bugs line. It answers why each run started, and what converse answered.
-func verifyRuns(t *testing.T, replies string, asked bool) ([]reason, error) {
-	dir := t.TempDir()
-	program := filepath.Join(dir, "claude")
-	if err := os.WriteFile(program, []byte(strings.ReplaceAll(replying, "REPLIES", replies)), 0o700); err != nil {
-		t.Fatal(err)
-	}
-
-	sessions := filepath.Join(dir, "sessions")
-	r := &Repo{store: store{dir: dir}, claude: claude.New(claude.Config{Program: program, Sessions: sessions})}
-	b := &build{r: r, rec: record{Name: "x", Build: "b1", Asked: asked}, out: io.Discard}
-	l := claude.Launch{Session: "5f0c1a54-2a8e-4b0e-9a65-0d1f6b8c2e11", Role: verifyRole, Prompt: "Verify x.", Dir: dir,
-		Silence: time.Hour}
-	conversed := b.converse(t.Context(), l, reason{Why: whyFirst})
-	entries, err := r.store.entries()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var started []reason
-	for _, e := range entries {
-		if e.Kind == startKind {
-			started = append(started, e.reason)
-		}
-	}
-
-	return started, conversed
-}
-
 // TestOneWrite holds that the book and the ledger change in one write. A kiln may die before it appends an update's
 // lines to the ledger, or part way. The ledger still reads whole, and the next update leaves its file whole. An older
 // book put back costs the ledger no line. The update a row cuts short wrote two lines, a gate and an outcome.

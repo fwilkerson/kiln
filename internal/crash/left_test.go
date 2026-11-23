@@ -30,8 +30,8 @@ type leftover struct {
 
 // data are the fields of a record that hold what its build has learned. The rest say where the build stands, and
 // what kiln was in the middle of.
-var data = []string{"name", "approved", "build", "pid", "paused", "limit", "rounds", "audited_at", "accepted_at",
-	"landed_at", "told", "old_tests", "title", "tested", "failing_at_main", "amendments", "why", "failing"}
+var data = []string{"name", "approved", "build", "pid", "paused", "limit", "audited_at", "accepted_at", "landed_at",
+	"told", "old_tests", "title", "tested", "proof", "proved", "failing_at_main", "amendments", "why", "failing"}
 
 // keys are what a set of leftovers holds l by: each lost run, and what the next kiln decides by. With byClass, the
 // class is one too.
@@ -246,9 +246,12 @@ func stands(rec map[string]any) string {
 	}
 
 	for field, value := range stands {
-		// The state and the kind of a stop are what the next kiln decides by. An array holds roles.
-		_, array := value.([]any)
-		if !slices.Contains([]string{"state", "stop"}, field) && !array {
+		// The state and the kind of a stop are what the next kiln decides by. A seat says what kiln owes it.
+		seat, isSeat := value.(map[string]any)
+		switch {
+		case isSeat:
+			stands[field] = seatStands(seat)
+		case !slices.Contains([]string{"state", "stop"}, field):
 			stands[field] = "set"
 		}
 	}
@@ -257,20 +260,39 @@ func stands(rec map[string]any) string {
 	return string(in)
 }
 
+// seatStands is seat, a record's seat, less its rounds. It says whether the seat holds a session and a run's mark. It
+// counts the messages kiln owes it.
+func seatStands(seat map[string]any) map[string]any {
+	stands := map[string]any{}
+	for field, value := range seat {
+		owed, isOwed := value.([]any)
+		switch {
+		case field == "rounds":
+		case isOwed:
+			stands[field] = len(owed)
+		default:
+			stands[field] = "set"
+		}
+	}
+
+	return stands
+}
+
 // shows says what the sessions and main show of the record rec. It says whether each of its sessions has printed,
 // and whether main holds its landing. It says whether the turn kiln told its session has begun.
 func (s *scratch) shows(rec map[string]any, refs map[string]string) []string {
 	var shows []string
-	for _, field := range []string{"session", "verify", "verify_first"} {
-		if id, held := rec[field].(string); held {
-			shows = append(shows, fmt.Sprintf("%s begun: %v", field, s.streamed(id) > 0))
+	for _, field := range []string{"code", "verify"} {
+		seat, _ := rec[field].(map[string]any)
+		id, held := seat["session"].(string)
+		if !held {
+			continue
 		}
-	}
 
-	if rec["telling"] != nil {
-		from, _ := rec["from"].(float64)
-		id, _ := rec["session"].(string)
-		shows = append(shows, fmt.Sprintf("its turn begun: %v", s.streamed(id) != int64(from)))
+		shows = append(shows, fmt.Sprintf("%s begun: %v", field, s.streamed(id) > 0))
+		if from, marked := seat["from"].(float64); marked {
+			shows = append(shows, fmt.Sprintf("%s's run begun: %v", field, s.streamed(id) != int64(from)))
+		}
 	}
 
 	if landing, held := rec["landing"].(string); held {
@@ -311,7 +333,7 @@ func (s *scratch) amended(refs map[string]string) []string {
 func (s *scratch) checkouts(refs map[string]string) []string {
 	var there []string
 	of := func(what, name string) {
-		for _, role := range []string{"", ".audit-", ".gate-", ".build-", ".verify-"} {
+		for _, role := range []string{"", ".audit-", ".gate-", ".verify-"} {
 			if name == role+string(s.subject) {
 				there = append(there, what+" "+role+"<name>")
 			}

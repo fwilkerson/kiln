@@ -14,17 +14,50 @@ import (
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// audit runs the audit agent on the directories the build changed, and its acceptance tests. It answers the findings,
-// or "" for none. An audit that names no finding count is all findings. An audit that ends with no result runs again,
-// in a new session, up to auditTries times. An empty result is no result. Once the audit answers, the record's
-// Audited names the commit it read. A build that changed nothing to read records no read.
-func (b *build) audit(ctx context.Context) (string, error) {
+// audit runs the audit agent on the directories the build changed, and its acceptance tests. It answers whether the
+// audit found any finding. An audit that names no finding count is all findings. An audit that ends with no result
+// runs again, in a new session, up to auditTries times. An empty result is no result. Once the audit answers, one
+// write records its read in the record's Audited, and deliver owes its findings there. A build that changed nothing
+// to read records no read.
+func (b *build) audit(ctx context.Context, deliver func(r *record, findings string)) (bool, error) {
 	head, dirs, files, err := b.changedFiles(ctx)
 	if err != nil || len(dirs) == 0 {
-		return "", err
+		return false, err
 	}
 
 	b.say("the audit reads %s", strings.Join(dirs, " "))
+	prompt, err := b.auditPrompt(ctx, dirs, files)
+	if err != nil {
+		return false, err
+	}
+
+	// The audit's own worktree keeps what it writes out of the build's, even when kiln stops mid-audit.
+	l, err := b.agentLaunch(ctx, auditRole, claude.Launch{Prompt: prompt, Dir: string(b.r.auditTree(b.rec.Name))})
+	if err != nil {
+		return false, err
+	}
+
+	findings, err := b.auditTries(ctx, l, head)
+	if err == nil {
+		b.set(func(r *record) {
+			r.Audited = head
+			if findings != "" {
+				deliver(r, findings)
+			}
+		})
+	}
+
+	// recount reads the worktree of an audit kiln stopped, so it stays until then.
+	if ctx.Err() == nil {
+		err = errors.Join(err, b.r.git.Remove(ctx, []git.Worktree{git.Worktree(l.Dir)}))
+	}
+
+	return findings != "", err
+}
+
+// auditPrompt is what the audit is told: the directories it reads, and the files the work changed there. It names
+// the tests that failed at the proof, and each harness file the build session changed.
+func (b *build) auditPrompt(ctx context.Context, dirs, files []string) (string, error) {
 	about, subject := auditing, b.rec.Name.file()
 	switch {
 	case b.fix != nil && b.rec.Accepted:
@@ -34,8 +67,7 @@ func (b *build) audit(ctx context.Context) (string, error) {
 	}
 
 	prompt := fmt.Sprintf(about, "`"+strings.Join(dirs, "`, `")+"`", subject, strings.Join(files, ", "))
-
-	harness, err := b.auditedHarness(ctx)
+	harness, err := b.harnessChanged(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -44,26 +76,20 @@ func (b *build) audit(ctx context.Context) (string, error) {
 		prompt += fmt.Sprintf(auditingHarness, strings.Join(harness, ", "))
 	}
 
-	prompt += b.fix.auditNote(b.rec.Accepted)
-
-	// The audit's own worktree keeps what it writes out of the build's, even when kiln stops mid-audit.
-	l, err := b.agentLaunch(ctx, auditRole, claude.Launch{Prompt: prompt, Dir: string(b.r.auditTree(b.rec.Name))})
-	if err != nil {
-		return "", err
+	if proved := b.now().Proved; len(proved) > 0 {
+		prompt += fmt.Sprintf(auditingProof, strings.Join(proved, ", "))
 	}
 
-	findings, err := b.auditTries(ctx, l, head)
-	if err == nil {
-		b.set(func(r *record) { r.Audited = head })
+	if b.fix != nil {
+		prompt += b.fix.auditNote(b)
 	}
 
-	// recount reads the worktree of an audit kiln stopped, so it stays until then.
-	if ctx.Err() == nil {
-		err = errors.Join(err, b.r.git.Remove(ctx, []git.Worktree{git.Worktree(l.Dir)}))
-	}
-
-	return findings, err
+	return prompt, nil
 }
+
+// auditingProof tells the audit which tests failed at the proof. Any other test may pass on main's code too.
+const auditingProof = " The proof, the gate on the verify session's tests alone, failed on these tests: %s. Read " +
+	"each other test for a Then main's code did not already meet."
 
 // auditTries runs the audit l launches on head until it ends with a result, up to auditTries times.
 func (b *build) auditTries(ctx context.Context, l claude.Launch, head git.Rev) (string, error) {
@@ -89,7 +115,7 @@ func (b *build) auditTry(ctx context.Context, l claude.Launch, head git.Rev, try
 
 	b.auditing = head
 	l.Session = claude.NewID()
-	ended, err := b.talk(ctx, l, reason{Why: whyAudit, Try: try})
+	ended, err := b.talk(ctx, l, reason{Why: whyAudit, Try: try}, nil)
 	rep := replyOf(ended)
 	switch {
 	case err != nil:
@@ -357,12 +383,3 @@ func (b *build) heldDir(ctx context.Context, head git.Rev, dir string) (string, 
 }
 
 const auditTries = 3
-
-// auditedHarness lists each harness file the build session changed, for the audit. A fix has no split sides.
-func (b *build) auditedHarness(ctx context.Context) ([]string, error) {
-	if b.fix != nil {
-		return nil, nil
-	}
-
-	return b.harnessChanged(ctx)
-}

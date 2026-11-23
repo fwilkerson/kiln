@@ -38,8 +38,8 @@ timeout, a length or a message's wording. -->
 ## Technical Plan
 
 <!-- Name the commands, packages and files, and the rules each holds. Name the code to copy, and from where. Name
-each output form a Then reads, such as a line a command prints: in the workflow "build-and-verify", the tests are
-written from the spec alone. -->
+each output form a Then reads, such as a line a command prints: in the workflows "build-and-verify" and
+"verify-first", the tests are written from the spec alone. -->
 
 ## Alternatives Considered
 

@@ -1,0 +1,58 @@
+# 2. Side by side, the tests are proved before they join the build's work.
+
+# Given: a project whose kiln.json says "workflow": "build-and-verify", and a queued spec.
+# The verify session's test reads x.txt, which main lacks, so it fails on main. The build session writes x.txt.
+exec kiln queue x
+
+# When: kiln fire builds it.
+exec kiln fire
+stdout '^x: landed on main'
+
+# Then: each session's first run starts before the other's ends,
+exec jq -se --arg s x 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | (.[at(.kind=="start" and .role=="verify")].session) as $v | (.[at(.kind=="start" and .role=="build")].session) as $w | at(.kind=="start" and .role=="verify") < at(.kind=="end" and .session==$w) and at(.kind=="start" and .role=="build") < at(.kind=="end" and .session==$v)' .git/kiln/ledger.jsonl
+
+# a proof gate failed before the first gate of both sessions' work,
+exec kiln ledger --kind gate --name x
+stdout '"passed":false[^\n]*"proof":true'
+exec jq -se --arg s x 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | at(.kind=="gate" and .proof==true and .passed!=true) as $p | at(.kind=="gate" and .proof!=true) as $g | $p != null and $g != null and $p < $g' .git/kiln/ledger.jsonl
+
+# and the spec waits for UAT.
+exec kiln status
+stdout '^x: waiting for UAT$'
+
+-- .kiln/kiln.json --
+{"workflow": "build-and-verify"}
+-- claude.json --
+{
+  "verify": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/tests/.\" ."}}},
+    {"result": {"result": "Wrote the tests of x."}}
+  ]}},
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "echo 42 >x.txt"}}},
+    {"result": {"result": "Built x."}}
+  ]}},
+  "audit": {"1": {"1": [{"result": {"audit": {"read": 1}}}]}}
+}
+-- .kiln/specs/x.md --
+### 1. x.txt answers
+
+- **Given**: nothing.
+- **When**: the developer reads x.txt.
+- **Then**: it holds 42.
+-- _given/tests/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"os"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	if b, _ := os.ReadFile("../../x.txt"); string(b) != "42\n" {
+		t.Fatalf("x.txt holds %q, want 42", b)
+	}
+}
+-- doc.go --
+// Package scratch is where kiln's builds land.
+package scratch

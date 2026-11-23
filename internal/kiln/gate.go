@@ -288,9 +288,8 @@ func (c check) namesNothing() bool {
 
 // gate runs the gate on the commit checked out at the first guard's checkout, a build's checkout. It runs
 // kiln.json's commands there, and at main's tip. It checks the paths each guard's work changed since it left
-// main, as that guard says. without holds the paths kiln removed from the work. Main is gated without them too.
-// Their removal is no write of the work's.
-func (held commands) gate(ctx context.Context, without []string, guards ...guard) (verdict, error) {
+// main, as that guard says.
+func (held commands) gate(ctx context.Context, guards ...guard) (verdict, error) {
 	r := held.r
 	main, c, err := r.mainConfig(ctx)
 	if err != nil {
@@ -299,7 +298,7 @@ func (held commands) gate(ctx context.Context, without []string, guards ...guard
 
 	refused, heads := map[string]string{}, make([]git.Rev, len(guards))
 	for i, g := range guards {
-		found, head, err := r.refused(ctx, g, main, without)
+		found, head, err := r.refused(ctx, g, main)
 		if err != nil {
 			return verdict{}, err
 		}
@@ -314,7 +313,7 @@ func (held commands) gate(ctx context.Context, without []string, guards ...guard
 		return verdict{}, err
 	}
 
-	atMain, ran, err := held.atMain(ctx, main, c, without)
+	atMain, ran, err := held.atMain(ctx, main, c)
 	if err != nil {
 		return verdict{}, err
 	}
@@ -336,11 +335,10 @@ func (r *Repo) atCommit(ctx context.Context, spec Spec, head git.Rev, c config) 
 	return runChecks(ctx, tree, c.Gate, c.shell(r.env))
 }
 
-// refused says, by path, why the build may not change each path its work changed since it left main. A path under
-// one of without that the work lacks is kiln's removal, not the work's. It judges each file g.tested changed too. So
-// it refuses a fix that puts a test back as main holds it. It answers the commit it read at g's place, or g.head.
-func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []string) (map[string]string, git.Rev,
-	error) {
+// refused says, by path, why the build may not change each path its work changed since it left main. It judges each
+// file g.tested changed too. So it refuses a code session's work that puts a test back as main holds it. It answers
+// the commit it read at g's place, or g.head.
+func (r *Repo) refused(ctx context.Context, g guard, main git.Rev) (map[string]string, git.Rev, error) {
 	if g.head == "" {
 		var err error
 		if g.head, err = r.git.Head(ctx, g.place); err != nil {
@@ -365,17 +363,12 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev, without []str
 			continue
 		}
 
-		removed, err := r.removed(ctx, g.head, p, without)
-		if err != nil {
-			return nil, "", err
-		}
-
 		kept, err := r.keptTest(ctx, g, proved, p)
 		if err != nil {
 			return nil, "", err
 		}
 
-		if !removed && !kept {
+		if !kept {
 			refused[p] = why
 		}
 	}
@@ -411,10 +404,10 @@ func (r *Repo) proved(ctx context.Context, g guard, main git.Rev, paths []string
 	return files, err
 }
 
-// keptTest is whether p is a test file of a verify-first fix, and g.head holds it as proved does. Repo.proved reads
-// proved. Then the verify session wrote it, or main held it so, and the fix left it as it was.
+// keptTest is whether p is a file the verify session alone writes, and g.head holds it as proved does. Repo.proved
+// reads proved. Then the verify session wrote it, or main held it so, and the code session left it as it was.
 func (r *Repo) keptTest(ctx context.Context, g guard, proved map[string][]byte, p string) (bool, error) {
-	if proved == nil || !g.side.testFile(fold(p)) {
+	if proved == nil || !g.side.verifiers(fold(p), g.spec) {
 		return false, nil
 	}
 
@@ -423,24 +416,12 @@ func (r *Repo) keptTest(ctx context.Context, g guard, proved map[string][]byte, 
 	return held == wasHeld && bytes.Equal(is, was), err
 }
 
-// removed is whether p is under one of without, and head lacks it. That is kiln's removal, not the work's.
-func (r *Repo) removed(ctx context.Context, head git.Rev, p string, without []string) (bool, error) {
-	if !slices.ContainsFunc(without, func(root string) bool { return within(fold(p), root) }) {
-		return false, nil
-	}
-
-	_, held, err := r.git.Show(ctx, head, p)
-	return !held, err
-}
-
-// atMain runs c's gate at main's tip, less the paths without, in a worktree of its own. It keeps the checks, and
-// runs them again only once main, without or the commands change. Its bool is whether it ran them. It runs under
-// held, so every kiln shares the worktree, one at a time.
-func (held commands) atMain(ctx context.Context, main git.Rev, c config, without []string) ([]check, bool, error) {
+// atMain runs c's gate at main's tip, in a worktree of its own. It keeps the checks, and runs them again only once
+// main or the commands change. Its bool is whether it ran them. It runs under held, so every kiln shares the
+// worktree, one at a time.
+func (held commands) atMain(ctx context.Context, main git.Rev, c config) ([]check, bool, error) {
 	r, gate := held.r, c.Gate
-	// The count of without tells where its paths end and the commands begin.
-	parts := append([]string{string(main), fmt.Sprint(len(without))}, without...)
-	key := strings.Join(append(parts, gate...), "\x00")
+	key := strings.Join(append([]string{string(main)}, gate...), "\x00")
 	b, err := r.store.read()
 	if err != nil {
 		return nil, false, err
@@ -453,13 +434,6 @@ func (held commands) atMain(ctx context.Context, main git.Rev, c config, without
 	tree := git.Worktree(filepath.Join(r.trees, mainTree))
 	if err := r.git.Detached(ctx, tree, main); err != nil {
 		return nil, false, err
-	}
-
-	// The next Detached puts back what this removes.
-	for _, p := range without {
-		if err := os.RemoveAll(filepath.Join(string(tree), p)); err != nil {
-			return nil, false, err
-		}
 	}
 
 	checks, err := runChecks(ctx, tree, gate, c.shell(r.env))

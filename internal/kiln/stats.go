@@ -322,7 +322,7 @@ func (r *Repo) ending(ctx context.Context, rec record, landedAt git.Rev) []strin
 // workPlace says where the work of a build stopped by its gate is, in tree. It is "" for any other build.
 func workPlace(rec record, tree git.Worktree) string {
 	switch {
-	case rec.State != stopped, byKiln(rec), rec.Session == "", tree == "":
+	case rec.State != stopped, byKiln(rec), rec.Code.Session == "", tree == "":
 		return ""
 	}
 
@@ -337,13 +337,13 @@ func workPlace(rec record, tree git.Worktree) string {
 	return fmt.Sprintf("%s is on %s, in %s", what, rec.Name.branch(), tree)
 }
 
-// roundsOf is the rounds the build of rec used, of those kiln.json gave its last gate.
+// roundsOf is the most rounds one session of rec's build used, of those kiln.json gave its last gate.
 func roundsOf(rec record) string {
 	if rec.Limit == nil {
-		return fmt.Sprintf("%d of an unknown number of rounds", rec.Rounds)
+		return fmt.Sprintf("%d of an unknown number of rounds", rec.rounds())
 	}
 
-	return fmt.Sprintf("%d of %s", rec.Rounds, plural(*rec.Limit, "round"))
+	return fmt.Sprintf("%d of %s", rec.rounds(), plural(*rec.Limit, "round"))
 }
 
 // auditDid says what the audit did, from whether it answered and the build's runs. known is false when the ledger
@@ -466,7 +466,7 @@ func fixStep(rec record) string {
 
 // conflicted reports whether rec is an accepted fix with no session, whose landing stopped on a conflict with main.
 func conflicted(rec record) bool {
-	return rec.Monitor && rec.Accepted && rec.Session == "" && rec.Kind == stopConflict
+	return rec.Monitor && rec.Accepted && rec.Code.Session == "" && rec.Kind == stopConflict
 }
 
 // byKiln reports whether the build of rec stopped for an error of kiln's, not its gate's.

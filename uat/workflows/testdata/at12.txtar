@@ -1,0 +1,68 @@
+# 12. A monitor's fix runs side by side.
+
+# Given: a monitor whose monitor.json says "workflow": "build-and-verify", and a check that finds a problem.
+# The check finds note.txt missing. The verify session's test reads note.txt, and the fix session writes it.
+
+# When: kiln monitor run fixes it.
+exec kiln monitor run
+
+# Then: the verify session's first run and the fix session's each start before the other's ends,
+exec jq -se 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .monitor=="stale")) | last | .build) as $b | map(select(.build==$b)) | (.[at(.kind=="start" and .role=="verify")].session) as $v | (.[at(.kind=="start" and .role=="fix")].session) as $w | at(.kind=="start" and .role=="verify") < at(.kind=="end" and .session==$w) and at(.kind=="start" and .role=="fix") < at(.kind=="end" and .session==$v)' .git/kiln/ledger.jsonl
+
+# a proof gate failed before the first gate of both sessions' work,
+exec kiln ledger --kind gate
+stdout '"passed":false[^\n]*"proof":true'
+exec jq -se 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .monitor=="stale")) | last | .build) as $b | map(select(.build==$b)) | at(.kind=="gate" and .proof==true and .passed!=true) as $p | at(.kind=="gate" and .proof!=true) as $g | $p != null and $g != null and $p < $g' .git/kiln/ledger.jsonl
+
+# and the fix lands.
+exec git log -1 --format=%s main
+stdout '^fix\(notes\): write the missing note$'
+exec git show main:note.txt
+stdout '^noted$'
+exec git show main:note_test.go
+stdout 'func TestNote'
+
+-- .kiln/kiln.json --
+{"testFiles": ["*_test.go"]}
+-- .kiln/monitors/stale/monitor.json --
+{"workflow": "build-and-verify"}
+-- .kiln/monitors/stale/check --
+if [ -e note.txt ]; then
+  echo '{"fix": false, "summary": "note.txt is there"}'
+else
+  echo '{"fix": true, "summary": "note.txt is missing"}'
+fi
+-- .kiln/monitors/stale/verify.md --
+Write a test that fails while the note is missing.
+-- .kiln/monitors/stale/agent.md --
+Write the missing note.
+
+Write the note.
+-- claude.json --
+{
+  "verify": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/tests/.\" ."}}},
+    {"result": {"result": "TestNote reads note.txt."}}
+  ]}},
+  "fix": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "echo noted >note.txt"}}},
+    {"result": {"result": "Wrote note.txt.\n{\"title\": \"fix(notes): write the missing note\"}"}}
+  ]}},
+  "audit": {"1": {"1": [{"result": {"audit": {"read": 1}}}]}}
+}
+-- doc.go --
+// Package scratch is where kiln's builds land.
+package scratch
+-- _given/tests/note_test.go --
+package scratch
+
+import (
+	"os"
+	"testing"
+)
+
+func TestNote(t *testing.T) {
+	if b, _ := os.ReadFile("note.txt"); string(b) != "noted\n" {
+		t.Fatalf("note.txt holds %q, want noted", b)
+	}
+}

@@ -93,7 +93,7 @@ func given(t *testing.T, r *Repo, recs []*record, entries []entry) {
 	}
 
 	for _, rec := range recs {
-		for _, session := range []string{rec.Session, rec.Verify} {
+		for _, session := range []string{rec.Code.Session, rec.Verify.Session} {
 			if session == "" {
 				continue
 			}
@@ -128,7 +128,7 @@ func TestTendMessage(t *testing.T) {
 			want:    []string{"The monitor m: session failed\nNot logged in\nIts directory: .kiln/monitors/m/\n"},
 			lack:    []string{"A note for the build", "Its sessions"}},
 		"a monitor whose fix stopped": {name: "m", tree: true,
-			recs: []*record{{Name: "m", State: stopped, Monitor: true, Build: "b2", Session: "s2"}},
+			recs: []*record{{Name: "m", State: stopped, Monitor: true, Build: "b2", Code: seat{Session: "s2"}}},
 			entries: []entry{fixLine("b2"), {Kind: outcomeKind, Build: "b2", Outcome: outStopped, Summary: "3 updates",
 				Report: "the gate failed"}},
 			want: []string{"The monitor m: stopped\n3 updates\nthe gate failed\nIts work: kiln/m, in ",
@@ -149,16 +149,16 @@ func TestTendMessage(t *testing.T) {
 			entries: []entry{{Kind: monitorKind, Monitor: "w", Found: outNeedsYou, Summary: "w: 70, line ≥ 80, crossed"}},
 			want:    []string{"The monitor w: needs you\nw: 70, line ≥ 80, crossed\nIts directory: .kiln/monitors/w/"}},
 		"a stopped landing of accepted amendments": {name: "x",
-			recs: []*record{{Name: "x", State: stopped, Accepted: true, Session: "s4",
+			recs: []*record{{Name: "x", State: stopped, Accepted: true, Code: seat{Session: "s4"},
 				Why: "the gate still failed after its last round:\nFAIL", Failing: []string{"TestAT1"}}},
 			want: []string{"The spec x: stopped, landing accepted amendments\nthe gate still failed after its last " +
 				"round:\nFAIL\nfailing: TestAT1\nIts sessions: build s4, in "},
 			lack: []string{"A note for the build", "Its directory", "Its work"}},
 		"a build in build-and-verify that stopped": {name: "x",
-			recs: []*record{{Name: "x", State: stopped, Session: "s5", Verify: "v5", Why: couldNotGoOn + "no disk",
+			recs: []*record{{Name: "x", State: stopped, Code: seat{Session: "s5"}, Verify: seat{Session: "v5"}, Why: couldNotGoOn + "no disk",
 				Kind: stopKiln}},
 			want: []string{"The spec x: stopped\n" + couldNotGoOn + "no disk\nIts sessions: build s5, in ",
-				"/.build-x; verify v5, in ", "/.verify-x\nA note for the build: "}},
+				"/x; verify v5, in ", "/.verify-x\nA note for the build: "}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -293,8 +293,8 @@ func TestTendGoesOn(t *testing.T) {
 	shell(t, string(r.tree("x")), "echo 42 >x.txt && git add x.txt && git commit --quiet -m work")
 	head := git.Rev(shell(t, string(r.tree("x")), "git rev-parse HEAD"))
 	session := claude.NewID()
-	given(t, r, []*record{{Name: "x", State: stopped, Approved: approved, Build: "b1", Session: session,
-		Audited: head, Limit: new(1), Rounds: 1, Why: "the gate still failed after its last round:\nFAIL"}}, nil)
+	given(t, r, []*record{{Name: "x", State: stopped, Approved: approved, Build: "b1", Code: seat{Session: session, Rounds: 1},
+		Audited: head, Limit: new(1), Why: "the gate still failed after its last round:\nFAIL"}}, nil)
 	writeAll(t, dir, map[string]string{"wait": "", "note": "use 42"})
 	ctx, cancel := context.WithCancel(t.Context())
 	go func() {
@@ -327,20 +327,28 @@ func TestTendGoesOnSplit(t *testing.T) {
 		`"acceptanceTests": "acceptance/{spec}/"}`)
 	approved := git.Rev(shell(t, repo, "git rev-parse main"))
 	builder, verifier := claude.NewID(), claude.NewID()
-	rec := record{Name: "x", State: stopped, Approved: approved, Build: "b1", Session: builder, Verify: verifier,
-		Audited: approved, Limit: new(1), Rounds: 1, Why: "the gate still failed after its last round:\nFAIL"}
-	given(t, r, []*record{&rec}, nil)
-	b := &build{r: r, rec: rec, tree: r.tree("x"), out: io.Discard}
-	if err := b.cloneSides(t.Context()); err != nil {
+	rec := record{Name: "x", State: stopped, Approved: approved, Build: "b1", Code: seat{Session: builder, Rounds: 1},
+		Verify: seat{Session: verifier}, Audited: approved, Limit: new(1),
+		Why: "the gate still failed after its last round:\nFAIL"}
+	b := &build{r: r, rec: rec, tree: r.tree("x"), out: io.Discard, order: sideBySide}
+	if err := errors.Join(b.checkoutMain(t.Context()), b.cloneVerify(t.Context())); err != nil {
 		t.Fatal(err)
 	}
 
-	shell(t, string(r.clone("x", buildRole)), "echo 42 >x.txt && git add . && git commit --quiet -m code")
+	shell(t, string(r.tree("x")), "echo 42 >x.txt && git add . && git commit --quiet -m code")
 	shell(t, string(r.clone("x", verifyRole)),
 		"mkdir -p acceptance/x && echo t >acceptance/x/t.txt && git add . && git commit --quiet -m tests")
+	// The build stopped once the tests were proved, at the gate of the joined work.
+	tested, err := b.verifyWork(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec.Tested = tested
+	given(t, r, []*record{&rec}, nil)
 	shell(t, repo, "echo fixed >fix.txt && git add fix.txt && git commit --quiet -m fix")
 	writeAll(t, dir, map[string]string{"note": "use 42"})
-	err := r.Tend(t.Context(), "x", Terminal{Out: io.Discard, Err: io.Discard})
+	err = r.Tend(t.Context(), "x", Terminal{Out: io.Discard, Err: io.Discard})
 	k, _ := r.store.read()
 	main := git.Rev(shell(t, repo, "git rev-parse main"))
 	landedBoth := shell(t, repo, "git ls-tree -r --name-only main -- x.txt acceptance/x fix.txt")
@@ -379,27 +387,32 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// TestSplitOwed holds that a build in build-and-verify kiln tend queued again sends the owed message to both its
-// sessions. Both turns had ended. passOn sends none of it, since it is no bug and no test that can't hold.
+// TestSplitOwed holds that kiln tend's owed message goes to both sessions of a build with a verify session, once each.
+// Then the record owes neither anything.
 func TestSplitOwed(t *testing.T) {
 	t.Parallel()
 	r, repo, dir := tendRepo(t, `{"gate": ["true"], "rounds": 1, "workflow": "build-and-verify", `+
 		`"acceptanceTests": "acceptance/{spec}/"}`)
 	approved := git.Rev(shell(t, repo, "git rev-parse main"))
 	builder, verifier := claude.NewID(), claude.NewID()
-	rec := record{Name: "x", State: building, Approved: approved, Build: "b1", Session: builder, Verify: verifier,
-		Owed: "OWED"}
+	rec := record{Name: "x", State: stopped, Approved: approved, Build: "b1", Code: seat{Session: builder},
+		Verify: seat{Session: verifier}, Why: "OWED"}
 	given(t, r, []*record{&rec}, nil)
-	b := &build{r: r, rec: rec, tree: r.tree("x"), out: io.Discard}
-	if err := b.cloneSides(t.Context()); err != nil {
+	if err := r.store.update(func(k *book) error { return k.resume("x", "") }); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := b.splitGoOn(t.Context()); err != nil {
+	k, _ := r.store.read()
+	b := &build{r: r, rec: *k.find("x"), tree: r.tree("x"), out: io.Discard, order: sideBySide}
+	if err := errors.Join(b.checkoutMain(t.Context()), b.cloneVerify(t.Context())); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := b.passOn(t.Context()); err != nil {
+	if err := b.goOn(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := b.tell(t.Context(), b.due()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -410,8 +423,8 @@ func TestSplitOwed(t *testing.T) {
 		}
 	}
 
-	if b.now().Owed != "" {
-		t.Errorf("the record still owes %q", b.now().Owed)
+	if b.owesAny() {
+		t.Errorf("the record still owes %+v and %+v", b.now().Code.Owed, b.now().Verify.Owed)
 	}
 }
 

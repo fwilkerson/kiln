@@ -26,13 +26,12 @@ func TestSchema(t *testing.T) {
 	for _, s := range []struct {
 		file, title string
 		typ         reflect.Type
-		workflows   workflows
 	}{
-		{"defaults/generated/kiln.schema.json", "kiln.json", reflect.TypeFor[config](), specWorkflows},
-		{"defaults/generated/monitor.schema.json", "monitor.json", reflect.TypeFor[settings](), monitorWorkflows},
+		{"defaults/generated/kiln.schema.json", "kiln.json", reflect.TypeFor[config]()},
+		{"defaults/generated/monitor.schema.json", "monitor.json", reflect.TypeFor[settings]()},
 	} {
 		root := schemaOf(t, s.typ, docs)
-		root.property("workflow").Enum = s.workflows.open
+		root.property("workflow").Enum = workflows
 		root.Schema, root.Title = "http://json-schema.org/draft-07/schema#", s.title
 		root.Description = hover(root.Description, s.typ.Name(), s.title)
 		raw, err := plainJSON(root)

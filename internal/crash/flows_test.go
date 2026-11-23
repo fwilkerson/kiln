@@ -204,6 +204,22 @@ var flows = []flow{
 		},
 	},
 	{
+		name:    "turn",
+		subject: "v",
+		landed:  []string{`^feat\(v\): land the approved spec$`},
+		outcome: "landed",
+		next: func(s *scratch) []string {
+			switch s.shown(s.subject) {
+			case "":
+				return []string{"queue", "v"}
+			case "waiting for UAT":
+				return nil
+			}
+
+			return []string{"fire"}
+		},
+	},
+	{
 		name:    "reject",
 		given:   "accept",
 		subject: "y",
@@ -478,10 +494,8 @@ func (s *scratch) stderrs() string {
 func (s *scratch) clones() []string {
 	cache := filepath.Join(envValue(s.env, "HOME"), "Library", "Caches", "kiln")
 	var found []string
-	for _, role := range []string{"build", "verify"} {
-		matched, _ := filepath.Glob(filepath.Join(cache, "*", "."+role+"-*"))
-		found = append(found, matched...)
-	}
+	matched, _ := filepath.Glob(filepath.Join(cache, "*", ".verify-*"))
+	found = append(found, matched...)
 
 	return found
 }

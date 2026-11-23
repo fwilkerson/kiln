@@ -1,0 +1,39 @@
+A spec's build in verify-first proves the verify session's tests, then runs the build session, and lands on main.
+
+-- .kiln/kiln.json --
+{"gate": ["sh gate.sh"], "workflow": "verify-first", "acceptanceTests": "acceptance/{spec}/"}
+-- gate.sh --
+# The acceptance test of v fails while v.go is missing, as JUnit XML names it.
+if [ -f acceptance/v/v.txt ] && [ ! -f v.go ]; then
+  echo '<testsuite><testcase name="TestAT1"><failure/></testcase></testsuite>' >"$KILN_JUNIT"
+  exit 1
+fi
+-- .kiln/specs/v.md --
+### 1. V answers
+
+- **Given**: nothing.
+- **When**: V is called.
+- **Then**: it answers 5.
+-- _given/code/v.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// V answers 5.
+func V() int { return 5 }
+-- _given/tests/acceptance/v/v.txt --
+V answers 5.
+-- _given/steps.json --
+{
+ "build": [
+  {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/code/.\" ."}}},
+  {"result": {"result": "Built v."}}
+ ],
+ "verify": [
+  {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/tests/.\" ."}}},
+  {"result": {"result": "Wrote the tests of v."}}
+ ],
+ "audit": [
+  {"tool": {"name": "Bash", "input": {"command": "echo stray >audit-stray.txt"}}},
+  {"result": {"audit": {"read": 2}}}
+ ]
+}

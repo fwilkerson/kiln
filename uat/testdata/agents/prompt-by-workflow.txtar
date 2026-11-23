@@ -52,7 +52,7 @@ package scratch
     "2": {"1": [{"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y/.\" ."}}}, {"result": {"result": "Built y."}}]}
   },
   "verify": {
-    "1": {"1": [{"result": {"result": "Wrote the tests of y."}}]}
+    "1": {"1": [{"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/ytests/.\" ."}}}, {"result": {"result": "Wrote the tests of y."}}]}
   },
   "audit": {
     "1": {"1": [{"result": {"audit": {"read": 1}}}]},
@@ -69,3 +69,18 @@ package scratch
 
 // Y answers 7.
 func Y() int { return 7 }
+-- _given/ytests/acceptance/y/y_test.go --
+package y_test
+
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	code, err := os.ReadFile("../../y.go")
+	if !strings.Contains(string(code), "return 7") {
+		t.Fatalf("y.go does not answer 7: %v", err)
+	}
+}

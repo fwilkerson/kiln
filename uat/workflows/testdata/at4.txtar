@@ -1,0 +1,103 @@
+# 4. The build session works from the proved tests.
+# x builds under verify-first, then y under build-and-verify.
+
+# Given: a queued spec.
+# Each build session lists the files its checkout holds at each run. y's build session first writes 41, so the
+# gate of the joined work fails and y's build session runs again after the proof.
+exec kiln queue x
+
+# When: kiln fire builds it.
+exec kiln fire
+stdout '^x: landed on main'
+
+# Then: under verify-first, the build session's checkout holds the verify session's tests at its first run,
+grep '^acceptance/x/x_test\.go$' .claude-calls/x-build-1
+
+# and its first message names their files and holds the proof gate's report.
+grep 'acceptance/x/x_test\.go' .claude-calls/build/1/1/prompt
+grep 'TestAT1' .claude-calls/build/1/1/prompt
+
+# Under build-and-verify, its checkout holds them at its next run after the proof.
+exec sed -i '' 's/"verify-first"/"build-and-verify"/' .kiln/kiln.json
+exec git commit --quiet -am 'chore: build side by side'
+exec kiln queue y
+exec kiln fire
+stdout '^y: landed on main'
+grep '^acceptance/y/y_test\.go$' .claude-calls/y-build-2
+
+-- .kiln/kiln.json --
+{"workflow": "verify-first", "rounds": 3}
+-- claude.json --
+{
+  "verify": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+      {"result": {"result": "Wrote the tests of x."}}
+    ]},
+    "2": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y/.\" ."}}},
+      {"result": {"result": "Wrote the tests of y."}}
+    ]}
+  },
+  "build": {
+    "1": {"1": [
+      {"tool": {"name": "Bash", "input": {"command": "git ls-files --cached --others >\"$WORK/.claude-calls/x-build-1\" && echo 42 >x.txt"}}},
+      {"result": {"result": "Built x."}}
+    ]},
+    "2": {
+      "1": [
+        {"tool": {"name": "Bash", "input": {"command": "git ls-files --cached --others >\"$WORK/.claude-calls/y-build-1\" && echo 41 >y.txt"}}},
+        {"result": {"result": "Built y."}}
+      ],
+      "2": [
+        {"tool": {"name": "Bash", "input": {"command": "git ls-files --cached --others >\"$WORK/.claude-calls/y-build-2\" && echo 42 >y.txt"}}},
+        {"result": {"result": "y.txt holds 42, as TestAT1 wants."}}
+      ]
+    }
+  },
+  "audit": {
+    "1": {"1": [{"result": {"audit": {"read": 1}}}]},
+    "2": {"1": [{"result": {"audit": {"read": 1}}}]}
+  }
+}
+-- doc.go --
+// Package scratch is where kiln's builds land.
+package scratch
+-- .kiln/specs/x.md --
+### 1. x.txt answers
+
+- **Given**: nothing.
+- **When**: the developer reads x.txt.
+- **Then**: it holds 42.
+-- .kiln/specs/y.md --
+### 1. y.txt answers
+
+- **Given**: nothing.
+- **When**: the developer reads y.txt.
+- **Then**: it holds 42.
+-- _given/x/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"os"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	if b, _ := os.ReadFile("../../x.txt"); string(b) != "42\n" {
+		t.Fatalf("x.txt holds %q, want 42", b)
+	}
+}
+-- _given/y/acceptance/y/y_test.go --
+package y_test
+
+import (
+	"os"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	if b, _ := os.ReadFile("../../y.txt"); string(b) != "42\n" {
+		t.Fatalf("y.txt holds %q, want 42", b)
+	}
+}

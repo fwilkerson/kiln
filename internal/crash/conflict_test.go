@@ -23,7 +23,7 @@ func TestKilledBeforeLandingConflict(t *testing.T) {
 	var told []string
 	s.watch(func(st step) string {
 		l := s.holds(conflict, st, 0)
-		turn := st.what == "session start" && strings.Contains(l.stands, `"telling"`)
+		turn := st.what == "session start" && landingRun.MatchString(l.stands)
 		if killed || !turn {
 			return "GO"
 		}
@@ -53,6 +53,9 @@ func TestKilledBeforeLandingConflict(t *testing.T) {
 		}
 	}
 }
+
+// landingRun matches the record of an accepted landing whose code session's run kiln marked.
+var landingRun = regexp.MustCompile(`"accepted":"set".*"from":"set"|"from":"set".*"accepted":"set"`)
 
 // fixPrompts lists the prompt of each call of a fix's session, in the order its records sort.
 func (s *scratch) fixPrompts() []string {
