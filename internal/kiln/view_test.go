@@ -55,7 +55,7 @@ func TestView(t *testing.T) {
 		}
 	}
 
-	line("b-done", entry{Kind: builtKind, Spec: "done"})
+	line("b-done", entry{Kind: builtKind, Spec: "done", Size: 2})
 	for _, why := range []reason{{Why: whyFirst}, {Why: whyGate, Round: 1, Rounds: 3}, {Why: whyAudit, Try: 2},
 		{Why: whyFindings}, {Why: whyConflict, Round: 2, Rounds: 3}, {Why: whyLanding, Round: 3, Rounds: 3},
 		{Why: whyLimit}, {Why: whyInterrupted}, {}} {
@@ -86,11 +86,11 @@ func TestView(t *testing.T) {
 	got := shownSpecs(specs)
 	want := []string{
 		"next queued: ",
-		"live running: first run ended, gate failed, round 1 of 3 running",
-		"lost halted: first run lost",
-		"gone halted: first run ended",
-		"turned rejected: ",
-		"done accepted: first run ended, round 1 of 3 ended, audit, try 2 ended, audit's findings ended, " +
+		"live running: 0 tests, first run ended, gate failed, round 1 of 3 running",
+		"lost halted: 0 tests, first run lost",
+		"gone halted: 0 tests, first run ended",
+		"turned rejected: 0 tests",
+		"done accepted: 2 tests, first run ended, round 1 of 3 ended, audit, try 2 ended, audit's findings ended, " +
 			"conflict with main, round 2 of 3 ended, landing gate failed, round 3 of 3 ended, after a usage limit " +
 			"ended, after kiln stopped ended, ? ended",
 	}
@@ -111,12 +111,13 @@ func TestView(t *testing.T) {
 	}
 }
 
-// shownSpecs words each spec as a line: its name, its state, and each step of its builds.
+// shownSpecs words each spec as a line: its name, its state, and each build's size and steps.
 func shownSpecs(specs []tui.Spec) []string {
 	var shown []string
 	for _, s := range specs {
 		var steps []string
 		for _, b := range s.Builds {
+			steps = append(steps, fmt.Sprintf("%d tests", b.Size))
 			for _, step := range b.Steps {
 				steps = append(steps, shownStep(step))
 			}
