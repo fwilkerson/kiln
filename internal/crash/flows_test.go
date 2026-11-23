@@ -3,7 +3,9 @@ package crash_test
 import (
 	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,76 +21,99 @@ import (
 
 func TestMain(m *testing.M) { scenariotest.Main(m, "crash") }
 
-// TestKilledAtEachStep kills kiln at each step of each of its main flows in turn. After each kill, the developer runs
-// the command kiln status names next, until the flow reaches its end. Between two commands, and at the end, kiln's
-// records must agree with git. They hold nothing a dead kiln left behind.
+// TestKilledAtEachStep holds that a kiln killed at any step of a main flow recovers at the developer's next command.
 //
-// A snapshot stands in for each SIGKILL, so one run of a flow serves each of its steps. At a step, before its change,
-// the hook clones the scratch root. It holds the repository, kiln's records under .git/kiln, and HOME with kiln's
-// worktrees. The test then restores the clone to the same path, and runs the recovery there. The clone holds what
-// the kill would leave:
+// A kill leaves a state, and the next kiln reads the state alone, whichever step left it. So the test stops kiln at
+// each step, and reads what a kill there would leave, as left says. A rule that holds whatever command comes next
+// is checked there, at every step. A leftover that no step showed before gets a drive. The test restores it, and
+// runs the commands the developer runs next, until the flow reaches its end. Between two commands, and at the end,
+// kiln's records must agree with git. They hold nothing a dead kiln left behind.
 //
-//   - The book names the snapshotting kiln's PID, which has exited by the time the recovery runs, as a killed kiln's.
+// A snapshot stands in for the SIGKILL, so one run of a flow serves each of its steps. At the step, before its
+// change, the test clones the scratch root. It holds the repository, kiln's records under .git/kiln, and HOME with
+// kiln's worktrees. The clone holds what the kill would leave:
+//
+//   - The book names the PID of the kiln at the step, which has exited once the test restores the clone.
 //   - A lock is no state of the file, so the clone holds none, as a dead kiln holds none.
 //   - Each step comes before its write, and a SIGKILL there ends kiln before the write, so no file is half-written.
 //   - Every absolute path, in git's worktree links and in kiln's cache, holds, since the clone goes back where it was.
-//   - No program kiln started runs at a step: a session's tree is gone before its end step, and git starts after.
+//   - No program kiln started runs at a step, but a second session of build-and-verify, as holds says.
 //
-// A root's recoveries run one at a time, since each restores to the root's path. So each flow runs in slots, each
-// with a root of its own, and each slot takes every slots-th step. SIGINT takes kiln's graceful path. It differs from
-// a kill only where kiln reads its context's end: as a session starts and ends. So a real SIGINT kills kiln at each
-// session step.
+// One flow gets a real SIGKILL at a step of each kind, and recovers from each as from a clone.
+//
+// A recovery is a run too. The test stops it at each step, and holds each rule there. It drives from each leftover
+// whose record or lost runs no run showed. A flow marked redone gets a drive from each new leftover of its recovery.
+//
+// The flows share the leftovers they showed, so the test goes in rounds. In a round, each flow claims each leftover
+// new to it, with a clone. settle then gives each leftover to the first claim of it, in the flows' order. So the
+// flow that drives a leftover is the same in every run of the test.
+//
+// SIGINT takes kiln's graceful path. It differs from a kill only where kiln reads its context's end: as a session
+// starts and ends. So a second run of a flow gets a real SIGINT at each such step, once for each leftover. A
+// leftover that an earlier flow's own run showed gets its SIGINT in that flow's second run. The test fails for a
+// leftover that got none.
 //
 // The test keeps a budget of its own, as outlasted says. Past the budget, a run starts no further command, and skips.
 // The test then fails once, by a message that names the budget.
 func TestKilledAtEachStep(t *testing.T) {
 	keepBudget(t)
-	for _, f := range flows {
-		t.Run(f.name, func(t *testing.T) {
-			t.Parallel()
-			// A run that no kill cuts short labels the flow's steps.
-			taken, from := f.killed(t, kill{flow: f.name})
-			for at := from; at < from+slots; at++ {
-				t.Run(fmt.Sprintf("KILL/%d+%d", at, slots), func(t *testing.T) {
-					t.Parallel()
-					f.fromSnapshots(t, at)
-				})
-			}
+	proofs := make([]*proof, len(flows))
+	for i, f := range flows {
+		proofs[i] = &proof{flow: f, scratch: newScratch(t, f)}
+		proofs[i].scratch.taken = t.TempDir()
+	}
 
-			for i, what := range taken[from-1:] {
-				at := strconv.Itoa(from + i)
-				if strings.HasPrefix(what, "session ") || strings.HasPrefix(what, "attached ") {
-					t.Run("INT/"+at, func(t *testing.T) {
-						t.Parallel()
-						f.killed(t, kill{f.name, "INT", at})
-					})
-				}
-			}
+	t.Run("killed", func(t *testing.T) {
+		seen := map[string]bool{}
+		for round := 0; slices.ContainsFunc(proofs, func(p *proof) bool { return p.due(round) }); round++ {
+			t.Run(strconv.Itoa(round), func(t *testing.T) { eachDue(t, proofs, round, seen) })
+			settle(seen, proofs)
+		}
+	})
 
-			if at := slices.Index(taken, f.recovering); at >= 0 {
-				t.Run("recovering", func(t *testing.T) {
-					t.Parallel()
-					f.killRecovering(t, at+1)
-				})
-			}
-		})
+	var runs []*signals
+	t.Run("signaled", func(t *testing.T) { runs = signalEach(t, proofs) })
+	for _, session := range unsent(runs) {
+		t.Errorf("no kiln got a real SIGINT at %s, which a flow left to an earlier one", session)
 	}
 }
 
-// slots is how many scratch roots each flow's snapshots share out.
-const slots = 6
-
-// defects are the kills known to leave kiln wrong, each with what goes wrong. A row's run fails once its defect is
-// fixed, and then the row goes.
-var defects = map[kill]string{}
-
-// kill is one run of a flow, killed by signal at the steps at names, as KILN_CRASH_AT names them. A run with no
-// signal is killed at no step.
-type kill struct {
-	flow   string
-	signal string
-	at     string
+// eachDue runs one round of the test: the part of each flow that is due, all in parallel.
+func eachDue(t *testing.T, proofs []*proof, round int, seen map[string]bool) {
+	for _, p := range proofs {
+		if p.due(round) {
+			t.Run(p.flow.name, func(t *testing.T) {
+				t.Parallel()
+				p.round(t, round, seen)
+			})
+		}
+	}
 }
+
+// signalEach runs each flow again, in parallel, with real signals, and answers what each run got. The first flow
+// gets a SIGKILL at a step of each kind. A flow whose own run showed no session's leftover of its own runs no more.
+func signalEach(t *testing.T, proofs []*proof) []*signals {
+	var runs []*signals
+	kills := []string{"state.json", "ledger.jsonl", "git", "session start", "session end"}
+	theirs := map[string]bool{}
+	for _, p := range proofs {
+		sig := &signals{kills: kills, theirs: maps.Clone(theirs), sent: map[string]bool{}, left: map[string]bool{}}
+		kills = nil
+		if p.shows(theirs) || len(sig.kills) > 0 {
+			runs = append(runs, sig)
+			t.Run(p.flow.name, func(t *testing.T) {
+				t.Parallel()
+				p.flow.signaled(t, sig)
+			})
+		}
+	}
+
+	return runs
+}
+
+// defects are the leftovers known to leave kiln wrong, each with what goes wrong. A key is the flow's name and the
+// leftover's class, as a failure quotes them. A row's drive fails once its defect is fixed, and then the row goes.
+var defects = map[string]string{}
 
 // flow is one of kiln's main flows, from the developer's first command to its end.
 type flow struct {
@@ -97,20 +122,17 @@ type flow struct {
 	name, given string
 	// subject is the spec or monitor the flow builds, by its name.
 	subject Spec
-	// recovering labels the step whose kill leaves work for the next command to recover. Each step of that recovery
-	// gets a kill of its own too. "" kills no recovering kiln.
-	recovering string
-	// from names the command whose first step starts the flow's kills, or is "" to kill at every step. The steps
-	// before it are another flow's.
-	from string
+	// redone marks a flow whose work the next kiln drops and starts again, once a kiln died at it. No other run
+	// takes that code. So proved drives from each new leftover of the flow's recovery, whichever checkouts it shows.
+	redone bool
 	// next is the kiln command the developer runs next in s, or nil once the flow reached its end.
 	next func(s *scratch) []string
 	// landed match the subject of each commit the flow lands on main, in order.
 	landed []string
 	// outcome is how the ledger's last build of the flow ended.
 	outcome string
-	// told is what a build session's prompt holds by the flow's end, or "".
-	told string
+	// told are patterns, each of which a session's prompt matches by the flow's end.
+	told []string
 }
 
 var flows = []flow{
@@ -150,11 +172,11 @@ var flows = []flow{
 		},
 	},
 	{
-		name:       "fix",
-		subject:    "bump",
-		recovering: "session start",
-		landed:     []string{`\bbump\b`},
-		outcome:    "landed",
+		name:    "fix",
+		subject: "bump",
+		redone:  true,
+		landed:  []string{`\bbump\b`},
+		outcome: "landed",
 		next: func(s *scratch) []string {
 			// A run that recovers a landing goes on to check again, and finds the monitor healthy.
 			if shown := s.shown(s.subject); strings.HasPrefix(shown, "landed") || strings.HasPrefix(shown, "healthy") {
@@ -184,7 +206,6 @@ var flows = []flow{
 		name:    "reject",
 		given:   "accept",
 		subject: "y",
-		from:    "reject",
 		outcome: "dropped",
 		next: func(s *scratch) []string {
 			shown := s.shown(s.subject)
@@ -222,7 +243,7 @@ var flows = []flow{
 		subject: "z",
 		landed:  []string{`^feat\(z\): land the approved spec$`},
 		outcome: "landed",
-		told:    "The gate wanted .tmp/tended.",
+		told:    []string{`The gate wanted \.tmp/tended\.`},
 		next: func(s *scratch) []string {
 			switch s.shown(s.subject) {
 			case "":
@@ -238,57 +259,215 @@ var flows = []flow{
 	},
 }
 
-// killed runs the flow f to its end in a scratch repository of its own. kiln is killed as k says. killed answers
-// the label of each step the run took. It answers from, the step that starts f's command from, or 1.
-func (f flow) killed(t *testing.T, k kill) (taken []string, from int) {
-	s := newScratch(t, f)
-	steps := filepath.Join(t.TempDir(), "steps")
-	env := append(slices.Clone(s.env), "KILN_CRASH_LOG="+steps, "KILN_CRASH_AT="+k.at, "KILN_CRASH_SIGNAL="+k.signal)
-
-	problems := f.drive(s, env)
-	taken = labels(steps)
-	s.judge(k, problems, taken)
-	return taken, max(s.from, 1)
+// proof is a flow's part of TestKilledAtEachStep: its scratch repository, and what it has yet to drive from.
+type proof struct {
+	flow    flow
+	scratch *scratch
+	// queue holds each clone settle left the flow, to drive from in the next round.
+	queue []snapshot
+	// sessions names each session step of the flow's own run, by what a kill there leaves.
+	sessions []string
 }
 
-// fromSnapshots runs the flow f once, with a snapshot at each slots-th step from first. Then it restores each
-// snapshot in turn, and drives the flow from there to its end.
-func (f flow) fromSnapshots(t *testing.T, first int) {
-	s := newScratch(t, f)
-	steps, snapshots, root := filepath.Join(t.TempDir(), "steps"), t.TempDir(), filepath.Dir(s.work)
-	env := append(slices.Clone(s.env), "KILN_CRASH_LOG="+steps, "KILN_CRASH_SNAPSHOTS="+snapshots,
-		"KILN_CRASH_ROOT="+root, fmt.Sprintf("KILN_CRASH_AT=%d+%d", first, slots))
-	s.judge(kill{flow: f.name}, f.drive(s, env), labels(steps))
-	taken := labels(steps)
-	for at := first; at <= len(taken); at += slots {
+// due is whether p has a part in the round. That is its flow's own run in round 0, and then each clone settle left
+// it.
+func (p *proof) due(round int) bool { return round == 0 || len(p.queue) > 0 }
+
+// shows is whether the own run of p's flow started or ended a session over a leftover theirs lacks. It keeps each
+// of those leftovers in theirs.
+func (p *proof) shows(theirs map[string]bool) bool {
+	found := false
+	for _, session := range p.sessions {
+		found = found || !theirs[session]
+		theirs[session] = true
+	}
+
+	return found
+}
+
+// round runs p's part of one round of the test. In round 0, it runs the flow to its end. In a later round, it
+// restores each clone of p's queue, and drives the flow from there to its end. It stops each kiln at each step, and
+// holds each rule then, as holds says. It claims each leftover that seen and the round so far lack, with a clone of
+// the scratch root. seen holds what the rounds before showed.
+func (p *proof) round(t *testing.T, round int, seen map[string]bool) {
+	f, s, queue := p.flow, p.scratch, p.queue
+	s.t, s.seen, p.queue = t, seen, nil
+	// The flow's own run gets a drive from each leftover, by its class.
+	byClass := round == 0 || f.redone
+	// running counts the sessions each kiln started and has yet to end, by its PID.
+	running := map[int]int{}
+	s.watch(func(st step) string {
+		l := s.holds(f, st, running[st.pid])
+		if c := s.claim(l.keys(byClass)); c != nil {
+			c.clone = s.snapshot(st, l)
+		}
+
+		if st.session() && round == 0 {
+			p.sessions = append(p.sessions, st.leaves(l))
+		}
+
+		running[st.pid] += st.started()
+		return "GO"
+	})
+
+	if round == 0 {
+		s.judge("", "killed at no step", f.drive(s))
+	}
+
+	root := filepath.Dir(s.work)
+	for _, k := range queue {
 		s.said.Reset()
-		if err := restore(filepath.Join(snapshots, strconv.Itoa(at)), root); err != nil {
+		if err := errors.Join(os.RemoveAll(root), os.Rename(k.dir, root)); err != nil {
 			t.Fatal(err)
 		}
 
-		s.judge(kill{f.name, "KILL", strconv.Itoa(at)}, f.drive(s, s.env), taken)
+		_, lines := s.kept()
+		s.calm, s.main, s.ledger = len(lines), "", nil
+		left := f.name + ": " + k.class
+		s.judge(left, fmt.Sprintf("killed at step %d, %s, which left %q and %q", k.n, k.what, left, k.lost), f.drive(s))
 	}
 }
 
-// killRecovering kills kiln at the step at of the flow f. Then it kills the next command at each step of its recovery,
-// up to its next monitor line.
-func (f flow) killRecovering(t *testing.T, at int) {
-	taken, _ := f.killed(t, kill{f.name, "KILL", strconv.Itoa(at)})
-	for i := at; i < len(taken) && taken[i] != "ledger.jsonl monitor"; i++ {
-		t.Run(strconv.Itoa(i+1), func(t *testing.T) {
-			t.Parallel()
-			f.killed(t, kill{f.name, "KILL", fmt.Sprintf("%d,%d", at, i+1)})
-		})
+// signaled runs the flow f to its end in a scratch repository of its own. Its kilns get the real signals of sig. It
+// holds each rule at each step, as holds says. It fails for each SIGKILL of sig that no step came for.
+func (f flow) signaled(t *testing.T, sig *signals) {
+	s := newScratch(t, f)
+	s.calm = -1
+	s.watch(func(st step) string {
+		l := s.holds(f, st, 0)
+		session := ""
+		if st.session() {
+			session = st.leaves(l)
+		}
+
+		return sig.at(session, st.kind())
+	})
+
+	s.judge("", "signaled as its sessions started and ended, and killed at a step of each kind", f.drive(s))
+	for _, kind := range sig.kills {
+		t.Errorf("%s: no step of the kind %q came, so no kiln got a real SIGKILL there", f.name, kind)
 	}
 }
 
-// restore puts the snapshot back at root, in place of what root holds.
-func restore(snapshot, root string) error {
-	if err := os.RemoveAll(root); err != nil {
-		return err
+// claim is a leftover a flow showed in a round, by the keys of leftover. clone is what a kill there would leave. It
+// is nil where the flow's own run went on from the leftover, between two commands.
+type claim struct {
+	keys  []string
+	clone *snapshot
+}
+
+// claim keeps the leftover of keys as one s showed this round, and answers the claim. It answers nil for a leftover
+// that is not new. An earlier round showed each of its keys, or s did in this round.
+func (s *scratch) claim(keys []string) *claim {
+	found := false
+	for _, key := range keys {
+		held := s.seen[key] || s.own[key]
+		found = found || !held
+		s.own[key] = true
 	}
 
-	return unix.Clonefile(snapshot, root, unix.CLONE_NOFOLLOW)
+	if !found {
+		return nil
+	}
+
+	s.claims = append(s.claims, &claim{keys: keys})
+	return s.claims[len(s.claims)-1]
+}
+
+// settle keeps a round's claims in seen, flow by flow in the flows' order. It keeps a flow's claims in the order the
+// flow made them. A flow drives next round from each clone whose leftover no claim before showed. So which flow
+// drives a leftover never turns on which flow reached it first.
+func settle(seen map[string]bool, proofs []*proof) {
+	for _, p := range proofs {
+		for _, c := range p.scratch.claims {
+			fresh := false
+			for _, key := range c.keys {
+				fresh = fresh || !seen[key]
+				seen[key] = true
+			}
+
+			if fresh && c.clone != nil {
+				p.queue = append(p.queue, *c.clone)
+			}
+		}
+
+		p.scratch.claims, p.scratch.own = nil, map[string]bool{}
+	}
+}
+
+// snapshot is a clone of a scratch root, as a kill at its step would leave the root.
+type snapshot struct {
+	step
+	leftover
+	dir string
+}
+
+// snapshot clones the scratch root under s.taken, as the step st finds it, with l left.
+func (s *scratch) snapshot(st step, l leftover) *snapshot {
+	s.cloned++
+	k := &snapshot{st, l, filepath.Join(s.taken, strconv.Itoa(s.cloned))}
+	if err := unix.Clonefile(filepath.Dir(s.work), k.dir, unix.CLONE_NOFOLLOW); err != nil {
+		s.t.Errorf("snapshot %s: %v", k.dir, err)
+	}
+
+	return k
+}
+
+// drive runs the commands the developer runs next in s, until the flow f reaches its end. It answers each rule s
+// broke between two commands, and at the end.
+func (f flow) drive(s *scratch) []string {
+	var problems []string
+	for range 24 {
+		if why := overBudget(s.t); why != "" {
+			s.t.Skip(why)
+		}
+
+		// No kiln runs here. So the run itself shows that the next command goes on from this leftover.
+		l := s.left(f)
+		s.claim(l.keys(true))
+		s.status = s.read("kiln", "status")
+		problems = append(problems, l.broken...)
+		if atWork.MatchString(s.status) {
+			problems = append(problems, "kiln status shows a build at work, though no kiln runs:\n"+s.status)
+		}
+
+		next := f.next(s)
+		if next == nil {
+			return slices.Concat(problems, s.problems(f), s.unanswered())
+		}
+
+		s.run("kiln", next...)
+	}
+
+	return append(problems, "the flow stopped short: kiln status shows "+s.read("kiln", "status"))
+}
+
+// judge fails the test when a run of the scratch found problems. It only logs them when defects holds left, the
+// leftover the run started from. It fails that run once it recovers. after says what was done to the run.
+func (s *scratch) judge(left, after string, problems []string) {
+	t := s.t
+	t.Helper()
+	why, known := defects[left]
+	switch {
+	case known && len(problems) == 0:
+		t.Errorf("%q now recovers: delete its row from defects, %q", left, why)
+	case known:
+		t.Logf("%q: a known defect: %s", left, why)
+	case len(problems) > 0:
+		t.Errorf("%s, %s:\n%s\n\n%s", s.subject, after, strings.Join(problems, "\n"), s.said.String())
+	}
+}
+
+// clones lists each session's clone that kiln's cache holds.
+func (s *scratch) clones() []string {
+	cache := filepath.Join(envValue(s.env, "HOME"), "Library", "Caches", "kiln")
+	var found []string
+	for _, role := range []string{"build", "verify"} {
+		matched, _ := filepath.Glob(filepath.Join(cache, "*", "."+role+"-*"))
+		found = append(found, matched...)
+	}
+
+	return found
 }
 
 // envValue is the value env gives the variable key, or "".
@@ -300,142 +479,6 @@ func envValue(env []string, key string) string {
 	}
 
 	return ""
-}
-
-// labels reads the label of each step the log at path holds, in order.
-func labels(path string) []string {
-	log, _ := os.ReadFile(path)
-	var taken []string
-	for line := range strings.Lines(string(log)) {
-		_, rest, _ := strings.Cut(strings.TrimSpace(line), " ")
-		_, what, _ := strings.Cut(rest, " ")
-		taken = append(taken, what)
-	}
-
-	return taken
-}
-
-// drive runs, with env, the commands the developer runs next in s, until the flow f reaches its end. It answers each
-// rule s broke between two commands, and at the end.
-func (f flow) drive(s *scratch, env []string) []string {
-	problems := s.between()
-	for range 12 {
-		next := f.next(s)
-		if next == nil {
-			break
-		}
-
-		if why := overBudget(s.t); why != "" {
-			s.t.Skip(why)
-		}
-
-		if next[0] == f.from && s.from == 0 {
-			s.from = len(labels(envValue(env, "KILN_CRASH_LOG"))) + 1
-		}
-
-		s.run(env, "kiln", next...)
-		problems = append(problems, s.between()...)
-	}
-
-	return append(problems, s.problems(f)...)
-}
-
-// judge fails the test when the run k found problems, unless defects holds k. It fails it too when k recovers, though
-// defects holds it. taken labels the run's steps.
-func (s *scratch) judge(k kill, problems, taken []string) {
-	t := s.t
-	t.Helper()
-	why, known := defects[k]
-	switch {
-	case known && len(problems) == 0:
-		t.Errorf("%+v now recovers: delete its row from defects, %q", k, why)
-	case known:
-		t.Logf("%+v: a known defect: %s", k, why)
-	case len(problems) > 0:
-		t.Errorf("%+v, %s:\n%s\n\n%s", k, killedAt(k, taken), strings.Join(problems, "\n"), s.said.String())
-	}
-}
-
-// killedAt labels the steps at which k killed kiln.
-func killedAt(k kill, taken []string) string {
-	var said []string
-	for item := range strings.SplitSeq(k.at, ",") {
-		if n, _ := strconv.Atoi(item); n > 0 && n <= len(taken) {
-			said = append(said, fmt.Sprintf("step %d, %s", n, taken[n-1]))
-		}
-	}
-
-	return "killed at " + cmp.Or(strings.Join(said, ", then "), "no step")
-}
-
-// between lists each rule s breaks while no kiln runs. No build is at work. No worktree or branch of the flow's
-// subject is left once the book holds no record of it.
-func (s *scratch) between() []string {
-	var found []string
-	if status := s.read("kiln", "status"); atWork.MatchString(status) {
-		found = append(found, "kiln status shows a build at work, though no kiln runs:\n"+status)
-	}
-
-	if s.held() {
-		return found
-	}
-
-	for _, tree := range s.trees() {
-		if strings.TrimPrefix(strings.TrimPrefix(filepath.Base(tree), ".audit-"), ".gate-") == string(s.subject) {
-			found = append(found, "the book holds no record of "+string(s.subject)+", yet its worktree is left: "+tree)
-		}
-	}
-
-	if branches := s.read("git", "branch", "--list", "kiln/"+string(s.subject)+"*"); branches != "" {
-		found = append(found, "the book holds no record of "+string(s.subject)+", yet its branch is left: "+branches)
-	}
-
-	for _, clone := range s.clones(string(s.subject)) {
-		found = append(found, "the book holds no record of "+string(s.subject)+", yet its clone is left: "+clone)
-	}
-
-	return found
-}
-
-// clones lists each session's clone of a build of name that kiln's cache holds. A name of "*" matches every build.
-func (s *scratch) clones(name string) []string {
-	cache := filepath.Join(envValue(s.env, "HOME"), "Library", "Caches", "kiln")
-	var found []string
-	for _, role := range []string{"build", "verify"} {
-		matched, _ := filepath.Glob(filepath.Join(cache, "*", "."+role+"-"+name))
-		found = append(found, matched...)
-	}
-
-	return found
-}
-
-// held is whether kiln's book holds a record of the flow's subject.
-func (s *scratch) held() bool {
-	raw, _ := os.ReadFile(filepath.Join(s.work, ".git", "kiln", "state.json"))
-	var b struct {
-		Specs []struct {
-			Name Spec `json:"name"`
-		} `json:"specs"`
-	}
-
-	_ = json.Unmarshal(raw, &b)
-	return slices.ContainsFunc(b.Specs, func(r struct {
-		Name Spec `json:"name"`
-	}) bool {
-		return r.Name == s.subject
-	})
-}
-
-// trees lists the path of each worktree git holds.
-func (s *scratch) trees() []string {
-	var found []string
-	for line := range strings.Lines(s.read("git", "worktree", "list", "--porcelain")) {
-		if tree, ok := strings.CutPrefix(strings.TrimSpace(line), "worktree "); ok {
-			found = append(found, tree)
-		}
-	}
-
-	return found
 }
 
 // Spec is a spec's or a monitor's name.
@@ -451,8 +494,31 @@ type scratch struct {
 	env     []string
 	subject Spec
 	said    strings.Builder
-	// from is the step that starts the flow's command from, once a run reached it.
-	from int
+	// status is what kiln status printed when drive last ran it.
+	status string
+	// seen holds each leftover the rounds before showed, by the keys of leftover. The flows share it, and none
+	// changes it in a round. own holds each that s showed in this round, and claims those new to it, in order.
+	seen, own map[string]bool
+	claims    []*claim
+	// taken is the directory of the clones that snapshot took, and cloned counts them.
+	taken  string
+	cloned int
+	// main is the commit main was at when left last read it. named is the landing the subject's record then named.
+	// main is "" once the developer or a clone moved main.
+	main, named string
+	// ledger holds the ledger's lines as left last read them, or none once a clone put an older ledger back.
+	ledger []ledgerLine
+	// calm is how many lines the ledger held when a kiln of the scratch was last killed. It is -1 while a signal
+	// may kill one.
+	calm int
+	// landed and stray hold what onMain read of main, by the commit main was at.
+	landed map[string][]string
+	stray  map[string]bool
+	// amends holds whether a commit holds amendments to the subject's spec, by the commit.
+	amends map[string]bool
+	// steps carries each step a kiln asks at, and answer answers one, once watch set both.
+	steps  chan step
+	answer func(step)
 }
 
 // newScratch makes the scratch repository of the flow f. Its scripted claude answers each call of a role with the
@@ -473,9 +539,9 @@ func newScratch(t *testing.T, f flow) *scratch {
 	script := scenariotest.ClaudeScript{}
 	for role, list := range steps {
 		script[role] = map[int]map[int][]scenariotest.ClaudeStep{}
-		for attempt := 1; attempt <= 9; attempt++ {
+		for attempt := 1; attempt <= 16; attempt++ {
 			script[role][attempt] = map[int][]scenariotest.ClaudeStep{}
-			for call := 1; call <= 9; call++ {
+			for call := 1; call <= 16; call++ {
 				script[role][attempt][call] = list
 			}
 		}
@@ -494,34 +560,35 @@ func newScratch(t *testing.T, f flow) *scratch {
 		t.Fatal(err)
 	}
 
-	return &scratch{t: t, work: work, env: env, subject: f.subject}
+	return &scratch{t: t, work: work, env: env, subject: f.subject, own: map[string]bool{},
+		landed: map[string][]string{}, stray: map[string]bool{}, amends: map[string]bool{}}
 }
 
-// run runs program with args in the scratch repository, with env, and answers what it printed.
-func (s *scratch) run(env []string, program string, args ...string) string {
+// run runs program with args in the scratch repository, and answers what it printed.
+func (s *scratch) run(program string, args ...string) string {
 	cmd := exec.CommandContext(s.t.Context(), program, args...)
-	cmd.Dir, cmd.Env = s.work, env
-	out, err := cmd.CombinedOutput()
+	cmd.Dir, cmd.Env = s.work, s.env
+	out, err := s.output(cmd)
 	fmt.Fprintf(&s.said, "$ %s %s\n%s", program, strings.Join(args, " "), out)
 	if err != nil {
 		fmt.Fprintf(&s.said, "[%v]\n", err)
 	}
 
-	return string(out)
+	return out
 }
 
 // read runs program with args, which change nothing, and answers what it printed.
 func (s *scratch) read(program string, args ...string) string {
 	cmd := exec.CommandContext(s.t.Context(), program, args...)
 	cmd.Dir, cmd.Env = s.work, s.env
-	out, _ := cmd.CombinedOutput()
-	return string(out)
+	out, _ := s.output(cmd)
+	return out
 }
 
-// shown is where kiln status shows the spec or monitor name stands, or "" when it shows none.
+// shown is where kiln status showed the spec or monitor name, when drive last ran it. It is "" when it showed none.
 func (s *scratch) shown(name Spec) string {
 	shown := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(string(name)) + `: (.*)$`)
-	m := shown.FindStringSubmatch(s.read("kiln", "status"))
+	m := shown.FindStringSubmatch(s.status)
 	if m == nil {
 		return ""
 	}
@@ -545,7 +612,8 @@ func (s *scratch) fixByHand() {
 		s.t.Fatal(err)
 	}
 
-	s.run(s.env, "git", "commit", "-qam", "fix(bump): make state.txt current by hand")
+	s.run("git", "commit", "-qam", "fix(bump): make state.txt current by hand")
+	s.main = ""
 }
 
 // retired is whether main no longer holds the spec of the flow's subject.
@@ -556,40 +624,28 @@ func (s *scratch) retired() bool {
 
 // problems lists each way the scratch repository breaks a rule that holds at the end of f, whatever killed kiln.
 func (s *scratch) problems(f flow) []string {
-	var found []string
-	if next := f.next(s); next != nil {
-		found = append(found, "the flow stopped short: kiln status shows "+s.read("kiln", "status"))
-	}
-
-	found = append(found, s.ledgerProblems(f)...)
-	landed := strings.Split(strings.TrimSpace(s.read("git", "log", "--reverse", "--format=%s", "main")), "\n")[1:]
-	matched := len(landed) == len(f.landed)
-	for i := range min(len(landed), len(f.landed)) {
-		matched = matched && regexp.MustCompile(f.landed[i]).MatchString(landed[i])
-	}
-
-	if !matched {
+	found := s.ledgerProblems(f)
+	refs := s.refs()
+	// left holds, at each step, that main's landings are the first of the flow's.
+	if landed, _ := s.onMain(refs); len(landed) != len(f.landed) {
 		found = append(found, fmt.Sprintf("main holds the landings %q, not one of each of %q", landed, f.landed))
 	}
 
-	// The main checkout stays, with the worktrees that no one build owns.
-	kept := []string{filepath.Base(s.work), ".main", ".gauges", ".monitor-check"}
-	for _, tree := range s.trees() {
-		if !slices.Contains(kept, filepath.Base(tree)) {
+	// The worktrees that no one build owns stay.
+	for _, tree := range s.worktrees() {
+		if !slices.Contains([]string{".main", ".gauges", ".monitor-check"}, tree) {
 			found = append(found, "a worktree is left behind: "+tree)
 		}
 	}
 
-	if branches := s.read("git", "branch", "--list", "kiln/*"); branches != "" {
-		found = append(found, "a branch is left behind: "+branches)
+	for _, ref := range slices.Sorted(maps.Keys(refs)) {
+		if strings.HasPrefix(ref, "refs/heads/kiln/") {
+			found = append(found, "a branch is left behind: "+ref)
+		}
 	}
 
-	for _, clone := range s.clones("*") {
+	for _, clone := range s.clones() {
 		found = append(found, "a clone is left behind: "+clone)
-	}
-
-	if strings.Contains(s.read("git", "ls-tree", "-r", "--name-only", "main"), "audit-stray.txt") {
-		found = append(found, "main holds the file the audit wrote")
 	}
 
 	book, _ := os.ReadFile(filepath.Join(s.work, ".git", "kiln", "state.json"))
@@ -597,40 +653,44 @@ func (s *scratch) problems(f flow) []string {
 		found = append(found, "the book still owes a session a message: "+string(book))
 	}
 
-	if f.told != "" && !s.told(f.told) {
-		found = append(found, "no build session was told "+f.told)
+	for _, pattern := range f.told {
+		if !s.told(regexp.MustCompile(pattern)) {
+			found = append(found, "no session was told "+pattern)
+		}
 	}
 
 	return found
 }
 
-// ledgerProblems lists each run line of the ledger with no end, and each build with no outcome. An audit run that
-// ended with a result holds a tally. The last build must end as f's does.
+// ledgerProblems lists each run that kiln ledger prints with no end, and each build with no outcome. An audit run
+// that ended with a result holds a tally. The last build must end as f's does.
 func (s *scratch) ledgerProblems(f flow) []string {
 	var found []string
-	for line := range strings.Lines(s.read("kiln", "ledger", "--kind", "run")) {
-		var run ledgerRun
-		err := json.Unmarshal([]byte(line), &run)
-		switch {
-		case err != nil || run.End == nil:
-			found = append(found, "a run has no end: "+line)
-		case run.answered() && run.Found == nil:
-			found = append(found, "an audit run ended with a result, but its line holds no tally: "+line)
-		}
-	}
-
 	var outcome *string
-	for line := range strings.Lines(s.read("kiln", "ledger", "--kind", "build")) {
-		var build struct {
+	for line := range strings.Lines(s.read("kiln", "ledger")) {
+		var e struct {
+			Kind    string  `json:"kind"`
 			Outcome *string `json:"outcome"`
 		}
 
-		if err := json.Unmarshal([]byte(line), &build); err != nil || build.Outcome == nil {
-			found = append(found, "a build has no outcome: "+line)
-			continue
+		var run ledgerRun
+		err := json.Unmarshal([]byte(line), &e)
+		if err == nil && e.Kind == "run" {
+			err = json.Unmarshal([]byte(line), &run)
 		}
 
-		outcome = build.Outcome
+		switch {
+		case err != nil:
+			found = append(found, "kiln ledger printed a line the test cannot read: "+line)
+		case e.Kind == "run" && run.End == nil:
+			found = append(found, "a run has no end: "+line)
+		case e.Kind == "run" && run.untallied():
+			found = append(found, "an audit run ended with a result, but its line holds no tally: "+line)
+		case e.Kind == "build" && e.Outcome == nil:
+			found = append(found, "a build has no outcome: "+line)
+		case e.Kind == "build":
+			outcome = e.Outcome
+		}
 	}
 
 	if outcome == nil || *outcome != f.outcome {
@@ -648,17 +708,19 @@ type ledgerRun struct {
 	Found *int    `json:"found"`
 }
 
-// answered is whether r is an audit run that ended with a result. Its reply ends with a tally, as the contract sets it.
-func (r ledgerRun) answered() bool {
-	return r.Role == "audit" && r.Ended == "result"
+// untallied is whether r is an audit run that ended with a result, yet holds no tally. The audit's reply ends with
+// a tally, as the contract sets it.
+func (r ledgerRun) untallied() bool {
+	answered := r.Role == "audit" && r.Ended == "result"
+	return answered && r.Found == nil
 }
 
-// told is whether a build session's prompt holds text.
-func (s *scratch) told(text string) bool {
-	prompts, _ := filepath.Glob(filepath.Join(s.work, scenariotest.ClaudeCallsDir, "build", "*", "*",
+// told is whether a session's prompt matches text.
+func (s *scratch) told(text *regexp.Regexp) bool {
+	prompts, _ := filepath.Glob(filepath.Join(s.work, scenariotest.ClaudeCallsDir, "*", "*", "*",
 		scenariotest.ClaudePromptFile))
 	return slices.ContainsFunc(prompts, func(p string) bool {
 		raw, _ := os.ReadFile(p)
-		return strings.Contains(string(raw), text)
+		return text.Match(raw)
 	})
 }

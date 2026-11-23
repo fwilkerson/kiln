@@ -34,13 +34,16 @@ differ, this file decides for kiln.
 - A test's condition holds one `||`. `claim.Holds`, from the practices module, takes the rest, as
   `TestSpecBeforeKiln` in `internal/kiln/agent_test.go` shows. `go doc -all github.com/fwilkerson/practices/claim`
   is its contract.
-- A kiln killed at any step recovers at the developer's next command. `crash.Step` marks each step that changes
-  durable state. A new kind of durable write calls it where it writes, never at a caller. `go doc ./internal/crash`
-  lists where kiln calls it, and says how a build with `-tags crash` kills kiln, or snapshots what a kill would leave.
-  `TestKilledAtEachStep` kills kiln at each step of its flows, then drives each flow to its end and checks kiln's
-  records against git. Its doc says why a snapshot stands in for SIGKILL. Fix a kill it fails by a design that makes
-  the state impossible. A defect too large for one commit gets a row in its `defects`, which fails once the defect is
-  fixed.
+- A kiln killed at any step recovers at the developer's next command. `store.update` is the one write of kiln's
+  records: it keeps a record's change with each ledger line the change wrote, or neither, as its doc says. What kiln
+  changes outside the book, it changes between two updates, so a record names each change a dead kiln left.
+  `crash.Step` marks each step that changes durable state. A new kind of durable write calls it where it writes,
+  never at a caller. `go doc ./internal/crash` lists where kiln calls it, and says how a build with `-tags crash`
+  asks a test at each step. `TestKilledAtEachStep` stops kiln at each step of its flows, and holds its rules on what
+  a kill there would leave. It drives each flow to its end from each leftover no step showed before, and checks
+  kiln's records against git. Its doc says why a snapshot stands in for SIGKILL. A new flow gets a row in its
+  `flows`. Fix a kill it fails by a design that makes the state impossible. A defect too large for one commit gets a
+  row in its `defects`, which fails once the defect is fixed.
 - The `gate-time` monitor, in `.kiln/monitors/gate-time/`, makes the tests faster once the gate slows, by the rule its
   check's header states. Its fix keeps each check, and waits for `kiln accept gate-time`.
 
