@@ -35,13 +35,12 @@ differ, this file decides for kiln.
   `TestSpecBeforeKiln` in `internal/kiln/agent_test.go` shows. `go doc -all github.com/fwilkerson/practices/claim`
   is its contract.
 - A kiln killed at any step recovers at the developer's next command. `crash.Step` marks each step that changes
-  durable state, and sits inside the few functions that make each change: the book's write, the ledger's append,
-  `git`'s run of a command missing from `reads`, and `proc`'s start and end of a session. A new kind of durable write
-  calls it where it writes, never at a caller. `go doc ./internal/crash` says how a build with `-tags crash` kills
-  kiln, or snapshots what a kill would leave. `TestKilledAtEachStep` kills kiln at each step of its flows, then
-  drives each flow to its end and checks kiln's records against git. Its doc says why a snapshot stands in for
-  SIGKILL. Fix a kill it fails by a design that makes the state impossible. A defect too large for one commit gets a
-  row in its `defects`, which fails once the defect is fixed.
+  durable state. A new kind of durable write calls it where it writes, never at a caller. `go doc ./internal/crash`
+  lists where kiln calls it, and says how a build with `-tags crash` kills kiln, or snapshots what a kill would leave.
+  `TestKilledAtEachStep` kills kiln at each step of its flows, then drives each flow to its end and checks kiln's
+  records against git. Its doc says why a snapshot stands in for SIGKILL. Fix a kill it fails by a design that makes
+  the state impossible. A defect too large for one commit gets a row in its `defects`, which fails once the defect is
+  fixed.
 - The `gate-time` monitor, in `.kiln/monitors/gate-time/`, makes the tests faster once the gate slows, by the rule its
   check's header states. Its fix keeps each check, and waits for `kiln accept gate-time`.
 

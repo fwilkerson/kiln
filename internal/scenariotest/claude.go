@@ -88,8 +88,9 @@ type ClaudeAudit struct {
 	Found    int             `json:"found,omitempty"`
 }
 
-// ClaudeFinding is one finding an audit lists. A Line of 0 names the whole file. Kind is one of auditKinds. A field's
-// text may hold a newline, and the reply indents each line it runs on to.
+// ClaudeFinding is one finding an audit lists. A Line of 0 names the whole file. Kind is a kind kiln's contract
+// names: bug, impossible by design, weak test, false comment or test-only export. A field's text may hold a newline,
+// and the reply indents each line it runs on to.
 type ClaudeFinding struct {
 	Path    string `json:"path"`
 	Line    int    `json:"line,omitempty"`
@@ -264,8 +265,8 @@ func readClaudeScript(work string) (ClaudeScript, error) {
 	return script, nil
 }
 
-// Check answers the first step of s that the scripted claude would refuse. A test that calls it first fails on that
-// step's error, not on a session that ended with no result.
+// Check answers the error of a step of s that the scripted claude would refuse, or nil for none. A test that calls
+// it first fails on that step's error, not on a session that ended with no result.
 func (s ClaudeScript) Check() error {
 	for role, attempts := range s {
 		for attempt, calls := range attempts {

@@ -133,7 +133,7 @@ session ──▶ gate ──passes──▶ audit ──no findings──▶ la
   `core.hooksPath` is set, or another pre-commit hook is in place, `kiln init` installs none: add the line
   `kiln precommit` to your own hook.
 
-`kiln help builds` and `kiln help the-gate` say the rest.
+`kiln help builds` and `kiln help gate` say the rest.
 
 ### acceptanceTests
 
@@ -532,9 +532,8 @@ x: stopped: the gate still failed after its last round:
   exit, kiln goes on at once. `kiln help kiln-tend` says how.
 - `kiln queue <name>` builds a stopped build anew from main, for a spec you changed.
 - `kiln queue` refuses a landed spec whose text on main is unchanged.
-- Every command but `kiln reject` refuses a build or fix that `kiln reject` is dropping. Should that kiln stop,
-  `kiln reject <name>` ends the drop.
-- While `kiln accept <name>` takes a build or fix, before its landing is queued, `kiln reject <name>` refuses.
+- Should a `kiln reject` stop before it drops the build or fix, `kiln reject <name>` ends the drop. `kiln help specs`
+  says what else refuses a record that `kiln reject` or `kiln accept` holds.
 - To change an amendment's wording, commit your own wording to the spec, then run `kiln reject <name>` and
   `kiln queue <name>`.
 - If the landing of accepted amendments stops, `kiln accept <name>` lands it again.

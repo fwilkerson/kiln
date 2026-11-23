@@ -17,7 +17,7 @@ const (
 	zombie = 5
 )
 
-// Process is one row of the process table, as list and [Of] read it.
+// Process is one row of the process table, as [Of] reads it.
 type Process struct {
 	PID    int
 	Parent int

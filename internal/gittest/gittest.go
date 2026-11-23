@@ -10,9 +10,9 @@
 // starting git. Its commits and files have the IDs git would give them. TestContract asks real git and the stand-in
 // the same questions of one history, and holds both to one answer.
 //
-// Each other method of [git.Git] fails the test, and so does a question git would answer otherwise. Such a question
-// names HEAD, main~1 or another Rev that is no branch's name or full commit ID. So does one with a path that is not
-// clean. A test that needs one runs on real git. Each commit has one parent at most, so a history holds no merge.
+// A History has no Check or CommonDir. Each other method of [git.Git] fails the test. So does a question git would
+// answer otherwise, such as one at HEAD, main~1 or a short commit ID. So does one with a path that is not clean. A
+// test that needs one runs on real git. Each commit has one parent at most, so a history holds no merge.
 package gittest
 
 import (

@@ -51,6 +51,10 @@
 //
 // kiln queue refuses a fix's record, and a spec that shares a monitor's name.
 //
+// A record that kiln reject took refuses kiln queue, accept and tend, until kiln reject drops it. While a live kiln
+// accept holds a record, kiln queue, reject and tend refuse it. The accept lets go once it queues the landing,
+// retires the spec, or fails.
+//
 // kiln queue takes only a spec whose Status, at main's tip, is Approved. Its form follows /shape's template, as kiln
 // embeds it. Its ## sections all appear, in the template's order, with any of the spec's own between them. Each ###
 // N. Title under Acceptance tests holds a Given, a When and a Then, numbered from 1.
