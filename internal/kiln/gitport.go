@@ -6,8 +6,9 @@ import (
 	"github.com/fwilkerson/kiln/internal/git"
 )
 
-// gitPort is each call of git that kiln makes, as [git.Git] answers it. Open gives a Repo a *git.Git. A test of a rule
-// that only reads history may give it a gittest.History, which answers without starting git.
+// gitPort is each call that kiln makes through package git, as [git.Git] answers it. plainGit runs git outside it, for
+// the checkout's files and hooks, and kiln init's merges. Open gives a Repo a *git.Git. A test of a rule that only
+// reads history may give it a gittest.History, which answers without starting git.
 type gitPort interface {
 	Branched(ctx context.Context, main, head git.Rev) ([]string, error)
 	Changed(ctx context.Context, from, to git.Rev) ([]string, error)

@@ -268,8 +268,9 @@ func scratchRepo(t *testing.T) (*Repo, string) {
 }
 
 // historyRepo is a repository whose git is h, the stand-in of package gittest, and its checkout, an empty directory.
-// No git repository holds the checkout, and no program is on its PATH. So kiln starts no program, and fails the test
-// where it asks what h does not answer.
+// No git repository holds the checkout. kiln's PATH names an empty directory, so kiln finds no program by name, such
+// as claude. kiln still runs /bin/sh by its path, and plainGit finds git on the test's own PATH. h fails the test where
+// kiln asks it what it does not answer.
 func historyRepo(t *testing.T, h *gittest.History) (*Repo, string) {
 	top := t.TempDir()
 	env := slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "PATH=") })
