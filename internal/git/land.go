@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/fwilkerson/kiln/internal/crash"
 )
 
 // InTheWay says why [Git.Move] did not move a branch, by the one field it sets. Tip is where the branch was, when it
@@ -420,6 +422,7 @@ func (r *removal) tree(ctx context.Context, path Worktree) error {
 		return fmt.Errorf("remove %s: not a worktree: %w", path, err)
 	}
 
+	crash.Step("clone remove")
 	if err := os.RemoveAll(string(path)); err != nil {
 		return err
 	}

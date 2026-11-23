@@ -39,7 +39,7 @@ func TestMain(m *testing.M) { scenariotest.Main(m, "crash") }
 //   - Every absolute path, in git's worktree links and in kiln's cache, holds, since the clone goes back where it was.
 //   - No program kiln started runs at a step, but a second session of build-and-verify, as holds says.
 //
-// One flow gets a real SIGKILL at a step of each kind, and recovers from each as from a clone.
+// One flow gets a real SIGKILL at each kind of step it takes. It recovers from each as from a clone.
 //
 // A recovery is a run too. The test stops it at each step, and holds each rule there. It drives from each leftover
 // whose record or lost runs no run showed. A flow marked redone gets a drive from each new leftover of its recovery.
@@ -91,7 +91,8 @@ func eachDue(t *testing.T, proofs []*proof, round int, seen map[string]bool) {
 }
 
 // signalEach runs each flow again, in parallel, with real signals, and answers what each run got. The first flow
-// gets a SIGKILL at a step of each kind. A flow whose own run showed no session's leftover of its own runs no more.
+// gets a SIGKILL at each kind of step it takes. A flow whose own run showed no session's leftover of its own runs
+// no more.
 func signalEach(t *testing.T, proofs []*proof) []*signals {
 	var runs []*signals
 	kills := []string{"state.json", "ledger.jsonl", "git", "session start", "session end"}
