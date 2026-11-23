@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fwilkerson/kiln/internal/gittest"
 	"github.com/fwilkerson/practices/claim"
 )
 
@@ -262,16 +263,16 @@ type refusedInit struct {
 
 // setUp is the repository the row starts from, at its path, and the preset kiln init is named.
 func (tt refusedInit) setUp(t *testing.T) (r *Repo, repo, named string) {
-	r, repo = scratchRepo(t)
+	r, repo = historyRepo(t, gittest.New(t))
 	team := teamPreset(t, t.TempDir())
 	for dir, f := range map[string][2]string{team: {tt.config, "kiln.json"}, repo: {tt.record, initFile}} {
 		if f[0] != "" {
-			shell(t, dir, "mkdir -p "+filepath.Dir(f[1])+" && echo '"+f[0]+"' >"+f[1])
+			writeAll(t, dir, map[string]string{f[1]: f[0] + "\n"})
 		}
 	}
 
 	if tt.checkout != "" {
-		shell(t, repo, "mkdir -p .kiln && echo '"+tt.checkout+"' >"+configFile)
+		writeAll(t, repo, map[string]string{configFile: tt.checkout + "\n"})
 	}
 
 	if tt.named == "" && tt.record == "" {

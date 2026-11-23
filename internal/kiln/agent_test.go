@@ -1,18 +1,23 @@
 package kiln
 
 import (
-	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/kiln/internal/gittest"
 	"github.com/fwilkerson/practices/claim"
 )
 
@@ -111,11 +116,10 @@ func TestSpecForm(t *testing.T) {
 // where the commit holds no spec under .kiln/.
 func TestSpecBeforeKiln(t *testing.T) {
 	t.Parallel()
-	r, repo := scratchRepo(t)
-	shell(t, repo, "mkdir specs && echo old >specs/x.md && git add -A && git commit --quiet -m old")
-	old := git.Rev(shell(t, repo, "git rev-parse HEAD"))
-	shell(t, repo, "mkdir -p .kiln/specs && echo new >.kiln/specs/x.md && git add -A && git commit --quiet -m new")
-	moved := git.Rev(shell(t, repo, "git rev-parse HEAD"))
+	h := gittest.New(t)
+	r, _ := historyRepo(t, h)
+	old := h.CommitFiles("main", gittest.Files{"specs/x.md": "old\n"})
+	moved := h.CommitFiles("main", gittest.Files{".kiln/specs/x.md": "new\n"})
 	for at, want := range map[git.Rev]string{old: "old\n", moved: "new\n"} {
 		spec, found, err := r.specAt(t.Context(), at, "x")
 		if err != nil || !claim.Holds(found, string(spec) == want) {
@@ -263,20 +267,29 @@ func scratchRepo(t *testing.T) (*Repo, string) {
 	return r, repo
 }
 
+// historyRepo is a repository whose git is h, the stand-in of package gittest, and its checkout, an empty directory.
+// No git repository holds the checkout, and no program is on its PATH. So kiln starts no program, and fails the test
+// where it asks what h does not answer.
+func historyRepo(t *testing.T, h *gittest.History) (*Repo, string) {
+	top := t.TempDir()
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "PATH=") })
+	r, err := newRepo(top, filepath.Join(top, ".git"), h, append(env, "PATH="+t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return r, top
+}
+
 // TestQueueNeedsInit holds that kiln queue refuses while main lacks a file of .kiln/ it needs, and names kiln init.
 func TestQueueNeedsInit(t *testing.T) {
 	t.Parallel()
 	for _, missing := range []string{configFile, agentFile(buildRole), agentFile(verifyRole), agentFile(auditRole)} {
 		t.Run(missing, func(t *testing.T) {
 			t.Parallel()
-			r, repo := scratchRepo(t)
-			if err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"}); err != nil {
-				t.Fatal(err)
-			}
-
-			shell(t, repo, "mkdir .kiln/specs && cp .kiln/skills/shape/template.md .kiln/specs/x.md && "+
-				"sed -i '' 's/^Status: Proposed/Status: Approved/' .kiln/specs/x.md && rm "+missing+
-				" && git add -A && git commit --quiet --no-verify -m start")
+			h, _ := approvedX(t)
+			r, _ := historyRepo(t, h)
+			h.CommitRemoved(mainBranch, missing)
 			err := r.Queue(t.Context(), "x", io.Discard)
 			if !errors.Is(err, errRefused) || !strings.Contains(err.Error(), "kiln init") {
 				t.Errorf("kiln queue answered %v; want a refusal that names kiln init", err)
@@ -291,46 +304,43 @@ func TestQueueNeedsInit(t *testing.T) {
 func TestQueueNeedsTestsPlace(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
-		change, refusal string
+		// config changes kiln.json, and build ends the build agent.
+		config         func(string) string
+		build, refusal string
 	}{
-		"kiln init's files are taken": {},
-		"kiln.json names no acceptance": {change: `perl -0pi -e 's/,\n  "acceptanceTests": [^\n]*//' .kiln/kiln.json`,
-			refusal: "names no acceptance"},
-		"its acceptance starts with the spec's name": {change: acceptance(`"{spec}/"`), refusal: "starts with {spec}"},
-		"a list of two paths is taken":               {change: acceptance(`["uat/{spec}/", "integration/{spec}/"]`)},
-		"an empty list":                              {change: acceptance(`[]`), refusal: "names no acceptance"},
-		"a path without the spec's name":             {change: acceptance(`["uat/{spec}/", "integration/"]`), refusal: "lacks {spec}"},
-		"a path not in its clean form":               {change: acceptance(`["./uat/{spec}/"]`), refusal: "not a clean path"},
-		"a path above the repository":                {change: acceptance(`["../{spec}/"]`), refusal: "not a clean path"},
-		"a path from the root":                       {change: acceptance(`["/uat/{spec}/"]`), refusal: "not a clean path"},
-		"a fixed part that starts another's":         {change: acceptance(`["uat/{spec}/", "uat/integration/{spec}/"]`), refusal: "could make two"},
-		"one fixed part twice, in other letters":     {change: acceptance(`["test_{spec}.py", "Test_{spec}-it.py"]`), refusal: "could make two"},
-		"a fixed part that only shares a prefix":     {change: acceptance(`["uat/{spec}/", "uat-it/{spec}/"]`)},
-		"the spec's path is a helpers path":          {change: helpers(`acceptance/x/`), refusal: "meets the testHelpers path"},
-		"a helpers path is under the spec's path":    {change: helpers(`acceptance/x/h/`), refusal: "meets the testHelpers path"},
-		"the spec's path is under a helpers path":    {change: helpers(`acceptance/`), refusal: "meets the testHelpers path"},
-		"a helpers path beside the spec's":           {change: helpers(`acceptance/xh/`)},
-		"the build agent names where the tests live": {
-			change:  `printf '\nWrite them in acceptance/x/.\n' >>.kiln/agents/build.md`,
+		"kiln init's files are taken":                {},
+		"kiln.json names no acceptance":              {config: noAcceptance, refusal: "names no acceptance"},
+		"its acceptance starts with the spec's name": {config: acceptanceOf(`"{spec}/"`), refusal: "starts with {spec}"},
+		"a list of two paths is taken":               {config: acceptanceOf(`["uat/{spec}/", "integration/{spec}/"]`)},
+		"an empty list":                              {config: acceptanceOf(`[]`), refusal: "names no acceptance"},
+		"a path without the spec's name":             {config: acceptanceOf(`["uat/{spec}/", "integration/"]`), refusal: "lacks {spec}"},
+		"a path not in its clean form":               {config: acceptanceOf(`["./uat/{spec}/"]`), refusal: "not a clean path"},
+		"a path above the repository":                {config: acceptanceOf(`["../{spec}/"]`), refusal: "not a clean path"},
+		"a path from the root":                       {config: acceptanceOf(`["/uat/{spec}/"]`), refusal: "not a clean path"},
+		"a fixed part that starts another's":         {config: acceptanceOf(`["uat/{spec}/", "uat/integration/{spec}/"]`), refusal: "could make two"},
+		"one fixed part twice, in other letters":     {config: acceptanceOf(`["test_{spec}.py", "Test_{spec}-it.py"]`), refusal: "could make two"},
+		"a fixed part that only shares a prefix":     {config: acceptanceOf(`["uat/{spec}/", "uat-it/{spec}/"]`)},
+		"the spec's path is a helpers path":          {config: helpersOf(`acceptance/x/`), refusal: "meets the testHelpers path"},
+		"a helpers path is under the spec's path":    {config: helpersOf(`acceptance/x/h/`), refusal: "meets the testHelpers path"},
+		"the spec's path is under a helpers path":    {config: helpersOf(`acceptance/`), refusal: "meets the testHelpers path"},
+		"a helpers path beside the spec's":           {config: helpersOf(`acceptance/xh/`)},
+		"the build agent names where the tests live": {build: "\nWrite them in acceptance/x/.\n",
 			refusal: "move that text to .kiln/agents/verify.md"},
-		"the build agent names the second path": {
-			change: acceptance(`["uat/{spec}/", "integration/{spec}/"]`) +
-				` && printf '\nRun the suite in (integration/).\n' >>.kiln/agents/build.md`,
-			refusal: "move that text to .kiln/agents/verify.md"},
+		"the build agent names the second path": {config: acceptanceOf(`["uat/{spec}/", "integration/{spec}/"]`),
+			build: "\nRun the suite in (integration/).\n", refusal: "move that text to .kiln/agents/verify.md"},
 		"the build agent names a path that only ends in a part": {
-			change: acceptance(`["uat/{spec}/", "git/{spec}/"]`) +
-				` && printf '\nThe wrapper is in internal/git/.\n' >>.kiln/agents/build.md`},
+			config: acceptanceOf(`["uat/{spec}/", "git/{spec}/"]`), build: "\nThe wrapper is in internal/git/.\n"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			r, repo := scratchRepo(t)
-			if err := r.Init(t.Context(), io.Discard, InitOptions{Preset: "go"}); err != nil {
-				t.Fatal(err)
+			h, tree := approvedX(t)
+			r, _ := historyRepo(t, h)
+			config, build := readFile(t, tree, configFile), readFile(t, tree, agentFile(buildRole))
+			if tc.config != nil {
+				config = tc.config(config)
 			}
 
-			shell(t, repo, "mkdir .kiln/specs && cp .kiln/skills/shape/template.md .kiln/specs/x.md && "+
-				"sed -i '' 's/^Status: Proposed/Status: Approved/' .kiln/specs/x.md && "+cmp.Or(tc.change, "true")+
-				" && git add -A && git commit --quiet --no-verify -m start")
+			h.CommitFiles(mainBranch, gittest.Files{configFile: config, agentFile(buildRole): build + tc.build})
 			err := r.Queue(t.Context(), "x", io.Discard)
 			switch {
 			case tc.refusal == "" && err != nil:
@@ -348,9 +358,81 @@ func acceptance(raw string) string {
 	return `sed -i '' 's|"acceptanceTests": .*|"acceptanceTests": ` + raw + `|' .kiln/kiln.json`
 }
 
-// helpers is a shell command that gives kiln.json one testHelpers path, p.
-func helpers(p string) string {
-	return `sed -i '' 's|"acceptanceTests": |"testHelpers": ["` + p + `"], "acceptanceTests": |' .kiln/kiln.json`
+// acceptanceOf changes kiln.json, as acceptance does, without a shell.
+func acceptanceOf(raw string) func(config string) string {
+	return func(config string) string {
+		return acceptanceKey.ReplaceAllLiteralString(config, `"acceptanceTests": `+raw)
+	}
+}
+
+// acceptanceKey matches kiln.json's acceptanceTests, to the end of its line.
+var acceptanceKey = regexp.MustCompile(`"acceptanceTests": .*`)
+
+// helpersOf changes kiln.json to name one testHelpers path, p.
+func helpersOf(p string) func(config string) string {
+	return func(config string) string {
+		return strings.Replace(config, `"acceptanceTests": `, `"testHelpers": ["`+p+`"], "acceptanceTests": `, 1)
+	}
+}
+
+// noAcceptance is kiln.json without its acceptanceTests.
+func noAcceptance(config string) string {
+	return acceptanceLine.ReplaceAllLiteralString(config, "")
+}
+
+// acceptanceLine matches kiln.json's line of acceptanceTests, with the comma that ends the line above it.
+var acceptanceLine = regexp.MustCompile(`,\n  "acceptanceTests": [^\n]*`)
+
+// inited is a checkout that kiln init set up with the preset go, in a repository of its own. Tests that read it share
+// it, and none changes it.
+var inited = sync.OnceValues(func() (string, error) {
+	repo, err := os.MkdirTemp(os.Getenv("HOME"), "inited-")
+	if err != nil {
+		return "", err
+	}
+
+	cmd := exec.Command("/bin/sh", "-c", "git init --quiet -b main && git config user.name t && "+
+		"git config user.email t@t")
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git init: %w: %s", err, out)
+	}
+
+	r, err := Open(context.Background(), repo, os.Environ())
+	if err == nil {
+		err = r.Init(context.Background(), io.Discard, InitOptions{Preset: "go"})
+	}
+
+	return repo, err
+})
+
+// approvedX is gittest's History whose main holds what kiln init wrote in inited, then the spec x. x is /shape's
+// template, Approved. approvedX answers inited's checkout too.
+func approvedX(t *testing.T) (*gittest.History, string) {
+	tree, err := inited()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := gittest.New(t)
+	h.CommitDir(mainBranch, tree)
+	template := readFile(t, tree, ".kiln/skills/shape/template.md")
+	h.CommitFiles(mainBranch, gittest.Files{Spec("x").file(): proposed.ReplaceAllLiteralString(template,
+		"Status: Approved")})
+	return h, tree
+}
+
+// proposed matches a spec's Status line, while the spec is Proposed.
+var proposed = regexp.MustCompile(`(?m)^Status: Proposed`)
+
+// readFile is the file at p, from dir.
+func readFile(t *testing.T, dir, p string) string {
+	raw, err := os.ReadFile(filepath.Join(dir, p))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return string(raw)
 }
 
 // TestAuditedDirs holds which directories the audit reads. A file at the top, in any language, names "." for the top.

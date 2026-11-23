@@ -13,6 +13,7 @@ import (
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/kiln/internal/gittest"
 	"github.com/fwilkerson/practices/claim"
 )
 
@@ -45,11 +46,32 @@ exit $(cat DIR/exit 2>/dev/null || echo 0)
 func tendRepo(t *testing.T, config string) (r *Repo, repo, dir string) {
 	t.Helper()
 	r, repo = scratchRepo(t)
+	writeTended(t, repo, config)
+	shell(t, repo, "git add . && git commit --quiet -m start")
+	return r, repo, tendClaude(t, r)
+}
+
+// tendHistory is tendRepo with tendConfig, on gittest's History h.
+func tendHistory(t *testing.T, h *gittest.History) (r *Repo, dir string) {
+	t.Helper()
+	r, repo := historyRepo(t, h)
+	writeTended(t, repo, tendConfig)
+	h.CommitDir("main", repo)
+	return r, tendClaude(t, r)
+}
+
+// writeTended writes into repo the files tendRepo commits, with config as kiln.json.
+func writeTended(t *testing.T, repo, config string) {
+	t.Helper()
 	writeAll(t, repo, map[string]string{configFile: config, agentFile(buildRole): "Build it.\n",
 		agentFile(verifyRole): "Test it.\n"})
 	writeMonitor(t, repo, "m", map[string]string{"command": "true"})
 	writeMonitor(t, repo, "w", map[string]string{"gauge": "echo 70", "monitor.json": `{"atLeast": 80}`})
-	shell(t, repo, "git add . && git commit --quiet -m start")
+}
+
+// tendClaude makes r's claude standIn, and answers the directory of standIn's files.
+func tendClaude(t *testing.T, r *Repo) (dir string) {
+	t.Helper()
 	dir = t.TempDir()
 	program := filepath.Join(dir, "claude")
 	if err := os.WriteFile(program, []byte(strings.ReplaceAll(standIn, "DIR", dir)), 0o700); err != nil {
@@ -57,7 +79,7 @@ func tendRepo(t *testing.T, config string) (r *Repo, repo, dir string) {
 	}
 
 	r.claude = claude.New(claude.Config{Program: program, Env: os.Environ(), Sessions: filepath.Join(dir, "sessions")})
-	return r, repo, dir
+	return dir
 }
 
 const tendConfig = `{"gate": ["true"], "rounds": 1, "acceptanceTests": "acceptance/{spec}/"}`
@@ -188,7 +210,7 @@ func TestTendRefuses(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			r, _, dir := tendRepo(t, tendConfig)
+			r, dir := tendHistory(t, gittest.New(t))
 			given(t, r, tc.recs, tc.entries)
 			if tc.tending {
 				unlock, err := r.lockTend(tc.name)
@@ -201,7 +223,7 @@ func TestTendRefuses(t *testing.T) {
 
 			err := r.Tend(t.Context(), tc.name, Terminal{Out: io.Discard, Err: io.Discard})
 			_, started := os.Stat(filepath.Join(dir, "prompt"))
-			if !claim.Holds(errors.Is(err, errRefused), strings.Contains(err.Error(), tc.says), started != nil) {
+			if !claim.Holds(errors.Is(err, errRefused), strings.Contains(fmt.Sprint(err), tc.says), started != nil) {
 				t.Errorf("kiln tend answered %v, and started a session: %v; want a refusal that says %q, and none",
 					err, started == nil, tc.says)
 			}

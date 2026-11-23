@@ -13,6 +13,7 @@ import (
 
 	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
+	"github.com/fwilkerson/kiln/internal/gittest"
 	"github.com/fwilkerson/kiln/internal/tui"
 	"github.com/fwilkerson/practices/claim"
 )
@@ -108,12 +109,13 @@ func wantRefused(t *testing.T, got refusals, want []string) {
 // file directly under .kiln/monitors/, since a monitor is a directory.
 func TestMonitorDirs(t *testing.T) {
 	t.Parallel()
-	r, repo := scratchRepo(t)
-	shell(t, repo, `mkdir .kiln && echo '{"gate": ["true"], "acceptanceTests": "uat/{spec}/"}' >.kiln/kiln.json`)
+	h := gittest.New(t)
+	r, repo := historyRepo(t, h)
+	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptanceTests": "uat/{spec}/"}` + "\n"})
 	writeMonitor(t, repo, "b", map[string]string{"command": "true"})
 	writeMonitor(t, repo, "a", map[string]string{"check": "true", "agent.md": "Fix it.", "monitor.json": `{"hours": 1}`,
 		"notes/lost": "true"})
-	shell(t, repo, "git add . && git commit --quiet -m start")
+	h.CommitDir("main", repo)
 	_, reads, err := r.monitors(t.Context(), "main")
 	monitors := runnable(reads)
 	if err != nil || len(monitors) != 2 {
@@ -133,8 +135,12 @@ func TestMonitorDirs(t *testing.T) {
 		t.Errorf("kiln complete monitor run answers %v, %v; want a and b", names, err)
 	}
 
-	shell(t, repo, "chmod -x .kiln/monitors/b/command && echo true >.kiln/monitors/stray && git add . && "+
-		"git commit --quiet -am plain")
+	if err := os.Chmod(filepath.Join(repo, monitorsDir, "b", "command"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	writeAll(t, repo, map[string]string{monitorsDir + "/stray": "true\n"})
+	h.CommitDir("main", repo)
 	_, reads, err = r.monitors(t.Context(), "main")
 	for name, want := range map[Spec]string{"a": "", "b": "chmod +x", "stray": "is a file"} {
 		_, found, refused := monitorNamed(reads, name)
@@ -185,10 +191,11 @@ func writeMonitor(t *testing.T, repo string, name string, files map[string]strin
 
 // TestStatusNeverRan holds that kiln status says once that a monitor never ran, then when it runs.
 func TestStatusNeverRan(t *testing.T) {
-	r, repo := scratchRepo(t)
+	h := gittest.New(t)
+	r, repo := historyRepo(t, h)
 	writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptanceTests": "a/{spec}/"}`})
 	writeMonitor(t, repo, "deps", map[string]string{checkScript: checkHealthy, commandScript: "true\n"})
-	shell(t, repo, "git add -A && git commit --quiet -m start")
+	h.CommitDir("main", repo)
 	var out strings.Builder
 	err := r.monitorStatus(t.Context(), &out)
 	const want = "monitors:\ndeps: never ran, runs at the next kiln monitor run\n"
@@ -259,11 +266,13 @@ func TestMonitorRunRefused(t *testing.T) {
 func TestMonitorConflict(t *testing.T) {
 	for file, marker := range map[string]string{commandScript: "<<<<<<< ours", settingsFile: ">>>>>>> theirs"} {
 		t.Run(file, func(t *testing.T) {
-			r, repo := scratchRepo(t)
+			h := gittest.New(t)
+			r, repo := historyRepo(t, h)
 			writeAll(t, repo, map[string]string{configFile: `{"gate": ["true"], "acceptanceTests": "a/{spec}/"}`})
-			writeMonitor(t, repo, "deps", map[string]string{commandScript: "true\n", settingsFile: "{}\n"})
-			shell(t, repo, "printf '"+marker+"\\n' >>"+monitor{Name: "deps"}.path(file)+
-				" && git add -A && git commit --quiet -m x")
+			files := map[string]string{commandScript: "true\n", settingsFile: "{}\n"}
+			files[file] += marker + "\n"
+			writeMonitor(t, repo, "deps", files)
+			h.CommitDir("main", repo)
 			_, reads, err := r.monitors(t.Context(), "main")
 			if err == nil {
 				_, _, err = monitorNamed(reads, "deps")

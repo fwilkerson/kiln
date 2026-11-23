@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fwilkerson/kiln/internal/gittest"
 	"github.com/fwilkerson/kiln/internal/tui"
 	"github.com/fwilkerson/practices/claim"
 )
@@ -236,12 +237,13 @@ func TestStateOf(t *testing.T) {
 // first. A line from before the monitor named the gauge is no reading, nor is one of another monitor.
 func TestMonitorReadings(t *testing.T) {
 	t.Parallel()
-	r, repo := scratchRepo(t)
+	h := gittest.New(t)
+	r, repo := historyRepo(t, h)
 	config := `{"gate": ["true"], "rounds": 1, "acceptanceTests": "acceptance/{spec}/"}`
-	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json")
+	writeAll(t, repo, map[string]string{configFile: config + "\n"})
 	writeMonitor(t, repo, "m", map[string]string{"gauge": "echo 0", "monitor.json": `{"atMost": 0}`, "command": "true"})
 	writeMonitor(t, repo, "other", map[string]string{"command": "true"})
-	shell(t, repo, "git add . && git commit --quiet -m start")
+	h.CommitDir("main", repo)
 	at, zero, two := time.Now().Add(-time.Hour), 0.0, 2.0
 	for i, e := range []entry{
 		{Monitor: "m", Found: foundHealthy},
@@ -316,11 +318,12 @@ func cutShortFix(t *testing.T, accepted bool) *Repo {
 		t.Fatal(err)
 	}
 
-	r, repo := scratchRepo(t)
+	h := gittest.New(t)
+	r, repo := historyRepo(t, h)
 	config := `{"gate": ["true"], "rounds": 1, "acceptanceTests": "acceptance/{spec}/"}`
-	shell(t, repo, "mkdir .kiln && echo '"+config+"' >.kiln/kiln.json")
+	writeAll(t, repo, map[string]string{configFile: config + "\n"})
 	writeMonitor(t, repo, "m", map[string]string{"command": "true"})
-	shell(t, repo, "git add . && git commit --quiet -m start")
+	h.CommitDir("main", repo)
 	err := r.store.update(func(b *book) error {
 		b.Specs = []*record{{Name: "m", State: building, Build: "b", Monitor: true, Accepted: accepted,
 			PID: dead.Process.Pid}}
