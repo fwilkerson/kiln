@@ -898,3 +898,91 @@ func TestNowLanes(t *testing.T) {
 			screenOf(m))
 	}
 }
+
+// TestFooterKeys holds that no footer names a key a MacBook lacks, such as End or Page Down.
+func TestFooterKeys(t *testing.T) {
+	lacks := regexp.MustCompile(`(?i)end|home|pg|page|[↑↓←→]`)
+	for k, keys := range keyMaps {
+		for _, b := range keys.foot {
+			if lacks.MatchString(b.Help().Key) {
+				t.Errorf("the footer of screen %d names %q, a key a MacBook lacks", k, b.Help().Key)
+			}
+		}
+	}
+}
+
+// TestPagingKeys holds that each footer names the keys that open the next screen, and space/b and g/G. Space and b
+// page down and up, and g and G go to the top and the end.
+func TestPagingKeys(t *testing.T) {
+	now := time.Now()
+	run := func(role, session, why string) *Run {
+		return &Run{Role: role, Session: session, Why: why, Start: now, End: now}
+	}
+
+	b := &Build{Spec: "x", Started: now, Steps: []Step{run("build", "s1", "first run"), run("audit", "s2", "audit"),
+		run("build", "s3", "findings"), run("audit", "s4", "audit again"), run("build", "s5", "findings again"),
+		run("audit", "s6", "audit last")}}
+	src := source{specs: []Spec{{Name: "x", State: UAT, Builds: []*Build{b}}},
+		calls: map[string]claude.Recounted{"s1": {Answer: "Built x.\nIt answers 42.\nIts test passes.\nIt reads the spec.\nIt is short.\nIt is done.",
+			Actions: []claude.Action{{At: now, Tool: "Bash", Input: "go test ./..."}}}},
+		text: "# Spec 1: x\n\n## Overview\n\nOne.\n\nTwo.\n\nThree.\n\nFour.\n\nFive.\n\nRevision 4."}
+	// Each screen shows its pages in a terminal 7 rows tall.
+	if foot := footOf(drive(t, src, "x", sized(120, 7))); !strings.Contains(foot, " enter ") {
+		t.Errorf("home's footer %q names no enter", foot)
+	}
+
+	for name, tc := range map[string]struct {
+		open []tea.Msg
+		// names is the key the footer names that opens the next screen, beside space/b and g/G.
+		names string
+		pages
+	}{
+		"a build's runs": {[]tea.Msg{press(tea.KeyEnter)}, " enter ", pages{"1  build", "3  build", "6  audit"}},
+		"a run": {[]tea.Msg{press(tea.KeyEnter), press(tea.KeyEnter)}, " s ",
+			pages{"Built x.", "It reads the spec.", "Bash"}},
+		"the spec text": {[]tea.Msg{press(tea.KeyEnter), press('s')}, " space/b ",
+			pages{"# Spec 1: x", "One.", "Revision 4."}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := drive(t, src, "x", append([]tea.Msg{sized(120, 7)}, tc.open...)...)
+			for _, named := range []string{" space/b ", " g/G ", tc.names} {
+				if foot := footOf(m); !strings.Contains(foot, named) {
+					t.Errorf("the footer %q names no%q", foot, named)
+				}
+			}
+
+			wantPages(t, m, tc.pages)
+		})
+	}
+}
+
+// footOf is the last row of m's screen, its footer.
+func footOf(m model) string {
+	rows := strings.Split(screenOf(m), "\n")
+	return rows[len(rows)-1]
+}
+
+// pages are texts that mark the pages of a screen that scrolls, of 3 pages or more. first shows on its first page
+// alone, next on its second alone, and last on its last alone.
+type pages struct{ first, next, last string }
+
+// wantPages presses space, b, G and g on m in turn. After each, m shows the page that key goes to, as p marks it.
+func wantPages(t *testing.T, m model, p pages) {
+	t.Helper()
+	first, next, last := p.first, p.next, p.last
+	// G hides next too, so a G that only pages down fails.
+	for _, step := range []struct {
+		key    rune
+		shown  string
+		hidden []string
+	}{{tea.KeySpace, next, []string{first, last}}, {'b', first, []string{next}}, {'G', last, []string{first, next}},
+		{'g', first, []string{last}}} {
+		m = sendAll(m, press(step.key))
+		shown := screenOf(m)
+		if !strings.Contains(shown, step.shown) || slices.ContainsFunc(step.hidden, func(h string) bool {
+			return strings.Contains(shown, h)
+		}) {
+			t.Fatalf("after %q, want %q on screen, and none of %q:\n%s", step.key, step.shown, step.hidden, shown)
+		}
+	}
+}

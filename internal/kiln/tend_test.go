@@ -318,6 +318,53 @@ func TestTendGoesOn(t *testing.T) {
 	}
 }
 
+// TestTendGoesOnSplit holds kiln tend of a stopped build in build-and-verify. kiln resumes both of its sessions, and
+// starts none anew. Each is told why the build stopped, and the note. The work of both lands, with what main gained.
+func TestTendGoesOnSplit(t *testing.T) {
+	t.Parallel()
+	// The gate passes only on work that holds main's fix, which main gains once the build stopped.
+	r, repo, dir := tendRepo(t, `{"gate": ["test -e fix.txt"], "rounds": 1, "workflow": "build-and-verify", `+
+		`"acceptanceTests": "acceptance/{spec}/"}`)
+	approved := git.Rev(shell(t, repo, "git rev-parse main"))
+	builder, verifier := claude.NewID(), claude.NewID()
+	rec := record{Name: "x", State: stopped, Approved: approved, Build: "b1", Session: builder, Verify: verifier,
+		Audited: approved, Limit: new(1), Rounds: 1, Why: "the gate still failed after its last round:\nFAIL"}
+	given(t, r, []*record{&rec}, nil)
+	b := &build{r: r, rec: rec, tree: r.tree("x"), out: io.Discard}
+	if err := b.cloneSides(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	shell(t, string(r.clone("x", buildRole)), "echo 42 >x.txt && git add . && git commit --quiet -m code")
+	shell(t, string(r.clone("x", verifyRole)),
+		"mkdir -p acceptance/x && echo t >acceptance/x/t.txt && git add . && git commit --quiet -m tests")
+	shell(t, repo, "echo fixed >fix.txt && git add fix.txt && git commit --quiet -m fix")
+	writeAll(t, dir, map[string]string{"note": "use 42"})
+	err := r.Tend(t.Context(), "x", Terminal{Out: io.Discard, Err: io.Discard})
+	k, _ := r.store.read()
+	main := git.Rev(shell(t, repo, "git rev-parse main"))
+	landedBoth := shell(t, repo, "git ls-tree -r --name-only main -- x.txt acceptance/x fix.txt")
+	now := k.find("x")
+	if !claim.Holds(err == nil, now != nil && now.State == landed, now != nil && now.LandedAt == main,
+		landedBoth == "acceptance/x/t.txt\nfix.txt\nx.txt") {
+		t.Errorf("kiln tend answered %v, and left %+v, main holding %q; want both sides landed at %s", err, now,
+			landedBoth, main)
+	}
+
+	for _, session := range []string{builder, verifier} {
+		told, _ := os.ReadFile(filepath.Join(dir, "resumed-"+session))
+		if !claim.Holds(strings.Contains(string(told), "use 42"),
+			strings.Contains(string(told), "the gate still failed")) {
+			t.Errorf("session %s was told %q; want why the build stopped, and the note", session, told)
+		}
+	}
+
+	// standIn keeps a headless call with no --resume in resumed-, a session started anew.
+	if resumed, _ := filepath.Glob(filepath.Join(dir, "resumed-*")); len(resumed) != 2 {
+		t.Errorf("kiln ran the headless sessions %q; want the build's own 2", resumed)
+	}
+}
+
 // wantRefusal holds that err is a refusal that says says.
 func wantRefusal(t *testing.T, err error, says string) {
 	t.Helper()
