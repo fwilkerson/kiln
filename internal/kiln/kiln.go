@@ -87,7 +87,8 @@
 // kiln keeps its own files out of the working tree. Main is the branch named main:
 //
 //	<git common dir>/kiln/         shared by every worktree of the repository
-//	  state.json                   each spec's state, and the gate's last checks at main
+//	  state.json                   each spec's state, the gate's last checks at main, and the ledger lines of
+//	                               its last write
 //	  lock                         held while kiln changes state.json
 //	  specs.lock                   held by the one kiln at work in the specs' lane, and names it
 //	  monitors.lock                held by the one kiln at work in the monitors' lane, and names it
@@ -522,7 +523,11 @@
 //
 // Its options keep one kind, the lines of one name, or the last few. A name keeps a spec's builds and a monitor's
 // runs and fixes. A spec and a monitor that held one name in turn print together. It reads the one ledger that every
-// worktree shares. It takes no lock: kiln appends each line whole, and kiln ledger skips a line cut short.
+// worktree shares. kiln ledger takes no lock, so it never waits for a running kiln.
+//
+// kiln keeps each write's new ledger lines in state.json, then appends them to ledger.jsonl. A kiln killed between
+// the two leaves ledger.jsonl without them. The next kiln command that writes state.json appends them. Until then,
+// kiln ledger prints them from state.json.
 //
 // Each object holds kind, then the fields its kind lists below, in that order. A time is RFC 3339, in UTC, to the
 // second, as jq's fromdate reads it. A field whose type allows null holds null while kiln does not know it:
@@ -996,14 +1001,14 @@ func (r *Repo) Queue(ctx context.Context, name Spec, out io.Writer) error {
 	var dropped string
 	err = r.store.update(func(b *book) error {
 		drop, dropped, err = b.queue(name, main, r.changed(ctx, name, spec))
+		if err == nil && dropped != "" {
+			b.write(entry{Kind: outcomeKind, Build: dropped, Outcome: outDropped})
+		}
+
 		return err
 	})
 	if err != nil {
 		return err
-	}
-
-	if dropped != "" {
-		r.ended(name, entry{Build: dropped, Outcome: outDropped}, out)
 	}
 
 	if drop {
@@ -1179,26 +1184,18 @@ func (r *Repo) specAt(ctx context.Context, at git.Rev, name Spec) (spec []byte, 
 	return r.git.Show(ctx, at, name.oldFile())
 }
 
-// ended writes e to the ledger, as the outcome of the build of name.
-func (r *Repo) ended(name Spec, e entry, out io.Writer) {
-	e.Kind = outcomeKind
-	if err := r.store.write(e); err != nil {
-		fmt.Fprintf(out, "%s: kiln could not write its ledger: %v\n", name, err)
-	}
-}
-
-// end ends the build of rec for good. It removes the build's checkouts and branches, writes e as the build's outcome,
-// then retires rec. The record goes last, so a kiln interrupted or killed first leaves it for the next command to end.
-// No other function takes a record out of the book.
-func (r *Repo) end(ctx context.Context, rec record, e entry, out io.Writer) error {
+// end ends the build of rec for good. It removes the build's checkouts and branches. Then one update retires rec, and
+// writes e as the build's outcome. The record goes last, so a kiln interrupted or killed first leaves it for the next
+// command to end. No other function takes a record out of the book.
+func (r *Repo) end(ctx context.Context, rec record, e entry) error {
 	if err := r.dropCheckouts(ctx, rec.Name); err != nil {
 		return err
 	}
 
-	e.Build = rec.Build
-	r.ended(rec.Name, e, out)
+	e.Kind, e.Build = outcomeKind, rec.Build
 	return r.store.update(func(b *book) error {
 		b.Specs = slices.DeleteFunc(b.Specs, func(s *record) bool { return s.Name == rec.Name })
+		b.write(e)
 		return nil
 	})
 }
@@ -1227,7 +1224,7 @@ func (r *Repo) Reject(ctx context.Context, name Spec, out io.Writer) error {
 		outcome = outRejected
 	}
 
-	if err := r.end(ctx, rec, entry{Outcome: outcome}, out); err != nil {
+	if err := r.end(ctx, rec, entry{Outcome: outcome}); err != nil {
 		return err
 	}
 
@@ -1534,7 +1531,7 @@ func (r *Repo) acceptLanded(ctx context.Context, b *build) error {
 		return errors.Join(err, r.dropCheckouts(context.WithoutCancel(ctx), name))
 	}
 
-	if err := r.end(ctx, b.now(), entry{Outcome: outAccepted}, b.out); err != nil {
+	if err := r.end(ctx, b.now(), entry{Outcome: outAccepted}); err != nil {
 		return err
 	}
 

@@ -136,7 +136,7 @@ func (b *build) readEach(ctx context.Context) error {
 
 		e := m.reading(rd.value)
 		e.Kind, e.Landed = gaugeKind, b.landed
-		b.record(e)
+		b.set(nil, e)
 		b.say("gauge %s%s", shownReading(e), why)
 	}
 

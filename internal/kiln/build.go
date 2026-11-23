@@ -47,8 +47,7 @@ func (r *Repo) run(ctx context.Context, out io.Writer, in inLane) error {
 
 	defer unshare()
 
-	r.recount(ctx, out, in.lane)
-	if err := r.store.update(func(b *book) error { b.requeue(in.lane); return nil }); err != nil {
+	if _, err := r.takeUp(ctx, out, in.lane); err != nil {
 		return err
 	}
 
@@ -67,8 +66,8 @@ type inLane struct {
 
 // buildEach builds each record that take marks building in the lane, until none is left.
 func (r *Repo) buildEach(ctx context.Context, out io.Writer, in inLane) error {
-	for {
-		rec, found, err := r.take(in)
+	for first := true; ; first = false {
+		rec, found, err := r.take(in, first)
 		if err != nil || !found {
 			return err
 		}
@@ -87,8 +86,15 @@ func (r *Repo) buildEach(ctx context.Context, out io.Writer, in inLane) error {
 }
 
 // take marks the next record of the lane building, as book.next picks it. Once none is left, it unlocks the lane.
-func (r *Repo) take(in inLane) (rec record, found bool, err error) {
+// A run's first take queues again each record a dead kiln left building, as requeue says, in the same update. So a
+// record a kiln takes up again goes from building to building, and no kill leaves it queued between. A later take
+// queues none again: a record left building by then is this kiln's own.
+func (r *Repo) take(in inLane, first bool) (rec record, found bool, err error) {
 	err = r.store.update(func(b *book) error {
+		if first {
+			b.requeue(in.lane)
+		}
+
 		rec, found = b.next(in.lane, in.only, os.Getpid())
 		// A landing queued after this update finds the lane free, so no kiln accept counts on this run. kiln monitor
 		// run never unlocks here: it lands queued landings only as it starts.
@@ -438,10 +444,12 @@ func (b *build) waitsOnBranch(ctx context.Context, head git.Rev) (bool, error) {
 		return false, nil
 	}
 
-	b.set(func(r *record) { r.State, r.Amendments = amended, string(amendments) })
+	var outcome []entry
 	if err == nil {
-		b.record(entry{Kind: outcomeKind, Outcome: outWaits, Amendments: string(amendments)})
+		outcome = []entry{{Kind: outcomeKind, Outcome: outWaits, Amendments: string(amendments)}}
 	}
+
+	b.set(func(r *record) { r.State, r.Amendments = amended, string(amendments) }, outcome...)
 
 	b.say("waits on %s, with amendments for UAT", b.rec.Name.branch())
 	return true, err
@@ -479,7 +487,7 @@ func (b *build) waitOrLand(ctx context.Context) (setback, error) {
 func (b *build) onMain(ctx context.Context, at git.Rev) error {
 	b.landed = at
 	if b.rec.Accepted {
-		if err := b.r.end(ctx, b.now(), entry{Outcome: outAccepted}, b.out); err != nil {
+		if err := b.r.end(ctx, b.now(), entry{Outcome: outAccepted}); err != nil {
 			return err
 		}
 
@@ -491,8 +499,8 @@ func (b *build) onMain(ctx context.Context, at git.Rev) error {
 		return err
 	}
 
-	b.record(entry{Kind: outcomeKind, Outcome: outLanded})
-	b.set(func(r *record) { r.State, r.Before, r.Landing, r.Onto, r.LandedAt = landed, "", "", "", at })
+	b.set(func(r *record) { r.State, r.Before, r.Landing, r.Onto, r.LandedAt = landed, "", "", "", at },
+		entry{Kind: outcomeKind, Outcome: outLanded})
 	b.say("landed on main at %s, and waits for UAT", short(at))
 	return nil
 }
@@ -657,7 +665,7 @@ func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claud
 		why = reason{Why: whyFirst}
 	}
 
-	b.record(entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed, PID: os.Getpid(),
+	b.set(nil, entry{Kind: startKind, Role: l.Role, Session: l.Session, Streamed: streamed, PID: os.Getpid(),
 		reason: why, Read: read})
 	ended, err := b.r.claude.Run(ctx, l)
 	if silent, ok := errors.AsType[*claude.Silent](err); ok {
@@ -674,7 +682,7 @@ func (b *build) runOnce(ctx context.Context, l claude.Launch, why reason) (claud
 		end.heard(ended)
 	}
 
-	b.record(end)
+	b.set(nil, end)
 
 	if ctx.Err() != nil {
 		return ended, ctx.Err()
@@ -722,14 +730,25 @@ func (r *Repo) undo(ctx context.Context, dir git.Worktree, read git.Rev) ([]stri
 	return slices.Compact(changed), r.git.Detached(ctx, dir, read)
 }
 
-// set applies change once, to the stored record, and takes that record as the build's copy.
-func (b *build) set(change func(*record)) {
+// set applies change once, to the stored record, and takes that record as the build's copy. A nil change changes
+// nothing. The same update writes lines to the ledger, as the build's. A build with no ID writes none: its spec was
+// approved before kiln kept a ledger.
+func (b *build) set(change func(*record), lines ...entry) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if change == nil {
+		change = func(*record) {}
+	}
+
 	err := b.r.store.update(func(k *book) error {
 		if r := k.find(b.rec.Name); r != nil {
 			change(r)
 			b.rec = *r
+		}
+
+		for _, e := range lines {
+			e.Build = b.rec.Build
+			k.write(e)
 		}
 
 		return nil
@@ -742,8 +761,8 @@ func (b *build) set(change func(*record)) {
 
 // stop records the build as stopped, for s. It leaves the worktree and the session in place.
 func (b *build) stop(s stop) {
-	b.set(func(r *record) { r.State, r.stop, r.Paused = stopped, s, time.Time{} })
-	b.record(entry{Kind: outcomeKind, Outcome: outStopped})
+	b.set(func(r *record) { r.State, r.stop, r.Paused = stopped, s, time.Time{} },
+		entry{Kind: outcomeKind, Outcome: outStopped})
 	b.say("stopped: %s", strings.SplitN(s.Why, "\n", 2)[0])
 }
 
@@ -830,10 +849,11 @@ func (b *build) gated(ctx context.Context, held commands, without []string, guar
 
 	// A gate that stopped on an error never passed, whatever the commands it ran found.
 	e.End, e.Passed = time.Now(), err == nil && v.passed
-	b.record(e)
-	if err == nil {
-		b.set(func(r *record) { r.Limit = &v.rounds })
-	}
+	b.set(func(r *record) {
+		if err == nil {
+			r.Limit = &v.rounds
+		}
+	}, e)
 
 	return v, err
 }

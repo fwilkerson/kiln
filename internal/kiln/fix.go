@@ -107,12 +107,15 @@ func (c *checkFailed) Error() string { return "the monitor's check couldn't run:
 var errLimitEnded = errors.New("a usage limit ended the session")
 
 // startFix keeps the record of the fix f, and answers its build. The fix builds from main's tip, as the monitor line
-// says. A stopped fix of its monitor gives way to it.
+// says. A stopped fix of its monitor gives way to it. The update that keeps the record writes line, then the fix's
+// build line. So the ledger never names a fix no record holds.
 func (r *Repo) startFix(out io.Writer, f *fixing, line entry) (*build, error) {
 	m := f.monitor
 	rec := record{Name: m.Name, State: building, Approved: line.Main, Build: line.Build, Monitor: true,
 		PID: os.Getpid()}
 	err := r.store.update(func(b *book) error {
+		b.write(line)
+		b.write(entry{Kind: builtKind, Build: rec.Build, Spec: m.Name, Approved: rec.Approved, Monitor: m.Name})
 		if stopped := b.find(m.Name); stopped != nil {
 			*stopped = rec
 			return nil
@@ -130,8 +133,6 @@ func (r *Repo) startFix(out io.Writer, f *fixing, line entry) (*build, error) {
 
 // fixRun runs the fix of b, whose record the book holds, until it ends.
 func (b *build) fixRun(ctx context.Context) error {
-	m := b.fix.monitor
-	b.record(entry{Kind: builtKind, Spec: m.Name, Approved: b.rec.Approved, Monitor: m.Name})
 	return b.fixSettle(ctx, b.fixWork(ctx))
 }
 
@@ -701,13 +702,11 @@ func (b *build) fixEnded(ctx context.Context) error {
 	var err error
 	switch f.outcome {
 	case outStopped:
-		b.record(e)
-		b.set(func(r *record) { r.State, r.runner = stopped, runner{} })
+		b.set(func(r *record) { r.State, r.runner = stopped, runner{} }, e)
 	case outWaits:
-		b.record(e)
-		b.set(func(r *record) { r.State, r.runner = waiting, runner{} })
+		b.set(func(r *record) { r.State, r.runner = waiting, runner{} }, e)
 	default:
-		err = b.r.end(ctx, b.now(), e, b.out)
+		err = b.r.end(ctx, b.now(), e)
 	}
 
 	b.say("%s", cmpOr(strings.TrimSuffix(f.outcome+": "+f.summary, ": "), "ended"))

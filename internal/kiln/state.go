@@ -141,6 +141,10 @@ type book struct {
 	Specs []*record `json:"specs"`
 	// Main holds the gate's checks at main, by the commit and the commands they ran.
 	Main map[string][]check `json:"main,omitempty"`
+	// Lines are the ledger lines of the last update, and Ledger the ledger's length when that update began. The
+	// ledger holds Lines from there on, once a kiln has appended them, as settle says.
+	Lines  []entry `json:"lines,omitempty"`
+	Ledger int64   `json:"ledger,omitempty"`
 }
 
 // errRefused is the error kind for a command that kiln refuses for the state a spec is in.
@@ -491,7 +495,16 @@ const (
 	buildLock = "build.lock"
 )
 
-// update applies change to the book, holding the store's lock from reading the book to writing it.
+// update applies change to the book, holding the store's lock from reading the book to writing it. It is the one
+// write of kiln's records. A kiln that takes up a dead kiln's work rests on it.
+//
+// The ledger lines that change adds with book.write are part of the write. The rename that keeps the book keeps
+// them, and settle then appends them. A kiln that dies between leaves them in the book. There entries reads them,
+// and the next update appends them.
+//
+// What kiln changes outside the book, it changes between two updates: a ref, a worktree, a session. The update
+// before keeps the record that names the change, and the update after keeps that it is done. So a kiln that dies
+// between leaves the record. The next kiln finishes the change or undoes it, as the package doc's Lanes says.
 func (s store) update(change func(*book) error) error {
 	unlock, err := s.lock(lockFile, syscall.LOCK_EX)
 	if err != nil {
@@ -505,6 +518,11 @@ func (s store) update(change func(*book) error) error {
 		return err
 	}
 
+	if b.Ledger, err = s.settle(b); err != nil {
+		return err
+	}
+
+	b.Lines = nil
 	if err := change(&b); err != nil {
 		return err
 	}
@@ -520,7 +538,12 @@ func (s store) update(change func(*book) error) error {
 		return err
 	}
 
-	return os.Rename(tmp, filepath.Join(s.dir, bookFile))
+	if err := os.Rename(tmp, filepath.Join(s.dir, bookFile)); err != nil {
+		return err
+	}
+
+	_, err = s.settle(b)
+	return err
 }
 
 // read reads the book as the last update left it.

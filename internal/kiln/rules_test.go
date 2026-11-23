@@ -978,6 +978,29 @@ func TestRecoverLane(t *testing.T) {
 	}
 }
 
+// TestTakeRequeuesOnce holds that only a run's first take queues again what a kiln left building. A record left
+// building at a later take is the running kiln's own. So no run builds it twice.
+func TestTakeRequeuesOnce(t *testing.T) {
+	r := &Repo{store: store{dir: t.TempDir()}}
+	in := inLane{lane: specsLane, unlock: func() {}}
+	err := r.store.update(func(b *book) error {
+		b.Specs = []*record{{Name: "fresh", State: queued}, {Name: "left", State: building, Session: "s"}}
+		return nil
+	})
+
+	first, _, took := r.take(in, true)
+	second, _, tookNext := r.take(in, false)
+	_, found, tookLast := r.take(in, false)
+	if err := errors.Join(err, took, tookNext, tookLast); err != nil {
+		t.Fatal(err)
+	}
+
+	if !claim.Holds(first.Name == "left", second.Name == "fresh", !found) {
+		t.Errorf("the run took %q, then %q, and then one more: %v; want left, fresh, and no more", first.Name,
+			second.Name, found)
+	}
+}
+
 // TestAcceptSaysItGates holds that kiln accept says so as it starts the gate on the commit that retires a spec. The
 // gate runs the project's commands, which may take minutes.
 func TestAcceptSaysItGates(t *testing.T) {
@@ -1850,7 +1873,7 @@ func TestGaugeReadsNothing(t *testing.T) {
 	var out strings.Builder
 	start := git.Rev(shell(t, repo, "git rev-parse HEAD"))
 	b := &build{r: r, rec: record{Name: "x", Build: "b-x"}, out: &out, landed: start}
-	b.record(entry{Kind: builtKind, Spec: "x"})
+	b.set(nil, entry{Kind: builtKind, Spec: "x"})
 	var landings []string
 	for _, change := range []string{"echo low >a.txt && git add a.txt", "true"} {
 		shell(t, repo, change+" && git commit --quiet --allow-empty -m landing")
@@ -1989,7 +2012,7 @@ func TestLandedFixSummary(t *testing.T) {
 	b := gaugedFix(t, "echo fine >a.txt", checkScript)
 	b.fix.monitor.finder = checkScript
 	b.rec.Build, b.rec.Title = "b-m", "fix(m): mend a.txt"
-	b.record(entry{Kind: monitorKind, Monitor: "m", Found: foundFix, Summary: "a.txt is low"})
+	b.set(nil, entry{Kind: monitorKind, Monitor: "m", Found: foundFix, Summary: "a.txt is low"})
 	b.fix.checked.summary = "a.txt is low"
 	b.fix.end(outLanded, "", "")
 	// A landed fix drops its branch, which git keeps while a worktree outside kiln's holds it.
@@ -2009,7 +2032,7 @@ func TestFixEndSums(t *testing.T) {
 	b := gaugedFix(t, "echo fine >a.txt", checkScript)
 	var out strings.Builder
 	b.fix.monitor.finder, b.out, b.rec.Build = checkScript, &out, "b-m"
-	b.record(entry{Kind: builtKind, Spec: "m", Monitor: "m"})
+	b.set(nil, entry{Kind: builtKind, Spec: "m", Monitor: "m"})
 	b.fix.end(outLanded, "", "")
 	// A landed fix drops its branch, which git keeps while a worktree outside kiln's holds it.
 	shell(t, b.r.top, "git worktree remove --force "+string(b.tree))
@@ -2031,7 +2054,7 @@ func TestGateLineAfterError(t *testing.T) {
 	// The fix's monitor reads its check, where countGauge prints a number, and no verdict.
 	b.fix.monitor.finder = checkScript
 	b.rec.Build = "b-m"
-	b.record(entry{Kind: builtKind, Spec: "m", Monitor: "m"})
+	b.set(nil, entry{Kind: builtKind, Spec: "m", Monitor: "m"})
 	if _, err := b.gated(t.Context(), heldBy(t, b.r), nil, b.treeGuard()); !errors.As(err, new(*checkFailed)) {
 		t.Fatalf("the gate answers %v, want its check couldn't run", err)
 	}

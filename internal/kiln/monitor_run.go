@@ -124,13 +124,7 @@ func (run *monitorRunning) refused(ctx context.Context, d monitorRead) error {
 // short that the developer hadn't accepted. Then it lands each fix's accepted landing that is queued. It leaves every
 // spec's record as it stands.
 func (r *Repo) recover(ctx context.Context, out io.Writer) error {
-	r.recount(ctx, out, monitorsLane)
-	var lost []record
-	err := r.store.update(func(b *book) error {
-		b.requeue(monitorsLane)
-		lost = b.lost(monitorsLane)
-		return nil
-	})
+	lost, err := r.takeUp(ctx, out, monitorsLane)
 	if err != nil {
 		return err
 	}
@@ -162,7 +156,7 @@ func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 		return b.readGauges(ctx)
 	}
 
-	if err := r.end(ctx, rec, entry{Outcome: outDropped}, out); err != nil {
+	if err := r.end(ctx, rec, entry{Outcome: outDropped}); err != nil {
 		return err
 	}
 
@@ -173,7 +167,7 @@ func (r *Repo) dropLost(ctx context.Context, rec record, out io.Writer) error {
 // dropStopped drops rec, the monitor's stopped fix the developer had not accepted, with its branch and checkouts. A
 // run that found nothing to fix calls it, while it holds the monitors' lane.
 func (r *Repo) dropStopped(ctx context.Context, rec record, out io.Writer) error {
-	if err := r.end(ctx, rec, entry{Outcome: outDropped}, out); err != nil {
+	if err := r.end(ctx, rec, entry{Outcome: outDropped}); err != nil {
 		return err
 	}
 
@@ -336,11 +330,7 @@ func (run *monitorRunning) fix(ctx context.Context, f *fixing, line entry, h *hi
 		return false, err
 	}
 
-	// The book holds the fix before the line names it, so kiln status never shows a fix no record holds.
-	if err := run.write(line); err != nil {
-		return false, err
-	}
-
+	run.say(line)
 	err = b.fixRun(ctx)
 	if ctx.Err() != nil {
 		return false, err

@@ -87,7 +87,8 @@ doctor names each in the working tree, before a commit, as Doctor says.
 kiln keeps its own files out of the working tree. Main is the branch named main:
 
 	<git common dir>/kiln/         shared by every worktree of the repository
-	  state.json                   each spec's state, and the gate's last checks at main
+	  state.json                   each spec's state, the gate's last checks at main, and the ledger lines of
+	                               its last write
 	  lock                         held while kiln changes state.json
 	  specs.lock                   held by the one kiln at work in the specs' lane, and names it
 	  monitors.lock                held by the one kiln at work in the monitors' lane, and names it
@@ -522,7 +523,11 @@ kiln ledger prints the ledger for a script, one JSON object a line, oldest first
 
 Its options keep one kind, the lines of one name, or the last few. A name keeps a spec's builds and a monitor's
 runs and fixes. A spec and a monitor that held one name in turn print together. It reads the one ledger that every
-worktree shares. It takes no lock: kiln appends each line whole, and kiln ledger skips a line cut short.
+worktree shares. kiln ledger takes no lock, so it never waits for a running kiln.
+
+kiln keeps each write's new ledger lines in state.json, then appends them to ledger.jsonl. A kiln killed between
+the two leaves ledger.jsonl without them. The next kiln command that writes state.json appends them. Until then,
+kiln ledger prints them from state.json.
 
 Each object holds kind, then the fields its kind lists below, in that order. A time is RFC 3339, in UTC, to the
 second, as jq's fromdate reads it. A field whose type allows null holds null while kiln does not know it:

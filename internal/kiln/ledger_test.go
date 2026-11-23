@@ -56,16 +56,22 @@ func TestRecount(t *testing.T) {
 		`"model_usage_since_last_result":{"m":{"costUSD":0.25}}}` + "\n"
 	writeStreams(t, sessions, map[string]string{buildSession: ended + lost, auditSession: audited})
 
-	b.record(entry{Kind: builtKind, Spec: "x"})
-	b.record(entry{Kind: startKind, Role: "build", Session: buildSession})
+	b.set(nil, entry{Kind: builtKind, Spec: "x"})
+	b.set(nil, entry{Kind: startKind, Role: "build", Session: buildSession})
 	turns, cost := 1, 0.5
-	b.record(entry{Kind: endKind, Session: buildSession, Ended: endedResult,
+	b.set(nil, entry{Kind: endKind, Session: buildSession, Ended: endedResult,
 		Totals: &claude.Totals{Turns: &turns, CostUSD: &cost, Tools: map[string]int{"Read": 1}}})
-	b.record(entry{Kind: startKind, Role: "build", Session: buildSession, Streamed: int64(len(ended))})
-	b.record(entry{Kind: startKind, Role: "audit", Session: auditSession})
+	b.set(nil, entry{Kind: startKind, Role: "build", Session: buildSession, Streamed: int64(len(ended))})
+	b.set(nil, entry{Kind: startKind, Role: "audit", Session: auditSession})
 
-	r.recount(t.Context(), io.Discard, specsLane)
-	r.recount(t.Context(), io.Discard, specsLane)
+	if _, err := r.takeUp(t.Context(), io.Discard, specsLane); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := r.takeUp(t.Context(), io.Discard, specsLane); err != nil {
+		t.Fatal(err)
+	}
+
 	entries, err := r.store.entries()
 	if err != nil {
 		t.Fatal(err)
@@ -102,10 +108,10 @@ func TestRecountLane(t *testing.T) {
 	r := &Repo{store: store{dir: t.TempDir()}, claude: claude.New(claude.Config{Sessions: t.TempDir()})}
 	spec := &build{r: r, rec: record{Name: "x", Build: "b1"}, out: io.Discard}
 	fix := &build{r: r, rec: record{Name: "deps", Build: "b2", Monitor: true}, out: io.Discard}
-	spec.record(entry{Kind: builtKind, Spec: "x"})
-	spec.record(entry{Kind: startKind, Role: buildRole, Session: "s"})
-	fix.record(entry{Kind: builtKind, Spec: "deps", Monitor: "deps"})
-	fix.record(entry{Kind: startKind, Role: "deps", Session: "f"})
+	spec.set(nil, entry{Kind: builtKind, Spec: "x"})
+	spec.set(nil, entry{Kind: startKind, Role: buildRole, Session: "s"})
+	fix.set(nil, entry{Kind: builtKind, Spec: "deps", Monitor: "deps"})
+	fix.set(nil, entry{Kind: startKind, Role: "deps", Session: "f"})
 	ended := func() []string {
 		entries, err := r.store.entries()
 		if err != nil {
@@ -122,12 +128,18 @@ func TestRecountLane(t *testing.T) {
 		return names
 	}
 
-	r.recount(t.Context(), io.Discard, specsLane)
+	if _, err := r.takeUp(t.Context(), io.Discard, specsLane); err != nil {
+		t.Fatal(err)
+	}
+
 	if got := ended(); !slices.Equal(got, []string{"s"}) {
 		t.Errorf("the specs' lane ended the runs of %q, want only the spec's, s", got)
 	}
 
-	r.recount(t.Context(), io.Discard, monitorsLane)
+	if _, err := r.takeUp(t.Context(), io.Discard, monitorsLane); err != nil {
+		t.Fatal(err)
+	}
+
 	if got := ended(); !slices.Equal(got, []string{"s", "f"}) {
 		t.Errorf("then the monitors' lane left the runs of %q ended, want the fix's, f, too", got)
 	}
@@ -166,14 +178,17 @@ func TestRecountAudit(t *testing.T) {
 	t.Parallel()
 	r, read := auditedRepo(t)
 	b := &build{r: r, rec: record{Name: "x", Build: "b1"}, out: io.Discard}
-	b.record(entry{Kind: builtKind, Spec: "x"})
-	b.record(entry{Kind: startKind, Role: auditRole, Session: "a", Read: read})
+	b.set(nil, entry{Kind: builtKind, Spec: "x"})
+	b.set(nil, entry{Kind: startKind, Role: auditRole, Session: "a", Read: read})
 	shot := filepath.Join(string(r.auditTree("x")), "shot.png")
 	if err := os.WriteFile(shot, []byte("a screen"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	r.recount(t.Context(), io.Discard, specsLane)
+	if _, err := r.takeUp(t.Context(), io.Discard, specsLane); err != nil {
+		t.Fatal(err)
+	}
+
 	entries, err := r.store.entries()
 	if err != nil {
 		t.Fatal(err)
@@ -298,4 +313,83 @@ func verifyRuns(t *testing.T, replies string, asked bool) ([]reason, error) {
 	}
 
 	return started, conversed
+}
+
+// TestOneWrite holds that the book and the ledger change in one write. A kiln may die before it appends an update's
+// lines to the ledger, or part way. The ledger still reads whole, and the next update leaves its file whole. An older
+// book put back costs the ledger no line.
+func TestOneWrite(t *testing.T) {
+	t.Parallel()
+	for name, left := range map[string]func(t *testing.T, s store, older []byte) error{
+		"kiln appended the update's lines":    func(*testing.T, store, []byte) error { return nil },
+		"kiln died before it appended them":   func(_ *testing.T, s store, _ []byte) error { return s.cutLedger(1 << 20) },
+		"kiln died with one line half there":  func(_ *testing.T, s store, _ []byte) error { return s.cutLedger(40) },
+		"kiln died before the line's newline": func(_ *testing.T, s store, _ []byte) error { return s.cutLedger(1) },
+		"an older book was put back": func(_ *testing.T, s store, older []byte) error {
+			return os.WriteFile(filepath.Join(s.dir, bookFile), older, 0o600)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := store{dir: t.TempDir()}
+			queue := func(b *book) error {
+				b.Specs = []*record{{Name: "x", State: queued}}
+				b.write(entry{Kind: builtKind, Build: "b1", Spec: "x"})
+				return nil
+			}
+
+			err := s.update(queue)
+			older, _ := os.ReadFile(filepath.Join(s.dir, bookFile))
+			err = errors.Join(err, s.write(entry{Kind: outcomeKind, Build: "b1", Outcome: outStopped}))
+			if err := errors.Join(err, left(t, s, older)); err != nil {
+				t.Fatal(err)
+			}
+
+			b, _ := s.read()
+			read, err := s.entries()
+			if got := kinds(read); !claim.Holds(err == nil, got == "build outcome", b.find("x") != nil) {
+				t.Errorf("the ledger reads %q, %v, and the book holds %v; want build outcome, and x", got, err, b.Specs)
+			}
+
+			if err := s.write(entry{Kind: gateKind, Build: "b1"}); err != nil {
+				t.Fatal(err)
+			}
+
+			read, _ = s.entries()
+			if got := kinds(ledgerLines(t, s)); !claim.Holds(got == "build outcome gate", kinds(read) == got) {
+				t.Errorf("after the next update, the file holds %q and the ledger reads %q; want build outcome gate",
+					got, kinds(read))
+			}
+		})
+	}
+}
+
+// cutLedger cuts the ledger's file as a kiln that died appending the last update's lines left it. The file ends short
+// bytes before those lines' end, or where they start.
+func (s store) cutLedger(short int64) error {
+	b, err := s.read()
+	ledger := filepath.Join(s.dir, ledgerFile)
+	info, unread := os.Stat(ledger)
+	if err := errors.Join(err, unread); err != nil {
+		return err
+	}
+
+	return os.Truncate(ledger, max(b.Ledger, info.Size()-short))
+}
+
+// ledgerLines parses each line the ledger's file of s holds, and fails t on a line it cannot parse.
+func ledgerLines(t *testing.T, s store) []entry {
+	t.Helper()
+	var held []entry
+	raw, _ := os.ReadFile(filepath.Join(s.dir, ledgerFile))
+	for line := range strings.Lines(string(raw)) {
+		var e entry
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Errorf("the ledger's file holds a line no one can read: %q", line)
+		}
+
+		held = append(held, e)
+	}
+
+	return held
 }

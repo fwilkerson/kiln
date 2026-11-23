@@ -2,6 +2,7 @@ package kiln
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -174,36 +175,98 @@ const (
 	whyNoTest      = "no test"
 )
 
-// write appends e to the ledger, as one line.
-func (s store) write(e entry) error {
+// write adds e to the ledger, as one line, in the update that changes b. A line that names no build is left out.
+func (b *book) write(e entry) {
 	if e.At.IsZero() {
 		e.At = time.Now()
 	}
 
-	raw, err := json.Marshal(e)
-	if err != nil {
-		return err
+	if e.named() {
+		b.Lines = append(b.Lines, e)
 	}
-
-	if err := os.MkdirAll(s.dir, 0o700); err != nil {
-		return err
-	}
-
-	crash.Step(ledgerFile + " " + string(e.Kind))
-	f, err := os.OpenFile(filepath.Join(s.dir, ledgerFile), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
-	}
-
-	_, err = f.Write(append(raw, '\n'))
-	return errors.Join(err, f.Close())
 }
 
-// entries reads the ledger. It skips a line it cannot read, such as one cut short when kiln died writing it.
+// write adds each line to the ledger, in one update that changes nothing else.
+func (s store) write(lines ...entry) error {
+	return s.update(func(b *book) error {
+		for _, e := range lines {
+			b.write(e)
+		}
+
+		return nil
+	})
+}
+
+// settle appends to the ledger what it lacks of b's lines, and answers the ledger's length. A kiln that died in an
+// update left the update's lines out, or cut one short. settle appends the rest, and never cuts the ledger.
+func (s store) settle(b book) (int64, error) {
+	rest, _, size, err := s.lacks(b)
+	if err != nil || len(rest) == 0 {
+		return size, err
+	}
+
+	crash.Step(ledgerFile + " " + kinds(b.Lines))
+	f, err := os.OpenFile(filepath.Join(s.dir, ledgerFile), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return 0, err
+	}
+
+	_, err = f.Write(rest)
+	return size + int64(len(rest)), errors.Join(err, f.Close())
+}
+
+// lacks answers what the ledger lacks of b's lines: the bytes rest, and the lines they end. size is the ledger's
+// length. The ledger holds b's lines from b.Ledger on: each line, or as far as a dying kiln appended them. An older
+// book put back finds its lines there too, before the lines of each later update.
+func (s store) lacks(b book) (rest []byte, lines []entry, size int64, err error) {
+	for _, e := range b.Lines {
+		line, err := json.Marshal(e)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+
+		rest = append(append(rest, line...), '\n')
+	}
+
+	info, err := os.Stat(filepath.Join(s.dir, ledgerFile))
+	switch {
+	case err == nil:
+		size = info.Size()
+	case !errors.Is(err, fs.ErrNotExist):
+		return nil, nil, 0, err
+	}
+
+	rest = rest[min(int64(len(rest)), max(size-b.Ledger, 0)):]
+	return rest, b.Lines[len(b.Lines)-bytes.Count(rest, []byte("\n")):], size, nil
+}
+
+// kinds names the kind of each of lines, in order, split by spaces.
+func kinds(lines []entry) string {
+	names := make([]string, len(lines))
+	for i, e := range lines {
+		names[i] = string(e.Kind)
+	}
+
+	return strings.Join(names, " ")
+}
+
+// entries reads the ledger: each whole line of its file, then the book's lines that the file lacks. So it reads each
+// update whole, though kiln died before it appended the update's lines. It takes no lock: no kiln changes a byte the
+// ledger holds. It skips a line it cannot read.
 func (s store) entries() ([]entry, error) {
+	b, err := s.read()
+	if err != nil {
+		return nil, err
+	}
+
+	_, lacked, size, err := s.lacks(b)
+	if err != nil {
+		return nil, err
+	}
+
 	f, err := os.Open(filepath.Join(s.dir, ledgerFile))
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+		return lacked, nil
 	}
 
 	if err != nil {
@@ -213,16 +276,23 @@ func (s store) entries() ([]entry, error) {
 	defer f.Close()
 
 	var entries []entry
-	lines := bufio.NewScanner(f)
-	lines.Buffer(nil, 64<<20)
-	for lines.Scan() {
+	held := bufio.NewReader(io.LimitReader(f, size))
+	for {
+		line, err := held.ReadBytes('\n')
+		if errors.Is(err, io.EOF) {
+			// A line with no end was cut short, and lacks counts it among the book's.
+			return append(entries, lacked...), nil
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
 		var e entry
-		if json.Unmarshal(lines.Bytes(), &e) == nil && e.named() {
+		if json.Unmarshal(line, &e) == nil && e.named() {
 			entries = append(entries, e)
 		}
 	}
-
-	return entries, lines.Err()
 }
 
 // named is whether e names its build, or is a monitor line, which may start none.
@@ -235,19 +305,6 @@ func newBuild() string {
 	return strings.ToLower(rand.Text()[:12])
 }
 
-// record writes e as a line of the build's. A build with no ID writes none: its spec was approved before kiln
-// kept a ledger.
-func (b *build) record(e entry) {
-	e.Build = b.now().Build
-	if e.Build == "" {
-		return
-	}
-
-	if err := b.r.store.write(e); err != nil {
-		b.say("kiln could not write its ledger: %v", err)
-	}
-}
-
 // begin writes the build's first line, with its size.
 func (b *build) begin(ctx context.Context) {
 	spec, _, err := b.r.specAt(ctx, b.rec.Approved, b.rec.Name)
@@ -255,7 +312,7 @@ func (b *build) begin(ctx context.Context) {
 		b.say("kiln could not read the spec's size: %v", err)
 	}
 
-	b.record(entry{Kind: builtKind, Spec: b.rec.Name, Approved: b.rec.Approved, Size: size(string(spec))})
+	b.set(nil, entry{Kind: builtKind, Spec: b.rec.Name, Approved: b.rec.Approved, Size: size(string(spec))})
 }
 
 var acceptanceTest = regexp.MustCompile(`(?m)^###\s+\d+\.`)
@@ -267,29 +324,45 @@ func size(spec string) int {
 	return len(acceptanceTest.FindAllString(tests, -1))
 }
 
-// recount ends each run of the lane l that has a start line but no end line. kiln leaves one when it dies mid-run. It
-// totals the run from its session's stream, past the length the start line holds. It ends the run as the stream
-// shows: with a result only if the stream holds one. A lost audit run's end line names what it changed in its
-// worktree, as talk's would. A kiln calls it as it takes the lane's lock, before any build goes on there. So no run
-// of l is still running, while the other lane's may be.
-func (r *Repo) recount(ctx context.Context, out io.Writer, l lane) {
+// recount answers an end line for each run of the lane l that has a start line alone. kiln leaves one when
+// it dies mid-run. It totals the run from its session's stream, past the length the start line holds. It ends the run
+// as the stream shows: with a result only if the stream holds one. A lost audit run's end line names what it changed
+// in its worktree, as talk's would. A kiln calls it as it takes the lane's lock, before any build goes on there. So no
+// run of l is still running, while the other lane's may be. takeUp writes the lines.
+func (r *Repo) recount(ctx context.Context, out io.Writer, l lane) []entry {
 	say := func(format string, args ...any) { fmt.Fprintf(out, "kiln: "+format+"\n", args...) }
 	entries, err := r.store.entries()
 	if err != nil {
 		say("kiln could not read its ledger: %v", err)
-		return
+		return nil
 	}
 
+	var ends []entry
 	lost := lostRuns(entries)
 	for _, start := range lost.starts {
-		if lost.lanes[start.Build] != l {
-			continue
-		}
-
-		if err := r.store.write(r.lostEnd(ctx, start, lost.specs[start.Build], say)); err != nil {
-			say("kiln could not write its ledger: %v", err)
+		if lost.lanes[start.Build] == l {
+			ends = append(ends, r.lostEnd(ctx, start, lost.specs[start.Build], say))
 		}
 	}
+
+	return ends
+}
+
+// takeUp takes the lane l up where a dead kiln left it. It ends each lost run in the ledger, as recount says, in one
+// update. It answers each record left building that does not go on, as lost says. The run's first take queues the
+// rest again.
+func (r *Repo) takeUp(ctx context.Context, out io.Writer, l lane) (lost []record, err error) {
+	ends := r.recount(ctx, out, l)
+	err = r.store.update(func(b *book) error {
+		for _, e := range ends {
+			b.write(e)
+		}
+
+		lost = b.lost(l)
+		return nil
+	})
+
+	return lost, err
 }
 
 // lost is the start lines of the runs that have no end line. They are in the order their sessions first ran. It keeps
