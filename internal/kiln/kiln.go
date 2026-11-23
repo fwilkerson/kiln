@@ -741,7 +741,7 @@ func (r *Repo) mainTip(ctx context.Context) (git.Rev, error) {
 type Repo struct {
 	top    string
 	common string
-	git    *git.Git
+	git    gitPort
 	store  store
 	trees  string
 	env    []string
@@ -783,6 +783,12 @@ func Open(ctx context.Context, dir string, env []string) (*Repo, error) {
 		}
 	}
 
+	return newRepo(top, common, g, env)
+}
+
+// newRepo is the Repo whose checkout's top is top, and whose git directory is common. It reaches git through g, and
+// starts each process with env.
+func newRepo(top, common string, g gitPort, env []string) (*Repo, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
