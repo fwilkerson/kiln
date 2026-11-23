@@ -24,6 +24,13 @@ exec kiln status
 stdout '^notes: healthy'
 ! stdout 'needs you'
 
+# When: the developer runs kiln tend with the monitor's name again, now that it is healthy.
+# Then: kiln refuses, says where the monitor stands, and starts no session.
+exec exits 1 sh -c 'kiln tend notes 2>&1'
+stdout '\bnotes: [^\n]*healthy'
+! exists .claude-calls/tend/2
+! exists .claude-calls/tend/1/2
+
 -- .kiln/kiln.json --
 {"gate": ["true"]}
 -- .kiln/monitors/notes/check --

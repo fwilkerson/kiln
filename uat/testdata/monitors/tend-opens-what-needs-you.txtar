@@ -1,9 +1,23 @@
-# A monitor that needs the developer opens in a session that holds its report.
+# A monitor that needs the developer names kiln tend wherever kiln says so, and kiln tend opens a session that holds
+# its report.
 
-# Given: a monitor whose fix asked for the developer, with a report.
+# Given: a notify program that keeps each notice it receives, and a monitor whose fix asks for the developer, with a
+# report.
 env KILN_NOW=2026-11-14T10:00:00Z
 exec kiln monitor run
 stdout '^errors: needs you'
+
+# Then: the notice's next step names kiln tend with the monitor's name.
+grep -count=1 '"kind":"monitor"' .git/notices
+grep '"name":"errors","state":"needs you",.*"next":"[^"]*\brun kiln tend errors\b' .git/notices
+
+# So does the monitor's next step in kiln status,
+exec kiln status
+stdout '(?s)^errors: needs you.*^  next: .*\brun kiln tend errors\b'
+
+# and in kiln monitor show.
+exec kiln monitor show errors
+stdout '(?s)errors: needs you.*^  next: .*\brun kiln tend errors\b'
 
 # When: the developer runs kiln tend with the monitor's name. The scripted session ends at once, with no repair, so
 # kiln runs the monitor again, and its fix asks again.
@@ -35,7 +49,7 @@ grep '^The payment provider declines the cards; nothing here fixes that\.$' .cla
 grep '^Its directory: \.kiln/monitors/errors/$' .claude-calls/tend/1/1/prompt
 
 -- .kiln/kiln.json --
-{"gate": ["true"]}
+{"gate": ["true"], "notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}
 -- .kiln/monitors/errors/check --
 echo 'error: card declined by the payment provider'
 echo '{"fix": true, "summary": "the service logged an error"}'
