@@ -26,11 +26,20 @@ differ, this file decides for kiln.
 
 ## Tests
 
-- Prove a rule with the cheapest test that reaches it through real machinery, among those the session may write.
-  From cheapest: a row in a table that exists, a check added to a test that exists, a new unit test over real git,
-  files or a fake claude, a check added to a scenario whose Given already reaches the rule, and last a new scenario,
-  at seconds each. A new scenario is for what only the built binary shows: its exit code and output, a killed or
+- Prove a rule with the cheapest test that fails when the rule breaks, among those the session may write. A test
+  costs what it starts: each git, kiln or shell it runs is a process. From cheapest: a row in a table that exists, a
+  check added to a test that exists, a new unit test on `gittest.History`, a new unit test over real git, a worktree
+  or a fake claude, a check added to a scenario whose Given already reaches the rule, and last a new scenario, at
+  seconds each. A new scenario is for what only the built binary shows: its exit code and output, a killed or
   racing kiln, a git hook. A spec's acceptance tests differ: one for each Then, through the command line.
+- The guide's "real machinery" is kiln's own code, not each program kiln starts. Real git is proved once.
+  `internal/git`'s tests hold each call kiln makes of git. `TestContract` in `internal/gittest` asks git and the
+  stand-in, `gittest.History`, the same questions, and holds both to one answer. A rule that only reads history is
+  tested on the stand-in, as `TestTendRefuses` in `internal/kiln/tend_test.go` shows. A test that needs a worktree,
+  a merge, a session or a landing runs on real git. A stand-in with no contract table is a mock: write none.
+- Where a rule must hold at every step, give the steps one mechanism, and prove the mechanism once. A test that
+  must list each step names a design that lacks one. `store.update` is such a mechanism, and `TestOneWrite` in
+  `internal/kiln/ledger_test.go` its proof.
 - A test's condition holds one `||`. `claim.Holds`, from the practices module, takes the rest, as
   `TestSpecBeforeKiln` in `internal/kiln/agent_test.go` shows. `go doc -all github.com/fwilkerson/practices/claim`
   is its contract.
