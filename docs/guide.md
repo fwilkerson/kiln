@@ -163,11 +163,17 @@ Change the README in the same commit as the code it describes. A stale doc is a 
 
 - Test the domain rules and the ways the code is wired. Those two are enough.
 - Write the rules as one table that reads as the spec: name, given state, command, then the result or error.
-- Run each row through the real machinery, not a mock of it, so the test exercises the public API as callers use it.
+- Run each row through the module's own code, not a mock of it, so the test exercises the public API as callers use it.
+- Prove an outside program or service once: one contract table, run against it and against a stand-in. Other tests
+  then use the stand-in. A stand-in with no contract table is a mock.
+- Where a rule must hold at every step, give the steps one mechanism, and prove the mechanism once. A test that
+  must list each step names a design that lacks one.
+- Pick the cheapest test that fails when the rule breaks. A test costs what it starts: a process, a repository, a
+  binary.
 - Run each wiring once for each transport, such as in process and over HTTP, all in parallel.
 - Give each late or repeated reply its own row.
 - Fix a bug by first writing its test, and show it failing on the old code.
-- Do not repeat a rule's test at a higher layer.
+- Do not repeat a rule's test at a higher layer. Once a cheaper test holds a rule, drop the dearer check.
 - Prove a refactor by planting a bug in each moved piece. A plant that passes every test names an untested rule.
 - Where no test reaches, run the old and the new build on the same inputs, and diff their output.
 - A shorter test is no gain if it checks less. Count its calls and its checks before and after.

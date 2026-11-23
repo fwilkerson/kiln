@@ -12,7 +12,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/charmbracelet/x/vt v0.1.0
 	github.com/creack/pty v1.1.24
-	github.com/fwilkerson/practices v0.4.0
+	github.com/fwilkerson/practices v0.4.1
 	github.com/rogpeppe/go-internal v1.16.0
 	golang.org/x/image v0.48.0
 	golang.org/x/sys v0.50.0
