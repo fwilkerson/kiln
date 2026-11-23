@@ -253,16 +253,45 @@ func (b *build) proof(ctx context.Context, head git.Rev) (bool, error) {
 }
 
 // testsKept is whether head leaves the tests at tested, a proved commit, as they were. Only an amendment, or a path an
-// accepted spec's landing changes, then differs. It is false while no proof has stood.
+// accepted spec's landing changes, then differs. It is false while no proof has stood. It is false too where the
+// verify session changed a path it may not write since tested. Then the proof's gate refuses that path.
 func (b *build) testsKept(ctx context.Context, tested, head git.Rev) (bool, error) {
 	if tested == "" {
 		return false, nil
 	}
 
-	changed, err := b.verifyChanged(ctx, tested, head)
+	tests, err := b.verifyChanged(ctx, tested, head)
+	if err != nil {
+		return false, err
+	}
+
 	g := b.verifyGuard()
-	return !slices.ContainsFunc(changed, func(p string) bool {
-		return p != b.rec.Name.amendPath() && !slices.Contains(g.allowed, p)
+	changesTest := func(p string) bool { return p != b.rec.Name.amendPath() && !slices.Contains(g.allowed, p) }
+	if slices.ContainsFunc(tests, changesTest) {
+		return false, nil
+	}
+
+	refused, err := b.refusedSince(ctx, tested, head)
+	return len(refused) == 0, err
+}
+
+// refusedSince lists each path from tested to head changed that the verify session may not write. It leaves out each
+// path head holds as its merge base with main does. A merge of main brings such paths.
+func (b *build) refusedSince(ctx context.Context, tested, head git.Rev) ([]string, error) {
+	main, err := b.r.mainTip(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	branched, err := b.r.git.Branched(ctx, main, head)
+	if err != nil {
+		return nil, err
+	}
+
+	changed, err := b.r.git.Changed(ctx, tested, head)
+	g := b.verifyGuard()
+	return slices.DeleteFunc(changed, func(p string) bool {
+		return g.guarded(p) == "" || !slices.Contains(branched, p)
 	}), err
 }
 
@@ -274,13 +303,13 @@ func (b *build) verifyChanged(ctx context.Context, from, to git.Rev) ([]string, 
 }
 
 // changedNothing stops the build when head holds the tree that unproved, a proof's commit that did not stand, held.
-// That is over every path the verify session may write. Then its session changed nothing since that proof.
+// Then its session changed nothing since that proof. Taking out a refused path is a change, which a new proof gates.
 func (b *build) changedNothing(ctx context.Context, unproved, head git.Rev) error {
 	if unproved == "" {
 		return nil
 	}
 
-	changed, err := b.verifyChanged(ctx, unproved, head)
+	changed, err := b.r.git.Changed(ctx, unproved, head)
 	if err != nil || len(changed) > 0 {
 		return err
 	}

@@ -231,7 +231,8 @@ The last two are one isolated workflow, in two orders:
 	         the check printed. It never reads the build's worktree, nor the build session's transcripts.
 	proof    the gate at the verify session's commit, which holds no code of the build's. It must fail, and on tests
 	         alone; a test that does not compile names no failed test. Otherwise its report goes back to the verify
-	         session, as a round. A commit that leaves the proved tests as they were needs no proof.
+	         session, as a round. A commit that leaves the proved tests as they were needs no proof, unless it
+	         changes a path the verify session may not write.
 	join     kiln merges the proved commit into kiln/<name>, with main as the verify session's clone holds it; a
 	         conflict goes to the build session, as a round
 	build    the build session, or the fix's, in <trees>/<name>. It reads and runs the proved tests, and changes none.
@@ -249,10 +250,10 @@ developer instead. The audit's findings go to the verify session first, then to 
 reads the verify session's answer, joined. A fix's findings go to its session alone once the developer accepted it.
 The audit's prompt names the tests that failed at the proof, and each testHelpers file the build session changed.
 
-After a proof that did not stand, a run of the verify session may change no path it may write. That stops the
-build: "the verify session changed no test after a proof that did not stand". Each gate after the join fails while
-a file the verify session alone writes differs from the proved tests. Those are main's file with the proved
-commit's change applied. The landing's gate fails so too.
+After a proof that did not stand, a run of the verify session may change no path at all. That stops the build:
+"the verify session changed no test after a proof that did not stand". Each gate after the join fails while a file
+the verify session alone writes differs from the proved tests. Those are main's file with the proved commit's change
+applied. The landing's gate fails so too.
 
 When main moved under the build, kiln merges main into the verify session's clone alone. A conflict there goes to a
 spec's verify session, as a round, and stops a fix. The join then brings main into the work. So a conflict between
