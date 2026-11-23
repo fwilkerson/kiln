@@ -31,11 +31,11 @@ exec kiln status
 stdout '^x: waiting for UAT$'
 ! stdout 'stopped|amendments'
 
-# kiln ledger prints the build for a script: the cost, turns and failed calls its summary shows, its rounds, and the
-# audit's one read, whose findings went back.
+# kiln ledger prints the build for a script: its size, the spec's one test, the cost, turns and failed calls its
+# summary shows, its rounds, and the audit's one read, whose findings went back.
 exec kiln ledger --kind build --name x
 stdout -count=1 '^\{'
-stdout '^\{"kind":"build","build":"[a-z0-9]{12}","name":"x","fix":false,.*"outcome":"landed","seconds":[0-9.]+,"cost_usd":0\.42,"turns":3,"failed_calls":1,"rounds":0,"audits":1,"findings":1\}$'
+stdout '^\{"kind":"build","build":"[a-z0-9]{12}","name":"x","fix":false,"at":"[^"]+","size":1,"outcome":"landed","seconds":[0-9.]+,"cost_usd":0\.42,"turns":3,"failed_calls":1,"rounds":0,"audits":1,"findings":1\}$'
 
 # The audit's reply lists its finding in the form of kiln's contract, so the ledger holds it, field by field. The
 # reply says the audit found two, and listed one: the audit's run holds both counts. The first try, with no result,

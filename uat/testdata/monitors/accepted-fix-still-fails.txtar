@@ -1,10 +1,9 @@
 # A landing of an accepted fix that still fails keeps the fix, and a second kiln accept resumes its session.
+# Only the built binary shows: kiln accept's exit and main after a landing that fails, and claude resumed by a second.
 
 # Given: a monitor whose fixes wait for kiln accept, and a fix its agent made, waiting on its branch. Main changed
 # since, in a line the fix changed.
 exec sh -c 'kiln monitor run || true'
-exec kiln status
-stdout 'stale.*waiting'
 exec sh -c 'printf "title\nstale, by hand\n" >doc.txt && git commit -qam "docs: edit by hand"'
 exec git rev-parse main
 cp stdout .tmp/main-before
@@ -18,12 +17,10 @@ exec exits 1 kiln accept stale
 exec git rev-parse main
 cmp stdout .tmp/main-before
 
-# kiln status shows the fix stopped, with why, and names both kiln accept and kiln reject.
+# kiln status shows the fix stopped, with why.
 exec kiln status
 stdout 'stale.*stopped'
 stdout 'doc.txt is stale'
-stdout 'kiln accept stale'
-stdout 'kiln reject stale'
 
 # A second kiln accept resumes the same session.
 exec sh -c 'ls .claude-calls/fix/1 | wc -l'

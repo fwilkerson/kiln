@@ -56,6 +56,12 @@ func TestTrend(t *testing.T) {
 			ended(9, 9, 9, 9, 9, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1), 0,
 			`last 10 builds .* the 10 before .*\n.*││cost .*\n.*││\$1\.00 ▼ was \$3\.00 .*\n.*\n.*││█ █ █ █ █ █ █ █ █ █ .*\n` +
 				`.*││newest \$1\.00 .*\n.*││range \$1\.00–\$1\.00 `, "▼ was $3.00", dark.passed.GetForeground()},
+		{"fewer than 10 before the window are named, and each measure's tile gives both medians",
+			worse(2, ended(5, 5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)), 120,
+			`last 10 builds · median of each, and how it moved from the 2 before.*\n` +
+				`.*│cost +minutes +failed calls +rounds +size, tests +│\n` +
+				`.*│\$1\.00 ▼ was \$5\.00 +1 same +0 ▼ was 1 +0 ▼ was 2 +2 same +│`, "▼ was $5.00",
+			dark.passed.GetForeground()},
 		{"a build that has not ended is outside it", append(ended(1, 2, 4), running), 0,
 			`last 3 builds .*\n.*││cost .*\n.*││\$2\.00 .*\n.*││ {8}███ .*\n.*││▄▄▄ ███ ███ .*\n.*││newest \$4\.00 .*\n` +
 				`.*││range \$1\.00–\$4\.00 .*\n.*│╰`, "", nil},
@@ -85,6 +91,15 @@ func TestTrend(t *testing.T) {
 			}
 		})
 	}
+}
+
+// worse gives the first n builds a failed call and 2 rounds, and answers the builds.
+func worse(n int, builds []*Build) []*Build {
+	for _, b := range builds[:n] {
+		b.Failed, b.Rounds = new(1), new(2)
+	}
+
+	return builds
 }
 
 // TestMonitors holds that home lists the monitors beside the specs, each with its last run's result. Selected, a

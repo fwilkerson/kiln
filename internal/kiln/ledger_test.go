@@ -34,6 +34,20 @@ func TestSecondsPrinted(t *testing.T) {
 	}
 }
 
+// TestSize holds a build's size: the numbered tests under its spec's "## Acceptance tests", and no heading elsewhere.
+func TestSize(t *testing.T) {
+	for spec, want := range map[string]int{
+		"# x\n\n## Acceptance tests\n\n### 1. X answers\n\n### 2. X fails\n":                            2,
+		"# x\n\n### 1. Before\n\n## Acceptance tests\n\n### 1. X answers\n\n## Terms\n\n### 2. After\n": 1,
+		"# x\n\n## Acceptance tests\n\n### A test with no number\n":                                     0,
+		"# x\n\n### 1. X answers\n": 0,
+	} {
+		if got := size(spec); got != want {
+			t.Errorf("the spec\n%s\nhas size %d; want %d", spec, got, want)
+		}
+	}
+}
+
 // TestRecount holds what kiln fire does with each run that has a start line but no end line. kiln leaves one when it
 // dies mid-run, in any session: an audit try's is never resumed. Before any build goes on, each lost run is totaled
 // from the stream it wrote. It ends as the stream shows: with a result only if the stream holds one. A lost audit
