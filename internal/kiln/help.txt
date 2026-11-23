@@ -250,10 +250,10 @@ developer instead. The audit's findings go to the verify session first, then to 
 reads the verify session's answer, joined. A fix's findings go to its session alone once the developer accepted it.
 The audit's prompt names the tests that failed at the proof, and each testHelpers file the build session changed.
 
-After a proof that did not stand, a run of the verify session may change no path at all. That stops the build:
-"the verify session changed no test after a proof that did not stand". Each gate after the join fails while a file
-the verify session alone writes differs from the proved tests. Those are main's file with the proved commit's change
-applied. The landing's gate fails so too.
+After a proof that did not stand, a verify run that ended with a result may change no path. That stops the build:
+"the verify session changed no test after a proof that did not stand". A run that failed gets the proof's report
+again, as a round. Each gate after the join fails while a file the verify session alone writes differs from the
+proved tests. Those are main's file with the proved commit's change applied. The landing's gate fails so too.
 
 When main moved under the build, kiln merges main into the verify session's clone alone. A conflict there goes to a
 spec's verify session, as a round, and stops a fix. The join then brings main into the work. So a conflict between

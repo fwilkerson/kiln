@@ -468,7 +468,8 @@ func (t *turn) starts(streamed int64) func(*record) {
 }
 
 // ends is the change of the write that follows the end of t's run, which ended as ended. It removes the messages t
-// told, with what the reply asked. A run a usage limit ended told nothing, and a nil turn changes nothing.
+// told, with what the reply asked. A run a usage limit ended told nothing. A nil turn changes nothing. A failed
+// verify run answered no proof, so the next proof gates the verify session's clone again, as a round.
 func (t *turn) ends(ended claude.Ended) func(*record) {
 	if t == nil || ended.Limit != nil {
 		return nil
@@ -480,6 +481,10 @@ func (t *turn) ends(ended claude.Ended) func(*record) {
 		paid(r, t.seat, t.n)
 		if t.seat == codeSeat {
 			r.Told = t.told
+		}
+
+		if t.seat == verifySeat && ended.Failed {
+			r.Unproved = ""
 		}
 
 		if a.owed != nil {

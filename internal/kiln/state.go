@@ -50,7 +50,8 @@ type record struct {
 	Tested git.Rev  `json:"tested,omitempty"`
 	Proof  string   `json:"proof,omitempty"`
 	Proved []string `json:"proved,omitempty"`
-	// Unproved is the verify session's commit at a proof that did not stand, until a proof stands.
+	// Unproved is the verify session's commit at a proof that did not stand. A proof that stands clears it, as a
+	// failed run of the session does.
 	Unproved git.Rev `json:"unproved,omitempty"`
 	// Told is the proved commit kiln last told the code session of.
 	Told git.Rev `json:"told,omitempty"`

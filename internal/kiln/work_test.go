@@ -1,12 +1,16 @@
 package kiln
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/fwilkerson/kiln/internal/claude"
+	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/practices/claim"
 )
 
@@ -137,4 +141,84 @@ func TestRefusedCodeTakenOut(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestFailedVerifyRun holds that only a verify session's run that ended with a result can answer by changing nothing.
+// After a proof that did not stand, a run that failed gets the proof's report again, as its next round. Past the last
+// round, the build stops as any setback there does. A run that answered with no change stops it as unproved.
+func TestFailedVerifyRun(t *testing.T) {
+	t.Parallel()
+	const failed = `{"type":"result","is_error":true,"result":"API Error: 500 Internal server error"}`
+	for name, tc := range map[string]struct {
+		reply  string
+		rounds int
+		// stops is whether the build stops, and kind the kind of its stop.
+		stops bool
+		kind  stopKind
+	}{
+		"a run that failed is told the report again": {reply: failed, rounds: 3},
+		"a run that failed in the last round stops":  {reply: failed, rounds: 1, stops: true},
+		"a run that answered stops the build": {rounds: 3, stops: true, kind: stopUnproved,
+			reply: `{"type":"result","is_error":false,"result":"Main already does it."}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			b, report := disprovedBuild(t, tc.rounds)
+			replies(t, b, tc.reply)
+			if _, err := b.tell(t.Context(), []seatName{verifySeat}); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := b.prove(t.Context())
+			stopped, _ := errors.AsType[*outOfRounds](err)
+			var kind stopKind
+			if stopped != nil {
+				kind = stopped.Kind
+			}
+
+			want := message{Text: report.Text, Why: report.Why, Round: 2, Rounds: tc.rounds}
+			owed, rounds := b.now().Verify.Owed, b.now().Verify.Rounds
+			told := slices.Contains(owed, want) && rounds == 2
+			if !claim.Holds((stopped != nil) == tc.stops, kind == tc.kind, told != tc.stops) {
+				t.Errorf("after the verify session's run, prove answered %v, and kiln owes the session %+v, with %d "+
+					"rounds used. Want a stop: %v, of kind %q; else %+v owed, with 2 rounds used.", err, owed,
+					rounds, tc.stops, tc.kind, want)
+			}
+		})
+	}
+}
+
+// disprovedBuild is splitBuild's build of x after a proof that did not stand. kiln.json gives it rounds rounds, and
+// the verify session's test passes on main's code. It answers the proof's report, which kiln owes the session.
+func disprovedBuild(t *testing.T, rounds int) (*build, message) {
+	b, repo := splitBuild(t, false)
+	shell(t, repo, fmt.Sprintf(`echo '{"gate": ["true"], "rounds": %d}' >.kiln/kiln.json && `, rounds)+
+		`mkdir -p .kiln/agents && echo 'Write the tests.' >.kiln/agents/verify.md && git add -A && `+
+		`git commit --quiet -m rounds`)
+	b.set(func(r *record) {
+		r.Approved, r.Verify.Session = git.Rev(shell(t, repo, "git rev-parse HEAD")), claude.NewID()
+	})
+
+	b.side.acceptance = []string{"uat/x/"}
+	shell(t, string(b.r.clone("x", verifyRole)), "mkdir -p uat/x && echo 'package x' >uat/x/x_test.go")
+	if _, err := b.prove(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	owed := b.now().Verify.Owed
+	if len(owed) != 1 || owed[0].Round != 1 {
+		t.Fatalf("the first proof owes the verify session %+v, want its report as round 1", owed)
+	}
+
+	return b, owed[0]
+}
+
+// replies makes b's claude a program that prints reply, a stream line, to each run.
+func replies(t *testing.T, b *build, reply string) {
+	program := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(program, []byte("#!/bin/sh\ncat >/dev/null\necho '"+reply+"'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	b.r.claude = claude.New(claude.Config{Program: program, Sessions: filepath.Join(t.TempDir(), "sessions")})
 }
