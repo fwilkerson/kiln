@@ -502,6 +502,9 @@ const (
 // them, and settle then appends them. A kiln that dies between leaves them in the book. There entries reads them,
 // and the next update appends them.
 //
+// update answers an error only for a change it did not keep. A ledger kiln cannot append to keeps no change from
+// the book. The book holds each line until an update can append it.
+//
 // What kiln changes outside the book, it changes between two updates: a ref, a worktree, a session. The update
 // before keeps the record that names the change, and the update after keeps that it is done. So a kiln that dies
 // between leaves the record. The next kiln finishes the change or undoes it, as the package doc's Lanes says.
@@ -518,11 +521,10 @@ func (s store) update(change func(*book) error) error {
 		return err
 	}
 
-	if b.Ledger, err = s.settle(b); err != nil {
-		return err
+	if size, err := s.settle(b); err == nil {
+		b.Ledger, b.Lines = size, nil
 	}
 
-	b.Lines = nil
 	if err := change(&b); err != nil {
 		return err
 	}
@@ -542,8 +544,9 @@ func (s store) update(change func(*book) error) error {
 		return err
 	}
 
-	_, err = s.settle(b)
-	return err
+	// The rename kept the change with its lines. An append that fails loses none of them.
+	_, _ = s.settle(b)
+	return nil
 }
 
 // read reads the book as the last update left it.

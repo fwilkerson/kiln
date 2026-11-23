@@ -378,6 +378,40 @@ func TestOneWrite(t *testing.T) {
 	}
 }
 
+// TestUnwritableLedger holds that an update keeps its change, and answers no error, though kiln cannot append to the
+// ledger. The book holds each line until an update can append it, and the ledger reads whole meanwhile.
+func TestUnwritableLedger(t *testing.T) {
+	t.Parallel()
+	s := store{dir: t.TempDir()}
+	ledger := filepath.Join(s.dir, ledgerFile)
+	err := s.write(entry{Kind: builtKind, Build: "b1", Spec: "x"})
+	if err := errors.Join(err, os.Chmod(ledger, 0o400)); err != nil {
+		t.Fatal(err)
+	}
+
+	kept := s.update(func(b *book) error {
+		b.Specs = []*record{{Name: "x", State: stopped}}
+		b.write(entry{Kind: gateKind, Build: "b1"})
+		return nil
+	})
+
+	next := s.write(entry{Kind: outcomeKind, Build: "b1", Outcome: outStopped})
+	b, _ := s.read()
+	read, _ := s.entries()
+	if got := kinds(read); !claim.Holds(kept == nil, next == nil, b.find("x") != nil, got == "build gate outcome") {
+		t.Errorf("the updates answered %v and %v, the book holds %v, and the ledger reads %q; want no error, x, and "+
+			"build gate outcome", kept, next, b.Specs, got)
+	}
+
+	if err := errors.Join(os.Chmod(ledger, 0o600), s.write(entry{Kind: gateKind, Build: "b1"})); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := kinds(ledgerLines(t, s)); got != "build gate outcome gate" {
+		t.Errorf("once kiln can append again, the file holds %q; want build gate outcome gate", got)
+	}
+}
+
 // cutLedger cuts the ledger's file as a kiln that died appending the last update's lines left it. The file ends short
 // bytes before those lines' end, or where they start.
 func (s store) cutLedger(short int64) error {
