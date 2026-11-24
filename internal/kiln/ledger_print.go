@@ -141,6 +141,8 @@ type printedRun struct {
 	Name        Spec     `json:"name"`
 	Role        string   `json:"role"`
 	Session     string   `json:"session"`
+	Why         *string  `json:"why"`
+	Round       *int     `json:"round"`
 	At          stamp    `json:"at"`
 	End         *stamp   `json:"end"`
 	Seconds     *float64 `json:"seconds"`
@@ -155,8 +157,13 @@ type printedRun struct {
 // printedRun is r, a run of the build, as kiln ledger prints it. Its numbers add up as a build's do.
 func (s *buildStats) printedRun(r run) printedRun {
 	n := total([]run{r}, nil).sums(nil)
-	p := printedRun{Kind: "run", Build: s.Build, Name: s.Spec, Role: r.role, Session: r.session, At: stamp(r.start),
-		Seconds: secondsOf(n.took), Ended: orNull(r.ended), CostUSD: n.cost, Turns: n.turns, FailedCalls: n.failed}
+	p := printedRun{Kind: "run", Build: s.Build, Name: s.Spec, Role: r.role, Session: r.session,
+		Why: orNull(r.why.Why), At: stamp(r.start), Seconds: secondsOf(n.took), Ended: orNull(r.ended),
+		CostUSD: n.cost, Turns: n.turns, FailedCalls: n.failed}
+	if p.Why != nil {
+		p.Round = &r.why.Round
+	}
+
 	if !r.end.IsZero() {
 		p.End = new(stamp(r.end))
 	}

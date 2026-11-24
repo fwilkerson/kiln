@@ -576,6 +576,8 @@
 //	  name          string         its build's name
 //	  role          string         its session's role, such as build, verify, audit, test or fix
 //	  session       string         its Claude Code session's ID
+//	  why           string|null    why it started, such as first, gate, findings, conflict, no test or interrupted
+//	  round         number|null    the round it started in, or 0 when no failure sent the work back
 //	  at            time           when it started
 //	  end           time|null      when it ended
 //	  seconds       number|null    its time

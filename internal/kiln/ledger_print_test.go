@@ -75,7 +75,8 @@ const (
 	buildY = `{"kind":"build","build":"b2","name":"y","fix":false,"at":"2026-11-18T05:21:00Z","size":1,` +
 		`"outcome":null,"seconds":null,"cost_usd":null,"turns":null,"failed_calls":null,"rounds":null,"audits":0,` +
 		`"findings":0}`
-	runY = `{"kind":"run","build":"b2","name":"y","role":"build","session":"s3","at":"2026-11-18T05:21:00Z",` +
+	runY = `{"kind":"run","build":"b2","name":"y","role":"build","session":"s3","why":null,"round":null,` +
+		`"at":"2026-11-18T05:21:00Z",` +
 		`"end":null,"seconds":null,"ended":null,"cost_usd":null,"turns":null,"failed_calls":null,"found":null,` +
 		`"reported":null}`
 	landingX = `{"kind":"gate","build":"b1","name":"x","at":"2026-11-18T05:08:00Z","end":"2026-11-18T05:09:00Z",` +
@@ -106,17 +107,21 @@ func TestLedger(t *testing.T) {
 		{"a build whose run has not ended, and gives no reason, knows none of its sums",
 			LedgerOptions{Kind: "build", Name: "y"}, buildY},
 		{"a run that ended", LedgerOptions{Kind: "run", Name: "x", Last: 1},
-			`{"kind":"run","build":"b1","name":"x","role":"verify","session":"s4","at":"2026-11-18T05:07:00Z",` +
+			`{"kind":"run","build":"b1","name":"x","role":"verify","session":"s4","why":"findings","round":0,"at":"2026-11-18T05:07:00Z",` +
 				`"end":"2026-11-18T05:08:00Z","seconds":60,"ended":"result","cost_usd":0,"turns":1,"failed_calls":0,` +
 				`"found":null,"reported":null}`},
-		{"an audit's run counts what its reply found and listed", LedgerOptions{Kind: "run", Name: "x", Last: 3},
-			`{"kind":"run","build":"b1","name":"x","role":"audit","session":"s2",` +
+		{"a run says why it started, and its round; an audit's run counts what its reply found and listed",
+			LedgerOptions{Kind: "run", Name: "x", Last: 4},
+			`{"kind":"run","build":"b1","name":"x","role":"build","session":"s1","why":"gate","round":1,` +
+				`"at":"2026-11-18T05:04:00Z","end":"2026-11-18T05:05:00Z","seconds":60,"ended":"result",` +
+				`"cost_usd":0.25,"turns":1,"failed_calls":0,"found":null,"reported":null}` + "\n" +
+				`{"kind":"run","build":"b1","name":"x","role":"audit","session":"s2","why":"audit","round":0,` +
 				`"at":"2026-11-18T05:06:00Z","end":"2026-11-18T05:07:00Z","seconds":60,"ended":"result",` +
 				`"cost_usd":0.125,"turns":1,"failed_calls":0,"found":2,"reported":1}` + "\n" +
-				`{"kind":"run","build":"b1","name":"x","role":"build","session":"s1",` +
+				`{"kind":"run","build":"b1","name":"x","role":"build","session":"s1","why":"findings","round":0,` +
 				`"at":"2026-11-18T05:07:00Z","end":"2026-11-18T05:08:00Z","seconds":60,"ended":"result",` +
 				`"cost_usd":0.125,"turns":1,"failed_calls":0,"found":null,"reported":null}` + "\n" +
-				`{"kind":"run","build":"b1","name":"x","role":"verify","session":"s4",` +
+				`{"kind":"run","build":"b1","name":"x","role":"verify","session":"s4","why":"findings","round":0,` +
 				`"at":"2026-11-18T05:07:00Z","end":"2026-11-18T05:08:00Z","seconds":60,"ended":"result",` +
 				`"cost_usd":0,"turns":1,"failed_calls":0,"found":null,"reported":null}`},
 		{"a finding in its fields, and a fix's audit reply kiln could not parse", LedgerOptions{Kind: "finding"},
@@ -147,7 +152,7 @@ func TestLedger(t *testing.T) {
 				`{"kind":"build","build":"b3","name":"gate-time","fix":true,"at":"2026-11-18T05:20:30Z","size":0,` +
 				`"outcome":null,"seconds":75,"cost_usd":0,"turns":1,"failed_calls":0,"rounds":0,"audits":1,` +
 				`"findings":0}` + "\n" +
-				`{"kind":"run","build":"b3","name":"gate-time","role":"audit","session":"s5",` +
+				`{"kind":"run","build":"b3","name":"gate-time","role":"audit","session":"s5","why":"audit","round":0,` +
 				`"at":"2026-11-18T05:20:30Z","end":"2026-11-18T05:20:45Z","seconds":15,"ended":"result","cost_usd":0,` +
 				`"turns":1,"failed_calls":0,"found":null,"reported":null}` + "\n" + fixFinding + "\n" + fixGate},
 		{"lines come by when each started, not by when kiln wrote them", LedgerOptions{Last: 3},

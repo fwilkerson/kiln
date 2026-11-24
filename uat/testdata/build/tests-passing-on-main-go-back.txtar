@@ -10,10 +10,11 @@ exec kiln fire
 stdout '^x: landed on main'
 
 # Then: the verify session gets the proof gate's report as a round,
-exists .claude-calls/verify/1/2/prompt
+grep 'no test fails on what the spec asks' .claude-calls/verify/1/2/prompt
 exec kiln ledger --kind gate --name x
 stdout '"passed":true[^\n]*"proof":true'
-exec jq -se --arg s x '(map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | any(.[]; .build==$b and .kind=="start" and .role=="verify" and .why=="no test" and .round==1)' .git/kiln/ledger.jsonl
+exec kiln ledger --kind run --name x
+stdout '"role":"verify",[^\n]*"why":"no test","round":1,'
 
 # and no gate of both sessions' work runs before a proof gate fails.
 exec jq -se --arg s x 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | at(.kind=="gate" and .proof==true and .passed==true) as $q | at(.kind=="gate" and .proof==true and .passed!=true) as $p | at(.kind=="gate" and .proof!=true) as $g | $q != null and $p != null and $g != null and $q < $p and $p < $g' .git/kiln/ledger.jsonl
@@ -27,7 +28,8 @@ stdout '^y: landed on main'
 exists .claude-calls/verify/2/2/prompt
 exec kiln ledger --kind gate --name y
 stdout '"passed":true[^\n]*"proof":true'
-exec jq -se --arg s y '(map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | any(.[]; .build==$b and .kind=="start" and .role=="verify" and .why=="no test" and .round==1)' .git/kiln/ledger.jsonl
+exec kiln ledger --kind run --name y
+stdout '"role":"verify",[^\n]*"why":"no test","round":1,'
 exec jq -se --arg s y 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | at(.kind=="gate" and .proof==true and .passed==true) as $q | at(.kind=="gate" and .proof==true and .passed!=true) as $p | at(.kind=="gate" and .proof!=true) as $g | $q != null and $p != null and $g != null and $q < $p and $p < $g' .git/kiln/ledger.jsonl
 
 -- .kiln/kiln.json --
