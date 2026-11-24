@@ -97,7 +97,7 @@ func (b *build) landOnce(ctx context.Context, from git.Rev, retire retiring, all
 	g.head = head
 	v, err := b.gated(ctx, held, gating{}, g)
 	if err != nil || !v.passed {
-		return "", setback{whyLanding, v.report, v.failing}, err
+		return "", setback{why: whyLanding, report: v.report, failing: v.failing}, err
 	}
 
 	landed, back, err := b.move(ctx, head, onto)
@@ -150,7 +150,7 @@ func (b *build) rebase(ctx context.Context, start, onto git.Rev) (git.Rev, setba
 	}
 
 	report := fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n"))
-	return "", setback{whyConflict, report, conflict.Files}, nil
+	return "", setback{why: whyConflict, report: report, failing: conflict.Files}, nil
 }
 
 // changes answers head, unless it changes nothing since onto. A session that ended with no result may leave nothing,

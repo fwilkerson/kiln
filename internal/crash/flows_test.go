@@ -134,7 +134,12 @@ type flow struct {
 	outcome string
 	// told are patterns, each of which a session's prompt matches by the flow's end.
 	told []string
+	// once are patterns that no session's prompt matches twice. A message kiln owes twice would.
+	once []string
 }
+
+// mainConflicts matches the start of the round kiln owes a session whose work conflicts with main.
+const mainConflicts = `Main moved, and your work conflicts with it`
 
 var flows = []flow{
 	{
@@ -220,6 +225,24 @@ var flows = []flow{
 		},
 	},
 	{
+		// The verify session's first test passes on main's code, so its first proof does not stand.
+		name:    "disprove",
+		subject: "w",
+		landed:  []string{`^feat\(w\): land the approved spec$`},
+		outcome: "landed",
+		told:    []string{`The gate passed with your work, so no test fails on`},
+		next: func(s *scratch) []string {
+			switch shown := s.shown(s.subject); {
+			case shown == "":
+				return []string{"queue", "w"}
+			case shown == "waiting for UAT", strings.HasPrefix(shown, "stopped"):
+				return nil
+			}
+
+			return []string{"fire"}
+		},
+	},
+	{
 		name:    "reject",
 		given:   "accept",
 		subject: "y",
@@ -258,14 +281,16 @@ var flows = []flow{
 	{
 		name:    "tend",
 		subject: "z",
-		landed:  []string{`^feat\(z\): land the approved spec$`},
+		landed:  []string{`by hand`, `^feat\(z\): land the approved spec$`},
 		outcome: "landed",
-		told:    []string{`The gate wanted \.tmp/tended\.`},
+		told:    []string{`The gate wanted \.tmp/tended\.`, mainConflicts},
+		once:    []string{mainConflicts},
 		next: func(s *scratch) []string {
 			switch s.shown(s.subject) {
 			case "":
 				return []string{"queue", "z"}
 			case "stopped":
+				s.writeByHand()
 				return []string{"tend", "z"}
 			case "waiting for UAT":
 				return nil
@@ -689,6 +714,12 @@ func (s *scratch) problems(f flow) []string {
 		}
 	}
 
+	for _, pattern := range f.once {
+		if prompt := s.toldTwice(regexp.MustCompile(pattern)); prompt != "" {
+			found = append(found, "a session was told "+pattern+" twice in one prompt:\n"+prompt)
+		}
+	}
+
 	return found
 }
 
@@ -753,4 +784,34 @@ func (s *scratch) told(text *regexp.Regexp) bool {
 		raw, _ := os.ReadFile(p)
 		return text.Match(raw)
 	})
+}
+
+// toldTwice is a session's prompt that matches text twice, or "" when none does.
+func (s *scratch) toldTwice(text *regexp.Regexp) string {
+	prompts, _ := filepath.Glob(filepath.Join(s.work, scenariotest.ClaudeCallsDir, "*", "*", "*",
+		scenariotest.ClaudePromptFile))
+	for _, p := range prompts {
+		if raw, _ := os.ReadFile(p); len(text.FindAll(raw, 2)) > 1 {
+			return string(raw)
+		}
+	}
+
+	return ""
+}
+
+// writeByHand commits a z.go of the developer's own on main, unless main holds one. It conflicts with the build's.
+func (s *scratch) writeByHand() {
+	path := filepath.Join(s.work, "z.go")
+	if _, err := os.Stat(path); err == nil {
+		return
+	}
+
+	if err := os.WriteFile(path, []byte("// Package scratch is where kiln's builds land.\npackage scratch\n\n"+
+		"// Z answers 0, by hand.\nfunc Z() int { return 0 }\n"), 0o644); err != nil {
+		s.t.Fatal(err)
+	}
+
+	s.run("git", "add", "z.go")
+	s.run("git", "commit", "-qm", "feat: write z by hand")
+	s.main = ""
 }

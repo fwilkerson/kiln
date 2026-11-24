@@ -188,6 +188,27 @@ func TestFailedVerifyRun(t *testing.T) {
 	}
 }
 
+// TestDisprovedAtLastRound holds that a proof that did not stand past the last round still records its commit as
+// unproved. A verify session that then changes nothing stops the build as unproved, and its proof's gate never runs
+// again.
+func TestDisprovedAtLastRound(t *testing.T) {
+	t.Parallel()
+	b, _ := disprovedBuild(t, 1)
+	b.set(func(r *record) { paid(r, verifySeat, len(r.Verify.Owed)) })
+	clone := string(b.r.clone("x", verifyRole))
+	shell(t, clone, "echo 'package x' >uat/x/y_test.go")
+	_, err := b.prove(t.Context())
+	if stopped, _ := errors.AsType[*outOfRounds](err); stopped == nil || stopped.Kind == stopUnproved {
+		t.Fatalf("a second proof that did not stand, past the last round, answered %v; want a stop of its round", err)
+	}
+
+	_, err = b.prove(t.Context())
+	if stopped, _ := errors.AsType[*outOfRounds](err); stopped == nil || stopped.Kind != stopUnproved {
+		t.Errorf("once the verify session changed nothing after that stop, prove answered %v, and kiln owes it %+v; "+
+			"want the build stopped as unproved", err, b.now().Verify.Owed)
+	}
+}
+
 // disprovedBuild is splitBuild's build of x after a proof that did not stand. kiln.json gives it rounds rounds, and
 // the verify session's test passes on main's code. It answers the proof's report, which kiln owes the session.
 func disprovedBuild(t *testing.T, rounds int) (*build, message) {

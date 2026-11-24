@@ -551,7 +551,8 @@ func (b *build) fixMergeMain(ctx context.Context, back setback) (setback, error)
 		return back, err
 	}
 
-	return setback{whyConflict, fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n")), conflict.Files}, nil
+	report := fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n"))
+	return setback{why: whyConflict, report: report, failing: conflict.Files}, nil
 }
 
 // sinceAccept reads the files changed since kiln accept into the fix, for the landing commit's body, in a landing.

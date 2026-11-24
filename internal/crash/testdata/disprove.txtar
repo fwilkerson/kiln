@@ -1,0 +1,38 @@
+A spec's build in verify-first proves the verify session's first test, which passes on main's code. The proof does
+not stand, so the verify session is told, as a round. Its next test fails on main's code, and the build lands.
+
+-- .kiln/kiln.json --
+{"gate": ["sh gate.sh"], "workflow": "verify-first", "acceptanceTests": "acceptance/{spec}/"}
+-- gate.sh --
+# The acceptance test of w fails while w.go is missing, once it holds fails.txt, as JUnit XML names it.
+if [ -f acceptance/w/fails.txt ] && [ ! -f w.go ]; then
+  echo '<testsuite><testcase name="TestAT1"><failure/></testcase></testsuite>' >"$KILN_JUNIT"
+  exit 1
+fi
+-- .kiln/specs/w.md --
+### 1. W answers
+
+- **Given**: nothing.
+- **When**: W is called.
+- **Then**: it answers 7.
+-- _given/code/w.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// W answers 7.
+func W() int { return 7 }
+-- _given/steps.json --
+{
+ "build": [
+  {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/code/.\" ."}}},
+  {"result": {"result": "Built w."}}
+ ],
+ "verify": [
+  {"tool": {"name": "Bash", "input": {"command": "mkdir -p acceptance/w && if [ -f acceptance/w/w.txt ]; then echo 'W answers 7, not 0.' >acceptance/w/fails.txt; else echo 'W answers.' >acceptance/w/w.txt; fi"}}},
+  {"result": {"result": "Wrote the tests of w."}}
+ ],
+ "audit": [
+  {"tool": {"name": "Bash", "input": {"command": "echo stray >audit-stray.txt"}}},
+  {"result": {"audit": {"read": 2}}}
+ ]
+}

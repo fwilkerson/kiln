@@ -346,15 +346,16 @@ func (b *build) changedNothing(ctx context.Context, unproved, head git.Rev) erro
 const changedNoTest = "the verify session changed no test after a proof that did not stand"
 
 // disproved sends v, a proof of head that did not stand, back to the verify session, as a round. A gate that
-// passed and one that failed on more than tests each say so.
+// passed and one that failed on more than tests each say so. The write of the round, or of the stop past the last
+// round, records head as Unproved. So the verify session is told before changedNothing reads its work.
 func (b *build) disproved(head git.Rev, v verdict) error {
 	report := fmt.Sprintf(testPassed, b.job.asks())
 	if !v.passed {
 		report = fmt.Sprintf(testBroke, v.report)
 	}
 
-	b.set(func(r *record) { r.Unproved = head })
-	return b.goBack(verifySeat, setback{why: whyNoTest, report: report, failing: v.failing})
+	unproved := func(r *record) { r.Unproved = head }
+	return b.goBack(verifySeat, setback{why: whyNoTest, report: report, failing: v.failing, with: unproved})
 }
 
 // join merges the proved commit into kiln/<name>, once its work is committed. It answers whether kiln/<name> holds
@@ -411,12 +412,16 @@ func (b *build) goBackOn(s seatName, back setback, err error) error {
 }
 
 // goBack sends a setback back to the seat s as a round, as said words it. Past the seat's last round it stops the
-// build. It allows as many rounds as kiln.json gave the build's last gate.
+// build, once it made the setback's change to the record. It allows as many rounds as kiln.json gave the last gate.
 func (b *build) goBack(s seatName, back setback) error {
 	goesBack, stops, prompt := back.said()
 	rounds, rec := b.limit(), b.now()
 	at := rec.seat(s)
 	if at.Rounds >= rounds {
+		if back.with != nil {
+			b.set(back.with)
+		}
+
 		return &outOfRounds{stop{Why: stops + " after its last round:\n" + back.report, Failing: back.failing}}
 	}
 
@@ -424,6 +429,9 @@ func (b *build) goBack(s seatName, back setback) error {
 	b.set(func(r *record) {
 		r.seat(s).Rounds++
 		owe(r, s, m)
+		if back.with != nil {
+			back.with(r)
+		}
 	})
 
 	b.say("%s; it goes back to %s, round %d of %d", goesBack, map[seatName]string{codeSeat: "the session",
@@ -697,7 +705,9 @@ func (b *build) sendBack(ctx context.Context, back setback) error {
 }
 
 // mergeMainAt merges main into checkout, the checkout of the seat s. A clean merge is a commit of kiln's. A
-// conflict goes back to s, as a round, or stops a fix whose verify session's tests conflict.
+// conflict goes back to s, as a round, or stops a fix whose verify session's tests conflict. The round's write
+// clears MergeMain, since the round is the merge that kiln tend owed. Past the last round, goBack clears it before
+// the stop.
 func (b *build) mergeMainAt(ctx context.Context, checkout git.Worktree, s seatName) error {
 	conflict, err := b.r.git.Merge(ctx, checkout, mainBranch, b.message("merge main"))
 	switch {
@@ -708,7 +718,8 @@ func (b *build) mergeMainAt(ctx context.Context, checkout git.Worktree, s seatNa
 	}
 
 	report := fmt.Sprintf(conflicts, strings.Join(conflict.Files, "\n"))
-	return b.goBack(s, setback{why: whyConflict, report: report, failing: conflict.Files})
+	return b.goBack(s, setback{why: whyConflict, report: report, failing: conflict.Files,
+		with: func(r *record) { r.MergeMain = false }})
 }
 
 const (

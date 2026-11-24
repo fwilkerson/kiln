@@ -278,13 +278,14 @@ func (b *build) goOn(ctx context.Context) error {
 	return b.tended(ctx)
 }
 
-// tended merges main into a build kiln tend saw to, once, as mergeMain says. A conflict goes back as a round.
+// tended merges main into a build kiln tend saw to, once, as mergeMain says. A conflict's round clears MergeMain in
+// its own write, so a killed kiln never owes it twice. A kill after a clean merge merges nothing again.
 func (b *build) tended(ctx context.Context) error {
 	if !b.now().MergeMain {
 		return nil
 	}
 
-	if err := b.mergeMain(ctx); err != nil {
+	if err := b.mergeMain(ctx); err != nil || !b.now().MergeMain {
 		return err
 	}
 
@@ -449,7 +450,8 @@ func (b *build) allowed() []string {
 func (b *build) sessionWork(ctx context.Context) (git.Rev, setback, error) {
 	head, err := b.r.git.Commit(ctx, b.tree, b.message("the session's work"))
 	if u, ok := errors.AsType[*git.Unmerged](err); ok && b.rec.Code.Session != "" {
-		return "", setback{whyConflict, fmt.Sprintf(unfinished, strings.Join(u.Files, "\n")), u.Files}, nil
+		return "", setback{why: whyConflict, report: fmt.Sprintf(unfinished, strings.Join(u.Files, "\n")),
+			failing: u.Files}, nil
 	}
 
 	return head, setback{}, err
@@ -458,10 +460,12 @@ func (b *build) sessionWork(ctx context.Context) (git.Rev, setback, error) {
 // setback is what kept the work from passing, for a session. It is a failed gate: of the work, of the work rebased
 // onto main, or of the verify session's tests. It is a conflict with main, or with the proved tests. Or it is
 // work that changes nothing on main. why names which, as a start line does. failing names what failed: the gate's
-// failures, or the files in conflict.
+// failures, or the files in conflict. with changes the record in the round's own write, or alone past the last round.
+// A killed kiln then leaves both or neither.
 type setback struct {
 	why, report string
 	failing     []string
+	with        func(*record)
 }
 
 // said is what kiln tells of the setback. goesBack is the developer's line as the work goes back, and stops starts
