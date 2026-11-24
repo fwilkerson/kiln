@@ -45,13 +45,16 @@ func TestMain(m *testing.M) { scenariotest.Main(m, "crash") }
 // whose record or lost runs no run showed. A flow marked redone gets a drive from each new leftover of its recovery.
 //
 // The flows share the leftovers they showed, so the test goes in rounds. In a round, each flow claims each leftover
-// new to it, with a clone. settle then gives each leftover to the first claim of it, in the flows' order. So the
-// flow that drives a leftover is the same in every run of the test.
+// new to it, with a clone. settle then gives each leftover to the first claim of it, in the flows' order. So which
+// flow drives a leftover never turns on which flow reached it first.
 //
 // SIGINT takes kiln's graceful path. It differs from a kill only where kiln reads its context's end: as a session
-// starts and ends. So a second run of a flow gets a real SIGINT at each such step, once for each leftover. A
-// leftover that an earlier flow's own run showed gets its SIGINT in that flow's second run. The test fails for a
-// leftover that got none.
+// starts and ends. So each flow runs a second time, and gets a real SIGINT at each such step, once for each leftover.
+// The second run decides by its own steps alone. It shares nothing with the first, so the two run side by side.
+//
+// Two sessions that run side by side take their steps in an order that differs from run to run. So a run may never
+// show a leftover that another run showed. Each check therefore holds for whichever leftovers a run shows, and none
+// expects one to come again.
 //
 // The test keeps a budget of its own, as outlasted says. Past the budget, a run starts no further command, and skips.
 // The test then fails once, by a message that names the budget.
@@ -64,6 +67,7 @@ func TestKilledAtEachStep(t *testing.T) {
 	}
 
 	t.Run("killed", func(t *testing.T) {
+		t.Parallel()
 		seen := map[string]bool{}
 		for round := 0; slices.ContainsFunc(proofs, func(p *proof) bool { return p.due(round) }); round++ {
 			t.Run(strconv.Itoa(round), func(t *testing.T) { eachDue(t, proofs, round, seen) })
@@ -71,11 +75,10 @@ func TestKilledAtEachStep(t *testing.T) {
 		}
 	})
 
-	var runs []*signals
-	t.Run("signaled", func(t *testing.T) { runs = signalEach(t, proofs) })
-	for _, session := range unsent(runs) {
-		t.Errorf("no kiln got a real SIGINT at %s, which a flow left to an earlier one", session)
-	}
+	t.Run("signaled", func(t *testing.T) {
+		t.Parallel()
+		signalEach(t)
+	})
 }
 
 // eachDue runs one round of the test: the part of each flow that is due, all in parallel.
@@ -90,26 +93,18 @@ func eachDue(t *testing.T, proofs []*proof, round int, seen map[string]bool) {
 	}
 }
 
-// signalEach runs each flow again, in parallel, with real signals, and answers what each run got. The first flow
-// gets a SIGKILL at each kind of step it takes. A flow whose own run showed no session's leftover of its own runs
-// no more.
-func signalEach(t *testing.T, proofs []*proof) []*signals {
-	var runs []*signals
+// signalEach runs each flow again, in parallel, with real signals. The first flow gets a SIGKILL at each kind of step
+// it takes.
+func signalEach(t *testing.T) {
 	kills := []string{"state.json", "ledger.jsonl", "git", "session start", "session end"}
-	theirs := map[string]bool{}
-	for _, p := range proofs {
-		sig := &signals{kills: kills, theirs: maps.Clone(theirs), sent: map[string]bool{}, left: map[string]bool{}}
+	for _, f := range flows {
+		sig := &signals{kills: kills, sent: map[string]bool{}}
 		kills = nil
-		if p.shows(theirs) || len(sig.kills) > 0 {
-			runs = append(runs, sig)
-			t.Run(p.flow.name, func(t *testing.T) {
-				t.Parallel()
-				p.flow.signaled(t, sig)
-			})
-		}
+		t.Run(f.name, func(t *testing.T) {
+			t.Parallel()
+			f.signaled(t, sig)
+		})
 	}
-
-	return runs
 }
 
 // defects are the leftovers known to leave kiln wrong, each with what goes wrong. A key is the flow's name and the
@@ -307,25 +302,11 @@ type proof struct {
 	scratch *scratch
 	// queue holds each clone settle left the flow, to drive from in the next round.
 	queue []snapshot
-	// sessions names each session step of this flow's run, by what a kill at that step leaves.
-	sessions []string
 }
 
 // due is whether p has a part in the round. That is its flow's own run in round 0, and then each clone settle left
 // it.
 func (p *proof) due(round int) bool { return round == 0 || len(p.queue) > 0 }
-
-// shows is whether the own run of p's flow started or ended a session over a leftover theirs lacks. It keeps each
-// of those leftovers in theirs.
-func (p *proof) shows(theirs map[string]bool) bool {
-	found := false
-	for _, session := range p.sessions {
-		found = found || !theirs[session]
-		theirs[session] = true
-	}
-
-	return found
-}
 
 // round runs p's part of one round of the test. In round 0, it runs the flow to its end. In a later round, it
 // restores each clone of p's queue, and drives the flow from there to its end. It stops each kiln at each step, and
@@ -342,10 +323,6 @@ func (p *proof) round(t *testing.T, round int, seen map[string]bool) {
 		l := s.holds(f, st, running[st.pid])
 		if c := s.claim(l.keys(byClass)); c != nil {
 			c.clone = s.snapshot(st, l)
-		}
-
-		if st.session() && round == 0 {
-			p.sessions = append(p.sessions, st.leaves(l))
 		}
 
 		running[st.pid] += st.started()

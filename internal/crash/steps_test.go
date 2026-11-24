@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,22 +52,18 @@ func (st step) leaves(l leftover) string {
 	return fmt.Sprintf("%s, %s, %q", st.what, l.stands, l.roles)
 }
 
-// signals are the real signals a run of a flow gets. kiln gets SIGKILL at its first step of each kind in kills. It
-// gets SIGINT at its first step that leaves each session's leftover, as leaves names it, and sent keeps each. An
-// earlier flow's own run showed the leftovers in theirs, so that flow's run sends those. left keeps each the run met.
+// signals are the real signals one run of a flow gets. kiln gets SIGKILL at its first step of each kind in kills. It
+// gets SIGINT at its first step that leaves each session's leftover, as leaves names it, and sent keeps each. A run
+// decides by its own steps alone, since no other run is sure to show the same leftovers.
 type signals struct {
-	kills              []string
-	theirs, sent, left map[string]bool
+	kills []string
+	sent  map[string]bool
 }
 
 // at answers what kiln gets at a step of kind: GO, INT or KILL. session names the step, if it starts or ends a
 // session, and is "" if not. at counts the signal sent.
 func (sig *signals) at(session, kind string) string {
-	switch {
-	case session == "":
-	case sig.theirs[session]:
-		sig.left[session] = true
-	case !sig.sent[session]:
+	if session != "" && !sig.sent[session] {
 		sig.sent[session] = true
 		return "INT"
 	}
@@ -79,19 +74,6 @@ func (sig *signals) at(session, kind string) string {
 	}
 
 	return "GO"
-}
-
-// unsent lists each session's leftover that a run of runs left to an earlier flow. It leaves out each that a run
-// sent a SIGINT at.
-func unsent(runs []*signals) []string {
-	sent, left := map[string]bool{}, map[string]bool{}
-	for _, sig := range runs {
-		maps.Copy(sent, sig.sent)
-		maps.Copy(left, sig.left)
-	}
-
-	maps.DeleteFunc(left, func(session string, _ bool) bool { return sent[session] })
-	return slices.Sorted(maps.Keys(left))
 }
 
 // watch makes each kiln that runs in s ask at each of its steps, as package crash says. decide answers a step with
