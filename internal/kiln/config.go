@@ -33,8 +33,10 @@ type config struct {
 	// kiln runs each with sh -c, from the top of a checkout of the work. kiln refuses a kiln.json that lists no
 	// command.
 	Gate []string `json:"gate"`
-	// Rounds is how many times kiln sends a build back to its session before the build stops, such as 3. kiln sends
-	// a build back when its gate fails, its work conflicts with main, or its work changes nothing. The audit's
+	// Rounds is how many times kiln sends work back to one session before the build stops, such as 3. kiln sends
+	// work back when the gate fails, the work conflicts with main, or it changes nothing. Under the workflow
+	// "build-and-verify" or "verify-first", the build session and the verify session each have this many rounds. The
+	// verify session spends a round when the gate at its commit passes, or fails on more than tests. The audit's
 	// findings go back too, and use no round. Absent or 0, the first failing gate stops the build.
 	Rounds int `json:"rounds"`
 	// AllowedHosts lists the only hosts that a session's shell commands may connect to, such as

@@ -94,7 +94,7 @@ kiln help [<topic>]      print this usage and the topics of kiln's docs, as kiln
 |--------------------------|------------------------------------------------------------------------------|-----------------------------------|
 | `"$schema"`              | The JSON Schema an editor checks this file against                           | no editor help                    |
 | `"gate"`                 | Commands that must pass before work lands, each run with `sh -c`             | kiln refuses the file             |
-| `"rounds"`               | How many times a build goes back to its session before the build stops       | the first failing gate stops it   |
+| `"rounds"`               | How many times work goes back to one session before the build stops          | the first failing gate stops it   |
 | `"allowedHosts"`         | The only hosts a session's shell commands reach                              | a session's commands reach none   |
 | `"allowUnixSockets"`     | `true`: a session's commands may connect to, and listen on, any Unix socket  | the sandbox refuses each one      |
 | `"writablePathCommands"` | Commands that print the paths a session may write, besides its checkout      | a session writes in its checkout  |
@@ -127,6 +127,9 @@ session ──▶ gate ──passes──▶ audit ──no findings──▶ la
 ```
 
 - A build also spends a round when its work conflicts with main, or changes nothing.
+- The build session and the verify session each count their own rounds, up to `"rounds"`. The verify session spends a
+  round when the gate at its commit passes, or fails on more than tests, as
+  [the proof](#workflow-testhelpers-and-reaudit) says.
 - The gate excuses a test that fails at main too. A command names its failed tests in `go test`'s output, or by
   writing JUnit XML to the path kiln gives it in `$KILN_JUNIT`.
 - A command that fails and names no test is never excused. Nor is a run that left out a test main ran.

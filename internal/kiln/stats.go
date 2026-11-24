@@ -274,7 +274,7 @@ func plural(n int, what string) string {
 func (r *Repo) sumUp(ctx context.Context, rec record, tree git.Worktree, landedAt git.Rev) []string {
 	lines := []string{r.summary(rec.Build), roundsOf(rec) + " · " + r.auditOf(rec)}
 	lines = append(lines, r.ending(ctx, rec, landedAt)...)
-	// A build in build-and-verify stopped before its first stack has no stack to name.
+	// A build that stopped before kiln made its worktree has no worktree to name.
 	place := tree
 	if _, err := os.Stat(string(tree)); err != nil {
 		place = ""
