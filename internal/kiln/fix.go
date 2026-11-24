@@ -374,6 +374,8 @@ func (f *fixing) heard(b *build, s seatName, ended claude.Ended) answer {
 
 func (*fixing) asks() string { return "what the monitor found" }
 
+func (*fixing) wayOut() string { return "ask for the developer, as your contract says" }
+
 // gates is whether the fix's work at head needs the gate and the audit before it lands. A landing's work needs them
 // once it changed a file outside .kiln/ the audit has not read. It needs a session to answer, too. A landing whose
 // work changes nothing on main stops, since the gate could only send it back.

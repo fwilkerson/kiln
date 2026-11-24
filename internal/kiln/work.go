@@ -349,7 +349,7 @@ const changedNoTest = "the verify session changed no test after a proof that did
 // passed and one that failed on more than tests each say so. The write of the round, or of the stop past the last
 // round, records head as Unproved. So the verify session is told before changedNothing reads its work.
 func (b *build) disproved(head git.Rev, v verdict) error {
-	report := fmt.Sprintf(testPassed, b.job.asks())
+	report := fmt.Sprintf(testPassed, b.job.asks(), b.job.wayOut())
 	if !v.passed {
 		report = fmt.Sprintf(testBroke, v.report)
 	}
@@ -729,8 +729,7 @@ const (
 		"in these files:\n%[2]s\n\nMerge %[1]s into your branch with git merge, resolve each conflict, commit, and " +
 		"end your turn."
 	testPassed = "The gate passed with your work, so no test fails on %s. Write a test that fails on main's code " +
-		"for that reason, and end your turn. Where main's code already does it, change nothing, and end your turn: " +
-		"the build then stops."
+		"for that reason, and end your turn. Where main's code already does it, %s."
 	testBroke = "The gate failed, but not on tests alone: a command failed with no test named, or a path is refused. " +
 		"A test that does not compile on main's code names no failed test. Make the gate fail only on a test, " +
 		"and end your turn.\n\n%s"

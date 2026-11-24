@@ -209,6 +209,47 @@ func TestDisprovedAtLastRound(t *testing.T) {
 	}
 }
 
+// TestPassedProofWayOut holds what a proof whose gate passed tells the verify session, where main's code already does
+// the work. A spec's verify session changes nothing, which stops the build. A fix's asks for the developer, as its
+// contract says, so the developer reads why no test can fail.
+func TestPassedProofWayOut(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct {
+		fix         bool
+		want, never string
+	}{
+		"a spec's verify session changes nothing":       {want: "change nothing", never: "ask for the developer"},
+		"a fix's verify session asks for the developer": {fix: true, want: "ask for the developer", never: "change nothing"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			b, _ := disprovedBuild(t, 3)
+			if tc.fix {
+				b.fix = &fixing{side: side{role: fixRole, tests: []string{"*_test.go"}}}
+				b.job = b.fix
+				b.set(func(r *record) { r.Monitor = true })
+			}
+
+			b.set(func(r *record) { paid(r, verifySeat, len(r.Verify.Owed)) })
+			shell(t, string(b.r.clone("x", verifyRole)), "echo 'package x' >uat/x/y_test.go")
+			if _, err := b.prove(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+
+			owed := b.now().Verify.Owed
+			text := ""
+			if len(owed) == 1 {
+				text = owed[0].Text
+			}
+
+			if !claim.Holds(strings.Contains(text, tc.want), !strings.Contains(text, tc.never)) {
+				t.Errorf("a proof whose gate passed owes the verify session %+v; want one message that says %q, and "+
+					"never %q", owed, tc.want, tc.never)
+			}
+		})
+	}
+}
+
 // disprovedBuild is splitBuild's build of x after a proof that did not stand. kiln.json gives it rounds rounds, and
 // the verify session's test passes on main's code. It answers the proof's report, which kiln owes the session.
 func disprovedBuild(t *testing.T, rounds int) (*build, message) {

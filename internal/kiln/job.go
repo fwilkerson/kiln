@@ -18,6 +18,8 @@ type job interface {
 	heard(b *build, s seatName, ended claude.Ended) answer
 	// asks says what the verify session's tests show, for a proof that did not stand.
 	asks() string
+	// wayOut says what the verify session does where main's code already does what asks names.
+	wayOut() string
 	// gates is whether the work at head needs the gate and the audit before it passes.
 	gates(ctx context.Context, b *build, head git.Rev) (bool, error)
 	// audited runs the audit, and owes its findings to the sessions. It answers whether it owed any.
@@ -135,6 +137,8 @@ func (specJob) heard(b *build, s seatName, ended claude.Ended) answer {
 }
 
 func (specJob) asks() string { return "what the spec asks" }
+
+func (specJob) wayOut() string { return "change nothing, and end your turn: the build then stops" }
 
 func (specJob) gates(context.Context, *build, git.Rev) (bool, error) { return true, nil }
 
