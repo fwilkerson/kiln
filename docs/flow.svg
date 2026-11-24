@@ -127,7 +127,7 @@
 
   <rect class="agent" x="586" y="144" width="122" height="64" rx="8"/>
   <text class="cap agent-t" x="598" y="166">AUDIT</text>
-  <text class="s" x="598" y="184">a second session</text>
+  <text class="s" x="598" y="184">another session</text>
   <text class="s" x="598" y="198">reads the work</text>
 
   <path class="w-kiln" d="M493,144 V78 M647,144 V78 H412" stroke-dasharray="4 3" marker-end="url(#arrow-kiln)"/>
@@ -140,10 +140,11 @@
   <circle class="commit" cx="776" cy="96" r="6"/>
   <circle class="commit" cx="776" cy="130" r="6"/>
   <circle class="landed" cx="776" cy="176" r="10"/>
-  <text class="t mono" x="796" y="172">feat(x): land</text>
-  <text class="s" x="796" y="188">one commit, gated</text>
-  <text class="s" x="796" y="202">and audited</text>
-  <path class="w" d="M868,210 V244" marker-end="url(#arrow)"/>
+  <text class="t mono" x="796" y="166">feat(x): land the</text>
+  <text class="t mono" x="796" y="182">approved spec</text>
+  <text class="s" x="796" y="198">one commit, gated</text>
+  <text class="s" x="796" y="212">and audited</text>
+  <path class="w" d="M868,220 V244" marker-end="url(#arrow)"/>
   <rect class="you" x="796" y="248" width="144" height="56" rx="8"/>
   <text class="t you-t" x="808" y="270">try what landed</text>
   <text class="t mono you-t" x="808" y="290" font-size="12">kiln accept x</text>

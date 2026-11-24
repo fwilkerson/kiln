@@ -31,7 +31,7 @@ git add .kiln .claude && git commit -m "chore: set up kiln"
 
 `kiln init` picks settings for Go, Python with uv, or TypeScript with npm, by the files your repository holds.
 
-`/shape` and its supporting agents are symlinked into your projects `.claude` folder. Use it to draft and review your
+`/shape` and its supporting agents are symlinked into your project's `.claude` folder. Use it to draft and review your
 first spec. `kiln fire` will build any specs you've _shaped_.
 
 A build asks you nothing while it runs. `kiln tui` shows each session live.
