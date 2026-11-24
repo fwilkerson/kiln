@@ -833,7 +833,7 @@ func newRepo(top, common string, g gitPort, env []string) (*Repo, error) {
 		return nil, err
 	}
 
-	kept := filepath.Join(common, "kiln")
+	kept := keptDir(common)
 	sum := sha256.Sum256([]byte(common))
 	return &Repo{
 		top:    top,
@@ -1668,6 +1668,11 @@ func landsAccepted(held *laneHeld) string {
 	}
 
 	return "the kiln fire that is building"
+}
+
+// keptDir is the folder, in the git directory common, where kiln keeps its records and each session's files.
+func keptDir(common string) string {
+	return filepath.Join(common, "kiln")
 }
 
 func (r *Repo) tree(name Spec) git.Worktree {

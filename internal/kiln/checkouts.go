@@ -121,23 +121,28 @@ func (b *build) amendedSpec(ctx context.Context, at git.Rev) (string, error) {
 	return folded, nil
 }
 
-// blinds are what the session in own, a checkout of name's build, may not read. rival is where the session it must
-// not see works. The sandbox denies a command the whole of kiln's checkouts, and allowRead lets own back in. It
-// denies the verify session the repository's main checkout and its git directory too, which hold every branch. The
-// code session works in a worktree, whose git directory is the repository's. The Read tool's rules deny each other
-// checkout by name, and rival's transcripts.
+// blinds are what the session in own, a checkout of name's build, may not read. rival is where the session it must not
+// see works. The sandbox denies a command the whole of kiln's checkouts, and allowRead lets own back in. It denies the
+// verify session the repository's main checkout and its git directory too, which hold every branch. The code session
+// works in a worktree, whose git directory is the repository's. Its sandbox denies there only kiln's folder, which
+// holds each session's stream and kiln's state file. Both deny the transcripts of rival and of the audit, which reads
+// the build's work. The Read tool's rules deny each other checkout by name, and those transcripts.
 func (r *Repo) blinds(name Spec, own, rival git.Worktree) (denyRead, allowRead, deny []string) {
 	others := []string{string(rival), string(r.tree(name)), string(r.auditTree(name)), string(r.gateTree(name)),
 		filepath.Join(r.trees, mainTree), r.top, r.common}
 	denyRead = []string{r.trees}
 	if own != r.tree(name) {
 		denyRead = append(denyRead, r.top, r.common)
+	} else {
+		denyRead = append(denyRead, keptDir(r.common))
 	}
 
 	if config := r.claudeConfig(); config != "" {
-		transcripts := filepath.Join(config, "projects", projectDir(string(rival)))
-		others = append(others, transcripts)
-		denyRead = append(denyRead, transcripts)
+		for _, tree := range []git.Worktree{rival, r.auditTree(name)} {
+			transcripts := filepath.Join(config, "projects", projectDir(string(tree)))
+			others = append(others, transcripts)
+			denyRead = append(denyRead, transcripts)
+		}
 	}
 
 	for _, p := range slices.DeleteFunc(others, func(p string) bool { return p == string(own) }) {

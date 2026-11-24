@@ -21,6 +21,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/fwilkerson/kiln/internal/claude"
 	"github.com/fwilkerson/kiln/internal/git"
 	"github.com/fwilkerson/kiln/internal/proc"
 	"github.com/fwilkerson/practices/claim"
@@ -2262,6 +2263,108 @@ func TestBlindTranscripts(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBlinds holds what each session of build-and-verify may read. The verify session reads no transcript that holds
+// the build's work, the audit's included. The build session reads no stream or transcript of the verify session's,
+// and git still works in its worktree.
+func TestBlinds(t *testing.T) {
+	t.Parallel()
+
+	r, stream := streamed(t)
+	transcripts := func(tree git.Worktree) string {
+		return filepath.Join("/home/dev/.claude/projects", projectDir(string(tree)))
+	}
+
+	build, verify := r.tree("x"), r.clone("x", verifyRole)
+	tests := []struct {
+		name         string
+		own, rival   git.Worktree
+		path         string
+		wantDenied   bool
+		wantReadTool bool
+	}{
+		{"the verify session, the build's transcripts", verify, build, transcripts(build), true, true},
+		{"the verify session, the audit's transcripts", verify, build, transcripts(r.auditTree("x")), true, true},
+		{"the build session, the verify session's transcripts", build, verify, transcripts(verify), true, true},
+		{"the build session, the verify session's stream", build, verify,
+			stream, true, true},
+		{"the build session, git's objects", build, verify, filepath.Join(r.common, "objects"), false, true},
+		{"the build session, git's refs", build, verify, filepath.Join(r.common, "refs", "heads"), false, true},
+		{"the build session, git's config", build, verify, filepath.Join(r.common, "config"), false, true},
+		{"the build session, its worktree's git directory", build, verify,
+			filepath.Join(r.common, "worktrees", "x", "HEAD"), false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			denyRead, allowRead, deny := r.blinds("x", tt.own, tt.rival)
+			sandboxed := covered(denyRead, tt.path) && !covered(allowRead, tt.path)
+			var rules []string
+			for _, rule := range deny {
+				if p, ok := strings.CutPrefix(rule, "Read(/"); ok {
+					rules = append(rules, strings.TrimSuffix(p, "/**)"))
+				}
+			}
+
+			if sandboxed != tt.wantDenied || covered(rules, tt.path) != tt.wantReadTool {
+				t.Errorf("%s: the sandbox denies it %v, and the Read tool %v, want %v and %v\ndenyRead %v\ndeny %v",
+					tt.path, sandboxed, covered(rules, tt.path), tt.wantDenied, tt.wantReadTool, denyRead, deny)
+			}
+		})
+	}
+}
+
+// streamed is a Repo as kiln opens one, and the stream of a session it ran. Its trees are in /trees. A stand-in
+// claude runs the session, so the stream lies where kiln itself writes it.
+func streamed(t *testing.T) (*Repo, string) {
+	t.Helper()
+	top, bin := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, claudeProgram), []byte("#!/bin/sh\necho '{}'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	env := []string{"HOME=/home/dev", "PATH=" + bin + ":/bin:/usr/bin"}
+	r, err := newRepo(top, filepath.Join(top, ".git"), nil, env)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r.trees = "/trees"
+	if _, err := r.claude.Run(t.Context(), claude.Launch{Session: verifySession, Prompt: "x", Dir: top, Role: verifyRole,
+		Silence: time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stream string
+	err = filepath.WalkDir(r.common, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if filepath.Base(filepath.Dir(p)) == verifySession && strings.HasPrefix(d.Name(), "stream") {
+			stream = p
+		}
+
+		return nil
+	})
+	if err != nil || stream == "" {
+		t.Fatalf("kiln wrote no stream of session %s under %s: %v", verifySession, r.common, err)
+	}
+
+	return r, stream
+}
+
+// verifySession is the ID of the session streamed runs.
+const verifySession = "3f2b7c1e-0d4a-4e8b-9c6f-5a1d2e3b4c5d"
+
+// covered reports whether one of paths is path or a folder that holds it.
+func covered(paths []string, path string) bool {
+	return slices.ContainsFunc(paths, func(p string) bool {
+		rel, err := filepath.Rel(p, path)
+		return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
+	})
 }
 
 // TestChangedSince holds which files changed since kiln accept: each whose own change differs from the commit the
