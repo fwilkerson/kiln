@@ -1,10 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="400" viewBox="0 0 960 400" role="img"
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="600" viewBox="0 0 960 600" role="img"
      aria-labelledby="title desc">
-  <title id="title">How kiln builds a spec</title>
-  <desc id="desc">You shape and approve a spec, then queue it. In the background, a build session writes the code and a
-    verify session writes the tests, each in a sandbox. The gate runs your checks, read from main, and an audit
-    session reads the work; a failure or finding goes back as a round. The work lands on main as one commit. You try
-    it, and kiln accept lists the spec in PRODUCT.md.</desc>
+  <title id="title">How kiln builds a spec, and how a monitor starts a fix</title>
+  <desc id="desc">You shape and approve a spec, then queue it. kiln fire starts a build session, which writes the code,
+    and a verify session, which writes the tests. Each session runs in a sandbox. The gate runs your checks, read from
+    main. An audit session then reads the work. A failure or a finding goes back as a round. The work lands on main as
+    one commit. You try it, and kiln accept lists the spec in PRODUCT.md. A monitor is a check or a gauge that you
+    write, with an agent. Each hour, kiln runs the monitors that are due, and each reads what main holds. A check can
+    find a problem, such as a new error in a live service's logs. A gauge can pass its limit, such as a code health
+    score or the tests' time. The monitor's agent then fixes the problem, in a sandboxed session. The fix passes the
+    same gate and audit, and the gate runs the monitor's check again.</desc>
   <style>
     /* A hue marks the actor: you, an agent, kiln, or the repository. internal/tui/theme.go holds the same hues. */
     svg {
@@ -46,6 +50,9 @@
     .rail { stroke: var(--repo); stroke-width: 2.5; stroke-linecap: round; }
     .commit { fill: var(--canvas); stroke: var(--repo); stroke-width: 2; }
     .landed { fill: var(--kiln-tint); stroke: var(--kiln); stroke-width: 2.5; }
+    .spark { stroke: var(--kiln); fill: none; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+    .limit { stroke: var(--wire); stroke-dasharray: 2 2; }
+    .found { fill: var(--repo); }
     .strip-you { stop-color: var(--you); }
     .strip-kiln { stop-color: var(--kiln); }
     .strip-repo { stop-color: var(--repo); }
@@ -65,14 +72,14 @@
     </linearGradient>
   </defs>
 
-  <rect class="card" x=".5" y=".5" width="959" height="399" rx="10"/>
+  <rect class="card" x=".5" y=".5" width="959" height="599" rx="10"/>
   <rect x="16" y="1" width="928" height="2" fill="url(#strip)" opacity=".8"/>
 
-  <!-- The phases. -->
+  <!-- The phases, named as the README's first sentence names them. -->
   <text class="head" x="24" y="34"><tspan class="n">1</tspan>  SHAPE</text>
-  <text class="head" x="274" y="34"><tspan class="n">2</tspan>  BUILD, IN THE BACKGROUND</text>
-  <text class="head" x="760" y="34"><tspan class="n">3</tspan>  LAND</text>
-  <path class="rule" d="M24,44 H236 M274,44 H736 M760,44 H936"/>
+  <text class="head" x="274" y="34"><tspan class="n">2</tspan>  FIRE</text>
+  <text class="head" x="24" y="384"><tspan class="n">3</tspan>  MONITOR</text>
+  <path class="rule" d="M24,44 H236 M274,44 H936 M24,394 H236"/>
 
   <!-- You: shape, approve, queue. -->
   <rect class="you" x="24" y="60" width="196" height="64" rx="8"/>
@@ -91,7 +98,7 @@
   <text class="s" x="24" y="322">kiln notifies you when a</text>
   <text class="s" x="24" y="336">build stops or asks</text>
 
-  <!-- In the background: two sessions in a sandbox, the gate, the audit. -->
+  <!-- kiln fire: two sessions in a sandbox, the gate, the audit. -->
   <path class="w" d="M220,265 H270" marker-end="url(#arrow)"/>
 
   <rect class="sandbox" x="274" y="60" width="134" height="232" rx="8"/>
@@ -105,6 +112,10 @@
   <text class="s" x="296" y="240">the tests, from</text>
   <text class="s" x="296" y="254">the spec alone</text>
 
+  <!-- A fix joins the wire that a build's sessions take to the gate. -->
+  <path class="w" d="M398,460 H418 V240"/>
+  <text class="s" x="434" y="330">a fix passes the same gate and audit,</text>
+  <text class="s" x="434" y="344">and the gate runs the monitor's check again</text>
   <path class="w" d="M398,130 H418 V176 M398,240 H418 V176 M418,176 H432" marker-end="url(#arrow)"/>
 
   <rect class="kiln" x="436" y="144" width="114" height="64" rx="8"/>
@@ -119,14 +130,13 @@
   <text class="s" x="598" y="184">a second session</text>
   <text class="s" x="598" y="198">reads the work</text>
 
-  <path class="w-kiln" d="M493,208 V318 M647,208 V318 H341 V296" stroke-dasharray="4 3"
-        marker-end="url(#arrow-kiln)"/>
-  <text class="s" x="494" y="338" text-anchor="middle">a failure or a finding goes back as a round</text>
+  <path class="w-kiln" d="M493,144 V78 M647,144 V78 H412" stroke-dasharray="4 3" marker-end="url(#arrow-kiln)"/>
+  <text class="s" x="530" y="68" text-anchor="middle">a failure or a finding goes back as a round</text>
 
   <!-- main: the work lands as one commit, and you take it. -->
   <path class="w" d="M708,176 H762" marker-end="url(#arrow)"/>
   <text class="cap repo-t" x="790" y="66">MAIN</text>
-  <path class="rail" d="M776,56 V384"/>
+  <path class="rail" d="M776,56 V478"/>
   <circle class="commit" cx="776" cy="96" r="6"/>
   <circle class="commit" cx="776" cy="130" r="6"/>
   <circle class="landed" cx="776" cy="176" r="10"/>
@@ -141,4 +151,47 @@
   <rect class="repo" x="796" y="328" width="144" height="56" rx="8"/>
   <text class="t mono repo-t" x="808" y="350" font-size="12">PRODUCT.md</text>
   <text class="s" x="808" y="370">lists the spec</text>
+
+  <!-- You: write a monitor, and install the job that runs it. -->
+  <rect class="you" x="24" y="410" width="196" height="64" rx="8"/>
+  <text class="t you-t" x="38" y="434">write a monitor</text>
+  <text class="s" x="38" y="452">a check or a gauge, and the</text>
+  <text class="s" x="38" y="466">agent that fixes what it finds</text>
+  <path class="w" d="M122,474 V510" marker-end="url(#arrow)"/>
+  <rect class="you" x="24" y="514" width="196" height="34" rx="8"/>
+  <text class="t mono you-t" x="38" y="536">kiln monitor install</text>
+  <path class="w" d="M220,531 H248 V566 H598 V552" marker-end="url(#arrow)"/>
+  <text class="s" x="423" y="584" text-anchor="middle">each hour, kiln runs the monitors that are due</text>
+
+  <!-- A monitor reads main. Each row draws a reading that passes its limit, or a new error. -->
+  <path class="w" d="M776,478 H754" marker-end="url(#arrow)"/>
+  <text class="s" x="796" y="474">a monitor reads</text>
+  <text class="s" x="796" y="488">what main holds</text>
+
+  <rect class="kiln" x="446" y="410" width="304" height="138" rx="8"/>
+  <text class="head" x="460" y="428" font-size="9.5">MONITORS, FOR EXAMPLE</text>
+  <path class="limit" d="M460,463 H504"/>
+  <polyline class="spark" points="460,451 469,452 478,451 487,455 496,461 504,467"/>
+  <circle class="found" cx="504" cy="467" r="2.5"/>
+  <text class="t" x="518" y="456">Code quality</text>
+  <text class="s" x="518" y="470">a health score falls below its limit</text>
+  <path class="limit" d="M460,487 H504"/>
+  <polyline class="spark" points="460,499 469,498 478,496 487,492 496,488 504,482"/>
+  <circle class="found" cx="504" cy="482" r="2.5"/>
+  <text class="t" x="518" y="490">Test bloat</text>
+  <text class="s" x="518" y="504">the tests' time passes its limit</text>
+  <polyline class="spark" points="460,530 474,530 478,528 482,530 490,530 494,518 498,533 502,530 504,530"/>
+  <circle class="found" cx="494" cy="518" r="2.5"/>
+  <text class="t" x="518" y="524">A live service</text>
+  <text class="s" x="518" y="538">its logs show a new error</text>
+
+  <!-- A problem starts a fix: a session, sandboxed as a build's are. -->
+  <path class="w" d="M446,504 H412" marker-end="url(#arrow)"/>
+  <rect class="sandbox" x="274" y="410" width="134" height="138" rx="8"/>
+  <text class="head" x="284" y="428" font-size="9.5">SANDBOX</text>
+  <rect class="agent" x="284" y="440" width="114" height="96" rx="8"/>
+  <text class="cap agent-t" x="296" y="464">FIX</text>
+  <text class="s" x="296" y="484">the monitor's</text>
+  <text class="s" x="296" y="498">agent fixes</text>
+  <text class="s" x="296" y="512">what it found</text>
 </svg>

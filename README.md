@@ -4,7 +4,8 @@ _Shape_ a spec, _fire_ up the agents, and **monitor** what matters to your proje
 build and maintain software. Verify specs with acceptance tests and give the agents chores to do. Look at kiln's own
 monitors for inspiration.
 
-![You shape and queue a spec; kiln builds, gates, audits and lands it on main.](docs/flow.svg)
+![You shape a spec, and kiln fire builds, gates, audits and lands it on main. A monitor runs a check on a schedule, and
+its agent fixes what the check finds.](docs/flow.svg)
 
 ## Install
 
