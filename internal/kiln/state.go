@@ -110,8 +110,8 @@ type stop struct {
 type stopKind string
 
 const (
-	// stopConflict is a conflict no session may resolve. An accepted fix with no session may conflict with main. A
-	// verify-first fix's tests may conflict with its fix.
+	// stopConflict is a conflict no session may resolve. An accepted fix with no session may conflict with main. So
+	// may the tests of a fix's verify session, as kiln merges main into its clone.
 	stopConflict stopKind = "conflict"
 	// stopKiln is an error of kiln's, not the work's, such as a full disk.
 	stopKiln stopKind = "kiln"

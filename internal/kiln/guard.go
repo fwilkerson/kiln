@@ -23,8 +23,9 @@ type guard struct {
 	place git.Worktree
 	// head is the commit kiln made at place, or "" for the gate to read there.
 	head git.Rev
-	// tested is the commit of a verify-first fix's proved tests, or "". The fix holds each test file as main does,
-	// with tested's change applied. The hook's command line leaves it out, since the hook refuses each test file.
+	// tested is the commit of the verify session's proved tests, or "". The code session holds each file the verify
+	// session alone writes as main does, with tested's change applied. The hook's command line leaves it out, since
+	// the hook refuses each such file.
 	tested git.Rev
 	// allowed holds the paths the build may change, though guarded names them. The landing of an accepted spec retires
 	// it. The hook's command line leaves them out.
@@ -39,35 +40,35 @@ type guard struct {
 // side is the part of a build's worktree one session may write. The zero side is a spec's one build session, in the
 // workflow "build". It writes anywhere but where every guard refuses.
 type side struct {
-	// role is buildRole or verifyRole in the workflow build-and-verify, and fixRole in a monitor's fix. A
-	// verify-first fix's verify session has verifyRole too, and its non-empty tests field tells it apart. role is ""
-	// otherwise.
+	// role is buildRole or verifyRole in a spec's isolated workflow, and fixRole in a monitor's fix. A fix's verify
+	// session has verifyRole too, and its non-empty tests field tells it apart. role is "" otherwise.
 	role string
-	// acceptance holds the acceptance paths of build-and-verify, with the spec's name filled in, such as
+	// acceptance holds the acceptance paths of a spec's isolated workflow, with the spec's name filled in, such as
 	// "acceptance/x/". In a fix it holds each path's fixed part, and guards each path that starts with one. It is empty
 	// in a fix whose monitor says it may write the tests.
 	acceptance []string
-	// helpers holds the paths both sessions of build-and-verify write, as kiln.json's testHelpers names them. A
-	// verify-first fix holds them as test files.
+	// helpers holds the paths both sessions of a spec's isolated workflow write, as kiln.json's testHelpers names
+	// them. A fix with a verify session holds them as test files.
 	helpers []string
-	// tests holds kiln.json's testFiles in a verify-first fix, and nothing elsewhere. A test file matches one, lies
-	// under an acceptance path's fixed part, or lies under a helper.
+	// tests holds kiln.json's testFiles in a fix with a verify session, and nothing elsewhere. A test file matches
+	// one, lies under an acceptance path's fixed part, or lies under a helper.
 	tests []string
 }
 
-// fixRole is the side of a monitor's fix session, which has no spec. In a verify-first fix, a verify session works
-// first.
+// fixRole is the side of a monitor's fix session, which has no spec. In an isolated workflow, a verify session works
+// beside it, or first.
 const fixRole = "fix"
 
-// verifiesFirst is whether s is a side of a verify-first fix: its verify session's, or its fix session's.
+// verifiesFirst is whether s is a side of a fix with a verify session, in either order. That side is the verify
+// session's, or the fix session's.
 func (s side) verifiesFirst() bool { return len(s.tests) > 0 }
 
 // fixes is whether s is a side of a monitor's fix, which writes nothing under .kiln/.
 func (s side) fixes() bool { return s.role == fixRole || s.verifiesFirst() }
 
-// valid is whether s is a side kiln builds. A side of build-and-verify has an acceptance path, and no test files.
-// Helpers belong to a side of build-and-verify, or to a verify-first fix's side. A verify-first fix's verify session
-// names its test files.
+// valid is whether s is a side kiln builds. A side of a spec's isolated workflow has an acceptance path, and no test
+// files. Helpers belong to such a side, or to a side of a fix with a verify session. A fix's verify session names its
+// test files.
 func (s side) valid() bool {
 	switch s.role {
 	case "":
@@ -145,7 +146,8 @@ func (s side) verifiers(folded string, spec Spec) bool {
 	return false
 }
 
-// testFile is whether folded is a test file of s, a verify-first fix's side. folded is a path folded as APFS reads it.
+// testFile is whether folded is a test file of s, a side of a fix with a verify session. folded is a path folded as
+// APFS reads it.
 func (s side) testFile(folded string) bool {
 	matches := func(name string) bool {
 		return slices.ContainsFunc(s.tests, func(p string) bool {
@@ -160,7 +162,7 @@ func (s side) testFile(folded string) bool {
 		slices.ContainsFunc(s.helpers, in)
 }
 
-// testWords names the test files of s, a verify-first fix's side, for a refusal.
+// testWords names the test files of s, a side of a fix with a verify session, for a refusal.
 func (s side) testWords() string {
 	words := "the files kiln.json's testFiles names, " + strings.Join(s.tests, ", ")
 	if under := slices.Concat(s.acceptance, s.helpers); len(under) > 0 {
@@ -267,9 +269,10 @@ func hookGuard(args []string) (guard, error) {
 	flags.StringVar((*string)(&g.place), "place", "", "the build's worktree")
 	flags.StringVar(&g.side.role, "role", "", "the session's side: build, verify or fix")
 	flags.Func("acceptance", "an acceptance path the side guards; given once for each", appendTo(&g.side.acceptance))
-	flags.Func("helpers", "a path both sessions of build-and-verify write; given once for each",
+	flags.Func("helpers", "a path both sessions of an isolated workflow write; given once for each",
 		appendTo(&g.side.helpers))
-	flags.Func("tests", "a pattern of a verify-first fix's test files; given once for each", appendTo(&g.side.tests))
+	flags.Func("tests", "a pattern of the test files of a fix with a verify session; given once for each",
+		appendTo(&g.side.tests))
 	flags.StringVar((*string)(&g.accepted), "accepted", "", "kiln's commit that folded an accepted spec's amendments")
 
 	switch err := flags.Parse(args); {

@@ -33,7 +33,8 @@ const (
 	commandScript = "command"
 	// monitorAgent is the agent that fixes the problem in a session, written as any agent's file is.
 	monitorAgent = "agent.md"
-	// verifyAgent is the agent that writes a verify-first fix's tests, before monitorAgent's session writes the fix.
+	// verifyAgent is the agent that writes the fix's tests, beside or before monitorAgent's session, which writes the
+	// fix.
 	verifyAgent = "verify.md"
 )
 
