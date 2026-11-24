@@ -982,6 +982,9 @@ const specsDir = kilnDir + "/specs"
 func (s Spec) file() string      { return specsDir + "/" + string(s) + ".md" }
 func (s Spec) amendPath() string { return specsDir + "/" + string(s) + amendSuffix }
 
+// files are the spec's file and its amendment file, which kiln's commits alone change once the developer accepts it.
+func (s Spec) files() []string { return []string{s.file(), s.amendPath()} }
+
 // oldFile is where a commit from before .kiln/ held the spec.
 func (s Spec) oldFile() string { return "specs/" + string(s) + ".md" }
 
@@ -1548,7 +1551,7 @@ func (r *Repo) acceptLanded(ctx context.Context, b *build) error {
 		return b.retire(ctx, held)
 	}
 
-	landed, back, err := b.land(ctx, "", retire, name.file(), name.amendPath())
+	landed, back, err := b.land(ctx, "", retire, name.files()...)
 	if err == nil && back.report != "" {
 		err = fmt.Errorf("%w: the gate failed on main as it stands, so %s is not accepted:\n%s", errRefused, name,
 			back.report)
@@ -1582,12 +1585,13 @@ func (r *Repo) acceptAmended(ctx context.Context, b *build) error {
 		return err
 	}
 
-	if _, err := b.foldAmendments(ctx, at); err != nil {
+	folded, err := b.foldAmendments(ctx, at)
+	if err != nil {
 		return errors.Join(err, r.git.Reset(ctx, at, tip))
 	}
 
 	err = r.store.set(name, func(s *record) {
-		s.State, s.Accepted, s.Amendments, s.Accepting = queued, true, "", 0
+		s.State, s.Accepted, s.AcceptedAt, s.Amendments, s.Accepting = queued, true, folded, "", 0
 		s.Code.Rounds, s.Verify.Rounds = 0, 0
 	})
 	if err != nil {

@@ -65,6 +65,7 @@ type record struct {
 	// retires it.
 	Accepted bool `json:"accepted,omitempty"`
 	// AcceptedAt is the commit of a monitor's fix the developer accepted: its branch's tip when kiln accept took it.
+	// For a spec, it is kiln's commit that folded the amendments the developer accepted.
 	AcceptedAt git.Rev `json:"accepted_at,omitempty"`
 	// Before is the commit kiln/<name> stood at when its landing began. It is set only while a landing runs. A
 	// landing that doesn't move main puts the branch back there.

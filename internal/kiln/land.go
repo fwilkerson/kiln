@@ -258,7 +258,7 @@ func (b *build) retire(ctx context.Context, held git.Rev) (git.Rev, error) {
 		return "", err
 	}
 
-	for _, p := range []string{name.file(), name.amendPath()} {
+	for _, p := range name.files() {
 		if err := os.Remove(b.path(p)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return "", err
 		}

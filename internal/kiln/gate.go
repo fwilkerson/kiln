@@ -387,6 +387,10 @@ func (r *Repo) refused(ctx context.Context, g guard, main git.Rev) (map[string]s
 		}
 
 		kept, err := r.keptTest(ctx, g, proved, p)
+		if err == nil && !kept {
+			kept, err = r.keptAccepted(ctx, g, main, p)
+		}
+
 		if err != nil {
 			return nil, "", err
 		}
@@ -423,7 +427,11 @@ func (r *Repo) proved(ctx context.Context, g guard, main git.Rev, paths []string
 		return nil, err
 	}
 
-	files, _, err := r.git.Merged(ctx, left, g.tested, paths...)
+	files, conflict, err := r.git.Merged(ctx, left, g.tested, paths...)
+	if conflict != nil {
+		return nil, err
+	}
+
 	return files, err
 }
 
@@ -437,6 +445,43 @@ func (r *Repo) keptTest(ctx context.Context, g guard, proved map[string][]byte, 
 	was, wasHeld := proved[p]
 	is, held, err := r.git.Show(ctx, g.head, p)
 	return held == wasHeld && bytes.Equal(is, was), err
+}
+
+// keptAccepted is whether g.head holds p as accepted reads it, where p is the accepted spec's file or amendment file.
+// Then no session changed p since kiln's commit that folded the amendments.
+func (r *Repo) keptAccepted(ctx context.Context, g guard, main git.Rev, p string) (bool, error) {
+	if g.accepted == "" || !slices.Contains(g.spec.files(), p) {
+		return false, nil
+	}
+
+	was, wasHeld, err := r.accepted(ctx, g, main, p)
+	if err != nil {
+		return false, err
+	}
+
+	is, held, err := r.git.Show(ctx, g.head, p)
+	return held == wasHeld && bytes.Equal(is, was), err
+}
+
+// accepted reads p as g.accepted holds it, with each change main made to p where g.head left main. So a merge of
+// main brings the developer's own change to the spec. Where the two changes to p conflict, it reads g.accepted's p.
+func (r *Repo) accepted(ctx context.Context, g guard, main git.Rev, p string) ([]byte, bool, error) {
+	left, err := r.git.MergeBase(ctx, main, g.head)
+	if err != nil {
+		return nil, false, err
+	}
+
+	files, conflict, err := r.git.Merged(ctx, left, g.accepted, p)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if conflict != nil && slices.Contains(conflict.Files, p) {
+		return r.git.Show(ctx, g.accepted, p)
+	}
+
+	file, found := files[p]
+	return file, found, nil
 }
 
 // atMain runs c's gate at main's tip, in a worktree of its own. It keeps the checks, and runs them again only once

@@ -433,11 +433,11 @@ func (b *build) onMain(ctx context.Context, at git.Rev) error {
 	return nil
 }
 
-// allowed returns the paths under .kiln/ that an accepted spec's landing changes: it folds the amendments, and retires
-// the spec. A fix changes none.
+// allowed returns the paths under .kiln/ that an accepted spec's landing changes: it retires the spec. Only the
+// landing's gate takes them, since kiln's commit changes them there. A fix changes none.
 func (b *build) allowed() []string {
 	if b.rec.Accepted && !b.rec.Monitor {
-		return []string{b.rec.Name.file(), b.rec.Name.amendPath()}
+		return b.rec.Name.files()
 	}
 
 	return nil
@@ -680,8 +680,8 @@ func (b *build) landing() string {
 
 // gate runs the gate on head, the commit kiln made at the build's worktree, or "" to read it there. It runs as
 // judgeWork does. A fix's gate keeps it to its side.
-func (b *build) gate(ctx context.Context, head git.Rev, allowed ...string) (verdict, error) {
-	g := b.treeGuard(allowed...)
+func (b *build) gate(ctx context.Context, head git.Rev) (verdict, error) {
+	g := b.treeGuard()
 	g.head = head
 	return b.judgeWork(ctx, gating{}, g)
 }
@@ -708,14 +708,24 @@ func (b *build) judgeWork(ctx context.Context, how gating, guards ...guard) (ver
 // its side. Each file the verify session alone writes stays as the proved commit holds it. The hook of a session in
 // that worktree and the gate there both take it from here. A spec's build with one session has no sides.
 func (b *build) treeGuard(allowed ...string) guard {
-	return guard{spec: b.rec.Name, place: b.tree, allowed: allowed, side: b.sideOf(codeSeat),
-		tested: b.now().Tested}
+	return guard{spec: b.rec.Name, place: b.tree, allowed: allowed, accepted: b.acceptedSpec(),
+		side: b.sideOf(codeSeat), tested: b.now().Tested}
 }
 
 // verifyGuard is the guard on the verify session's work, in its clone. It keeps the session to its side.
 func (b *build) verifyGuard() guard {
-	return guard{spec: b.rec.Name, place: b.r.clone(b.rec.Name, verifyRole), allowed: b.allowed(),
+	return guard{spec: b.rec.Name, place: b.r.clone(b.rec.Name, verifyRole), accepted: b.acceptedSpec(),
 		side: b.sideOf(verifySeat)}
+}
+
+// acceptedSpec is kiln's commit that folded the amendments of the accepted spec. It is "" for a fix, and for a spec
+// the developer did not accept on its branch.
+func (b *build) acceptedSpec() git.Rev {
+	if b.rec.Monitor {
+		return ""
+	}
+
+	return b.now().AcceptedAt
 }
 
 // gated runs the gate under held, as commands.gate does, and writes it to the ledger. Its line starts once the lock

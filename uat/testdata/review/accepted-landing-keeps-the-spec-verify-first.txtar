@@ -1,0 +1,95 @@
+# In verify-first, an accepted landing keeps the spec as the developer accepted it.
+
+# Given: the project chooses the workflow verify-first, and a spec waits on its branch with the verify session's
+# amendment. Main then adds acceptance/x/notes.txt, as the verify session's tests did.
+exec kiln queue x
+exec kiln fire
+stdout '^x: waits on kiln/x, with amendments for UAT'
+exec sh -c 'mkdir -p acceptance/x && echo main >acceptance/x/notes.txt && git add acceptance && git commit --quiet -m main'
+
+# When: the developer accepts it. The conflict goes back to the verify session, which merges main, rewrites the folded
+# spec, and writes an amendment file again, by a shell command.
+exec kiln accept x
+stdout '^x: accepted, and main is at '
+grep 'acceptance/x/notes\.txt' .claude-calls/verify/1/2/prompt
+
+# Then: the proof refuses the verify session's change to the spec and to its amendment file, and the session takes it
+# out.
+grep '\.kiln/specs/x\.md' .claude-calls/verify/1/3/prompt
+grep '\.kiln/specs/x\.amend\.md' .claude-calls/verify/1/3/prompt
+
+# The spec PRODUCT.md shows holds the wording the developer accepted.
+! exists .kiln/specs/x.md .kiln/specs/x.amend.md
+exec sh -c '$(sed -n "s/^- Spec 1: x: .\(git show .*\).$/\1/p" PRODUCT.md)'
+stdout '^- \*\*Then\*\*: it answers 42, or more\.$'
+! stdout '41'
+
+-- .kiln/kiln.json --
+{"workflow": "verify-first", "rounds": 3}
+-- .kiln/specs/x.md --
+### 1. X answers
+
+- **Given**: nothing.
+- **When**: X is called.
+- **Then**: it answers 42.
+-- claude.json --
+{
+  "build": {"1": {"1": [
+    {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/code/.\" ."}}},
+    {"result": {"result": "Built x."}}
+  ]}},
+  "verify": {"1": {
+    "1": [
+      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/tests/.\" ."}}},
+      {"result": {"result": "Wrote the tests of x, and amended test 1."}}
+    ],
+    "2": [
+      {"tool": {"name": "Bash", "input": {"command": "git merge --quiet --no-edit -X ours main && sed -i '' 's/42, or more/41, or more/' .kiln/specs/x.md && cp \"$WORK/_given/tests/.kiln/specs/x.amend.md\" .kiln/specs/"}}},
+      {"result": {"result": "Merged main, and reworded the spec."}}
+    ],
+    "3": [
+      {"tool": {"name": "Bash", "input": {"command": "sed -i '' 's/41, or more/42, or more/' .kiln/specs/x.md && rm .kiln/specs/x.amend.md"}}},
+      {"result": {"result": "Put the spec back as accepted."}}
+    ]
+  }},
+  "audit": {"1": {"1": [{"result": {"audit": {"read": 2}}}]}}
+}
+-- _given/code/x.go --
+// Package scratch is where kiln's builds land.
+package scratch
+
+// X answers 42.
+func X() int { return 42 }
+-- _given/tests/acceptance/x/notes.txt --
+the verify session's notes
+-- _given/tests/acceptance/x/x_test.go --
+package x_test
+
+import (
+	"os"
+	"strings"
+	"testing"
+)
+
+func TestAT1(t *testing.T) {
+	code, err := os.ReadFile("../../x.go")
+	if !strings.Contains(string(code), "return 42") {
+		t.Fatalf("x.go does not answer 42, want 42: %v", err)
+	}
+}
+-- _given/tests/.kiln/specs/x.amend.md --
+# Amendments to .kiln/specs/x.md
+
+## Acceptance test 1: X answers
+
+### Old
+
+- **Then**: it answers 42.
+
+### New
+
+- **Then**: it answers 42, or more.
+
+### Reason
+
+A larger answer serves too.

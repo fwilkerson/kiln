@@ -252,8 +252,8 @@ func (b *build) proof(ctx context.Context, head git.Rev) (bool, error) {
 	return true, nil
 }
 
-// testsKept is whether head leaves the tests at tested, a proved commit, as they were. Only an amendment, or a path an
-// accepted spec's landing changes, then differs. It is false while no proof has stood. It is false too where the
+// testsKept is whether head leaves the tests at tested, a proved commit, as they were. Only an amendment, or the spec
+// as kiln folded its accepted amendments, then differs. It is false while no proof has stood. It is false too where the
 // verify session changed a path it may not write since tested. Then the proof's gate refuses that path.
 func (b *build) testsKept(ctx context.Context, tested, head git.Rev) (bool, error) {
 	if tested == "" {
@@ -265,8 +265,7 @@ func (b *build) testsKept(ctx context.Context, tested, head git.Rev) (bool, erro
 		return false, err
 	}
 
-	g := b.verifyGuard()
-	changesTest := func(p string) bool { return p != b.rec.Name.amendPath() && !slices.Contains(g.allowed, p) }
+	changesTest := func(p string) bool { return p != b.rec.Name.amendPath() }
 	if slices.ContainsFunc(tests, changesTest) {
 		return false, nil
 	}
@@ -276,7 +275,8 @@ func (b *build) testsKept(ctx context.Context, tested, head git.Rev) (bool, erro
 }
 
 // refusedSince lists each path from tested to head changed that the verify session may not write. It leaves out each
-// path head holds as its merge base with main does. A merge of main brings such paths.
+// path head holds as its merge base with main does. A merge of main brings such paths. It leaves out the spec's files
+// that head holds as kiln folded them, too.
 func (b *build) refusedSince(ctx context.Context, tested, head git.Rev) ([]string, error) {
 	main, err := b.r.mainTip(ctx)
 	if err != nil {
@@ -289,10 +289,29 @@ func (b *build) refusedSince(ctx context.Context, tested, head git.Rev) ([]strin
 	}
 
 	changed, err := b.r.git.Changed(ctx, tested, head)
+	if err != nil {
+		return nil, err
+	}
+
 	g := b.verifyGuard()
-	return slices.DeleteFunc(changed, func(p string) bool {
-		return g.guarded(p) == "" || !slices.Contains(branched, p)
-	}), err
+	g.head = head
+	var refused []string
+	for _, p := range changed {
+		if g.guarded(p) == "" || !slices.Contains(branched, p) {
+			continue
+		}
+
+		kept, err := b.r.keptAccepted(ctx, g, main, p)
+		if err != nil {
+			return nil, err
+		}
+
+		if !kept {
+			refused = append(refused, p)
+		}
+	}
+
+	return refused, nil
 }
 
 // verifyChanged lists each path from to to changed that the verify session may write.
@@ -623,7 +642,7 @@ func (b *build) judge(ctx context.Context) (bool, error) {
 // check gates head, then has the audit read it. It answers whether either sent something back: a failed gate, as a
 // round, or the audit's findings.
 func (b *build) check(ctx context.Context, head git.Rev) (bool, error) {
-	v, err := b.gate(ctx, head, b.allowed()...)
+	v, err := b.gate(ctx, head)
 	if err != nil {
 		return false, err
 	}

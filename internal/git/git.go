@@ -891,14 +891,19 @@ func (g *Git) Show(ctx context.Context, at Rev, path string) ([]byte, bool, erro
 }
 
 // Merged reads the files at paths where git merge would merge the commits a and b. It makes no commit. It maps
-// each path that holds a file there to the file. A merge that conflicts is answered as a [Conflict].
+// each path that holds a file there to the file. A merge that conflicts is answered as a [Conflict] too. The map then
+// leaves out each path in conflict.
 func (g *Git) Merged(ctx context.Context, a, b Rev, paths ...string) (map[string][]byte, *Conflict, error) {
 	out, err := g.in(ctx, g.repo, "merge-tree", "--write-tree", "-z", "--name-only", a.commit(), b.commit())
 	fields := strings.Split(out, "\x00")
-	switch {
-	case conflicted(err):
-		return nil, &Conflict{Files: conflicts(fields[1:])}, nil
-	case err != nil:
+	var conflict *Conflict
+	if conflicted(err) {
+		conflict, err = &Conflict{Files: conflicts(fields[1:])}, nil
+		inConflict := func(p string) bool { return slices.Contains(conflict.Files, p) }
+		paths = slices.DeleteFunc(slices.Clone(paths), inConflict)
+	}
+
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -924,7 +929,7 @@ func (g *Git) Merged(ctx context.Context, a, b Rev, paths ...string) (map[string
 		}
 	}
 
-	return files, nil, nil
+	return files, conflict, nil
 }
 
 // ShowTip reads the files at paths in the commit branch points to, as [Git.Show] reads one, and answers that commit.

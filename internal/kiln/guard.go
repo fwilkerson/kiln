@@ -26,9 +26,12 @@ type guard struct {
 	// tested is the commit of a verify-first fix's proved tests, or "". The fix holds each test file as main does,
 	// with tested's change applied. The hook's command line leaves it out, since the hook refuses each test file.
 	tested git.Rev
-	// allowed holds the paths the build may change, though guarded names them. A landing of accepted amendments changes
-	// its spec. The hook's command line leaves them out.
+	// allowed holds the paths the build may change, though guarded names them. The landing of an accepted spec retires
+	// it. The hook's command line leaves them out.
 	allowed []string
+	// accepted is kiln's commit that folded an accepted spec's amendments, or "". The build then writes nothing under
+	// .kiln/. The gate takes the spec's files only as accepted holds them, with main's changes merged.
+	accepted git.Rev
 	// side is what one session may write, or the zero side where the build has one session.
 	side side
 }
@@ -193,6 +196,9 @@ func (g guard) guarded(rel string) string {
 	case names[0] == fold(kilnDir) && g.side.fixes():
 		return rel + " is under .kiln/, which holds what the developer approved, the agents and the gate: a " +
 			"monitor's fix writes nothing there"
+	case names[0] == fold(kilnDir) && g.accepted != "":
+		return rel + " is under .kiln/, which holds what the developer approved, the agents and the gate: the " +
+			"developer accepted the spec as it stands, so a build writes nothing there"
 	case names[0] == fold(kilnDir) && folded != fold(g.spec.amendPath()):
 		return fmt.Sprintf("%s is under .kiln/, which holds what the developer approved, the agents and the gate: a "+
 			"build writes there only %s", rel, g.spec.amendPath())
@@ -235,6 +241,10 @@ func (g guard) hookArgs() []string {
 		args = append(args, "--tests", p)
 	}
 
+	if g.accepted != "" {
+		args = append(args, "--accepted", string(g.accepted))
+	}
+
 	return args
 }
 
@@ -260,6 +270,7 @@ func hookGuard(args []string) (guard, error) {
 	flags.Func("helpers", "a path both sessions of build-and-verify write; given once for each",
 		appendTo(&g.side.helpers))
 	flags.Func("tests", "a pattern of a verify-first fix's test files; given once for each", appendTo(&g.side.tests))
+	flags.StringVar((*string)(&g.accepted), "accepted", "", "kiln's commit that folded an accepted spec's amendments")
 
 	switch err := flags.Parse(args); {
 	case err != nil, flags.NArg() > 0, g.spec == "", g.place == "", !g.side.valid():

@@ -31,8 +31,9 @@ After you upgrade kiln, run `kiln init` again. It merges kiln's new defaults int
 commit, and `kiln status` says when `.kiln/` on main is behind. In `kiln.json`, `kiln init` adds only `$schema` and
 `rounds`, where the file lacks them.
 
-A build writes nothing under `.kiln/` but its spec's amendment file. A file meant for `.kiln/` or `.claude/`, such
-as a new agent, is yours to commit: a build names it in its last reply instead of writing it.
+A build writes nothing under `.kiln/` but its spec's amendment file. Once you accept the amendments, it writes
+nothing there, and the gate refuses its change to the spec or the amendment file. A file meant for `.kiln/` or
+`.claude/`, such as a new agent, is yours to commit: a build names it in its last reply instead of writing it.
 
 ## Commands
 
