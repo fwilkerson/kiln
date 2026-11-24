@@ -1,4 +1,4 @@
-# 7. A test the build session cannot meet goes to the verify session.
+# A test the build session cannot meet goes to the verify session.
 # x builds under verify-first, then y under build-and-verify.
 
 # Given: a spec whose proved test expects what the spec does not say, and whose build session says the test cannot

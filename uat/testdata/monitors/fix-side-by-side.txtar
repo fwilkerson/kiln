@@ -1,4 +1,4 @@
-# 12. A monitor's fix runs side by side.
+# A monitor's fix runs side by side.
 
 # Given: a monitor whose monitor.json says "workflow": "build-and-verify", and a check that finds a problem.
 # The check finds note.txt missing. The verify session's test reads note.txt, and the fix session writes it.

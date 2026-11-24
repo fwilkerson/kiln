@@ -1,4 +1,4 @@
-# 11. A spec that main already meets stops.
+# A spec that main already meets stops.
 # x builds under verify-first, then y under build-and-verify.
 
 # Given: a queued spec, and main's code already does what each Then says.

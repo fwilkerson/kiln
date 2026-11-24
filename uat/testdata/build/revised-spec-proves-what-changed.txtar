@@ -1,4 +1,4 @@
-# 10. A revised spec proves what changed.
+# A revised spec proves what changed.
 # x builds under verify-first, then y under build-and-verify.
 
 # Given: a spec that waits for UAT, with its tests on main, and a revision on main that changes one Then.

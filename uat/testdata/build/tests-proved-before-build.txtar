@@ -1,7 +1,8 @@
-# 4. The build session works from the proved tests.
+# The verify session's tests are proved on main before the build session works from them, in turn or side by side.
 # x builds under verify-first, then y under build-and-verify.
 
-# Given: a queued spec.
+# Given: a queued spec. The verify session's test reads x.txt, which main lacks, so it fails on main. The build
+# session writes x.txt.
 # Each build session lists the files its checkout holds at each run. y's build session first writes 41, so the
 # gate of the joined work fails and y's build session runs again after the proof.
 exec kiln queue x
@@ -10,20 +11,45 @@ exec kiln queue x
 exec kiln fire
 stdout '^x: landed on main'
 
-# Then: under verify-first, the build session's checkout holds the verify session's tests at its first run,
+# Then: under verify-first, the ledger shows a proof gate that failed before the build session's first run,
+exec kiln ledger --kind gate --name x
+stdout '"passed":false[^\n]*"proof":true'
+exec jq -se --arg s x 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | at(.kind=="gate" and .proof==true and .passed!=true) as $p | at(.kind=="start" and .role=="build") as $r | $p != null and $r != null and $p < $r' .git/kiln/ledger.jsonl
+
+# the build session's checkout holds the verify session's tests at its first run,
 grep '^acceptance/x/x_test\.go$' .claude-calls/x-build-1
 
-# and its first message names their files and holds the proof gate's report.
+# its first message names their files and holds the proof gate's report,
 grep 'acceptance/x/x_test\.go' .claude-calls/build/1/1/prompt
 grep 'TestAT1' .claude-calls/build/1/1/prompt
 
-# Under build-and-verify, its checkout holds them at its next run after the proof.
+# and the spec waits for UAT with both sessions' files on main.
+exec kiln status
+stdout '^x: waiting for UAT$'
+exec git show main:x.txt
+stdout '^42$'
+exec git show main:acceptance/x/x_test.go
+stdout 'func TestAT1'
+
+# Under build-and-verify, each session's first run starts before the other's ends,
 exec sed -i '' 's/"verify-first"/"build-and-verify"/' .kiln/kiln.json
 exec git commit --quiet -am 'chore: build side by side'
 exec kiln queue y
 exec kiln fire
 stdout '^y: landed on main'
+exec jq -se --arg s y 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | (.[at(.kind=="start" and .role=="verify")].session) as $v | (.[at(.kind=="start" and .role=="build")].session) as $w | at(.kind=="start" and .role=="verify") < at(.kind=="end" and .session==$w) and at(.kind=="start" and .role=="build") < at(.kind=="end" and .session==$v)' .git/kiln/ledger.jsonl
+
+# a proof gate failed before the first gate of both sessions' work,
+exec kiln ledger --kind gate --name y
+stdout '"passed":false[^\n]*"proof":true'
+exec jq -se --arg s y 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | at(.kind=="gate" and .proof==true and .passed!=true) as $p | at(.kind=="gate" and .proof!=true) as $g | $p != null and $g != null and $p < $g' .git/kiln/ledger.jsonl
+
+# the build session's checkout holds the tests at its next run after the proof,
 grep '^acceptance/y/y_test\.go$' .claude-calls/y-build-2
+
+# and the spec waits for UAT.
+exec kiln status
+stdout '^y: waiting for UAT$'
 
 -- .kiln/kiln.json --
 {"workflow": "verify-first", "rounds": 3}

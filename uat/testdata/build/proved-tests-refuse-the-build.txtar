@@ -1,4 +1,4 @@
-# 5. The build session cannot change a proved test.
+# The build session cannot change a proved test.
 # x builds under verify-first, then y under build-and-verify.
 
 # Given: a spec whose build session changes a file under the spec's acceptance path, and the spec's amendment file.

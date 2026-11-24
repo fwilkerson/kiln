@@ -1,4 +1,4 @@
-# 8. The audit's findings go to the verify session first.
+# The audit's findings go to the verify session first.
 # x builds under verify-first, then y under build-and-verify.
 
 # Given: a spec whose audit sends findings.

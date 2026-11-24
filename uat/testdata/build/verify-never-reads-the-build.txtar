@@ -1,4 +1,4 @@
-# 6. The verify session never reads the build's work.
+# The verify session never reads the build's work.
 # x builds under verify-first, then y under build-and-verify.
 
 # Given: a spec whose audit sends findings, so the verify session works again once the build session has.

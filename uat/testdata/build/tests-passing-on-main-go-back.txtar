@@ -1,5 +1,5 @@
-# 3. Tests that pass on main go back to the verify session.
-# The test names no workflow: x builds under verify-first, then y under build-and-verify.
+# Tests that pass on main go back to the verify session.
+# x builds under verify-first, then y under build-and-verify.
 
 # Given: a queued spec, whose verify session first writes a test that passes on main's code.
 # The first test only reads go.mod. The second reads x.txt, which main lacks, and the build session writes.

@@ -1,4 +1,4 @@
-# 9. An amendment waits for the developer.
+# An amendment waits for the developer.
 # x builds under verify-first, then y under build-and-verify.
 
 # Given: a spec whose verify session amends one of its acceptance tests.
