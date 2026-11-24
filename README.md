@@ -1,16 +1,14 @@
 # kiln
 
-With kiln, agents build the specs you shape, and fix what your checks find on a schedule. When an agent gets
-something wrong, you add a test or edit its instruction file. A check can find tests that got slower, an outdated
-dependency, a CVE, docs that no longer match the code, or new errors in a service's logs. An agent can fix a bug you
-file.
+_Shape_ a spec, _fire_ up the agents, and **monitor** what matters to your project. `kiln` is an opinionated way to
+build and maintain software. Verify specs with acceptance tests and give the agents chores to do. Look at kiln's own
+monitors for inspiration.
 
 ![You shape and queue a spec; kiln builds, gates, audits and lands it on main.](docs/flow.svg)
 
 ## Install
 
-kiln runs on macOS. It needs git 2.55 or newer, which Xcode's git may not be, and Claude Code's `claude` command,
-signed in.
+kiln runs on mac, requires git 2.55 or newer, and uses your `claude` subscription.
 
 ```sh
 go install github.com/fwilkerson/kiln/cmd/kiln@latest        # with Go 1.27 or newer
@@ -25,23 +23,15 @@ mv kiln_darwin_arm64/kiln ~/.local/bin/        # or any directory on your PATH
 
 ## Quick start
 
-Start in a git repository on the branch `main`, whose tests pass. kiln works on that branch, and never pushes.
-
 ```sh
 kiln init          # writes .kiln/: your checks, the agents' instructions and the /shape skill
 git add .kiln .claude && git commit -m "chore: set up kiln"
 ```
 
-`kiln init` picks settings for Go, Python with uv, or TypeScript with npm, by the files your repository holds. It
-also links `/shape` into `.claude/`, where Claude Code finds it.
+`kiln init` picks settings for Go, Python with uv, or TypeScript with npm, by the files your repository holds.
 
-Next, open Claude Code, run `/shape`, and say what you want built. `/shape` asks you questions and drafts the spec,
-`.kiln/specs/<name>.md`. When you approve the spec, `/shape` commits and queues it. Then build:
-
-```sh
-kiln fire              # builds each queued spec, and lands each that passes on main, as one commit
-kiln accept <name>     # once you have tried the work
-```
+`/shape` and its supporting agents are symlinked into your projects `.claude` folder. Use it to draft and review your
+first spec. `kiln fire` will build any specs you've _shaped_.
 
 A build asks you nothing while it runs. `kiln tui` shows each session live.
 
@@ -87,8 +77,9 @@ project, without its sandbox keys:
 }
 ```
 
-A failing gate goes back to the session that wrote the work, and each time is a **round**. After `rounds` rounds, the
-build stops. Once the gate passes, the audit reads the work, and its findings go back to be fixed.
+A failing gate goes back to the session that wrote the work, and each time is a **round**. Each session gets `rounds`
+rounds, and a failure after its last round stops the build. Once the gate passes, the audit reads the work, and its
+findings go back to be fixed.
 
 A build runs with no one watching, so kiln limits what a build can do:
 
