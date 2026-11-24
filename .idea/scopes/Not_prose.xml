@@ -1,3 +1,0 @@
-<component name="DependencyValidationManager">
-  <scope name="Not prose" pattern="file:docs/one-page.txt||file:docs/sheet/fonts//*" />
-</component>

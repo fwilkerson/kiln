@@ -7,12 +7,11 @@ import (
 	"github.com/alecthomas/chroma/v2"
 )
 
-// theme is the view's styles, each named for what it marks. As on kiln's one-page sheet, a hue marks the actor: the
-// developer, an agent, or kiln. Red marks what failed, and green what passed. Text that marks nothing keeps the
-// terminal's own color.
+// theme is the view's styles, each named for what it marks. A hue marks the actor: the developer, an agent, or kiln.
+// Red marks what failed, and green what passed. Text that marks nothing keeps the terminal's own color.
 //
-// Each style has a face for a dark terminal and one for a light one. The sheet's colors are the dark face. The light
-// face darkens each hue until it reads on white. No one color reads well on both: the best reaches 4.4 to 1 on each.
+// Each style has a face for a dark terminal and one for a light one. The light face darkens each hue until it reads
+// on white. No one color reads well on both: the best reaches 4.4 to 1 on each.
 type theme struct {
 	// you marks the developer's part: the panel the keys go to, each key's name, and what waits on them.
 	you lipgloss.Style
@@ -30,18 +29,18 @@ type theme struct {
 	markdown *chroma.Style
 }
 
-// The sheet's colors, and their light faces. Each comment gives its contrast on the sheet's canvas, #110b09, or on
-// white. TestContrast holds them on lighter dark terminals, and darker light ones.
+// The dark face's colors, and their light faces. Each comment gives its contrast on a near-black canvas, #110b09, or
+// on white. TestContrast holds them on lighter dark terminals, and darker light ones.
 const (
 	darkInk   = "#f6eadd" // 16.5
 	darkYou   = "#ffe696" // 15.8
 	darkAgent = "#8fbaff" // 9.9
 	darkKiln  = "#ff8436" // 8.0
-	// darkFailed is the sheet's cherry red, lightened: #e64b5e reaches only 4.4 on a #1e1e1e terminal.
+	// darkFailed is a cherry red, lightened: #e64b5e reaches only 4.4 on a #1e1e1e terminal.
 	darkFailed = "#f06a78" // 6.5
 	darkPassed = "#9ccf86" // 10.9
 	darkDim    = "#ab9686" // 6.9
-	// darkFrame is a warm gray that 256 colors draw as gray. The sheet's #7f5f4d fades on a #282c34 terminal.
+	// darkFrame is a warm gray that 256 colors draw as gray. A brown, #7f5f4d, fades on a #282c34 terminal.
 	darkFrame = "#8c7a6e" // 4.8
 	// darkPicked is a tint of you that 256 colors draw as gray. Warmer tints turn red or olive there.
 	darkPicked = "#463d30" // 9.0, under ink

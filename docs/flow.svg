@@ -6,7 +6,7 @@
     session reads the work; a failure or finding goes back as a round. The work lands on main as one commit. You try
     it, and kiln accept lists the spec in PRODUCT.md.</desc>
   <style>
-    /* The one-page sheet's Ember colors, docs/sheet/theme.css, and the TUI's light faces of them. */
+    /* A hue marks the actor: you, an agent, kiln, or the repository. internal/tui/theme.go holds the same hues. */
     svg {
       --canvas: #fbf7f2; --line: #e6d9cc; --ink: #2a1d17; --ink-2: #75625a; --wire: #9a8373;
       --you: #7d5a00; --you-tint: #fbf1d2; --agent: #2858a8; --agent-tint: #e6eefb;
@@ -68,7 +68,7 @@
   <rect class="card" x=".5" y=".5" width="959" height="399" rx="10"/>
   <rect x="16" y="1" width="928" height="2" fill="url(#strip)" opacity=".8"/>
 
-  <!-- The phases, as the sheet's BUILD view heads them. -->
+  <!-- The phases. -->
   <text class="head" x="24" y="34"><tspan class="n">1</tspan>  SHAPE</text>
   <text class="head" x="274" y="34"><tspan class="n">2</tspan>  BUILD, IN THE BACKGROUND</text>
   <text class="head" x="760" y="34"><tspan class="n">3</tspan>  LAND</text>

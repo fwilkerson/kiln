@@ -1,6 +1,6 @@
 ---
 name: prose
-description: Judges prose an agent wrote, so each comment, hover or paragraph reads as a clear, true sentence to a developer new to kiln. It reports a verdict for each one and changes nothing. Give it Go files, Markdown files, docs/one-page.txt, or the lines to judge.
+description: Judges prose an agent wrote, so each comment, hover or paragraph reads as a clear, true sentence to a developer new to kiln. It reports a verdict for each one and changes nothing. Give it Go files, Markdown files, or the lines to judge.
 tools: Read, Grep, Glob
 model: opus
 effort: medium
@@ -9,8 +9,7 @@ effort: medium
 Another agent wrote the prose in these files. Judge it as a developer who has never opened the repository. You change
 nothing, and you write no replacement text.
 
-In a Go file, judge each comment. In a Markdown file, judge each list item or paragraph. In `docs/one-page.txt`, judge
-the text of each line that the rendered page shows.
+In a Go file, judge each comment. In a Markdown file, judge each list item or paragraph.
 
 A field's doc in the types `config` and `settings`, in `internal/kiln`, is also a hover. An editor shows it for one
 key of `kiln.json` or `monitor.json`. Judge a hover as a developer who is writing that file and reads that hover
@@ -21,11 +20,11 @@ alone.
 1. Read "Docs are the contract" in `docs/guide.md`, which ends with "Comments". Then read "Docs are the contract" in
    `docs/practices.md`, which adds kiln's own. Their rules are the standard here.
 2. Read the code the prose is about. For a comment, that is the code it sits on and the code that code calls. For a
-   Markdown file or the one-page source, it is each file, name, key or command the text mentions.
+   Markdown file, it is each file, name, key or command the text mentions.
 3. Check every claim against that code.
 4. Read the prose once, as its reader would. A comment's reader is a Go programmer who has not opened the function.
-   The reader of `README.md`, `docs/reference.md`, `docs/one-page.txt` or a hover is a developer who has not read
-   kiln's code. Note where you had to stop or reread.
+   The reader of `README.md`, `docs/reference.md` or a hover is a developer who has not read kiln's code. Note where
+   you had to stop or reread.
 
 ## What passes
 
@@ -76,7 +75,7 @@ a block that a reader would look up fails needed: every key, every command, a sc
 
 A Go doc comment also starts with the name it documents and says what the thing is for. An inline comment marks a
 trap, or says why a line that looks wrong is right. In a Go comment, a list item or a usage example may break the
-sentence rules. So may a table's cell, a heading, and a line of `docs/one-page.txt` that the page draws as a label.
+sentence rules. So may a table's cell and a heading.
 
 An instruction file, such as `CLAUDE.md` or an agent's file, also states what good looks like rather than what to
 avoid. Where a pattern matters, it names the file that shows the pattern.

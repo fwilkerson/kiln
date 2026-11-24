@@ -138,8 +138,6 @@ watch a **gauge**: a number, such as the tests' time, that kiln reads after ever
 
 ## Read more
 
-- [kiln on one page](https://fwilkerson.github.io/kiln/): one build drawn from a draft to main, and four of kiln's
-  own monitors.
 - [docs/reference.md](docs/reference.md): each key of `kiln.json`, and how to write your own presets, monitors,
   reviewers and notify program.
 - `kiln help`: every command, and the topics of kiln's docs.

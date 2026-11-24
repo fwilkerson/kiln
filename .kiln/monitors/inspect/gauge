@@ -11,13 +11,12 @@
 # Its last line is the count of those findings. It prints no number where it read no file. It leaves out each finding
 # that .kiln/monitors/inspect/lib/kept lists, as kept says. It leaves out each file no fix may change: .kiln/ and
 # .claude/, which kiln's contract keeps from a session, uat/, docs/guide.md, which go tool guide writes,
-# docs/one-page.html, which onepage renders, docs/research/, and test data. It also leaves out each symbolic link,
-# whose findings are its target's.
+# docs/research/, and test data. It also leaves out each symbolic link, whose findings are its target's.
 set -eu
 export LC_ALL=C
 
 read=$(git diff --name-only --diff-filter=d "$KILN_BASE" HEAD -- . ':!.kiln/' ':!.claude/' ':!uat/' \
-  ':!docs/guide.md' ':!docs/one-page.html' ':!docs/research/' ':(glob,exclude)**/testdata/**' |
+  ':!docs/guide.md' ':!docs/research/' ':(glob,exclude)**/testdata/**' |
   while IFS= read -r f; do [ -L "$f" ] || echo "$f"; done)
 if [ -z "$read" ]; then
   exit 0

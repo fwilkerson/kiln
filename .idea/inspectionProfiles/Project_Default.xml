@@ -18,11 +18,9 @@
     </inspection_tool>
     <inspection_tool class="GrazieInspection" enabled="true" level="GRAMMAR_ERROR" enabled_by_default="true">
       <scope name="Copies" level="GRAMMAR_ERROR" enabled="false" />
-      <scope name="Not prose" level="GRAMMAR_ERROR" enabled="false" />
     </inspection_tool>
     <inspection_tool class="GrazieStyle" enabled="true" level="STYLE_SUGGESTION" enabled_by_default="true">
       <scope name="Copies" level="STYLE_SUGGESTION" enabled="false" />
-      <scope name="Not prose" level="STYLE_SUGGESTION" enabled="false" />
     </inspection_tool>
     <inspection_tool class="HttpUrlsUsage" enabled="true" level="WEAK WARNING" enabled_by_default="true">
       <option name="ignoredUrls">

@@ -26,8 +26,8 @@ for macOS.
   verify agent there. A session kiln runs changes nothing here, but for the amendment file kiln's contract gives it.
 - `.claude/agents/prose.md`: the `prose` agent. It judges prose by the guide's "Docs are the contract", and changes
   nothing. In a session the developer runs, run it on the words a user of kiln reads, before you commit a change to
-  them. Those are `README.md`, `docs/reference.md`, `docs/one-page.txt`, and the docs of the fields of `config` and
-  `settings`, which an editor shows for each key of `kiln.json` and `monitor.json`.
+  them. Those are `README.md`, `docs/reference.md`, and the docs of the fields of `config` and `settings`, which an
+  editor shows for each key of `kiln.json` and `monitor.json`.
 - `internal/kiln/defaults/`: what `kiln init` writes, for any project. No line there names kiln's own repository.
 - `internal/kiln/presets/`: each preset's `kiln.json`, its `detect` file, which lists the files `kiln init` knows
   the preset by, and its text for the "Tailor this" sections of the defaults' prompts. `kiln init` writes them with
@@ -40,8 +40,6 @@ for macOS.
 - `docs/practices.md`: kiln's own rules, which add to the guide. Read it before adding a package or an exported name.
 - `README.md`: what kiln is, and a quick start. `docs/reference.md`: each key of `kiln.json`, the agents' files, and
   what kiln records. `docs/practices.md` "Docs are the contract" says which doc holds a rule.
-- `docs/one-page.txt`: kiln on one page, the source that `onepage render docs/one-page.txt docs/one-page.html`
-  draws in the theme `docs/sheet/`. Render it again in the commit that changes either.
 - `uat/<spec>/`: the test code for each acceptance test of a spec not yet accepted, one Go test named `TestAT<N>`
   for test N.
 - `uat/testdata/<feature>/`: the scenarios of the specs the developer accepted, filed by feature. `TestUAT` in `uat/`

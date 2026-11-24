@@ -26,10 +26,9 @@
 // Home needs a terminal of at least 40 columns. Each screen needs 5 rows, and the width of its key list's one column.
 // A smaller terminal shows only the size the screen needs.
 //
-// Its colors are those of kiln's one-page sheet, where a hue marks the actor. The developer's yellow marks where the
-// keys go, each key's name, and what waits on them, beside ◆. A session's blue marks what runs, beside ▶. Kiln's
-// orange marks a gate, a pause and a stop. Red marks what failed and green what passed, beside ✗ and ✓. On a terminal
-// that says its background is light, each hue is darker.
+// A hue marks the actor. The developer's yellow marks where the keys go, each key's name, and what waits on them,
+// beside ◆. A session's blue marks what runs, beside ▶. Kiln's orange marks a gate, a pause and a stop. Red marks what
+// failed and green what passed, beside ✗ and ✓. On a terminal that says its background is light, each hue is darker.
 //
 // The home screen's trend is the last 10 builds that ended, beside the 10 before them. With a monitor selected, or
 // all monitors, it is their fixes, with no tests or rounds to count. Each number is the median of the builds that
