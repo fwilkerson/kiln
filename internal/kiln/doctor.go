@@ -254,13 +254,15 @@ func (r *Repo) workingMonitors(ctx context.Context) ([]monitorDir, error) {
 }
 
 // withFile adds file to the directory of dirs named name, which it adds when dirs lacks it. plain says file is a
-// script kiln runs that is not executable. git lists each directory's files together.
+// script kiln runs that is not executable. The caller may pass the files of all directories in any order.
 func withFile(dirs []monitorDir, name Spec, file string, plain bool) []monitorDir {
-	if len(dirs) == 0 || dirs[len(dirs)-1].name != name {
+	i := slices.IndexFunc(dirs, func(d monitorDir) bool { return d.name == name })
+	if i < 0 {
+		i = len(dirs)
 		dirs = append(dirs, monitorDir{name: name})
 	}
 
-	d := &dirs[len(dirs)-1]
+	d := &dirs[i]
 	d.files = append(d.files, file)
 	if plain {
 		d.plain = file

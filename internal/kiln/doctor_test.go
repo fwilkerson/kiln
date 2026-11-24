@@ -56,6 +56,8 @@ func TestDoctor(t *testing.T) {
 				`'<key>WorkingDirectory</key>\n  <string>%s/sub</string>\n' "$PWD" ` +
 				`>"$HOME/Library/LaunchAgents/dev.kiln.monitor.other.plist"`,
 			want: []string{"found no problem"}},
+		"monitors' untracked files beside their tracked ones": {change: untrackedBesideTracked,
+			want: []string{launchd, "found no problem"}},
 		"a monitor's script that is not executable, beside a file git ignores": {
 			change: monitor + "touch command .DS_Store && echo .DS_Store >../../../.gitignore",
 			want: []string{"the working tree holds .kiln/monitors/deps/command without the executable bit, so kiln " +
@@ -86,6 +88,14 @@ func TestDoctor(t *testing.T) {
 		t.Run(name, tc.check(project))
 	}
 }
+
+// untrackedBesideTracked commits two monitors, then writes a file in each that git does not track. git lists the
+// untracked files apart from the tracked ones, so another monitor's files come between them.
+const untrackedBesideTracked = "for m in deps inspect; do mkdir -p .kiln/monitors/$m/lib && cd .kiln/monitors/$m && " +
+	"printf 'true\\n' >check && chmod +x check && echo '{}' >monitor.json && " +
+	"printf 'Fix it.\\n' >agent.md && cd - >/dev/null; done && git add .kiln/monitors && " +
+	"git commit --quiet --no-verify -m monitors && " +
+	"for m in deps inspect; do printf 'true\\n' >.kiln/monitors/$m/lib/helper; done"
 
 // TestDoctorJobWithoutDir holds that a launchd job whose file names no working directory runs in no checkout. kiln
 // doctor, run in the repository, still notes that no job runs its monitors.
