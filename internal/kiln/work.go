@@ -182,7 +182,8 @@ func (b *build) due() []seatName {
 }
 
 // prove commits the verify session's work, proves it, and joins it into kiln/<name>. It answers whether a proof
-// stands, joined. It proves and joins only while kiln owes the verify session nothing.
+// stands, joined. It proves and joins only while kiln owes the verify session nothing. A merge the verify session left
+// unfinished goes back to it, as a round, with the files that still conflict.
 func (b *build) prove(ctx context.Context) (bool, error) {
 	switch {
 	case !b.order.isolated():
@@ -192,6 +193,11 @@ func (b *build) prove(ctx context.Context) (bool, error) {
 	}
 
 	head, err := b.verifyWork(ctx)
+	if u, ok := errors.AsType[*git.Unmerged](err); ok {
+		report := fmt.Sprintf(unfinished, strings.Join(u.Files, "\n"))
+		return false, b.goBack(verifySeat, setback{why: whyConflict, report: report, failing: u.Files})
+	}
+
 	if err != nil {
 		return false, err
 	}
@@ -204,7 +210,7 @@ func (b *build) prove(ctx context.Context) (bool, error) {
 }
 
 // verifyWork commits what the verify session left in its clone, and fetches its branch into the repository. It answers
-// the commit.
+// the commit, or a *git.Unmerged for a merge the session left unfinished, which kiln never commits.
 func (b *build) verifyWork(ctx context.Context) (git.Rev, error) {
 	clone := b.r.clone(b.rec.Name, verifyRole)
 	head, err := b.r.git.Commit(ctx, clone, b.message("the verify session's work"))

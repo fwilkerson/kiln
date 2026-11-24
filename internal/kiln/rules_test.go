@@ -1782,6 +1782,61 @@ func TestJoinAfterCutShort(t *testing.T) {
 	}
 }
 
+// TestVerifyUnfinishedMerge holds what kiln makes of a merge the verify session left unfinished. It goes back to that
+// session as a round, with the files that still conflict, as the build session's does. Past the last round, the build
+// stops for the conflict, and not as an error of kiln's.
+func TestVerifyUnfinishedMerge(t *testing.T) {
+	t.Parallel()
+	t.Run("a round is left", func(t *testing.T) {
+		t.Parallel()
+		b, proved, err := unfinishedVerify(t, 2)
+		owed, want := b.now().Verify.Owed, fmt.Sprintf(unfinished, unfinishedFile)
+		told := ""
+		if len(owed) > 0 {
+			told = owed[len(owed)-1].Text
+		}
+
+		if !claim.Holds(err == nil, !proved, told == want, b.now().Verify.Rounds == 2) {
+			t.Errorf("kiln proved %v, answered %v, and told the verify session %q, round %d; want round 2, "+
+				"which says %q", proved, err, told, b.now().Verify.Rounds, want)
+		}
+	})
+
+	t.Run("past the last round", func(t *testing.T) {
+		t.Parallel()
+		b, _, err := unfinishedVerify(t, 1)
+		stop, stopped := errors.AsType[*outOfRounds](err)
+		if !stopped || !claim.Holds(strings.Contains(stop.Why, unfinishedFile),
+			slices.Equal(stop.Failing, []string{unfinishedFile}), len(b.now().Verify.Owed) == 0) {
+			t.Errorf("kiln answered %v, owing the verify session %+v; want the build stopped for the conflict in %s",
+				err, b.now().Verify.Owed, unfinishedFile)
+		}
+	})
+}
+
+// unfinishedFile is the test both the verify session and main wrote, in TestVerifyUnfinishedMerge.
+const unfinishedFile = "acceptance/x/x_test.go"
+
+// unfinishedVerify is a build of x, beside a verify session, given rounds. main and the verify session wrote
+// unfinishedFile apart. kiln merged main into the session's clone, and the session ran `git merge main || true`.
+// unfinishedVerify answers the build, and what kiln's prove then answered.
+func unfinishedVerify(t *testing.T, rounds int) (*build, bool, error) {
+	b, repo := splitBuild(t, false)
+	clone := string(b.r.clone("x", verifyRole))
+	const write = "mkdir -p acceptance/x && echo %s >" + unfinishedFile + " && git add . && git commit --quiet -m t"
+	shell(t, clone, fmt.Sprintf(write, "verify"))
+	shell(t, repo, fmt.Sprintf(write, "main"))
+	b.set(func(r *record) { r.Verify.Session, r.Limit = "v", new(rounds) })
+	if err := b.mergeMain(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	shell(t, clone, "git merge --quiet main || true")
+	b.set(func(r *record) { paid(r, verifySeat, len(r.Verify.Owed)) })
+	proved, err := b.prove(t.Context())
+	return b, proved, err
+}
+
 // passedThenTold takes b's passed work to its end, and sends back what kept it there. Then it proves and joins, as
 // the loop does before the next run. It answers each message kiln then owes the build session, or "" for none.
 func passedThenTold(t *testing.T, b *build) string {
