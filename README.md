@@ -9,7 +9,7 @@ its agent fixes what the check finds.](docs/flow.svg)
 
 ## Install
 
-kiln runs on mac, requires git 2.55 or newer, and uses your `claude` subscription.
+kiln runs on macOS, requires git 2.55 or newer, and uses your `claude` subscription.
 
 ```sh
 go install github.com/fwilkerson/kiln/cmd/kiln@latest        # with Go 1.27 or newer

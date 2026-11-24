@@ -26,8 +26,8 @@ type InTheWay struct {
 
 // Move moves branch from the commit expected to the commit to, which descends from expected. A branch checked out in a
 // worktree moves with it, by a fast-forward merge. Move refuses with an [InTheWay], which says why, and moves nothing.
-// When git refuses for no reason Move can name, Move tries once more after 500 ms. Move answers an [ErrNoBranch]
-// when branch is not there.
+// When git refuses for no reason Move can name, Move tries once more after 500 milliseconds. Move answers an
+// [ErrNoBranch] when branch is not there.
 func (g *Git) Move(ctx context.Context, branch Branch, to, expected Rev) (*InTheWay, error) {
 	way, again, err := g.moveOnce(ctx, branch, to, expected)
 	if !again {

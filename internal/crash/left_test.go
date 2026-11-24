@@ -246,7 +246,7 @@ func stands(rec map[string]any) string {
 	}
 
 	for field, value := range stands {
-		// The state and the kind of a stop are what the next kiln decides by. A seat says what kiln owes it.
+		// The state and the stop kind are what the next kiln decides by. A seat says what kiln owes it.
 		seat, isSeat := value.(map[string]any)
 		switch {
 		case isSeat:
