@@ -1,46 +1,33 @@
-# A test the build session cannot meet goes to the verify session.
-# x builds under verify-first, then y under build-and-verify.
+# A test the build session cannot meet goes to the verify session, and so do the audit's findings, first.
+# Only the built binary shows: the verify session answers the build session and the audit before the build runs again.
 
-# Given: a spec whose proved test expects what the spec does not say, and whose build session says the test cannot
-# hold.
-# The spec says 42, and the verify session's first test wants 43. Its second wants 42. The audit sends a finding, so
-# the build session runs once the verify session has answered it. At each of its later runs, the build session
-# keeps the test it finds in its checkout.
+# Given: the project chooses the workflow verify-first, and a spec whose proved test expects what the spec does not
+# say. The build session says the test cannot hold.
+# The spec says 42, and the verify session's first test wants 43. Its second wants 42. The audit then finds the test
+# checks one clause, and the verify session's third test checks each clause. The build session runs again at the
+# findings, and keeps the test it finds in its checkout.
 exec kiln queue x
 
 # When: kiln fire goes on.
 exec kiln fire
 cp stdout .tmp/x-fire
 
-# Then: the verify session gets the build session's reply,
-grep 'TestAT1 wants 43, and the spec says 42' .claude-calls/verify/1/2/prompt
-
-# kiln proves its changed tests again,
+# Then: kiln proves the verify session's changed tests again,
 exec jq -se --arg s x '(map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | [to_entries[] | select(.value.kind=="start" and .value.role=="verify") | .key][1] as $v | $v != null and ([to_entries[] | select(.key > $v and .value.kind=="gate" and .value.proof==true and .value.passed!=true)] | length >= 1)' .git/kiln/ledger.jsonl
 
-# the build session's checkout holds them,
-grep 'want 42' .claude-calls/x-build-saw
+# the verify session gets the audit's findings before the build session does,
+grep 'TestAT1 checks one clause' .claude-calls/verify/1/3/prompt
+grep 'TestAT1 checks one clause' .claude-calls/build/1/2/prompt
+exec jq -se --arg s x 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | at(.kind=="start" and .role=="audit") as $a | (to_entries | map(select(.key > $a and .value.kind=="start")) | .[0].value.role) as $first | $a != null and $first == "verify"' .git/kiln/ledger.jsonl
+
+# the build session's checkout holds the verify session's last answer when its next run starts,
+grep 'want each clause: 42' .claude-calls/x-build-saw
 ! grep 'want 43' .claude-calls/x-build-saw
 
 # and the work lands.
 grep '^x: landed on main' .tmp/x-fire
 exec git show main:acceptance/x/x_test.go
-stdout 'want 42'
-
-# The same holds side by side. There the build session first runs blind, and says the test cannot hold once the
-# gate of the joined work fails.
-exec sed -i '' 's/"verify-first"/"build-and-verify"/' .kiln/kiln.json
-exec git commit --quiet -am 'chore: build side by side'
-exec kiln queue y
-exec kiln fire
-cp stdout .tmp/y-fire
-grep 'TestAT1 wants 43, and the spec says 42' .claude-calls/verify/2/2/prompt
-exec jq -se --arg s y '(map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | [to_entries[] | select(.value.kind=="start" and .value.role=="verify") | .key][1] as $v | $v != null and ([to_entries[] | select(.key > $v and .value.kind=="gate" and .value.proof==true and .value.passed!=true)] | length >= 1)' .git/kiln/ledger.jsonl
-grep 'want 42' .claude-calls/y-build-saw
-! grep 'want 43' .claude-calls/y-build-saw
-grep '^y: landed on main' .tmp/y-fire
-exec git show main:acceptance/y/y_test.go
-stdout 'want 42'
+stdout 'want each clause: 42'
 
 -- .kiln/kiln.json --
 {"workflow": "verify-first", "rounds": 3}
@@ -56,18 +43,10 @@ stdout 'want 42'
         {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x42/.\" ."}}},
         {"result": {"result": "TestAT1 wants 42 now, as the spec says."}}
       ],
-      "3": [{"result": {"result": "The finding is wrong."}}]
-    },
-    "2": {
-      "1": [
-        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y43/.\" ."}}},
-        {"result": {"result": "Wrote the tests of y."}}
-      ],
-      "2": [
-        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y42/.\" ."}}},
-        {"result": {"result": "TestAT1 wants 42 now, as the spec says."}}
-      ],
-      "3": [{"result": {"result": "The finding is wrong."}}]
+      "3": [
+        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x-each/.\" ."}}},
+        {"result": {"result": "TestAT1 checks each clause now."}}
+      ]
     }
   },
   "build": {
@@ -78,34 +57,12 @@ stdout 'want 42'
       ],
       "2": [
         {"tool": {"name": "Bash", "input": {"command": "cat acceptance/x/x_test.go >>\"$WORK/.claude-calls/x-build-saw\""}}},
-        {"result": {"result": "Built x."}}
-      ],
-      "3": [
-        {"tool": {"name": "Bash", "input": {"command": "cat acceptance/x/x_test.go >>\"$WORK/.claude-calls/x-build-saw\""}}},
-        {"result": {"result": "Built x."}}
-      ]
-    },
-    "2": {
-      "1": [
-        {"tool": {"name": "Bash", "input": {"command": "echo 42 >y.txt"}}},
-        {"result": {"result": "Built y."}}
-      ],
-      "2": [
-        {"result": {"result": "TestAT1 wants 43, and the spec says 42.\ncannot hold: 1"}}
-      ],
-      "3": [
-        {"tool": {"name": "Bash", "input": {"command": "cat acceptance/y/y_test.go >>\"$WORK/.claude-calls/y-build-saw\""}}},
-        {"result": {"result": "Built y."}}
-      ],
-      "4": [
-        {"tool": {"name": "Bash", "input": {"command": "cat acceptance/y/y_test.go >>\"$WORK/.claude-calls/y-build-saw\""}}},
-        {"result": {"result": "Built y."}}
+        {"result": {"result": "The verify session answered the finding."}}
       ]
     }
   },
   "audit": {
-    "1": {"1": [{"result": {"audit": {"read": 1, "findings": [{"path": "acceptance/x/x_test.go", "line": 9, "kind": "weak test", "reaches": "TestAT1 checks one clause"}]}}}]},
-    "2": {"1": [{"result": {"audit": {"read": 1, "findings": [{"path": "acceptance/y/y_test.go", "line": 9, "kind": "weak test", "reaches": "TestAT1 checks one clause"}]}}}]}
+    "1": {"1": [{"result": {"audit": {"read": 1, "findings": [{"path": "acceptance/x/x_test.go", "line": 9, "kind": "weak test", "reaches": "TestAT1 checks one clause"}]}}}]}
   }
 }
 -- doc.go --
@@ -116,13 +73,7 @@ package scratch
 
 - **Given**: nothing.
 - **When**: the developer reads x.txt.
-- **Then**: it holds 42.
--- .kiln/specs/y.md --
-### 1. y.txt answers
-
-- **Given**: nothing.
-- **When**: the developer reads y.txt.
-- **Then**: it holds 42.
+- **Then**: it holds 42, on one line.
 -- _given/x43/acceptance/x/x_test.go --
 package x_test
 
@@ -149,8 +100,8 @@ func TestAT1(t *testing.T) {
 		t.Fatalf("x.txt holds %q, want 42", b)
 	}
 }
--- _given/y43/acceptance/y/y_test.go --
-package y_test
+-- _given/x-each/acceptance/x/x_test.go --
+package x_test
 
 import (
 	"os"
@@ -158,20 +109,7 @@ import (
 )
 
 func TestAT1(t *testing.T) {
-	if b, _ := os.ReadFile("../../y.txt"); string(b) != "43\n" {
-		t.Fatalf("y.txt holds %q, want 43", b)
-	}
-}
--- _given/y42/acceptance/y/y_test.go --
-package y_test
-
-import (
-	"os"
-	"testing"
-)
-
-func TestAT1(t *testing.T) {
-	if b, _ := os.ReadFile("../../y.txt"); string(b) != "42\n" {
-		t.Fatalf("y.txt holds %q, want 42", b)
+	if b, _ := os.ReadFile("../../x.txt"); string(b) != "42\n" {
+		t.Fatalf("x.txt holds %q, want each clause: 42, on one line", b)
 	}
 }

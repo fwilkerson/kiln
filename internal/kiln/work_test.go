@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -330,4 +331,35 @@ func deref(p *int) any {
 	}
 
 	return *p
+}
+
+// TestHeard holds which code session's reply kiln owes the verify session, whole. It is one whose last line says a
+// test cannot hold. Both orders with a verify session owe it.
+func TestHeard(t *testing.T) {
+	const says = "TestAT1 wants 43, and the spec says 42.\ncannot hold: 1"
+	for name, tc := range map[string]struct {
+		order order
+		seat  seatName
+		ended claude.Ended
+		heard bool
+	}{
+		"in turn":                        {order: inTurn, seat: codeSeat, ended: claude.Ended{Text: says}, heard: true},
+		"side by side":                   {order: sideBySide, seat: codeSeat, ended: claude.Ended{Text: says}, heard: true},
+		"alone":                          {order: alone, seat: codeSeat, ended: claude.Ended{Text: says}},
+		"the verify session's own reply": {order: inTurn, seat: verifySeat, ended: claude.Ended{Text: says}},
+		"a reply that failed":            {order: inTurn, seat: codeSeat, ended: claude.Ended{Text: says, Failed: true}},
+		"a reply that never says it":     {order: inTurn, seat: codeSeat, ended: claude.Ended{Text: "Built x."}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var want *message
+			if tc.heard {
+				want = &message{Text: fmt.Sprintf(cannotHold, says), Why: whyCannotHold}
+			}
+
+			got := specJob{}.heard(&build{order: tc.order}, tc.seat, tc.ended)
+			if !reflect.DeepEqual(got.owed, want) {
+				t.Errorf("heard owes the verify session %+v, want %+v", got.owed, want)
+			}
+		})
+	}
 }

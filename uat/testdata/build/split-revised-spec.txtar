@@ -1,8 +1,8 @@
-# A revised spec's build session starts without its old tests, under each acceptance path.
+# A revised spec's build session starts without its old tests, under each acceptance path, and kiln proves what changed.
 
 # Given: the project chooses the workflow build-and-verify, and kiln.json names two acceptance paths, uat/{spec}/ and
 # integration/{spec}/. A spec landed with its tests under both paths on main, and the developer revised a Then and
-# queued it again.
+# queued it again. Test 1 says X answers 42, and test 2 that X2 answers 7. The revision says X answers 43.
 exec kiln queue x
 exec kiln fire
 stdout '^x: landed on main'
@@ -10,6 +10,8 @@ exec git show main:uat/x/x_test.go
 stdout 'want 42'
 exec git show main:integration/x/x_test.go
 stdout 'want 42'
+exec git show main:uat/x/x_test.go
+stdout 'func TestAT2'
 exec sed -i '' 's/it answers 42\./it answers 43./' .kiln/specs/x.md
 exec git commit --quiet -am 'docs(x): revise test 1'
 exec kiln queue x
@@ -27,6 +29,11 @@ grep '^x\.go$' .claude-calls/build-listed
 # its gate never runs the old tests,
 stdout '^x: landed on main'
 ! stdout 'the gate failed'
+
+# the proof gate fails on the changed test alone,
+exec jq -se --arg s x '(map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | any(.[]; .build==$b and .kind=="gate" and .proof==true and .passed!=true)' .git/kiln/ledger.jsonl
+grep 'TestAT1' .claude-calls/audit/2/1/prompt
+! grep 'TestAT2' .claude-calls/audit/2/1/prompt
 
 # and the spec lands with the verify session's tests under both paths.
 exec git show main:uat/x/x_test.go
@@ -147,18 +154,30 @@ stdout 'return 43'
 - **Given**: nothing.
 - **When**: X is called.
 - **Then**: it answers 42.
+
+### 2. X2 answers
+
+- **Given**: nothing.
+- **When**: X2 is called.
+- **Then**: it answers 7.
 -- _given/code/x.go --
 // Package scratch is where kiln's builds land.
 package scratch
 
 // X answers 42.
 func X() int { return 42 }
+
+// X2 answers 7.
+func X2() int { return 7 }
 -- _given/code43/x.go --
 // Package scratch is where kiln's builds land.
 package scratch
 
 // X answers 43.
 func X() int { return 43 }
+
+// X2 answers 7.
+func X2() int { return 7 }
 -- _given/tests/uat/x/x_test.go --
 package x_test
 
@@ -172,6 +191,13 @@ func TestAT1(t *testing.T) {
 	code, err := os.ReadFile("../../x.go")
 	if !strings.Contains(string(code), "return 42") {
 		t.Fatalf("x.go does not answer 42, want 42: %v", err)
+	}
+}
+
+func TestAT2(t *testing.T) {
+	code, err := os.ReadFile("../../x.go")
+	if !strings.Contains(string(code), "return 7") {
+		t.Fatalf("x.go does not answer 7, want 7: %v", err)
 	}
 }
 -- _given/tests/integration/x/x_test.go --
@@ -202,6 +228,13 @@ func TestAT1(t *testing.T) {
 	code, err := os.ReadFile("../../x.go")
 	if !strings.Contains(string(code), "return 43") {
 		t.Fatalf("x.go does not answer 43, want 43: %v", err)
+	}
+}
+
+func TestAT2(t *testing.T) {
+	code, err := os.ReadFile("../../x.go")
+	if !strings.Contains(string(code), "return 7") {
+		t.Fatalf("x.go does not answer 7, want 7: %v", err)
 	}
 }
 -- _given/tests43/integration/x/x_test.go --
