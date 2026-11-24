@@ -351,7 +351,7 @@ func roundsOf(rec record) string {
 // how many times it read it.
 func auditDid(audited bool, runs []run, known bool) string {
 	audits := slices.ContainsFunc(runs, func(r run) bool { return r.role == auditRole })
-	findings := slices.ContainsFunc(runs, func(r run) bool { return r.why.Why == whyFindings })
+	findings := slices.ContainsFunc(runs, func(r run) bool { return r.why.tells(whyFindings) })
 	again := readAgain(runs)
 	switch {
 	case !known:
@@ -387,7 +387,7 @@ func auditReads(runs []run) (reads, findings int) {
 		switch {
 		case r.role == auditRole && r.why.Try <= 1:
 			reads, sent = reads+1, false
-		case r.why.Why == whyFindings && !sent:
+		case r.why.tells(whyFindings) && !sent:
 			findings, sent = findings+1, true
 		}
 	}

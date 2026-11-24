@@ -284,3 +284,50 @@ func replies(t *testing.T, b *build, reply string) {
 
 	b.r.claude = claude.New(claude.Config{Program: program, Sessions: filepath.Join(t.TempDir(), "sessions")})
 }
+
+// TestRunToldTwoRounds holds a run told two messages: the audit's findings, then a conflict of round 1. The build
+// line of kiln ledger keeps both: the round kiln fire printed, and the findings the audit sent back. kiln status says
+// so too.
+func TestRunToldTwoRounds(t *testing.T) {
+	t.Parallel()
+	b, repo := splitBuild(t, false)
+	shell(t, repo, `mkdir -p .kiln/agents && echo 'Build it.' >.kiln/agents/build.md && git add -A && `+
+		`git commit --quiet -m agent`)
+	b.set(func(r *record) {
+		r.Approved, r.Code.Session = git.Rev(shell(t, repo, "git rev-parse HEAD")), claude.NewID()
+		r.Told = r.Tested
+		owe(r, codeSeat, message{Text: "the findings", Why: whyFindings})
+		owe(r, codeSeat, message{Text: "the conflict", Why: whyConflict, Round: 1, Rounds: 3})
+	})
+
+	b.set(nil, entry{Kind: builtKind, Spec: "x"})
+	b.set(nil, entry{Kind: startKind, Role: auditRole, Session: claude.NewID(), Why: whyAudit, Try: 1})
+	replies(t, b, `{"type":"result","is_error":false,"result":"done"}`)
+	if _, err := b.tell(t.Context(), []seatName{codeSeat}); err != nil {
+		t.Fatal(err)
+	}
+
+	builds := collect(ledgerLines(t, b.r.store))
+	if len(builds) != 1 {
+		t.Fatalf("the ledger holds %d builds, want 1", len(builds))
+	}
+
+	runs := builds[0].runs
+	told := slices.DeleteFunc(slices.Clone(runs), func(r run) bool { return r.role != buildRole })
+	line, did := builds[0].printedBuild(), auditDid(true, runs, true)
+	if !claim.Holds(len(told) == 1, line.Rounds != nil && *line.Rounds == 1, line.Audits == 1, line.Findings == 1,
+		did == "the audit sent findings back") {
+		t.Errorf("a run told the findings, then a conflict of round 1 of 3, left %d build runs, a build line of %v "+
+			"rounds, %d audits and %d findings, and kiln status says %q; want 1 run, 1 round, 1 audit and 1 finding, "+
+			"and that the audit sent findings back", len(told), deref(line.Rounds), line.Audits, line.Findings, did)
+	}
+}
+
+// deref is what p points to, or nil.
+func deref(p *int) any {
+	if p == nil {
+		return nil
+	}
+
+	return *p
+}

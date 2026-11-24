@@ -123,6 +123,23 @@ func paid(r *record, s seatName, n int) {
 	at.Owed, at.From = slices.Clone(at.Owed[min(n, len(at.Owed)):]), nil
 }
 
+// toldOf is the reason of a run that tells owed: the oldest message's, at the highest round among them. Its Also
+// lists the later messages' whys, so the ledger keeps each fact a message carried.
+func toldOf(owed []message) reason {
+	why := owed[0].reason
+	var also []string
+	for _, m := range owed[1:] {
+		if m.Round > why.Round {
+			why.Round, why.Rounds = m.Round, m.Rounds
+		}
+
+		also = append(also, m.Why)
+	}
+
+	why.Also = strings.Join(also, ", ")
+	return why
+}
+
 // owes is whether kiln owes the seat s of the build's record a message.
 func (b *build) owes(s seatName) bool {
 	rec := b.now()
@@ -528,8 +545,9 @@ func (t *turn) ends(ended claude.Ended) func(*record) {
 	}
 }
 
-// turn is the run of the seat s that tells what kiln owes it. A run cut short is told its messages again, after a
-// line that says kiln stopped. The code session's run after a join opens with what the join brought.
+// turn is the run of the seat s that tells what kiln owes it, for the reason toldOf gives. A run cut short is told
+// its messages again, after a line that says kiln stopped. The code session's run after a join opens with what the
+// join brought.
 func (b *build) turn(ctx context.Context, s seatName) (*turn, error) {
 	rec := b.now()
 	owed := rec.seat(s).Owed
@@ -538,10 +556,10 @@ func (b *build) turn(ctx context.Context, s seatName) (*turn, error) {
 		texts[i] = m.Text
 	}
 
-	t := &turn{seat: s, why: owed[0].reason, n: len(owed), told: rec.Told}
+	t := &turn{seat: s, why: toldOf(owed), n: len(owed), told: rec.Told}
 	if b.cutShort(rec.seat(s)) {
 		texts = append([]string{interrupted}, texts...)
-		t.why = reason{Why: whyInterrupted, Round: t.why.Round, Rounds: t.why.Rounds}
+		t.why.Why, t.why.Try = whyInterrupted, 0
 	}
 
 	if s == codeSeat && rec.Tested != rec.Told {

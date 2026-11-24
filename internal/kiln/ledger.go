@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -152,12 +153,19 @@ type entry struct {
 }
 
 // reason is why a session run started, in its start line. Round and Rounds are set when kiln sent the work back,
-// and Try counts an audit's tries from 1.
+// and Try counts an audit's tries from 1. Also lists the whys of the later messages a run told with its first, joined
+// by ", ". A string keeps a message comparable.
 type reason struct {
 	Why    string `json:"why,omitempty"`
 	Round  int    `json:"round,omitempty"`
 	Rounds int    `json:"rounds,omitempty"`
 	Try    int    `json:"try,omitempty"`
+	Also   string `json:"also,omitempty"`
+}
+
+// tells is whether the run of w told a message of why.
+func (w reason) tells(why string) bool {
+	return w.Why == why || slices.Contains(strings.Split(w.Also, ", "), why)
 }
 
 // Why a session run started, in a start line.
