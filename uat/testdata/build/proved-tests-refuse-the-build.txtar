@@ -1,5 +1,5 @@
 # The build session cannot change a proved test.
-# x builds under verify-first, then y under build-and-verify.
+# Only the built binary shows: kiln's hook refuses a session's write, and the gate a shell's, so main never holds one.
 
 # Given: a spec whose build session changes a file under the spec's acceptance path, and the spec's amendment file.
 # Its first run writes a test file and the amendment file with the Write tool, then the test file by a shell
@@ -25,22 +25,6 @@ exec git log --format=%h main -- acceptance/x/mine_test.go .kiln/specs/x.amend.m
 exec git show main:acceptance/x/x_test.go
 cmp stdout _given/x/acceptance/x/x_test.go
 
-# The same holds side by side.
-exec sed -i '' 's/"verify-first"/"build-and-verify"/' .kiln/kiln.json
-exec git commit --quiet -am 'chore: build side by side'
-exec kiln queue y
-exec kiln fire
-stdout '^y: landed on main'
-grep 'PreToolUse:Write hook error: [^"]*acceptance/y/mine_test\.go' .claude-calls/build/2/1/stream.jsonl
-grep 'PreToolUse:Write hook error: [^"]*\.kiln/specs/y\.amend\.md' .claude-calls/build/2/1/stream.jsonl
-exec jq -se --arg s y '(map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b and .kind=="gate" and .proof!=true and .landing!=true)) | length >= 3 and .[0].passed!=true and .[1].passed!=true and .[2].passed==true' .git/kiln/ledger.jsonl
-grep 'acceptance/y/mine_test\.go' .claude-calls/build/2/2/prompt
-grep 'y\.amend\.md' .claude-calls/build/2/3/prompt
-exec git log --format=%h main -- acceptance/y/mine_test.go .kiln/specs/y.amend.md
-! stdout .
-exec git show main:acceptance/y/y_test.go
-cmp stdout _given/y/acceptance/y/y_test.go
-
 -- .kiln/kiln.json --
 {"workflow": "verify-first", "rounds": 3}
 -- claude.json --
@@ -49,10 +33,6 @@ cmp stdout _given/y/acceptance/y/y_test.go
     "1": {"1": [
       {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
       {"result": {"result": "Wrote the tests of x."}}
-    ]},
-    "2": {"1": [
-      {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/y/.\" ."}}},
-      {"result": {"result": "Wrote the tests of y."}}
     ]}
   },
   "build": {
@@ -71,27 +51,10 @@ cmp stdout _given/y/acceptance/y/y_test.go
         {"tool": {"name": "Bash", "input": {"command": "rm .kiln/specs/x.amend.md"}}},
         {"result": {"result": "Removed the amendment file."}}
       ]
-    },
-    "2": {
-      "1": [
-        {"tool": {"name": "Write", "input": {"file_path": "acceptance/y/mine_test.go", "content": "package y_test\n"}}},
-        {"tool": {"name": "Write", "input": {"file_path": ".kiln/specs/y.amend.md", "content": "## Acceptance test 1: y.txt answers\n"}}},
-        {"tool": {"name": "Bash", "input": {"command": "echo 42 >y.txt && mkdir -p acceptance/y && printf 'package y_test\\n' >acceptance/y/mine_test.go"}}},
-        {"result": {"result": "Built y."}}
-      ],
-      "2": [
-        {"tool": {"name": "Bash", "input": {"command": "rm acceptance/y/mine_test.go && echo '## Acceptance test 1: y.txt answers' >.kiln/specs/y.amend.md"}}},
-        {"result": {"result": "Removed the test file."}}
-      ],
-      "3": [
-        {"tool": {"name": "Bash", "input": {"command": "rm .kiln/specs/y.amend.md"}}},
-        {"result": {"result": "Removed the amendment file."}}
-      ]
     }
   },
   "audit": {
-    "1": {"1": [{"result": {"audit": {"read": 1}}}]},
-    "2": {"1": [{"result": {"audit": {"read": 1}}}]}
+    "1": {"1": [{"result": {"audit": {"read": 1}}}]}
   }
 }
 -- doc.go --
@@ -102,12 +65,6 @@ package scratch
 
 - **Given**: nothing.
 - **When**: the developer reads x.txt.
-- **Then**: it holds 42.
--- .kiln/specs/y.md --
-### 1. y.txt answers
-
-- **Given**: nothing.
-- **When**: the developer reads y.txt.
 - **Then**: it holds 42.
 -- _given/x/acceptance/x/x_test.go --
 package x_test
@@ -120,18 +77,5 @@ import (
 func TestAT1(t *testing.T) {
 	if b, _ := os.ReadFile("../../x.txt"); string(b) != "42\n" {
 		t.Fatalf("x.txt holds %q, want 42", b)
-	}
-}
--- _given/y/acceptance/y/y_test.go --
-package y_test
-
-import (
-	"os"
-	"testing"
-)
-
-func TestAT1(t *testing.T) {
-	if b, _ := os.ReadFile("../../y.txt"); string(b) != "42\n" {
-		t.Fatalf("y.txt holds %q, want 42", b)
 	}
 }

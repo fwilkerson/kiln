@@ -1,5 +1,5 @@
 # Tests that pass on main go back to the verify session.
-# x builds under verify-first, then y under build-and-verify.
+# Only the built binary shows: a proof gate that passes on main goes back as a round, and kiln ledger prints it.
 
 # Given: a queued spec, whose verify session first writes a test that passes on main's code.
 # The first test only reads go.mod. The second reads x.txt, which main lacks, and the build session writes.
@@ -19,19 +19,6 @@ stdout '"role":"verify",[^\n]*"why":"no test","round":1,'
 # and no gate of both sessions' work runs before a proof gate fails.
 exec jq -se --arg s x 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | at(.kind=="gate" and .proof==true and .passed==true) as $q | at(.kind=="gate" and .proof==true and .passed!=true) as $p | at(.kind=="gate" and .proof!=true) as $g | $q != null and $p != null and $g != null and $q < $p and $p < $g' .git/kiln/ledger.jsonl
 
-# The same holds side by side.
-exec sed -i '' 's/"verify-first"/"build-and-verify"/' .kiln/kiln.json
-exec git commit --quiet -am 'chore: build side by side'
-exec kiln queue y
-exec kiln fire
-stdout '^y: landed on main'
-exists .claude-calls/verify/2/2/prompt
-exec kiln ledger --kind gate --name y
-stdout '"passed":true[^\n]*"proof":true'
-exec kiln ledger --kind run --name y
-stdout '"role":"verify",[^\n]*"why":"no test","round":1,'
-exec jq -se --arg s y 'def at(f): map(f) | index(true); (map(select(.kind=="build" and .spec==$s)) | last | .build) as $b | map(select(.build==$b)) | at(.kind=="gate" and .proof==true and .passed==true) as $q | at(.kind=="gate" and .proof==true and .passed!=true) as $p | at(.kind=="gate" and .proof!=true) as $g | $q != null and $p != null and $g != null and $q < $p and $p < $g' .git/kiln/ledger.jsonl
-
 -- .kiln/kiln.json --
 {"workflow": "verify-first", "rounds": 3}
 -- claude.json --
@@ -46,31 +33,16 @@ exec jq -se --arg s y 'def at(f): map(f) | index(true); (map(select(.kind=="buil
         {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/fails/x/.\" ."}}},
         {"result": {"result": "TestAT1 now reads x.txt."}}
       ]
-    },
-    "2": {
-      "1": [
-        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/passes/y/.\" ."}}},
-        {"result": {"result": "Wrote the tests of y."}}
-      ],
-      "2": [
-        {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/fails/y/.\" ."}}},
-        {"result": {"result": "TestAT1 now reads y.txt."}}
-      ]
     }
   },
   "build": {
     "1": {"1": [
       {"tool": {"name": "Bash", "input": {"command": "echo 42 >x.txt"}}},
       {"result": {"result": "Built x."}}
-    ]},
-    "2": {"1": [
-      {"tool": {"name": "Bash", "input": {"command": "echo 42 >y.txt"}}},
-      {"result": {"result": "Built y."}}
     ]}
   },
   "audit": {
-    "1": {"1": [{"result": {"audit": {"read": 1}}}]},
-    "2": {"1": [{"result": {"audit": {"read": 1}}}]}
+    "1": {"1": [{"result": {"audit": {"read": 1}}}]}
   }
 }
 -- doc.go --
@@ -81,12 +53,6 @@ package scratch
 
 - **Given**: nothing.
 - **When**: the developer reads x.txt.
-- **Then**: it holds 42.
--- .kiln/specs/y.md --
-### 1. y.txt answers
-
-- **Given**: nothing.
-- **When**: the developer reads y.txt.
 - **Then**: it holds 42.
 -- _given/passes/x/acceptance/x/x_test.go --
 package x_test
@@ -112,31 +78,5 @@ import (
 func TestAT1(t *testing.T) {
 	if b, _ := os.ReadFile("../../x.txt"); string(b) != "42\n" {
 		t.Fatalf("x.txt holds %q, want 42", b)
-	}
-}
--- _given/passes/y/acceptance/y/y_test.go --
-package y_test
-
-import (
-	"os"
-	"testing"
-)
-
-func TestAT1(t *testing.T) {
-	if _, err := os.ReadFile("../../go.mod"); err != nil {
-		t.Fatal(err)
-	}
-}
--- _given/fails/y/acceptance/y/y_test.go --
-package y_test
-
-import (
-	"os"
-	"testing"
-)
-
-func TestAT1(t *testing.T) {
-	if b, _ := os.ReadFile("../../y.txt"); string(b) != "42\n" {
-		t.Fatalf("y.txt holds %q, want 42", b)
 	}
 }

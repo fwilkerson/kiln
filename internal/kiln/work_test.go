@@ -3,6 +3,7 @@ package kiln
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -361,5 +362,41 @@ func TestHeard(t *testing.T) {
 				t.Errorf("heard owes the verify session %+v, want %+v", got.owed, want)
 			}
 		})
+	}
+}
+
+// TestLaunchSides holds that both orders with a verify session launch each session alike. Each session gets the same
+// guard on what it writes, and the same blinds on what it reads. A build alone gets neither its side nor blinds.
+func TestLaunchSides(t *testing.T) {
+	t.Parallel()
+	r, repo, _ := tendRepo(t, tendConfig)
+	approved := git.Rev(shell(t, repo, "git rev-parse main"))
+	launched := func(o order, s seatName) claude.Launch {
+		t.Helper()
+		b := &build{r: r, rec: record{Name: "x", Approved: approved}, tree: r.tree("x"), out: io.Discard, order: o,
+			side: &sides{order: o, acceptance: []string{"acceptance/x/"}, helpers: []string{"harness/"}}}
+		l, err := specJob{}.launch(t.Context(), b, s, "go on")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return claude.Launch{Dir: l.Dir, Hook: l.Hook, DenyRead: l.DenyRead, AllowRead: l.AllowRead, Deny: l.Deny}
+	}
+
+	for _, s := range []seatName{codeSeat, verifySeat} {
+		inTurn, sideBySide := launched(inTurn, s), launched(sideBySide, s)
+		if !reflect.DeepEqual(inTurn, sideBySide) {
+			t.Errorf("the %s session's launch in turn is %+v, and side by side %+v; want them alike", s, inTurn,
+				sideBySide)
+		}
+
+		if !claim.Holds(strings.Contains(inTurn.Hook, "--acceptance acceptance/x/"), len(inTurn.DenyRead) > 0,
+			slices.Equal(inTurn.AllowRead, []string{inTurn.Dir})) {
+			t.Errorf("the %s session's launch is %+v; want its side in the hook, and blinds on its reads", s, inTurn)
+		}
+	}
+
+	if a := launched(alone, codeSeat); !claim.Holds(!strings.Contains(a.Hook, "--acceptance"), a.DenyRead == nil) {
+		t.Errorf("the launch of a build alone is %+v; want no side and no blinds", a)
 	}
 }
