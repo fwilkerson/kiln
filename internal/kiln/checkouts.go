@@ -126,16 +126,17 @@ func (b *build) amendedSpec(ctx context.Context, at git.Rev) (string, error) {
 // verify session the repository's main checkout and its git directory too, which hold every branch. The code session
 // works in a worktree, whose git directory is the repository's. Its sandbox denies there only kiln's folder, which
 // holds each session's stream and kiln's state file. Both deny the transcripts of rival and of the audit, which reads
-// the build's work. The Read tool's rules deny each other checkout by name, and those transcripts.
+// the build's work. The Read tool's rules deny each other checkout by name, those transcripts, and what the sandbox
+// denies of the repository. Claude Code holds a command to a Read rule too, so a rule on the git directory fails git.
 func (r *Repo) blinds(name Spec, own, rival git.Worktree) (denyRead, allowRead, deny []string) {
-	others := []string{string(rival), string(r.tree(name)), string(r.auditTree(name)), string(r.gateTree(name)),
-		filepath.Join(r.trees, mainTree), r.top, r.common}
-	denyRead = []string{r.trees}
+	ofRepository := []string{keptDir(r.common)}
 	if own != r.tree(name) {
-		denyRead = append(denyRead, r.top, r.common)
-	} else {
-		denyRead = append(denyRead, keptDir(r.common))
+		ofRepository = []string{r.top, r.common}
 	}
+
+	others := append([]string{string(rival), string(r.tree(name)), string(r.auditTree(name)), string(r.gateTree(name)),
+		filepath.Join(r.trees, mainTree)}, ofRepository...)
+	denyRead = append([]string{r.trees}, ofRepository...)
 
 	if config := r.claudeConfig(); config != "" {
 		for _, tree := range []git.Worktree{rival, r.auditTree(name)} {

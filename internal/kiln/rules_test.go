@@ -2322,7 +2322,8 @@ func TestBlindTranscripts(t *testing.T) {
 
 // TestBlinds holds what each session of build-and-verify may read. The verify session reads no transcript that holds
 // the build's work, the audit's included. The build session reads no stream or transcript of the verify session's,
-// and git still works in its worktree.
+// and git still works in its worktree. No Read rule covers a path git reads there, since Claude Code holds a command
+// to each rule too.
 func TestBlinds(t *testing.T) {
 	t.Parallel()
 
@@ -2344,11 +2345,12 @@ func TestBlinds(t *testing.T) {
 		{"the build session, the verify session's transcripts", build, verify, transcripts(verify), true, true},
 		{"the build session, the verify session's stream", build, verify,
 			stream, true, true},
-		{"the build session, git's objects", build, verify, filepath.Join(r.common, "objects"), false, true},
-		{"the build session, git's refs", build, verify, filepath.Join(r.common, "refs", "heads"), false, true},
-		{"the build session, git's config", build, verify, filepath.Join(r.common, "config"), false, true},
+		{"the build session, git's objects", build, verify, filepath.Join(r.common, "objects"), false, false},
+		{"the build session, git's refs", build, verify, filepath.Join(r.common, "refs", "heads"), false, false},
+		{"the build session, git's config", build, verify, filepath.Join(r.common, "config"), false, false},
 		{"the build session, its worktree's git directory", build, verify,
-			filepath.Join(r.common, "worktrees", "x", "HEAD"), false, true},
+			filepath.Join(r.common, "worktrees", "x", "HEAD"), false, false},
+		{"the verify session, git's objects", verify, build, filepath.Join(r.common, "objects"), true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

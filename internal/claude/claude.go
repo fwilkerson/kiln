@@ -135,7 +135,7 @@ type Launch struct {
 	MCP map[string]json.RawMessage
 	// DenyRead are absolute paths no command may read, but those under AllowRead, which reopens what it names. The
 	// sandbox holds them for a command. Deny's Read rules hold the Read tool, and hold Grep and Glob on a best-effort
-	// basis.
+	// basis. Claude Code holds a command to each Read rule too, as to DenyRead.
 	DenyRead, AllowRead []string
 	// Silence is how long the session may print nothing before Run kills it as hung. Run refuses a Launch without one.
 	Silence time.Duration
