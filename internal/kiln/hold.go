@@ -9,12 +9,17 @@ type history struct {
 	// last is its last monitor line. lastFinding is the last that started a fix, or, where the monitor fixes nothing,
 	// needed the developer. Each is the zero entry while none is.
 	last, lastFinding entry
+	// runs holds each of its monitor lines but a skip, oldest first. Its last is last.
+	runs []entry
 	// outcomes holds the last outcome line of each of its fixes' builds.
 	outcomes map[string]entry
 	// running holds the start line of each of its fixes' session runs that has no end line yet, by build.
 	running map[string]entry
 	// stuck is its last monitor line whose check or gauge ran past kiln.json's timeout, while each line since is Past.
 	stuck entry
+	// skipped is its last monitor line that kiln skipped with no connection, while no other monitor line follows it.
+	// A skip is no run, so it changes none of the fields above.
+	skipped entry
 }
 
 // histories reads each monitor's history from the ledger, by its name.
@@ -31,9 +36,11 @@ func histories(entries []entry) map[Spec]*history {
 	fixes := map[string]Spec{}
 	for _, e := range entries {
 		switch {
+		case e.Kind == monitorKind && e.Found == foundSkipped:
+			of(e.Monitor).skipped = e
 		case e.Kind == monitorKind:
 			h := of(e.Monitor)
-			h.last = e
+			h.last, h.skipped, h.runs = e, entry{}, append(h.runs, e)
 			h.stuck = stuckAfter(h.stuck, e)
 			switch e.Found {
 			case foundFix:
@@ -82,15 +89,15 @@ func (h *history) fixSummary(e entry) string {
 const slack = 30 * time.Minute
 
 // due is whether m is due at the time now. It is due when it never ran, or its last run couldn't run its check. It is
-// due when that run met a usage limit, refused m, or cut its fix short. Otherwise, it is due once its interval, minus
-// the slack, has passed.
+// due when that run refused m. It is due when its fix met a usage limit, lost its connection, or was cut short.
+// Otherwise, it is due once its interval, minus the slack, has passed. A skip is no run, so m stays as due as it was.
 func (h *history) due(m monitor, now time.Time) bool {
 	if h == nil || h.last.Kind == "" {
 		return true
 	}
 
 	switch h.result(h.last) {
-	case outLimit, outDropped, foundRefused:
+	case outLimit, outOffline, outDropped, foundRefused:
 		return true
 	case foundCouldNot:
 		// One that ran past the timeout would hold commands.lock as long again, so it waits for its interval.

@@ -376,22 +376,24 @@ One kiln monitor run:
 	each monitor main's tip holds, by name, or the one named:
 	  due?     skipped unless due, or named
 	  held?    held while a fix of it builds, waits or lands; held by its last finding, as below, unless named
+	  online?  skipped with no connection to Claude's API, for a monitor with agent.md that is due, as below
 	  check    run in <trees>/.monitor-check at main's tip, or its gauge there; no finding: healthy; it holds
 	           commands.lock from before it reads main's tip, so it runs at the main its fix starts from
 	  fix      a build with no spec on kiln/<name>, from main's tip; a monitor that fixes nothing needs you instead
 	           command   first, outside the sandbox, then the gate; fails with no agent: stopped
 	           verify    beside agent.md's, or before it: verify.md's session, as Fixes with a verify session says
 	           agent     while the gate fails, or with no command; kiln.json's rounds, and the audit
-	  ends     landed, waits on its branch, unchanged, needs you, session failed, usage limit, stopped, couldn't run
+	  ends     landed, waits on its branch, unchanged, needs you, session failed, usage limit, no connection,
+	           stopped, or couldn't run
 	           each printed with its time, cost, turns and failed calls, as a spec's build is
 	  notify   the developer, as Notifications says
 	  gauges   read after a landing, as after a build's
 	  again    when the check asked to drain, after a fix that landed: from check, due or not, until no fix lands
 
-A monitor is due when it never ran, or its check or gauge couldn't run but did not hang. It is due when a usage limit
-ended its fix, its fix was cut short, or kiln refused it. Otherwise, it is due once its last run started its
-interval, less 30 minutes, ago. $KILN_NOW, as RFC 3339, stands for the clock. A monitor with neither check nor gauge
-starts a fix each run it is due.
+A monitor is due when it never ran, or its check or gauge couldn't run but did not hang. It is due when kiln refused
+it. It is due when its fix met a usage limit, ended no connection, or was cut short. Otherwise, it is due once its
+last run started its interval, less 30 minutes, ago. $KILN_NOW, as RFC 3339, stands for the clock. A monitor with
+neither check nor gauge starts a fix each run it is due.
 
 A check that exits non-zero, or prints no verdict last, couldn't run. kiln then keeps its last line of stdout and
 stderr, but for a check past the timeout, as Hangs says. A verdict that adds "drain": true asks kiln to check again
@@ -404,8 +406,10 @@ into the branch. A fix with no session stops instead. Work that changes nothing 
 whose last line is {"ask": true, "summary": "..."} ends the fix needs you, with its report. One whose last line is
 {"title": "type(scope): summary"}, of at most 72 characters, titles the commit that lands the fix. A landing keeps
 the title of the fix the developer accepted. kiln status shows a landed fix's title as its summary, but for a
-gauge's. A failed session ends it session failed. A usage limit ends it at once, never waiting for the reset. In a
-landing, each of these stops it and keeps the fix. So does work that changes nothing on main. Only a fix whose agent
+gauge's. A failed session ends it session failed. A usage limit ends it at once, never waiting for the reset. A
+session that fails once kiln has no connection to Claude's API ends it no connection. Its summary is the session's
+error. That is the fix's session, its verify session's or its audit's. In a landing, each of these stops it
+and keeps the fix. So does work that changes nothing on main. Only a fix whose agent
 ran gets the audit. A landing's audit reads each file whose own change since main differs from the accepted commit's.
 It runs when the work so differs from the commit the audit last read, outside .kiln/. It skips the session's answer
 to its findings, but for a path kiln.json's reaudit names. A landing whose turn kiln cut short resumes that turn
@@ -443,6 +447,17 @@ but never starts a second fix.
 
 A healthy run drops the monitor's stopped fix the developer has not accepted, with its branch and worktree. kiln
 monitor run skips a monitor while a kiln tend is at work on it, and says so.
+
+A fix needs Claude's API. So before a due monitor with agent.md runs, kiln asks for a connection, once for the
+monitor. kiln sends one GET with no sign-in to $ANTHROPIC_BASE_URL, as the session would reach it. With that
+unset, kiln asks https://api.anthropic.com. Any HTTP reply is a connection, whatever its status. An error is none,
+such as no route, no DNS, or a certificate that fails, as a captive portal's does. kiln asks again each second,
+until a reply comes or 15 s have passed since it first asked. A Mac that just woke may lack Wi-Fi that long. With no
+connection, kiln skips the monitor. It runs no check, gauge, command or session, drops no stopped fix, and notifies
+nothing. It writes the monitor's line, found skipped, and says "<name>: skipped: no connection to <host>".
+A skip is no run, so the monitor stays due, held or stuck, as it was. kiln status says when kiln skipped it, until
+its next run. A monitor with no agent.md starts no session, so kiln never asks for it. kiln monitor run with a name
+never asks either, since the developer who names one is at the keyboard.
 
 # Fixes with a verify session
 
@@ -625,9 +640,9 @@ second, as jq's fromdate reads it. A field whose type allows null holds null whi
 	  reply         string|null    the whole reply kiln could not parse
 	monitor                        a monitor's run
 	  name          string         the monitor's name
-	  at            time           when kiln wrote it, once its check or gauge ended
+	  at            time           when kiln wrote it, once its check or gauge ended; a skip's is when kiln asked
 	  main          string         main's tip as it started
-	  found         string         what it found: healthy, couldn't run, held, fix, needs you or refused
+	  found         string         what it found: healthy, couldn't run, held, fix, needs you, refused or skipped
 	  build         string|null    the ID of the fix it started
 	  summary       string         its check's summary, or why it couldn't run, or why kiln refused it
 	  gauge         string|null    the gauge it read in place of a check
@@ -637,8 +652,8 @@ second, as jq's fromdate reads it. A field whose type allows null holds null whi
 A sum, such as a build's cost, is null while one of its runs lacks its part. A run lacks its time and failed calls
 until it ends. A build's rounds are null while a run's start line does not say why it started. A gate's ran_main is
 null for a gate that stopped on an error first. A build's outcome is landed, stopped,
-waits on its branch, dropped or accepted. A fix's may also be needs you, session failed, usage limit, couldn't run,
-unchanged or rejected.
+waits on its branch, dropped or accepted. A fix's may also be needs you, session failed, usage limit, no connection,
+couldn't run, unchanged or rejected.
 
 # Gauges
 
@@ -675,10 +690,11 @@ that measures one landing's change, such as its changed files, prints nothing in
 kiln notifies the developer when a spec's build or a monitor's fix needs them. A spec's build notifies once it ends
 stopped, waiting for UAT, or waiting on its branch, whichever kiln built it. A fix notifies once kiln monitor run
 ends it landed, waiting on its branch, stopped, needs you, or session failed. kiln notifies nothing of a session that
-failed the same way as the monitor's last run. So an expired sign-in notifies once per monitor. A monitor that fixes
-nothing notifies when its run ends needs you, as Monitors says. kiln monitor run notifies each landing it takes up as
-it starts, or finds on main. A landing of a fix by kiln accept notifies nothing, since the developer reads the output
-of kiln accept.
+failed the same way as the monitor's last run. That run is the last whose fix did not end no connection. So an
+expired sign-in notifies once per monitor. kiln notifies nothing of a skip, or of a fix that ended no connection. A
+monitor that fixes nothing notifies when its run ends needs you, as Monitors says. kiln monitor run notifies each
+landing it takes up as it starts, or finds on main. A landing of a fix by kiln accept notifies nothing, since the
+developer reads the output of kiln accept.
 
 kiln.json's notify names the program that receives each notification. kiln reads it at main's tip:
 

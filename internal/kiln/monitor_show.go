@@ -28,16 +28,21 @@ type standing struct {
 	summary, report string
 	// last is when its last run started, and next when it is due again. Each is zero for a monitor that never ran.
 	last, next time.Time
+	// skipped is when kiln last skipped it with no connection, since its last run. It is zero when kiln did not.
+	skipped time.Time
 }
 
 // standing is where m stands, from its history. rec is the record of its fix, if the book holds one. An accepted
 // landing is worded from rec, since the ledger's last outcome still says the fix waits on its branch.
 func (h *history) standing(m monitor, rec *record) standing {
-	if h == nil || h.last.Kind == "" {
+	switch {
+	case h == nil:
 		return standing{}
+	case h.last.Kind == "":
+		return standing{skipped: h.skipped.At}
 	}
 
-	s := standing{last: h.last.At, next: h.next(m)}
+	s := standing{last: h.last.At, next: h.next(m), skipped: h.skipped.At}
 	e := h.last
 	switch {
 	case e.Past:
@@ -211,11 +216,16 @@ func (s standing) unheld() string {
 	return strings.TrimPrefix(s.result, foundHeld+": ")
 }
 
-// when says when the monitor last ran, and when it runs next. The monitor is due now when due is true.
+// when says when the monitor last ran, when kiln skipped it since, and when it runs next. The monitor is due now
+// when due is true.
 func (s standing) when(due bool) string {
 	last := "never ran"
 	if !s.last.IsZero() {
 		last = "last ran " + shownTime(s.last.Local())
+	}
+
+	if !s.skipped.IsZero() {
+		last += ", skipped " + shownTime(s.skipped.Local()) + " with no connection"
 	}
 
 	if due {
@@ -276,8 +286,9 @@ func (r *Repo) lastStanding(name Spec) (standing, string, error) {
 		return standing{}, "", err
 	}
 
+	// A skip is no run.
 	h := histories(entries)[name]
-	if h == nil {
+	if h == nil || h.last.Kind == "" {
 		return standing{}, "", fmt.Errorf("%w: the ledger holds no run of a monitor %s", errRefused, name)
 	}
 

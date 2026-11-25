@@ -113,6 +113,14 @@ func (c *checkFailed) Error() string { return "the monitor's check couldn't run:
 // hold the monitors' lane until then.
 var errLimitEnded = errors.New("a usage limit ended the session")
 
+// lostConnection is a fix's session that failed once kiln had no connection to Claude's API. why is the session's
+// own error. kiln never waits for the connection, since it would hold the monitors' lane until then.
+type lostConnection struct {
+	why string
+}
+
+func (l *lostConnection) Error() string { return "no connection: " + l.why }
+
 // startFix keeps the record of the fix f, and answers its build. The fix builds from main's tip, as the monitor line
 // says. A stopped fix of its monitor gives way to it. The update that keeps the record writes line, then the fix's
 // build line. So the ledger never names a fix no record holds.
@@ -287,9 +295,7 @@ func (f *fixing) verifyPrompt() string {
 // or asked for the developer. stderr is what the session wrote to its standard error.
 func (f *fixing) endedBy(ended claude.Ended, stderr string) bool {
 	if ended.Failed {
-		last, _ := lastOf(stderr)
-		why := cmpOr(strings.TrimSpace(ended.Text), last)
-		f.end(outFailed, cmpOr(why, "the session ended with no result"), "")
+		f.end(outFailed, failedWhy(ended, stderr), "")
 		return true
 	}
 
@@ -337,6 +343,12 @@ func conventionalTitle(title string) bool {
 
 // titleMax is the longest title titleOf takes, the limit Conventional Commits' common tooling keeps.
 const titleMax = 72
+
+// failedWhy is the error of a session that ended failed. It is the session's result, or else its last line of stderr.
+func failedWhy(ended claude.Ended, stderr string) string {
+	last, _ := lastOf(stderr)
+	return cmpOr(cmpOr(strings.TrimSpace(ended.Text), last), "the session ended with no result")
+}
 
 // conventional matches a Conventional Commits title: type(scope): summary, where the scope and a ! are optional.
 var conventional = regexp.MustCompile(`^[a-z]+(\([a-z0-9][a-z0-9./_-]*\))?!?: \S[^\n]*$`)
@@ -636,6 +648,7 @@ func (b *build) fixSettle(ctx context.Context, err error) error {
 	err = b.landingStops(ctx, err)
 	stopped, isStop := errors.AsType[*outOfRounds](err)
 	failed, isCheck := errors.AsType[*checkFailed](err)
+	lost, isOffline := errors.AsType[*lostConnection](err)
 	switch {
 	case isStop:
 		f.end(outStopped, "", "")
@@ -644,6 +657,8 @@ func (b *build) fixSettle(ctx context.Context, err error) error {
 		return ctx.Err()
 	case errors.Is(err, errLimitEnded):
 		f.end(outLimit, errLimitEnded.Error(), "")
+	case isOffline:
+		f.end(outOffline, lost.why, "")
 	case isCheck:
 		f.end(outCouldNot, failed.line, "")
 	case err != nil:

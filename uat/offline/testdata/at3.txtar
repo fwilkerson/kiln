@@ -1,0 +1,45 @@
+# A fix that loses its connection asks nothing of the developer.
+
+# Given: a monitor that is due, whose check asks for a fix. A notify program keeps each notice it receives. kiln has
+# a connection when the run starts, and none once the fix's session fails: the scripted session takes the connection
+# away, then fails.
+
+# When: kiln monitor run runs.
+env KILN_NOW=2026-11-14T10:00:00Z
+exec sh -c 'kiln monitor run || true'
+exists .claude-calls/fix/1/1/call.json
+exists .tmp/offline
+
+# Then: the notify program receives nothing.
+! exists .git/notices
+
+# kiln status says the monitor's fix ended with no connection, and that the monitor runs at the next kiln monitor
+# run.
+exec kiln status
+stdout '^drift: no connection, last ran .*, runs at the next kiln monitor run$'
+
+# It names no kiln tend for the monitor.
+! stdout 'kiln tend'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}
+-- .kiln/monitors/drift/agent.md --
+Keep the docs true to the code.
+
+Compare the docs with the code.
+-- .kiln/monitors/drift/check --
+echo '{"fix": true, "summary": "the docs drifted"}'
+-- .kiln/monitors/drift/monitor.json --
+{"hours": 1}
+-- claude.json --
+{
+ "fix": {
+  "1": {
+   "1": [
+    {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/offline\""}}},
+    {"result": {"is_error": true, "result": "API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)"}},
+    {"exit": 1}
+   ]
+  }
+ }
+}

@@ -119,14 +119,30 @@ func isEmpty(s string) bool { return s == "" }
 var notified = []string{outLanded, outStopped, outWaits, outNeedsYou, outFailed}
 
 // notifies is whether a fix that ended with outcome notifies. h is its monitor's history before this run. A session
-// that failed the same way as the monitor's last run notifies nothing. An expired sign-in then notifies once per
-// monitor.
+// that failed the same way as the monitor's last run notifies nothing. That run is the last whose fix did not end with
+// no connection. An expired sign-in then notifies once per monitor, across a stretch with no connection.
 func notifies(outcome string, h *history) bool {
 	if !slices.Contains(notified, outcome) {
 		return false
 	}
 
-	return outcome != outFailed || h.lastResult() != outFailed
+	return outcome != outFailed || h.lastConnected() != outFailed
+}
+
+// lastConnected is what the monitor's last run came to, past each run whose fix ended with no connection. It is ""
+// if no such run is.
+func (h *history) lastConnected() string {
+	if h == nil {
+		return ""
+	}
+
+	for _, e := range slices.Backward(h.runs) {
+		if result := h.result(e); result != outOffline {
+			return result
+		}
+	}
+
+	return ""
 }
 
 // lastResult is what the monitor's last run came to, or "" if it never ran.

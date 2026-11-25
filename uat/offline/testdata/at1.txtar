@@ -1,0 +1,47 @@
+# kiln skips a due monitor while it has no connection.
+
+# Given: a monitor with an agent that is due, whose check asks for a fix. A notify program keeps each notice it
+# receives. kiln has no connection to Claude's API.
+exec touch .tmp/offline
+
+# When: kiln monitor run runs.
+env KILN_NOW=2026-11-14T10:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: kiln runs neither the monitor's check nor a session,
+! grep 'ran' $WORK/_given/check.log
+! exists .claude-calls
+
+# and the notify program receives nothing.
+! exists .git/notices
+
+# kiln status says the monitor was skipped with no connection, and that it runs at the next kiln monitor run.
+exec kiln status
+stdout '^drift: .*skipped .* with no connection, runs at the next kiln monitor run$'
+
+# It names no kiln tend for the monitor.
+! stdout 'kiln tend'
+
+-- .kiln/kiln.json --
+{"gate": ["true"], "notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}
+-- .kiln/monitors/drift/agent.md --
+Keep the docs true to the code.
+
+Compare the docs with the code.
+-- .kiln/monitors/drift/check --
+echo ran >>"$WORK/_given/check.log"
+echo '{"fix": true, "summary": "the docs drifted"}'
+-- .kiln/monitors/drift/monitor.json --
+{"hours": 1}
+-- _given/check.log --
+-- claude.json --
+{
+ "fix": {
+  "1": {
+   "1": [
+    {"result": {"is_error": true, "result": "Invalid API key · Please run /login", "api_error_status": 401}},
+    {"exit": 1}
+   ]
+  }
+ }
+}

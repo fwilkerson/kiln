@@ -1,0 +1,36 @@
+# A skipped monitor runs at the next run that has a connection.
+
+# Given: a daily monitor that kiln monitor run skipped a moment ago, with no connection.
+exec touch .tmp/offline
+env KILN_NOW=2026-11-14T10:00:00Z
+exec sh -c 'kiln monitor run || true'
+! grep 'ran' $WORK/_given/check.log
+
+# kiln has a connection again.
+rm .tmp/offline
+
+# When: the developer runs kiln monitor run, with no name.
+env KILN_NOW=2026-11-14T11:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: that run runs the monitor's check, which the skipped run did not.
+grep -count=1 'ran' $WORK/_given/check.log
+
+# kiln status shows what the check found, and no longer says the monitor was skipped.
+exec kiln status
+stdout '^daily: healthy'
+stdout 'the docs are true'
+! stdout 'skipped'
+
+-- .kiln/kiln.json --
+{"gate": ["true"]}
+-- .kiln/monitors/daily/agent.md --
+Keep the docs true to the code.
+
+Compare the docs with the code.
+-- .kiln/monitors/daily/check --
+echo ran >>"$WORK/_given/check.log"
+echo '{"fix": false, "summary": "the docs are true"}'
+-- .kiln/monitors/daily/monitor.json --
+{"hours": 24}
+-- _given/check.log --

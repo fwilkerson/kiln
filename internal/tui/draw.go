@@ -276,7 +276,7 @@ func (m model) home() []*lipgloss.Layer {
 		area: area{rightW, nowH}}
 	trendBox := panel{title: m.trendTitle(recentBuilds, previous), x: sideW, y: nowH, area: area{rightW, trendH}}
 	gaugesBox := panel{title: "gauges", x: sideW, y: nowH + trendH, area: area{rightW, gaugesH}}
-	recentBox := panel{to: target{toPane, int(recentPane)}, title: m.recentTitle(), lit: m.focus == recentPane,
+	recentBox := panel{to: target{toPane, int(recentPane)}, title: m.recentTitle(rightW - 4), lit: m.focus == recentPane,
 		x: sideW, y: nowH + trendH + gaugesH, area: area{rightW, recentH}}
 	layers := []*lipgloss.Layer{
 		specsBox.box(m.theme, m.sideRows(specsPane, specsBox.inside())),
@@ -298,13 +298,14 @@ func (m model) home() []*lipgloss.Layer {
 }
 
 // recentTitle names what the builds panel lists: the builds of every spec, of every monitor, or of the selected one.
-func (m model) recentTitle() string {
+// width is the cells the title may take.
+func (m model) recentTitle(width int) string {
 	s, ok := m.picked()
 	switch {
 	case !ok:
 		return "recent " + m.side.noun(2)
 	case s.Monitor != nil:
-		return monitorTitle(s)
+		return monitorTitle(s, width)
 	case len(s.Builds) == 0:
 		return "builds of " + s.Name
 	}
@@ -384,7 +385,7 @@ func (t theme) marked(s State) string {
 // developer is theirs. A state with nothing to mark is plain, beside ◌.
 func (t theme) look(s State) (lipgloss.Style, string) {
 	switch s {
-	case Running, Limited:
+	case Running, Limited, Offline:
 		return t.agent, "▶"
 	case Paused:
 		return t.kiln, "‖"
@@ -466,11 +467,18 @@ func (m model) liveFacts(c *claude.Recounted) []string {
 // idleWarned is how long a session may write nothing, with no call open, before the view marks it.
 const idleWarned = time.Minute
 
-// monitorTitle names a monitor's fixes, and says when it last ran and runs next.
-func monitorTitle(s Spec) string {
-	mon, when := s.Monitor, "never ran"
+// monitorTitle names a monitor's fixes, in at most w cells. It says when the monitor last ran, when kiln skipped it
+// since, and when it runs next. A title too wide drops its least needed words first. Those are the skip's reason,
+// then the result, then when the monitor last ran. So when it runs next shows while the monitor's name fits.
+func monitorTitle(s Spec, w int) string {
+	mon, ran := s.Monitor, "never ran"
 	if !mon.Last.IsZero() {
-		when = "ran " + mon.Last.Local().Format("Jan 02 15:04")
+		ran = "ran " + mon.Last.Local().Format("Jan 02 15:04")
+	}
+
+	skipped, why := "", ""
+	if !mon.Skipped.IsZero() {
+		skipped, why = "skipped "+mon.Skipped.Local().Format("Jan 02 15:04"), " with no connection"
 	}
 
 	next := "due"
@@ -478,12 +486,21 @@ func monitorTitle(s Spec) string {
 		next = "next " + mon.Next.Local().Format("Jan 02 15:04")
 	}
 
-	title := "fixes of " + s.Name
-	if mon.Result != "" {
-		title += " · " + mon.Result
+	name := "fixes of " + s.Name
+	titles := []string{titled(name, mon.Result, ran, skipped+why, next), titled(name, mon.Result, ran, skipped, next),
+		titled(name, ran, skipped, next), titled(name, skipped, next)}
+	for _, title := range titles {
+		if ansi.StringWidth(title) <= w {
+			return title
+		}
 	}
 
-	return fmt.Sprintf("%s · %s · %s", title, when, next)
+	return titles[len(titles)-1]
+}
+
+// titled joins each part that is not "" with a plain ·, since a panel styles its title whole.
+func titled(parts ...string) string {
+	return strings.Join(slices.DeleteFunc(parts, func(p string) bool { return p == "" }), " · ")
 }
 
 // recentRows lists the builds panel's builds, newest first, in an area, below its columns' names. A selected

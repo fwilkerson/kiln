@@ -39,11 +39,12 @@ import (
 //	monitor   when kiln monitor run runs a monitor: its name, main's tip, git's ID of its directory, a hash of what
 //	          its check or gauge printed, and what it found: healthy, couldn't run, refused, held, needs
 //	          you where the monitor fixes nothing, or a fix, which names its build. A monitor with a gauge
-//	          adds the gauge's name, its reading of the whole repository, and its line
+//	          adds the gauge's name, its reading of the whole repository, and its line. A skip, with no
+//	          connection to Claude's API, holds its name, main's tip, skipped, and the host kiln asked
 //
 // A fix's build writes a build's lines, under its monitor's name, and its build line names the monitor. It ends
-// landed, stopped, waits on its branch, needs you, session failed, or usage limit. Or it ends couldn't run, unchanged,
-// rejected or dropped. It holds a summary or a report where it has one.
+// landed, stopped, waits on its branch, needs you, session failed, usage limit, or no connection. Or it ends couldn't
+// run, unchanged, rejected or dropped. It holds a summary or a report where it has one.
 //
 // Each line names its build, but a monitor line that started no fix. At is when it was written, or when its run or
 // gate started. A run is the bytes of its session's stream from its start line's length to its end line's.
@@ -83,6 +84,7 @@ const (
 	outCouldNot  = "couldn't run"
 	outUnchanged = "unchanged"
 	outRejected  = "rejected"
+	outOffline   = "no connection"
 )
 
 // What a monitor's run found, in a monitor line. A run that started a fix names its build.
@@ -92,6 +94,8 @@ const (
 	foundHeld     = "held"
 	foundFix      = "fix"
 	foundRefused  = "refused"
+	// foundSkipped is a run kiln skipped, with no connection to Claude's API. It is no result of the monitor's.
+	foundSkipped = "skipped"
 )
 
 // entry is one line of the ledger. Its kind says which of its fields it holds.

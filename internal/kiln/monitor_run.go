@@ -227,6 +227,10 @@ func (run *monitorRunning) pass(ctx context.Context, m monitor, dueOrNot bool) (
 		return false, err
 	}
 
+	if skipped, err := run.skipped(ctx, m, dueOrNot); err != nil || skipped {
+		return false, err
+	}
+
 	return run.check(ctx, m, h, k.find(m.Name))
 }
 
@@ -251,6 +255,32 @@ func (run *monitorRunning) heldStuck(ctx context.Context, m monitor, h *history,
 	line.Summary = fmt.Sprintf("its check or gauge ran past %s at main %s; it runs once main's tip, or any file "+
 		"in the monitor's directory, changes", timeoutKey, short(main))
 	return true, run.write(line)
+}
+
+// skipped skips m while kiln has no connection to Claude's API, and writes m's monitor line then. kiln asks only for
+// a monitor with an agent, in a run that is due. A run due or not, as one by name, never asks. It answers whether it
+// skipped m.
+func (run *monitorRunning) skipped(ctx context.Context, m monitor, dueOrNot bool) (bool, error) {
+	if dueOrNot || !m.agent {
+		return false, nil
+	}
+
+	at := run.r.now()
+	online, host := run.r.online(ctx)
+	switch {
+	case ctx.Err() != nil:
+		return false, ctx.Err()
+	case online:
+		return false, nil
+	}
+
+	main, err := run.r.mainTip(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return true, run.write(entry{Kind: monitorKind, Monitor: m.Name, At: at, Main: main, Found: foundSkipped,
+		Summary: "no connection to " + host})
 }
 
 // check runs m's check, or reads its gauge, at main's tip, and writes its monitor line. A finding starts a fix,

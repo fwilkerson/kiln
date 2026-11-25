@@ -486,7 +486,8 @@ func (s setback) said() (goesBack, stops, prompt string) {
 
 // talk runs the session l launches, and answers how it ended. A usage limit pauses the build until it resets, and the
 // same session resumes. The ledger gets a line before each run of the session, with why it started, and one after. t
-// is the seat's turn the run tells, or nil for an audit's run. A fix's session that a limit ended ends the fix.
+// is the seat's turn the run tells, or nil for an audit's run. A fix's session that a limit ended ends the fix. So
+// does one that failed with no connection, as offline says.
 //
 // The audit changes nothing, so kiln checks. It runs in a worktree of its own. Each audit run's start line names the
 // commit it read, and its end line each path the run changed. Then kiln puts that worktree back at the commit read.
@@ -494,8 +495,10 @@ func (b *build) talk(ctx context.Context, l claude.Launch, why reason, t *turn) 
 	for {
 		ended, err := b.runOnce(ctx, l, why, t)
 		switch {
-		case err != nil, ended.Limit == nil:
+		case err != nil:
 			return ended, err
+		case ended.Limit == nil:
+			return ended, b.offline(ctx, l, ended)
 		case b.fix != nil:
 			return ended, errLimitEnded
 		}
@@ -506,6 +509,20 @@ func (b *build) talk(ctx context.Context, l claude.Launch, why reason, t *turn) 
 
 		l.Prompt, why.Why = limitReset, whyLimit
 	}
+}
+
+// offline answers a lostConnection when the session that l launched, a fix's, ended failed with no connection to
+// Claude's API. Otherwise it answers nil, and the run is read as any other.
+func (b *build) offline(ctx context.Context, l claude.Launch, ended claude.Ended) error {
+	if b.fix == nil || !ended.Failed {
+		return nil
+	}
+
+	if online, _ := b.r.online(ctx); online || ctx.Err() != nil {
+		return nil
+	}
+
+	return &lostConnection{why: failedWhy(ended, b.r.claude.Stderr(l.Session))}
 }
 
 // runOnce runs the session l launches once, between its start line and its end line. The update of each line marks

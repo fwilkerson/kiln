@@ -1,0 +1,50 @@
+# A monitor whose fix lost its connection runs again at the next run.
+
+# Given: a daily monitor whose fix ended with no connection a moment ago: the scripted session takes the connection
+# away, then fails.
+env KILN_NOW=2026-11-14T10:00:00Z
+exec sh -c 'kiln monitor run || true'
+grep -count=1 'ran' $WORK/_given/check.log
+exists .claude-calls/fix/1/1/call.json
+exists .tmp/offline
+
+# kiln has a connection again.
+rm .tmp/offline
+
+# When: the developer runs kiln monitor run, with no name.
+env KILN_NOW=2026-11-14T11:00:00Z
+exec sh -c 'kiln monitor run || true'
+
+# Then: that run runs the monitor's check again, and starts a new fix.
+grep -count=2 'ran' $WORK/_given/check.log
+exists .claude-calls/fix/2/1/call.json
+
+-- .kiln/kiln.json --
+{"gate": ["true"]}
+-- .kiln/monitors/daily/agent.md --
+Keep the docs true to the code.
+
+Compare the docs with the code.
+-- .kiln/monitors/daily/check --
+echo ran >>"$WORK/_given/check.log"
+echo '{"fix": true, "summary": "the docs drifted"}'
+-- .kiln/monitors/daily/monitor.json --
+{"hours": 24, "recheck": false}
+-- _given/check.log --
+-- claude.json --
+{
+ "fix": {
+  "1": {
+   "1": [
+    {"tool": {"name": "Bash", "input": {"command": "touch \"$WORK/.tmp/offline\""}}},
+    {"result": {"is_error": true, "result": "API Error: Can't reach the API server — check your internet or DNS (ENOTFOUND)"}},
+    {"exit": 1}
+   ]
+  },
+  "2": {
+   "1": [
+    {"result": {"result": "The docs are true again."}}
+   ]
+  }
+ }
+}

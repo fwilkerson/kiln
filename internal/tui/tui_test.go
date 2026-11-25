@@ -114,6 +114,8 @@ func TestMonitors(t *testing.T) {
 			Summary: "3 modules to update", Last: now.Add(-time.Hour), Next: now.Add(22 * time.Hour)}},
 		{Name: "docs", State: Waits, Monitor: &Monitor{Result: "held: waiting on the developer"}},
 		{Name: "vulns", State: NeverRun, Monitor: &Monitor{Due: true}},
+		{Name: "lint", State: Healthy, Monitor: &Monitor{Result: "healthy", Last: now.Add(-25 * time.Hour),
+			Skipped: now.Add(-time.Hour), Due: true}},
 	}}
 	// At 80 columns, the specs panel is a third of the width, and each monitor's name still shows.
 	m := drive(t, src, "", sized(80, 30))
@@ -134,6 +136,14 @@ func TestMonitors(t *testing.T) {
 
 	// A monitor that never ran says so once.
 	shows(t, drive(t, src, "vulns", sized(140, 30)), `fixes of vulns · never ran · due`)
+
+	// A skip with no connection shows between when the monitor last ran and when it runs next.
+	shows(t, drive(t, src, "lint", sized(140, 30)), `fixes of lint · healthy · ran `+
+		now.Add(-25*time.Hour).Local().Format("Jan 02 15:04")+` · skipped `+last+` with no connection · due`)
+
+	// A narrower title drops the skip's reason first, and still says when the monitor runs.
+	shows(t, drive(t, src, "lint", sized(100, 30)), `fixes of lint · healthy · ran `+
+		now.Add(-25*time.Hour).Local().Format("Jan 02 15:04")+` · skipped `+last+` · due`)
 
 	m = sendAll(m, tea.KeyPressMsg{Code: tea.KeyTab}, tea.KeyPressMsg{Code: tea.KeyTab},
 		tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -790,14 +800,14 @@ func TestRepositoryGauge(t *testing.T) {
 	}
 }
 
-// TestFixOutcomes holds that a failed fix is red beside ✗. A fix that met a usage limit is in a session's color,
-// beside ▶. The specs panel marks its monitor the same.
+// TestFixOutcomes holds that a failed fix is red beside ✗. A fix that met a usage limit, or lost its connection, is in
+// a session's color, beside ▶. The specs panel marks its monitor the same.
 func TestFixOutcomes(t *testing.T) {
 	for outcome, ended := range map[string]State{
-		"session failed": Failed, "couldn't run": CouldNotRun, "usage limit": Limited,
+		"session failed": Failed, "couldn't run": CouldNotRun, "usage limit": Limited, "no connection": Offline,
 	} {
 		want, glyph := dark.failed.GetForeground(), "✗"
-		if ended == Limited {
+		if ended == Limited || ended == Offline {
 			want, glyph = dark.agent.GetForeground(), "▶"
 		}
 

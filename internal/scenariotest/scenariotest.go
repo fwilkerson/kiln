@@ -55,6 +55,14 @@
 //	                  another directory
 //	SCENARIOTEST_PID  the test process, whose end ends each await and scripted claude
 //
+// Each script has a stand-in for Claude's API, so no script asks the network. A Go test built on Repo has it too:
+//
+//	ANTHROPIC_BASE_URL   a listener of the test process, at http://127.0.0.1:<port>/<the script's $WORK>
+//	.tmp/offline         while this file exists under $WORK, the listener closes each request with no reply
+//
+// The listener replies 404 to each other request. A script takes the connection away with exec touch .tmp/offline,
+// and gives it back with rm .tmp/offline.
+//
 // A script waits for an event with await, never with a count of tries or a sleep. Only the test's deadline bounds the
 // wait, so a loaded machine makes a script slow, never wrong:
 //
@@ -335,6 +343,12 @@ func ready(work string, setenv func(name, value string), vars func() []string) e
 	setenv("GOFLAGS", "-buildvcs=false -trimpath")
 	setenv("KILN_REPO", kilnRepo)
 	setenv(testPIDEnv, strconv.Itoa(os.Getpid()))
+	api, err := apiURL(work)
+	if err != nil {
+		return fmt.Errorf("scenariotest: starting the stand-in for Claude's API: %w", err)
+	}
+
+	setenv("ANTHROPIC_BASE_URL", api)
 	if err := seed(work); err != nil {
 		return err
 	}

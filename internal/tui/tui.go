@@ -12,8 +12,10 @@
 //	err := tui.Show(ctx, source, "", tui.Terminal{In: os.Stdin, Out: os.Stdout})  // a name selects its spec
 //
 // A monitor's row shows where it stands in a word, marked as a spec's state is. Selected, the builds panel's title
-// says its last run's result in full, and when it last ran and runs next. Its summary heads the panel. Its builds
-// are its fixes, which open as a spec's builds do.
+// says its last run's result in full, and when it last ran and runs next. Between those two, it says when kiln
+// skipped the monitor with no connection since. A narrow title drops the skip's reason, then the result, then the last
+// run. So it still says when the monitor runs next. Its summary heads the panel. Its builds are its fixes, which open
+// as a spec's builds do.
 //
 // The now panel shows the run at work in each lane, a spec's build above a monitor's fix. Each takes two rows. With
 // no spec's build at work, a paused spec takes its place, in one row. Enter, or a click, opens the run.
@@ -89,6 +91,8 @@ type Monitor struct {
 	// Last is when it last ran, or zero if it never ran. Next is when it is due again, and Due is whether it is now.
 	Last, Next time.Time
 	Due        bool
+	// Skipped is when kiln last skipped it with no connection, since it last ran. It is zero when kiln did not.
+	Skipped time.Time
 	// Readings are its gauge's readings of the whole repository, one per run, oldest first. They are none for a
 	// monitor that names no gauge.
 	Readings []Reading
@@ -131,6 +135,8 @@ const (
 	Unchanged
 	// Refused is a monitor that kiln refuses at main's tip, such as for a monitor.json it cannot read.
 	Refused
+	// Offline is a fix whose session failed once kiln had no connection to Claude's API.
+	Offline
 )
 
 // words are the words the view shows for each State.
@@ -138,7 +144,7 @@ var words = [...]string{NotEnded: "not ended", Queued: "queued", Running: "runni
 	Halted: "halted", Stopped: "stopped", UAT: "UAT", Waits: "waits", Accepted: "accepted", Rejected: "rejected",
 	Landed: "landed", CutShort: "cut short", NeverRun: "never run", Healthy: "healthy", NeedsYou: "needs you",
 	Failed: "failed", CouldNotRun: "couldn't run", Limited: "usage limit", Unchanged: "unchanged",
-	Refused: "refused"}
+	Refused: "refused", Offline: "no connection"}
 
 // String is the word the view shows for s.
 func (s State) String() string { return words[s] }

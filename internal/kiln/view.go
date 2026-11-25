@@ -187,7 +187,7 @@ func (v view) Monitors(ctx context.Context) ([]tui.Spec, error) {
 			m = &tui.Monitor{Next: s.next, Due: h.due(d.monitor, now), Readings: repositoryReadings(entries, d.monitor)}
 		}
 
-		m.Result, m.Summary, m.Last = s.result, s.summary, s.last
+		m.Result, m.Summary, m.Last, m.Skipped = s.result, s.summary, s.last, s.skipped
 		shown[i] = tui.Spec{Name: string(d.name), State: s.state(), Builds: fixes[d.name], Monitor: m}
 	}
 
@@ -224,7 +224,7 @@ func (e entry) tuiReading() tui.Reading {
 // ended, and one that fixes nothing may stand needs you too. A fix with no outcome yet is running.
 var endedStates = map[string]tui.State{outLanded: tui.Landed, outStopped: tui.Stopped, outWaits: tui.Waits,
 	outDropped: tui.CutShort, outAccepted: tui.Accepted, outNeedsYou: tui.NeedsYou, outFailed: tui.Failed,
-	outLimit: tui.Limited, outCouldNot: tui.CouldNotRun, outUnchanged: tui.Unchanged, outRejected: tui.Rejected,
+	outLimit: tui.Limited, outOffline: tui.Offline, outCouldNot: tui.CouldNotRun, outUnchanged: tui.Unchanged, outRejected: tui.Rejected,
 	"": tui.Running}
 
 // state is where the monitor of s stands, as the view words it. It stands as its last fix ended, as its check found,

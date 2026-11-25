@@ -321,6 +321,7 @@ func TestDue(t *testing.T) {
 		"its check couldn't run":            {found: foundCouldNot, later: time.Minute, due: true},
 		"held a moment ago":                 {found: foundHeld, later: time.Minute},
 		"a fix a usage limit ended":         {found: foundFix, outcome: outLimit, later: time.Minute, due: true},
+		"a fix that lost its connection":    {found: foundFix, outcome: outOffline, later: time.Minute, due: true},
 		"a fix cut short":                   {found: foundFix, outcome: outDropped, later: time.Minute, due: true},
 		"a gated check couldn't run":        {found: foundFix, outcome: outCouldNot, later: time.Minute, due: true},
 		"a session that failed":             {found: foundFix, outcome: outFailed, later: time.Minute},
@@ -596,11 +597,13 @@ func TestAcceptedLandingStops(t *testing.T) {
 	}{
 		"a landing whose check couldn't run":  {accepted: true, err: &checkFailed{line: "dial tcp"}, why: "dial tcp"},
 		"a landing kiln could not go on with": {accepted: true, err: errors.New("no disk"), why: "no disk"},
-		"a landing whose session asks":        {accepted: true, outcome: outNeedsYou, why: "look\nthe report"},
-		"a landing whose session fails":       {accepted: true, outcome: outFailed, why: "look\nthe report"},
-		"a landing that landed":               {accepted: true, outcome: outLanded},
-		"a fix, not accepted, that couldn't":  {err: &checkFailed{line: "dial tcp"}},
-		"a fix, not accepted, that asks":      {outcome: outNeedsYou},
+		"a landing that lost its connection": {accepted: true, err: &lostConnection{why: "Connection error"},
+			why: "Connection error"},
+		"a landing whose session asks":       {accepted: true, outcome: outNeedsYou, why: "look\nthe report"},
+		"a landing whose session fails":      {accepted: true, outcome: outFailed, why: "look\nthe report"},
+		"a landing that landed":              {accepted: true, outcome: outLanded},
+		"a fix, not accepted, that couldn't": {err: &checkFailed{line: "dial tcp"}},
+		"a fix, not accepted, that asks":     {outcome: outNeedsYou},
 	} {
 		t.Run(name, func(t *testing.T) {
 			b := &build{rec: record{Accepted: tc.accepted}, fix: &fixing{}}

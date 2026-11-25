@@ -312,7 +312,10 @@ and no `command`. Its `monitor.json` names no `"writesTests"`.
 | `"atMost"`      | Beside a gauge: the highest reading that asks for no fix                       | with neither, or both  |
 
 ```text
-kiln monitor run ─▶ due? ─▶ check or gauge ─▶ fix: false ─────────────────────────▶ healthy
+kiln monitor run ─▶ due? ─▶ online? ─▶ no connection, for a monitor with agent.md ─▶ skipped, and still due
+                            │ a reply, or no agent.md
+                            ▼
+                            check or gauge ─▶ fix: false ─────────────────────────▶ healthy
                                             ├▶ fix: true ─▶ command ─▶ agent ─▶ gate ─▶ lands, or waits for accept
                                             │                                    └────▶ stops, or asks for you
                                             └▶ crossed, with no command or agent ─────▶ asks for you
@@ -376,7 +379,8 @@ with your edits. A monitor you deleted stays deleted.
   lighter with `TMPDIR` on a volume that holds `.metadata_never_index`. Set it, then install again.
 
 `kiln help monitors` lists each hold and what releases it, what `kiln monitor add` refuses, and how an accepted fix
-lands once main has moved. `kiln help lanes` says how a monitor's run and `kiln fire` share the gate.
+lands once main has moved. It says when kiln skips a due monitor with no connection to Claude's API, and what kiln
+asks. `kiln help lanes` says how a monitor's run and `kiln fire` share the gate.
 
 ### Gauges
 

@@ -23,6 +23,8 @@ func TestFacts(t *testing.T) {
 		"It is 1 hour when unset":              defaultTimeout == time.Hour,
 		"The notify program gets 30 s":         notifyWait == 30*time.Second,
 		`and "rounds": 3`:                      sharedRounds(t) == 3,
+		"kiln asks again each second":          onlineEvery == time.Second,
+		"or 15 s have passed":                  onlineFor == 15*time.Second,
 	})
 }
 
