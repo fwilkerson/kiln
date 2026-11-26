@@ -512,7 +512,7 @@ func (b *build) talk(ctx context.Context, l claude.Launch, why reason, t *turn) 
 }
 
 // offline answers a lostConnection when the session that l launched, a fix's, ended failed with no connection to
-// Claude's API. Otherwise it answers nil, and the run is read as any other.
+// Claude's API. Otherwise, it answers nil, and the run is read as any other.
 func (b *build) offline(ctx context.Context, l claude.Launch, ended claude.Ended) error {
 	if b.fix == nil || !ended.Failed {
 		return nil

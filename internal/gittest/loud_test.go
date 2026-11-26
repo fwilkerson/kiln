@@ -203,7 +203,7 @@ func commitDir(h *History, files map[string]string) error {
 	return nil
 }
 
-// show is the error Show answers at at, of p.
+// show is the error Show answers for the path p at the revision at.
 func show(ctx context.Context, h *History, at git.Rev, p string) error {
 	_, _, err := h.Show(ctx, at, p)
 	return err

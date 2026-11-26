@@ -3,7 +3,7 @@
 //	h := gittest.New(t)
 //	first := h.CommitFiles("main", gittest.Files{"go.mod": "module x\n"}) // main's first commit
 //	h.Branch("kiln/x", first)
-//	h.CommitDir("main", dir) // what git add -A would commit of dir, on main's tip
+//	h.CommitDir("main", dir) // what git add -A would commit of dir, on the tip of main
 //	tip, files, err := h.ShowTip(ctx, "main", "go.mod")
 //
 // A History answers Show, ShowTip, Tip, Files, Tree, Changed, Branched and MergeBase as [git.Git] does, without
@@ -68,7 +68,7 @@ const (
 // Files maps the path of each file a commit writes to the file's content.
 type Files map[string]string
 
-// New is a history with no commit. A question it cannot answer as git would fails t.
+// New is a history with no commit. It fails t on each question it cannot answer as git would.
 func New(t testing.TB) *History {
 	h := &History{t: t}
 	h.mu.commits, h.mu.branches = map[git.Rev]commit{}, map[git.Branch]git.Rev{}
@@ -159,8 +159,8 @@ func snapshot(dir string) (map[string]blob, error) {
 	return held, err
 }
 
-// unread says why git add -A would read the entry d, at p, otherwise than snapshot does. rel is d's path from the top.
-// It answers "" for an entry both read alike.
+// unread says why git add -A would read the entry d, at p, otherwise than snapshot does. The path of d from the top
+// is rel. It answers "" for an entry both read alike.
 func unread(p, rel string, d fs.DirEntry) string {
 	switch {
 	case rel == ".git" && d.IsDir():

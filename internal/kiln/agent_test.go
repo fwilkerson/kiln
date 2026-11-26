@@ -382,7 +382,7 @@ func noAcceptance(config string) string {
 }
 
 // acceptanceLine matches kiln.json's line of acceptanceTests, with the comma that ends the line above it.
-var acceptanceLine = regexp.MustCompile(`,\n  "acceptanceTests": [^\n]*`)
+var acceptanceLine = regexp.MustCompile(`,\n {2}"acceptanceTests": [^\n]*`)
 
 // inited is a checkout that kiln init set up with the preset go, in a repository of its own. Tests that read it share
 // it, and none changes it.

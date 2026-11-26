@@ -199,7 +199,7 @@ func readReply(text string) reply {
 }
 
 // listed answers the findings body lists, and whether each is in the contract's form, numbered from 1 in turn. A
-// finding is its head line, then its fields up to a blank line or a fence. Each field starts at a line's start, and
+// finding is its first line, then its fields up to a blank line or a fence. Each field starts at a line's start, and
 // an indented line runs on from the field above it. Lines outside a finding are the reply's own prose.
 func listed(body string) ([]finding, bool) {
 	var findings []finding
