@@ -407,9 +407,9 @@ whose last line is {"ask": true, "summary": "..."} ends the fix needs you, with 
 {"title": "type(scope): summary"}, of at most 72 characters, titles the commit that lands the fix. A landing keeps
 the title of the fix the developer accepted. kiln status shows a landed fix's title as its summary, but for a
 gauge's. A failed session ends it session failed. A usage limit ends it at once, never waiting for the reset. A
-session that fails once kiln has no connection to Claude's API ends it no connection. Its summary is the session's
-error. That is the fix's session, its verify session's or its audit's. In a landing, each of these stops it
-and keeps the fix. So does work that changes nothing on main. Only a fix whose agent
+failed session ends it no connection instead, when kiln then asks for a connection, as below, and gets none. Its
+summary is the session's error. That is the fix's session, its verify session's or its audit's. In a landing,
+each of these stops it and keeps the fix. So does work that changes nothing on main. Only a fix whose agent
 ran gets the audit. A landing's audit reads each file whose own change since main differs from the accepted commit's.
 It runs when the work so differs from the commit the audit last read, outside .kiln/. It skips the session's answer
 to its findings, but for a path kiln.json's reaudit names. A landing whose turn kiln cut short resumes that turn
@@ -456,8 +456,8 @@ until a reply comes or 15 s have passed since it first asked. A Mac that just wo
 connection, kiln skips the monitor. It runs no check, gauge, command or session, drops no stopped fix, and notifies
 nothing. It writes the monitor's line, found skipped, and says "<name>: skipped: no connection to <host>".
 A skip is no run, so the monitor stays due, held or stuck, as it was. kiln status says when kiln skipped it, until
-its next run. A monitor with no agent.md starts no session, so kiln never asks for it. kiln monitor run with a name
-never asks either, since the developer who names one is at the keyboard.
+its next run. A monitor with no agent.md starts no session, so kiln never asks for it. Named, kiln monitor
+run never asks before the monitor runs, since the developer who names one is at the keyboard.
 
 # Fixes with a verify session
 
