@@ -1,10 +1,11 @@
 # In verify-first, an accepted landing keeps the spec as the developer accepted it.
 
-# Given: the project chooses the workflow verify-first, and a spec waits on its branch with the verify session's
-# amendment. Main then adds acceptance/x/notes.txt, as the verify session's tests did.
+# Given: the project chooses the workflow verify-first. A spec waits on its branch with the verify session's amendment,
+# and main holds none of its work. Main then adds acceptance/x/notes.txt, as the verify session's tests did.
 exec kiln queue x
 exec kiln fire
 stdout '^x: waits on kiln/x, with amendments for UAT'
+! exec git show main:x.go
 exec sh -c 'mkdir -p acceptance/x && echo main >acceptance/x/notes.txt && git add acceptance && git commit --quiet -m main'
 
 # When: the developer accepts it. The conflict goes back to the verify session, which merges main, rewrites the folded
@@ -18,7 +19,11 @@ grep 'acceptance/x/notes\.txt' .claude-calls/verify/1/2/prompt
 grep '\.kiln/specs/x\.md' .claude-calls/verify/1/3/prompt
 grep '\.kiln/specs/x\.amend\.md' .claude-calls/verify/1/3/prompt
 
-# The spec PRODUCT.md shows holds the wording the developer accepted.
+# The work lands with both sessions' files, and the spec PRODUCT.md shows holds the wording the developer accepted.
+exec git show main:x.go
+stdout 'return 42'
+exec git show main:acceptance/x/x_test.go
+stdout 'func TestAT1'
 ! exists .kiln/specs/x.md .kiln/specs/x.amend.md
 exec sh -c '$(sed -n "s/^- Spec 1: x: .\(git show .*\).$/\1/p" PRODUCT.md)'
 stdout '^- \*\*Then\*\*: it answers 42, or more\.$'

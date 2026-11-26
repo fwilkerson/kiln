@@ -534,6 +534,34 @@ func readOutputs(checks []check) []check {
 	return checks
 }
 
+// TestStatusLine holds what kiln status prints of a stopped spec, and of one waiting with amendments. A stop past its
+// last round prints its why under its line. A stop as unproved has a one-line why, which its line ends with.
+func TestStatusLine(t *testing.T) {
+	for name, tc := range map[string]struct {
+		state           state
+		why, amendments string
+		kind            stopKind
+		want            string
+	}{
+		"a stop past its last round says why under it": {state: stopped, why: "the gate still failed after its last round:\nFAIL",
+			want: "x: stopped\n  the gate still failed after its last round:\n  FAIL\n"},
+		"a stop as unproved says why on its line": {state: stopped, why: changedNoTest, kind: stopUnproved,
+			want: "x: stopped: the verify session changed no test after a proof that did not stand\n"},
+		"amendments wait on the spec's branch": {state: amended, amendments: "### New\n\n- **Then**: 43.",
+			want: "x: waiting on its branch with amendments, kiln/x\n  ### New\n  \n  - **Then**: 43.\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := record{Name: "x", State: tc.state, Amendments: tc.amendments}
+			r.Why, r.Kind = tc.why, tc.kind
+			var out strings.Builder
+			r.status(&out)
+			if got := out.String(); got != tc.want {
+				t.Errorf("kiln status prints %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSpecStates(t *testing.T) {
 	for name, tc := range specStates {
 		t.Run(name, func(t *testing.T) {

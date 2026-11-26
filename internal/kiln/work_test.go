@@ -325,6 +325,47 @@ func TestRunToldTwoRounds(t *testing.T) {
 	}
 }
 
+// TestTellAtOnce holds that tell runs each seat it names at once. Side by side, each session's run starts before the
+// other's ends. Each run here looks 1000 times at most for the other's start.
+func TestTellAtOnce(t *testing.T) {
+	t.Parallel()
+	b, repo := splitBuild(t, false)
+	shell(t, repo, `mkdir -p .kiln/agents && echo 'Build it.' >.kiln/agents/build.md && `+
+		`echo 'Write the tests.' >.kiln/agents/verify.md && git add -A && git commit --quiet -m agents`)
+	b.set(func(r *record) {
+		r.Approved = git.Rev(shell(t, repo, "git rev-parse HEAD"))
+		r.Code.Session, r.Verify.Session = claude.NewID(), claude.NewID()
+		owe(r, codeSeat, message{Text: "go on"})
+		owe(r, verifySeat, message{Text: "go on"})
+	})
+
+	started, saw := t.TempDir(), t.TempDir()
+	program := filepath.Join(t.TempDir(), "claude")
+	script := fmt.Sprintf("#!/bin/sh\ncat >/dev/null\ntouch %[1]s/$$\ni=0\n"+
+		"while [ \"$(ls %[1]s | wc -l)\" -lt 2 ] && [ $i -lt 1000 ]; do sleep 0.01; i=$((i+1)); done\n"+
+		"ls %[1]s | wc -l | tr -d ' ' >%[2]s/$$\n"+
+		`echo '{"type":"result","is_error":false,"result":"done"}'`+"\n", started, saw)
+	if err := os.WriteFile(program, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	b.r.claude = claude.New(claude.Config{Program: program, Sessions: filepath.Join(t.TempDir(), "sessions")})
+	if _, err := b.tell(t.Context(), []seatName{verifySeat, codeSeat}); err != nil {
+		t.Fatal(err)
+	}
+
+	runs, err := os.ReadDir(saw)
+	if err != nil || len(runs) != 2 {
+		t.Fatalf("tell ran %d sessions, %v; want 2", len(runs), err)
+	}
+
+	for _, run := range runs {
+		if got := strings.TrimSpace(shell(t, saw, "cat "+run.Name())); got != "2" {
+			t.Errorf("a run saw %s runs started before it ended; want both", got)
+		}
+	}
+}
+
 // deref is what p points to, or nil.
 func deref(p *int) any {
 	if p == nil {
