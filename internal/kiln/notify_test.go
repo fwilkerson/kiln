@@ -90,7 +90,8 @@ func TestNotice(t *testing.T) {
 	_, committed := n["commit"]
 	if !claim.Holds(n["kind"] == "spec", n["name"] == "x", n["state"] == "stopped", n["top"] == b.r.top,
 		string(kiln) == b.r.exe, strings.HasPrefix(summary, "the gate still failed after its last round:\n"),
-		strings.Contains(summary, "failing: TestX"), strings.Contains(n["next"].(string), "kiln queue x"), !committed) {
+		strings.Contains(summary, "failing: TestX"), strings.Contains(n["next"].(string), "run kiln tend x"),
+		strings.Contains(n["next"].(string), "kiln queue x"), !committed) {
 		t.Errorf("the notice is %s, and $KILN %q; want spec x stopped, at %s, why and what failed, the next step, "+
 			"no commit, and this kiln in $KILN", raw, kiln, b.r.top)
 	}

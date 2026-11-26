@@ -441,3 +441,43 @@ func TestLaunchSides(t *testing.T) {
 		t.Errorf("the launch of a build alone is %+v; want no side and no blinds", a)
 	}
 }
+
+// TestRevisedSpecOldTests holds a revised spec's build side by side, with two acceptance paths. Before the build
+// session's first run, kiln removes what main holds under each from kiln/<name>. The proof records only the test that
+// fails on main's code. The join puts the old tests back first. Then the verify session's changed tests merge
+// cleanly, and a test it left alone stays.
+func TestRevisedSpecOldTests(t *testing.T) {
+	t.Parallel()
+	b, repo, _ := landingBuild(t)
+	// The gate fails TestAT1 while uat/x/a.txt wants 43 and x.txt answers otherwise. TestAT2 passes.
+	const gate = `{"gate": ["printf -- '--- PASS: TestAT2 (0.00s)\\n'; if grep -qs 43 uat/x/a.txt && ! grep -qs 43 ` +
+		`x.txt; then printf -- '--- FAIL: TestAT1 (0.00s)\\nFAIL\\nFAIL\\texample.com/x\\t0.1s\\n'; exit 1; fi"]}`
+	writeAll(t, repo, map[string]string{configFile: gate})
+	shell(t, repo, "mkdir -p .kiln/specs uat/x integration/x && echo '# X' >.kiln/specs/x.md && echo 42 >x.txt && "+
+		"echo 42 >uat/x/a.txt && echo 7 >uat/x/b.txt && echo 42 >integration/x/a.txt && git add . && "+
+		"git commit --quiet -m landed")
+	b.side, b.order, b.job = &sides{order: sideBySide, acceptance: []string{"uat/x/", "integration/x/"}}, sideBySide,
+		specJob{}
+	if err := b.start(t.Context(), *b.side); err != nil {
+		t.Fatal(err)
+	}
+
+	tree := string(b.tree)
+	first := shell(t, tree, "git ls-files")
+	if !claim.Holds(b.now().OldTests, strings.Contains(first, "x.txt"), !strings.Contains(first, "uat/"),
+		!strings.Contains(first, "integration/")) {
+		t.Errorf("the build session's first run starts from\n%s\nwith old tests removed: %v; want x.txt, and no "+
+			"file under either acceptance path", first, b.now().OldTests)
+	}
+
+	b.set(func(r *record) { paid(r, verifySeat, len(r.Verify.Owed)) })
+	shell(t, string(b.r.clone("x", verifyRole)), "echo 43 >uat/x/a.txt && echo 43 >integration/x/a.txt")
+	shell(t, tree, "echo 43 >x.txt")
+	joined, err := b.prove(t.Context())
+	got := shell(t, tree, "cat x.txt uat/x/a.txt uat/x/b.txt integration/x/a.txt")
+	if !claim.Holds(err == nil, joined, slices.Equal(b.now().Proved, []string{"TestAT1 (example.com/x)"}),
+		got == "43\n43\n7\n43") {
+		t.Errorf("the proof and join answered %v, %v, proved %q, and left x.txt and the tests as\n%s\nwant TestAT1 "+
+			"alone proved, 43, the verify session's 43 under both paths, and 7", joined, err, b.now().Proved, got)
+	}
+}

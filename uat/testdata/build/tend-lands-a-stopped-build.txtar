@@ -1,92 +1,32 @@
-# A stopped build names kiln tend, which opens a session that holds why it stopped. The session finishes the build's
-# work itself, and kiln records it landed.
+# A stopped build's tend session lands the work itself, and kiln goes on with nothing.
+# Only the built binary shows: the session's own kiln tend --landed, run beside the kiln tend that opened it.
 
-# Given: a notify program that keeps each notice it receives, and an approved spec whose build stopped, its gate still
-# failing after its last round. kiln.json gives the build 1 round, and the session fails to fix its test in it.
+# Given: an approved spec whose build stopped, its gate failing. kiln.json gives the build no round.
 exec kiln queue x
 exec kiln fire
 stdout '^x: stopped'
-cp stdout .tmp/fire.out
-exec sh -c 'sed -n "s/^  the work is on kiln\/x, in //p" .tmp/fire.out'
-stdout .
-cp stdout .tmp/worktree
-exec sh -c 'test -d "$(cat .tmp/worktree)"'
 
-# Then: the next step in the build's summary names kiln tend with the spec's name.
-exec cat .tmp/fire.out
-stdout '(?s)^x: stopped: .*^  next: .*\brun kiln tend x\b'
+# When: the developer runs kiln tend with the spec's name. The session commits the work and its acceptance tests on
+# main, runs kiln tend --landed, and exits.
+exec kiln tend x
 
-# So does the notice's.
-grep -count=1 '"name":"x"' .git/notices
-grep '"name":"x",.*"next":"[^"]*\brun kiln tend x\b' .git/notices
+# Then: kiln goes on with nothing: it says the spec waits for UAT, and resumes no session of the build.
+stdout '^x: it is waiting for UAT'
+! exists .claude-calls/build/1/2
+! exists .claude-calls/build/2
 
-# When: the developer runs kiln tend with the spec's name. The session reads where the work is, commits the work and
-# its acceptance tests on main, tells kiln the work landed, and exits.
-exec sh -c 'kiln tend x >.tmp/tend.out 2>&1 || true'
+# main holds the work,
 exec git show main:x.go
 stdout 'return 42'
 exec git show main:acceptance/x/x_test.go
 stdout 'func TestAT1'
 
-# Then: an interactive Claude Code session starts: one call, with no -p, whose role is tend,
-exists .claude-calls/tend/1/1/call.json
-! exists .claude-calls/tend/2
-! grep '^-p$' .claude-calls/tend/1/1/args
-! grep '^--print$' .claude-calls/tend/1/1/args
-
-# in the developer's checkout.
-exec sh -c 'cd "$(sed -n "s/.*\"dir\": \"\(.*\)\".*/\1/p" .claude-calls/tend/1/1/call.json)" && pwd -P'
-cp stdout .tmp/session-dir
-exec pwd -P
-cmp stdout .tmp/session-dir
-
-# Its first message holds the spec's name, and why the build stopped,
-grep '^The spec x: stopped' .claude-calls/tend/1/1/prompt
-grep 'the gate still failed after its last round' .claude-calls/tend/1/1/prompt
-
-# the test that failed,
-grep 'failing: TestAT1 \(example\.com/scratch/acceptance/x\)$' .claude-calls/tend/1/1/prompt
-
-# the branch and the worktree that hold the work, which the session found on kiln/x,
-grep '^Its work: kiln/x, in .' .claude-calls/tend/1/1/prompt
-grep '^kiln/x$' .tmp/work-branch
-
-# and the build session's ID.
-exec sh -c 'sed -n "s/.*\"session_id\": \"\(.*\)\".*/\1/p" .claude-calls/build/1/1/call.json'
-cp stdout .tmp/build-id
-exec sh -c 'sed -n "s/^Its sessions: build \([0-9a-f-]*\), in .*/\1/p" .claude-calls/tend/1/1/prompt'
-cmp stdout .tmp/build-id
-
-# kiln resumes no session of the build.
-! exists .claude-calls/build/1/3
-! exists .claude-calls/build/2
-
-# kiln status shows the spec waiting for UAT,
+# and kiln status shows the spec waiting for UAT.
 exec kiln status
 stdout '^x: waiting for UAT$'
 
-# the build's branch and worktree are gone,
-! exec git rev-parse --verify --quiet refs/heads/kiln/x
-exec git branch --list 'kiln/*'
-! stdout .
-exec sh -c 'test ! -e "$(cat .tmp/worktree)"'
-
-# and kiln tend refuses the spec now, says where it stands, and starts no session.
-exec exits 1 sh -c 'kiln tend x 2>&1'
-stdout '\bx: [^\n]*waiting for UAT'
-! exists .claude-calls/tend/2
-! exists .claude-calls/tend/1/2
-
-# When: the developer runs kiln accept.
-# Then: kiln retires the spec.
-exec kiln accept x
-stdout '^x: accepted'
-! exists .kiln/specs/x.md
-exec kiln status
-stdout '^kiln holds no approved spec$'
-
 -- .kiln/kiln.json --
-{"notify": "printf '%s\\n' \"$KILN_NOTICE\" >>.git/notices"}
+{"rounds": 0}
 -- .kiln/specs/x.md --
 ### 1. X answers
 
@@ -95,18 +35,11 @@ stdout '^kiln holds no approved spec$'
 - **Then**: it answers 42.
 -- claude.json --
 {
- "build": {"1": {
-  "1": [
-   {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
-   {"result": {"result": "Built x."}}
-  ],
-  "2": [{"result": {"result": "I could not make X answer 42."}}],
-  "3": [{"result": {"result": "Went on."}}],
-  "4": [{"result": {"result": "Went on."}}]
- }},
- "audit": {"1": {"1": [{"result": {"audit": {"read": 2}}}]}},
+ "build": {"1": {"1": [
+  {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/x/.\" ."}}},
+  {"result": {"result": "Built x."}}
+ ]}},
  "tend": {"1": {"1": [
-  {"tool": {"name": "Bash", "input": {"command": "(cd \"$(sed -n 's/^Its work: kiln\\/x, in //p' \"$WORK/.claude-calls/tend/1/1/prompt\")\" && git branch --show-current >\"$WORK/.tmp/work-branch\")"}}},
   {"tool": {"name": "Bash", "input": {"command": "cp -R \"$WORK/_given/done/.\" . && git add x.go acceptance && git commit -q -m 'feat(x): answer 42'"}}},
   {"tool": {"name": "Bash", "input": {"command": "kiln tend x --landed"}}},
   {"exit": 0}

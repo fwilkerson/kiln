@@ -1319,6 +1319,16 @@ func TestAuditDid(t *testing.T) {
 	}
 }
 
+// TestAuditNamesProved holds that the audit's prompt names the tests that failed at the proof.
+func TestAuditNamesProved(t *testing.T) {
+	r := &Repo{store: store{dir: t.TempDir()}}
+	b := &build{r: r, rec: record{Name: "x", Proved: []string{"TestAT1"}}, out: io.Discard}
+	prompt, err := b.auditPrompt(t.Context(), []string{"."}, []string{"x.go"})
+	if !claim.Holds(err == nil, strings.Contains(prompt, "failed on these tests: TestAT1. ")) {
+		t.Errorf("the audit's prompt is %q, with %v; want the proof's failing test, TestAT1", prompt, err)
+	}
+}
+
 // TestNextStep holds the next step to spec 4's table: each command it names is a command the book takes. Each state
 // kiln tend takes names it, and no step resumes a session itself.
 // TestAuditReply holds how kiln reads an audit's reply, in the form of kiln's contract. It holds what goes back to the

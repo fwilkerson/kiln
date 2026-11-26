@@ -109,8 +109,8 @@ func given(t *testing.T, r *Repo, recs []*record, entries []entry) {
 	}
 }
 
-// TestTendMessage holds the tend session's first message for the states the acceptance tests leave out. A session
-// that exits non-zero fails kiln tend, and nothing goes on.
+// TestTendMessage holds the tend session's first message, for a spec or a monitor in each state the table names. A
+// session that exits non-zero fails kiln tend, and nothing goes on.
 func TestTendMessage(t *testing.T) {
 	t.Parallel()
 	fixLine := func(build string) entry { return entry{Kind: monitorKind, Monitor: "m", Found: foundFix, Build: build} }
@@ -148,6 +148,11 @@ func TestTendMessage(t *testing.T) {
 		"a watching monitor that needs you": {name: "w",
 			entries: []entry{{Kind: monitorKind, Monitor: "w", Found: outNeedsYou, Summary: "w: 70, line ≥ 80, crossed"}},
 			want:    []string{"The monitor w: needs you\nw: 70, line ≥ 80, crossed\nIts directory: .kiln/monitors/w/"}},
+		"a spec whose build stopped": {name: "x", tree: true,
+			recs: []*record{{Name: "x", State: stopped, Code: seat{Session: "s6"},
+				Why: "the gate still failed after its last round:\nFAIL", Failing: []string{"TestAT1 (example.com/x)"}}},
+			want: []string{"The spec x: stopped\nthe gate still failed after its last round:\nFAIL\nfailing: TestAT1 " +
+				"(example.com/x)\nIts work: kiln/x, in ", "\nIts sessions: build s6, in ", "\nA note for the build: "}},
 		"a stopped landing of accepted amendments": {name: "x",
 			recs: []*record{{Name: "x", State: stopped, Accepted: true, Code: seat{Session: "s4"},
 				Why: "the gate still failed after its last round:\nFAIL", Failing: []string{"TestAT1"}}},
@@ -232,7 +237,8 @@ func TestTendRefuses(t *testing.T) {
 }
 
 // TestTendLanded holds kiln tend --landed: it takes a spec's stopped build alone. It takes it once main shows its
-// work under the spec's acceptance paths. Then the spec waits for UAT, at main's tip, and its branch is gone.
+// work under the spec's acceptance paths. Then the spec waits for UAT, at main's tip, and its worktree and branch are
+// gone.
 func TestTendLanded(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
@@ -271,10 +277,12 @@ func TestTendLanded(t *testing.T) {
 
 			main := git.Rev(shell(t, repo, "git rev-parse main"))
 			_, treeErr := os.Stat(string(r.tree("x")))
+			branches := shell(t, repo, "git branch --list 'kiln/*'")
 			rec := k.find("x")
-			if !claim.Holds(err == nil, rec.State == landed, rec.LandedAt == main, os.IsNotExist(treeErr)) {
-				t.Errorf("kiln tend --landed answered %v, and left %+v, its worktree there: %v; want it landed at %s",
-					err, rec, treeErr == nil, main)
+			if !claim.Holds(err == nil, rec.State == landed, rec.LandedAt == main, os.IsNotExist(treeErr),
+				branches == "") {
+				t.Errorf("kiln tend --landed answered %v, and left %+v, its worktree there: %v, and the branches %q; "+
+					"want it landed at %s", err, rec, treeErr == nil, branches, main)
 			}
 		})
 	}
@@ -315,6 +323,43 @@ func TestTendGoesOn(t *testing.T) {
 		strings.Contains(string(resumed), "use 42"), strings.Contains(string(resumed), "the gate still failed")) {
 		t.Errorf("kiln tend answered %v, and left %+v; the build session was told %q; want it landed at %s, told "+
 			"why it stopped and the note", err, rec, resumed, main)
+	}
+}
+
+// TestTendLandedBySession holds kiln tend once its session ran kiln tend --landed. kiln goes on with nothing: it
+// resumes no session of the build, and says the spec waits for UAT.
+func TestTendLandedBySession(t *testing.T) {
+	t.Parallel()
+	r, repo, dir := tendRepo(t, tendConfig)
+	approved := git.Rev(shell(t, repo, "git rev-parse main"))
+	if err := r.git.Checkout(t.Context(), r.tree("x"), Spec("x").branch(), approved); err != nil {
+		t.Fatal(err)
+	}
+
+	session := claude.NewID()
+	given(t, r, []*record{{Name: "x", State: stopped, Approved: approved, Build: "b1", Code: seat{Session: session, Rounds: 1},
+		Limit: new(1), Why: "the gate still failed after its last round:\nFAIL"}}, nil)
+	shell(t, repo, "mkdir -p acceptance/x && echo t >acceptance/x/t.txt && git add . && git commit --quiet -m work")
+	writeAll(t, dir, map[string]string{"wait": ""})
+	byHand := make(chan error, 2)
+	go func() {
+		for !exists(filepath.Join(dir, "started")) {
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		byHand <- r.TendLanded(context.WithoutCancel(t.Context()), "x", io.Discard)
+		byHand <- os.WriteFile(filepath.Join(dir, "go"), nil, 0o600)
+	}()
+
+	var out strings.Builder
+	err := r.Tend(t.Context(), "x", Terminal{Out: &out, Err: io.Discard})
+	resumed, _ := filepath.Glob(filepath.Join(dir, "resumed-*"))
+	k, _ := r.store.read()
+	rec := k.find("x")
+	if !claim.Holds(err == nil, errors.Join(<-byHand, <-byHand) == nil, rec.State == landed, len(resumed) == 0,
+		strings.Contains(out.String(), "x: it is waiting for UAT")) {
+		t.Errorf("kiln tend answered %v, said %q, and left %+v; resumed %q; want the session's landing kept, and "+
+			"no session resumed", err, &out, rec, resumed)
 	}
 }
 
@@ -428,18 +473,22 @@ func TestSplitOwed(t *testing.T) {
 	}
 }
 
-// TestMonitorRunBesideTend holds kiln monitor run's two rules for kiln tend. It skips a monitor a kiln tend is at
-// work on. A run that finds nothing to fix drops the monitor's stopped fix, with its worktree.
-func TestMonitorRunBesideTend(t *testing.T) {
+// TestMonitorRunLeftFix holds what kiln monitor run does with a monitor's fix an earlier kiln left. It skips a
+// monitor a kiln tend is at work on. A run that finds nothing to fix drops the monitor's stopped fix, with its
+// worktree. A fix a kiln cut short, left building, is dropped before the monitor's check runs again.
+func TestMonitorRunLeftFix(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
+		state   state
 		tending bool
 		says    string
 		kept    bool
 	}{
-		"a monitor a kiln tend is at work on is skipped": {tending: true, kept: true,
+		"a monitor a kiln tend is at work on is skipped": {state: stopped, tending: true, kept: true,
 			says: "c: skipped, since a kiln tend is at work on it"},
-		"a healthy run drops a stopped fix": {says: "c: dropped its stopped fix"},
+		"a healthy run drops a stopped fix": {state: stopped, says: "c: dropped its stopped fix"},
+		"a fix a kiln cut short is dropped, and the check runs again": {state: building,
+			says: "c: dropped its fix, which a kiln cut short\nc: healthy"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -448,7 +497,7 @@ func TestMonitorRunBesideTend(t *testing.T) {
 				"check": `echo '{"fix": false, "summary": "fine"}'`})
 			shell(t, repo, "git add . && git commit --quiet -m c")
 			main := git.Rev(shell(t, repo, "git rev-parse main"))
-			given(t, r, []*record{{Name: "c", State: stopped, Monitor: true, Build: "b1", Approved: main}}, nil)
+			given(t, r, []*record{{Name: "c", State: tc.state, Monitor: true, Build: "b1", Approved: main}}, nil)
 			if err := r.git.Checkout(t.Context(), r.tree("c"), Spec("c").branch(), main); err != nil {
 				t.Fatal(err)
 			}
